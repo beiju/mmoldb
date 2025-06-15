@@ -34,8 +34,10 @@ pub async fn game_page(game_id: i64, mut db: Connection<Db>) -> Result<Template,
         day: i32,
         away_team_emoji: String,
         away_team_name: String,
+        away_team_id: String,
         home_team_emoji: String,
         home_team_name: String,
+        home_team_id: String,
         events: Vec<EventContext>,
     }
 
@@ -50,8 +52,10 @@ pub async fn game_page(game_id: i64, mut db: Connection<Db>) -> Result<Template,
         day: game.day,
         away_team_emoji: game.away_team_emoji,
         away_team_name: game.away_team_name,
+        away_team_id: game.away_team_id,
         home_team_emoji: game.home_team_emoji,
         home_team_name: game.home_team_name,
+        home_team_id: game.home_team_id,
         events: events
             .into_iter()
             .map(|(event, logs)| EventContext {

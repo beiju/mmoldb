@@ -12,6 +12,7 @@ drop table taxa.fair_ball_type;
 drop table taxa.position;
 drop table taxa.hit_type;
 drop table taxa.event_type;
+drop table taxa.pitch_type;
 alter table data.ingests set schema public;
 drop schema info;
 drop schema taxa;

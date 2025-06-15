@@ -72,8 +72,10 @@ create table data.games (
     day int not null,
     away_team_emoji text not null,
     away_team_name text not null,
+    away_team_id text not null,
     home_team_emoji text not null,
-    home_team_name text not null
+    home_team_name text not null,
+    home_team_id text not null
 );
 
 create index games_ingest_id_index on data.games (ingest);
@@ -146,9 +148,10 @@ create table data.events (
     fair_ball_direction bigint references taxa.position,
     -- populated when there's a fielding error
     fielding_error_type bigint references taxa.fielding_error_type,
-    -- populated when event_type is in [Ball, CalledStrike, SwingingStrike, FoulTip, FoulBall, Hit, Walk, HitByPitch]
-    -- i.e. when the event is a pitch.
+    -- should always be populated for current list of events
     pitch_type bigint references taxa.pitch_type,
+    -- should always be populated for current list of events
+    pitch_speed float8,
     -- this is specifically *described* as sacrifice, because there is
     -- or was a bug that caused plays to incorrectly be called
     -- sacrifices. The bug is as yet unconfirmed, so it might be

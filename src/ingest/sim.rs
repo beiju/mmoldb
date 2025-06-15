@@ -81,6 +81,7 @@ pub struct EventDetail<StrT: Clone> {
     pub fair_ball_direction: Option<TaxaPosition>,
     pub fielding_error_type: Option<TaxaFieldingErrorType>,
     pub pitch_type: Option<TaxaPitchType>,
+    pub pitch_speed: Option<f64>,
     pub described_as_sacrifice: Option<bool>,
 
     pub baserunners: Vec<EventDetailRunner<StrT>>,
@@ -155,6 +156,7 @@ struct FairBall {
     index: usize,
     fair_ball_type: FairBallType,
     fair_ball_destination: FairBallDestination,
+    pitch: Option<mmolb_parsing::game::Pitch>
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -191,6 +193,7 @@ impl BatterStats {
 pub struct TeamInGame<'g> {
     team_name: &'g str,
     team_emoji: &'g str,
+    team_id: &'g str,
     pitcher: PositionedPlayer<&'g str>,
     // I need another field to store the automatic runner because it's
     // not always the batter who most recently stepped up, in the case
@@ -377,7 +380,7 @@ struct EventDetailBuilder<'g> {
     fair_ball_direction: Option<TaxaPosition>,
     hit_type: Option<TaxaHitType>,
     fielding_error_type: Option<TaxaFieldingErrorType>,
-    pitch_type: Option<TaxaPitchType>,
+    pitch: Option<mmolb_parsing::game::Pitch>,
     described_as_sacrifice: Option<bool>,
     fielders: Vec<EventDetailFielder<&'g str>>,
     advances: Vec<RunnerAdvance<&'g str>>,
@@ -389,6 +392,7 @@ struct EventDetailBuilder<'g> {
 
 impl<'g> EventDetailBuilder<'g> {
     fn fair_ball(mut self, fair_ball: FairBall) -> Self {
+        self = self.pitch(fair_ball.pitch);
         self.fair_ball_event_index = Some(fair_ball.index);
         self.fair_ball_type = Some(fair_ball.fair_ball_type.into());
         self.fair_ball_direction = Some(fair_ball.fair_ball_destination.into());
@@ -500,6 +504,11 @@ impl<'g> EventDetailBuilder<'g> {
 
     fn add_out(mut self, runner_out: RunnerOut<&'g str>) -> Self {
         self.runners_out.push(runner_out);
+        self
+    }
+
+    fn pitch(mut self, pitch: Option<mmolb_parsing::game::Pitch>) -> Self {
+        self.pitch = pitch;
         self
     }
 
@@ -695,6 +704,10 @@ impl<'g> EventDetailBuilder<'g> {
             ingest_logs.error(format!("Runner(s) out not found: {:?}", extra_runners_out));
         }
 
+        if self.pitch.is_none() {
+            ingest_logs.error("Missing a pitch");
+        }
+
         EventDetail {
             game_event_index: self.game_event_index,
             fair_ball_event_index: self.fair_ball_event_index,
@@ -712,7 +725,8 @@ impl<'g> EventDetailBuilder<'g> {
             fair_ball_type: self.fair_ball_type,
             fair_ball_direction: self.fair_ball_direction,
             fielding_error_type: self.fielding_error_type,
-            pitch_type: self.pitch_type,
+            pitch_type: self.pitch.map(|pitch| pitch.pitch_type.into()),
+            pitch_speed: self.pitch.map(|pitch| pitch.speed as f64),
             described_as_sacrifice: self.described_as_sacrifice,
             baserunners,
         }
@@ -735,6 +749,7 @@ struct RunnerUpdate<'g, 'a> {
 impl<'g> Game<'g> {
     pub fn new<'a, IterT>(
         game_info: &'g GameInfo,
+        game_data: &'g mmolb_parsing::Game,
         events: &'a mut IterT,
     ) -> Result<(Game<'g>, Vec<Vec<IngestLog>>), SimFatalError>
     where
@@ -878,6 +893,7 @@ impl<'g> Game<'g> {
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
+                team_id: game_data.away_team_id.as_str(),
                 pitcher: PositionedPlayer {
                     name: away_pitcher_name,
                     position: Position::StartingPitcher,
@@ -888,6 +904,7 @@ impl<'g> Game<'g> {
             home: TeamInGame {
                 team_name: home_team_name,
                 team_emoji: home_team_emoji,
+                team_id: game_data.home_team_id.as_str(),
                 pitcher: PositionedPlayer {
                     name: home_pitcher_name,
                     position: Position::StartingPitcher,
@@ -1063,7 +1080,7 @@ impl<'g> Game<'g> {
             fair_ball_type: None,
             fair_ball_direction: None,
             fielding_error_type: None,
-            pitch_type: None,
+            pitch: None,
             described_as_sacrifice: None,
             scores: Vec::new(),
             steals: Vec::new(),
@@ -1696,11 +1713,9 @@ impl<'g> Game<'g> {
                 },
             ),
             GamePhase::ExpectPitch(batter_name) => {
-                let pitch_type = raw_event.pitch.map(|p| p.pitch_type.into());
-                let mut detail_builder = detail_builder;
-                detail_builder.pitch_type = pitch_type;
-                if pitch_type.is_none() {
-                    ingest_logs.error(format!("Expected a pitch type"));
+                let pitch = raw_event.pitch.map(|p| p);
+                if pitch.is_none() {
+                    ingest_logs.error(format!("Expected event to have a pitch"));
                 }
 
                 game_event!(
@@ -1715,6 +1730,7 @@ impl<'g> Game<'g> {
                         }, ingest_logs);
 
                         detail_builder
+                            .pitch(pitch)
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
@@ -1726,6 +1742,7 @@ impl<'g> Game<'g> {
                         self.update_runners_steals_only(steals, ingest_logs);
 
                         detail_builder
+                            .pitch(pitch)
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
@@ -1765,6 +1782,7 @@ impl<'g> Game<'g> {
                         };
 
                         detail_builder
+                            .pitch(pitch)
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, event_type)
                     },
@@ -1779,6 +1797,7 @@ impl<'g> Game<'g> {
                         self.update_runners_steals_only(steals, ingest_logs);
 
                         detail_builder
+                            .pitch(pitch)
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match foul {
                                 FoulType::Tip => TaxaEventType::FoulTip,
@@ -1793,6 +1812,7 @@ impl<'g> Game<'g> {
                             index,
                             fair_ball_type: *fair_ball_type,
                             fair_ball_destination: *destination,
+                            pitch
                         });
                         None
                     },
@@ -1809,6 +1829,7 @@ impl<'g> Game<'g> {
                         self.finish_pa(batter_name);
 
                         detail_builder
+                            .pitch(pitch)
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Walk)
@@ -1826,6 +1847,7 @@ impl<'g> Game<'g> {
                         self.finish_pa(batter_name);
 
                         detail_builder
+                            .pitch(pitch)
                             .runner_changes(advances.clone(), scores.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::HitByPitch)
                     },

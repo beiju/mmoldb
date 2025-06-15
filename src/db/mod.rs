@@ -463,8 +463,10 @@ async fn insert_game_internal<'e>(
             day: game_data.day as i32,
             away_team_emoji: &game_data.away_team_emoji,
             away_team_name: &game_data.away_team_name,
+            away_team_id: &game_data.away_team_id,
             home_team_emoji: &game_data.home_team_emoji,
             home_team_name: &game_data.home_team_name,
+            home_team_id: &game_data.home_team_id,
         })
         .returning(games_dsl::id)
         .get_result::<i64>(conn)

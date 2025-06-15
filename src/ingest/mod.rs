@@ -1105,7 +1105,7 @@ async fn ingest_game(
     let (mut game, game_creation_ingest_logs) = {
         let mut parsed_for_game = (&mut parsed).map(|(_, (parsed, _))| parsed);
 
-        Game::new(game_info, &mut parsed_for_game)?
+        Game::new(game_info, &game_data, &mut parsed_for_game)?
     };
 
     let (detail_events, ingest_logs): (Vec<_>, Vec<_>) = parsed

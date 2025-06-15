@@ -22,6 +22,7 @@ pub fn event_to_row<'e>(
             .fielding_error_type
             .map(|ty| taxa.fielding_error_type_id(ty)),
         pitch_type: event.pitch_type.map(|ty| taxa.pitch_type_id(ty)),
+        pitch_speed: event.pitch_speed,
         described_as_sacrifice: event.described_as_sacrifice,
         count_balls: event.count_balls as i32,
         count_strikes: event.count_strikes as i32,
@@ -133,6 +134,7 @@ pub fn row_to_event<'e>(
             .fielding_error_type
             .map(|id| taxa.fielding_error_type_from_id(id)),
         pitch_type: event.pitch_type.map(|id| taxa.pitch_type_from_id(id)),
+        pitch_speed: event.pitch_speed,
         described_as_sacrifice: event.described_as_sacrifice,
         fielders,
         baserunners,

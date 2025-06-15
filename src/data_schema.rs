@@ -39,6 +39,7 @@ pub mod data {
             fair_ball_direction -> Nullable<Int8>,
             fielding_error_type -> Nullable<Int8>,
             pitch_type -> Nullable<Int8>,
+            pitch_speed -> Nullable<Float8>,
             described_as_sacrifice -> Nullable<Bool>,
             count_balls -> Int4,
             count_strikes -> Int4,
@@ -58,8 +59,10 @@ pub mod data {
             day -> Int4,
             away_team_emoji -> Text,
             away_team_name -> Text,
+            away_team_id -> Text,
             home_team_emoji -> Text,
             home_team_name -> Text,
+            home_team_id -> Text,
         }
     }
 
