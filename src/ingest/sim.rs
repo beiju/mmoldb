@@ -69,6 +69,10 @@ pub struct EventDetail<StrT: Clone> {
     pub count_strikes: u8,
     pub outs_before: i32,
     pub outs_after: i32,
+    pub home_score_before: u8,
+    pub home_score_after: u8,
+    pub away_score_before: u8,
+    pub away_score_after: u8,
     pub pitcher_name: StrT,
     pub batter_name: StrT,
     pub fielders: Vec<EventDetailFielder<StrT>>,
@@ -750,6 +754,10 @@ impl<'g> EventDetailBuilder<'g> {
             count_strikes: game.state.count_strikes,
             outs_before: self.prev_game_state.outs,
             outs_after: game.state.outs,
+            home_score_before: self.prev_game_state.home_score,
+            home_score_after: game.state.home_score,
+            away_score_before: self.prev_game_state.away_score,
+            away_score_after: game.state.away_score,
             batter_name: if let MaybePlayer::Player(batter) = &self.raw_event.batter {
                 batter
             } else {
@@ -791,6 +799,25 @@ struct RunnerUpdate<'g, 'a> {
     pub runner_added: Option<(&'g str, TaxaBase)>,
     pub runner_added_forces_advances: bool,
     pub runner_advances_may_include_batter: Option<&'g str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MinimalGameState {
+    pub home_score: u8,
+    pub away_score: u8,
+    pub inning_number: u8,
+    pub inning_half: TopBottom,
+}
+
+impl From<&Game<'_>> for MinimalGameState {
+    fn from(value: &Game<'_>) -> Self {
+        MinimalGameState {
+            home_score: value.state.home_score,
+            away_score: value.state.away_score,
+            inning_number: value.state.inning_number,
+            inning_half: value.state.inning_half
+        }
+    }
 }
 
 impl<'g> Game<'g> {

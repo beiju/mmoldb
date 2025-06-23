@@ -28,9 +28,12 @@ pub struct NewGame<'a> {
     pub away_team_emoji: &'a str,
     pub away_team_name: &'a str,
     pub away_team_id: &'a str,
+    pub final_away_score: i32,
+
     pub home_team_emoji: &'a str,
     pub home_team_name: &'a str,
     pub home_team_id: &'a str,
+    pub final_home_score: i32,
 }
 
 #[derive(Identifiable, Queryable, Selectable, Associations)]
@@ -46,9 +49,12 @@ pub struct DbGame {
     pub away_team_emoji: String,
     pub away_team_name: String,
     pub away_team_id: String,
+    pub final_away_score: i32,
+
     pub home_team_emoji: String,
     pub home_team_name: String,
     pub home_team_id: String,
+    pub final_home_score: i32,
 }
 
 #[derive(Insertable)]
@@ -72,6 +78,10 @@ pub struct NewEvent<'a> {
     pub count_strikes: i32,
     pub outs_before: i32,
     pub outs_after: i32,
+    pub home_score_before: i32,
+    pub home_score_after: i32,
+    pub away_score_before: i32,
+    pub away_score_after: i32,
     pub pitcher_name: &'a str,
     pub pitcher_count: i32,
     pub batter_name: &'a str,
@@ -101,6 +111,10 @@ pub struct DbEvent {
     pub count_strikes: i32,
     pub outs_before: i32,
     pub outs_after: i32,
+    pub home_score_before: i32,
+    pub home_score_after: i32,
+    pub away_score_before: i32,
+    pub away_score_after: i32,
     pub pitcher_name: String,
     pub pitcher_count: i32,
     pub batter_name: String,

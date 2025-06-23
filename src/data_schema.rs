@@ -46,6 +46,10 @@ pub mod data {
             count_strikes -> Int4,
             outs_before -> Int4,
             outs_after -> Int4,
+            home_score_before -> Int4,
+            home_score_after -> Int4,
+            away_score_before -> Int4,
+            away_score_after -> Int4,
             pitcher_name -> Text,
             pitcher_count -> Int4,
             batter_name -> Text,
@@ -64,9 +68,11 @@ pub mod data {
             away_team_emoji -> Text,
             away_team_name -> Text,
             away_team_id -> Text,
+            final_away_score -> Int4,
             home_team_emoji -> Text,
             home_team_name -> Text,
             home_team_id -> Text,
+            final_home_score -> Int4,
         }
     }
 

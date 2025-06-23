@@ -16,7 +16,7 @@ use rocket::{Orbit, Rocket, Shutdown, tokio};
 use rocket_db_pools::Database;
 use rocket_db_pools::diesel::AsyncPgConnection;
 use serde::Deserialize;
-pub use sim::{EventDetail, EventDetailFielder, EventDetailRunner, IngestLog};
+pub use sim::{EventDetail, EventDetailFielder, EventDetailRunner, IngestLog, MinimalGameState};
 use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1160,6 +1160,7 @@ async fn ingest_game(
             &game_data,
             game_creation_ingest_logs.into_iter().chain(ingest_logs),
             &detail_events,
+            MinimalGameState::from(&game),
         )
         .await?;
         let db_insert_duration = (Utc::now() - db_insert_start).as_seconds_f64();

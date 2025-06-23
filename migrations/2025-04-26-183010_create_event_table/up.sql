@@ -72,9 +72,12 @@ create table data.games (
     away_team_emoji text not null,
     away_team_name text not null,
     away_team_id text not null,
+    final_away_score int not null,
+
     home_team_emoji text not null,
     home_team_name text not null,
-    home_team_id text not null
+    home_team_id text not null,
+    final_home_score int not null
 );
 
 create index games_ingest_id_index on data.games (ingest);
@@ -165,6 +168,11 @@ create table data.events (
     count_strikes int not null,
     outs_before int not null,
     outs_after int not null,
+
+    home_score_before int not null,
+    home_score_after int not null,
+    away_score_before int not null,
+    away_score_after int not null,
     -- note: runs scored, outs on play, steal info, etc. are all computed from data.event_baserunners
 
     -- player info

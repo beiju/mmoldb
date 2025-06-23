@@ -12,7 +12,7 @@ pub use crate::db::taxa::{
 };
 use std::collections::HashMap;
 
-use crate::ingest::{EventDetail, IngestLog};
+use crate::ingest::{EventDetail, MinimalGameState, IngestLog};
 use crate::models::{
     DbEvent, DbEventIngestLog, DbFielder, DbGame, DbRawEvent, DbRunner, Ingest,
     NewEventIngestLogOwning, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent,
@@ -421,6 +421,7 @@ pub async fn insert_game<'e>(
     game_data: &mmolb_parsing::game::Game,
     logs: impl IntoIterator<Item = impl IntoIterator<Item = IngestLog>> + Send,
     event_details: &'e [EventDetail<&'e str>],
+    final_game_state: MinimalGameState,
 ) -> QueryResult<i64> {
     conn.transaction::<_, _, _>(|conn| {
         async move {
@@ -432,6 +433,7 @@ pub async fn insert_game<'e>(
                 game_data,
                 logs,
                 event_details,
+                final_game_state,
             )
             .await
         }
@@ -448,6 +450,7 @@ async fn insert_game_internal<'e>(
     game_data: &mmolb_parsing::game::Game,
     logs: impl IntoIterator<Item = impl IntoIterator<Item = IngestLog>>,
     event_details: &'e [EventDetail<&'e str>],
+    final_game_state: MinimalGameState,
 ) -> QueryResult<i64> {
     use crate::data_schema::data::event_baserunners::dsl as baserunners_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielders_dsl;
@@ -465,9 +468,11 @@ async fn insert_game_internal<'e>(
             away_team_emoji: &game_data.away_team_emoji,
             away_team_name: &game_data.away_team_name,
             away_team_id: &game_data.away_team_id,
+            final_away_score: final_game_state.away_score as i32,
             home_team_emoji: &game_data.home_team_emoji,
             home_team_name: &game_data.home_team_name,
             home_team_id: &game_data.home_team_id,
+            final_home_score: final_game_state.home_score as i32,
         })
         .returning(games_dsl::id)
         .get_result::<i64>(conn)
