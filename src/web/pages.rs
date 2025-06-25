@@ -276,3 +276,15 @@ pub async fn index_page(
 pub async fn debug_always_error_page() -> Result<Template, AppError> {
     Err(AppError::TestError)
 }
+
+
+#[get("/debug-memory-profile")]
+pub async fn debug_memory_profile() -> Result<Vec<u8>, AppError> {
+    let mut prof_ctl = jemalloc_pprof::PROF_CTL.as_ref().unwrap().lock().await;
+    
+    if prof_ctl.activated() {
+        prof_ctl.dump_pprof().map_err(AppError::MemoryProfilerError)
+    } else {
+        Err(AppError::MemoryProfilerError(anyhow::anyhow!("heap profiling not activated")))
+    }
+}

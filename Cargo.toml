@@ -16,7 +16,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 reqwest = { version = "0.12.15", features = ["json", "gzip", "brotli"] }
 chrono-humanize = "0.2.3"
 strum = { version = "0.27.1", features = ["derive"] }
-mmolb_parsing = { git = "https://github.com/unnamed-girl/mmolb_parsing.git" }
+mmolb_parsing = { git = "https://github.com/beiju/mmolb_parsing.git", branch = "allocative" }
 enum-map = "2.7.3"
 itertools = "0.14.0"
 num-format = "0.4.4"
@@ -26,3 +26,10 @@ sled = "0.34.7"
 rmp-serde = "1.3.0"
 humansize = "2.1.3"
 percent-encoding = "2.3.1"
+jemalloc_pprof = { version = "0.7.0", features = ["symbolize"] }
+anyhow = "1.0.98"
+allocative = { version = "0.3.4", features = ["serde_json", "tokio", "futures", ] }
+rocksdb = "0.23.0"
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { version = "0.6", features = ["profiling", "unprefixed_malloc_on_supported_platforms"] }

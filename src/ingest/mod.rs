@@ -26,7 +26,7 @@ use rocket_sync_db_pools::{Connection, ConnectionPool};
 use thiserror::Error;
 
 // First party dependencies
-use crate::ingest::chron::{ChronEntities, ChronEntity, ChronError, GameExt};
+use crate::ingest::chron::{ChronEntities, ChronEntity, ChronGetError, GameExt};
 use crate::db::{CompletedGameForDb, GameForDb, RowToEventError, Taxa, Timings};
 use crate::ingest::sim::{Game, SimFatalError};
 use crate::{Db, db};
@@ -87,14 +87,14 @@ pub enum IngestFatalError {
     #[error("Ingest task transitioned to NotStarted state from some other state")]
     ReenteredNotStarted,
     
-    #[error("Couldn't open HTTP cache database: {0}")]
-    OpenCacheDbError(#[from] sled::Error),
+    #[error(transparent)]
+    OpenCacheDbError(#[from] chron::ChronOpenError),
 
     #[error("Couldn't get a database connection")]
     CouldNotGetConnection,
 
     #[error(transparent)]
-    ChronError(#[from] ChronError),
+    ChronError(#[from] ChronGetError),
 
     #[error(transparent)]
     DbError(#[from] diesel::result::Error),
@@ -599,7 +599,7 @@ async fn fetch_games_page(
     chron: &chron::Chron,
     page: Option<String>,
     index: usize,
-) -> Result<(ChronEntities<mmolb_parsing::Game>, usize, f64), ChronError> {
+) -> Result<(ChronEntities<mmolb_parsing::Game>, usize, f64), ChronGetError> {
     let fetch_start = Utc::now();
     let page = chron.games_page(page.as_deref()).await?;
     let fetch_duration = (Utc::now() - fetch_start).as_seconds_f64();
@@ -764,6 +764,9 @@ async fn ingest_page_of_games<'t>(
 
     let conn = pool.get().await
         .ok_or_else(|| IngestFatalError::CouldNotGetConnection)?;
+    
+    let page_bytes = allocative::size_of_unique(&page);
+    info!("Starting ingest of {} page", humansize::format_size(page_bytes, humansize::DECIMAL));
 
     let stats = conn.run(move |conn| {
         let save_start = Utc::now();

@@ -13,6 +13,9 @@ pub enum AppError {
     TestError,
 
     #[error(transparent)]
+    MemoryProfilerError(anyhow::Error),
+
+    #[error(transparent)]
     DbError(#[from] diesel::result::Error),
 }
 

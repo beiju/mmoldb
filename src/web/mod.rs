@@ -11,5 +11,6 @@ pub fn routes() -> Vec<rocket::Route> {
         pages::ingest_page,
         pages::game_page,
         pages::debug_always_error_page,
+        pages::debug_memory_profile,
     ]
 }

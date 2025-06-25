@@ -18,11 +18,18 @@ use rocket_dyn_templates::Template;
 use rocket_dyn_templates::tera::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use log::info;
 use rocket::figment::map;
 use rocket_sync_db_pools::database;
 use serde::Deserialize;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[allow(non_upper_case_globals)]
+#[unsafe(export_name = "malloc_conf")]
+pub static malloc_conf: &[u8] = b"prof:true,prof_active:true,lg_prof_sample:19\0";
 
 #[database("mmoldb")]
 struct Db(PgConnection);
