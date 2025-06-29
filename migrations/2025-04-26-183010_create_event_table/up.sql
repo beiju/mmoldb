@@ -5,6 +5,7 @@ create table taxa.event_type (
     id bigserial primary key not null,
     name text not null,
     display_name text not null,
+    outs_on_event int not null,
     unique (name)
 );
 
@@ -20,6 +21,8 @@ create table taxa.position (
     name text not null,
     display_name text not null,
     abbreviation text not null,
+    --Keeping this NOT NULL despite DH not needing a position for code simplicity
+    position_area text not null,
     unique (name)
 );
 
@@ -54,6 +57,16 @@ create table taxa.pitch_type (
     name text not null,
     display_name text not null,
     unique (name)
+);
+
+create table taxa.leagues (
+    id bigserial primary key not null,
+    name text not null,
+	color text not null,
+	emoji text not null,
+	league_type text not null,
+	parent_team_id text not null,
+	mmolb_league_id text not null
 );
 
 create table data.weather (

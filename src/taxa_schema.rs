@@ -56,11 +56,24 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.leagues (id) {
+            id -> Int8,
+            name -> Text,
+            mmolb_league_id -> Text,
+            parent_team_id -> Text,
+            emoji -> Text,
+            color -> Text,
+            league_type -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.position (id) {
             id -> Int8,
             name -> Text,
             display_name -> Text,
             abbreviation -> Text,
+            position_area -> Text,
         }
     }
 
