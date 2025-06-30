@@ -5,7 +5,6 @@ create table taxa.event_type (
     id bigserial primary key not null,
     name text not null,
     display_name text not null,
-    outs_on_event int not null,
     unique (name)
 );
 
