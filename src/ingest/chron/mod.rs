@@ -1,18 +1,21 @@
+mod models;
+
+pub use models::*;
+
 use std::error::Error;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use humansize::{DECIMAL, format_size};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::io;
-use strum::{EnumDiscriminants, IntoDiscriminant};
+use strum::IntoDiscriminant;
 use thiserror::Error;
-
 
 #[derive(Debug, Error)]
 pub enum ChronStartupError {
     #[error("Couldn't create parent folder for HTTP cache database: {0}")]
     CreateDbFolder(io::Error),
-    
+
     #[error(transparent)]
     OpenDb(#[from] heed::Error),
 }
@@ -30,24 +33,6 @@ pub enum ChronError {
 
     #[error("Error deserializing Chron response: {0}")]
     RequestDeserializeError(reqwest::Error),
-
-    #[error("Error encoding Chron response for cache: {0}")]
-    CacheSerializeError(rmp_serde::encode::Error),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChronEntities<EntityT> {
-    pub items: Vec<ChronEntity<EntityT>>,
-    pub next_page: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChronEntity<EntityT> {
-    pub kind: String,
-    pub entity_id: String,
-    pub valid_from: DateTime<Utc>,
-    pub valid_until: Option<DateTime<Utc>>,
-    pub data: EntityT,
 }
 
 pub struct Chron {
@@ -57,39 +42,10 @@ pub struct Chron {
     page_size_string: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, EnumDiscriminants)]
-#[non_exhaustive]
-enum GenericChronEntities {
-    Game(ChronEntities<mmolb_parsing::Game>),
-    Player(ChronEntities<mmolb_parsing::feed_event::FeedEvent>),
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 enum VersionedCacheEntry<T> {
     V0(T),
     V1(GenericChronEntities)
-}
-
-pub trait GameExt {
-    /// Returns true for any game which will never be updated. This includes all
-    /// finished games and a set of games from s0d60 that the sim lost track of
-    /// and will never be finished.
-    fn is_terminal(&self) -> bool;
-
-    /// True for any game in the "Completed" state
-    fn is_completed(&self) -> bool;
-}
-
-impl GameExt for mmolb_parsing::Game {
-    fn is_terminal(&self) -> bool {
-        // There are some games from season 0 that aren't completed and never
-        // will be.
-        self.season == 0 || self.is_completed()
-    }
-
-    fn is_completed(&self) -> bool {
-        self.state == "Complete"
-    }
 }
 
 impl Chron {
@@ -133,14 +89,14 @@ impl Chron {
                     );
                 }
             }
-            
+
             let mut create_db_txn = env.write_txn()?;
-            
+
             let db = env.database_options()
                 .types() // Deduced from the assignment to Chron::cache
                 .name("chron-response-cache")
                 .create(&mut create_db_txn)?;
-            
+
             create_db_txn.commit()?;
 
             Some((env, db))
@@ -179,7 +135,7 @@ impl Chron {
         let Some((env, db)) = &self.cache else {
             return Ok(None);
         };
-        
+
         let open_read_txn_start = Utc::now();
         let read_txn = env.read_txn()?;
         let open_read_txn_duration = (Utc::now() - open_read_txn_start).as_seconds_f64();
@@ -187,11 +143,11 @@ impl Chron {
         let get_start = Utc::now();
         let Some(cache_entry) = db.get(&read_txn, key)? else {
             let get_duration = (Utc::now() - get_start).as_seconds_f64();
-            
+
             let commit_read_txn_start = Utc::now();
             read_txn.commit()?;
             let commit_read_txn_duration = (Utc::now() - commit_read_txn_start).as_seconds_f64();
-            
+
             let total_duration = (Utc::now() - total_start).as_seconds_f64();
             info!("Processed cache miss in {total_duration:.3}s ({open_read_txn_duration:.3}s to open txn, {get_duration:.3}s to get(), {commit_read_txn_duration:.3}s to commit txn)");
             return Ok(None);
@@ -215,14 +171,14 @@ impl Chron {
             VersionedCacheEntry::V1(other_type) => {
                 warn!(
                     "We wanted this cache entry to have type {:?}, but it had type {:?}. \
-                    This entry will be removed.", 
+                    This entry will be removed.",
                     GenericChronEntitiesDiscriminants::Game, other_type.discriminant(),
                 );
-                
+
                 let mut write_txn = env.write_txn()?;
                 db.delete(&mut write_txn, key)?;
                 write_txn.commit()?;
-                
+
                 Ok(None)
             },
         }
