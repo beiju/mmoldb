@@ -965,6 +965,7 @@ dependencies = [
  "bincode",
  "byteorder",
  "heed-traits",
+ "rmp-serde",
  "serde",
  "serde_json",
 ]

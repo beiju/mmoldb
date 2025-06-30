@@ -4,6 +4,7 @@ use humansize::{DECIMAL, format_size};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::io;
+use strum::{EnumDiscriminants, IntoDiscriminant};
 use thiserror::Error;
 
 
@@ -50,15 +51,23 @@ pub struct ChronEntity<EntityT> {
 }
 
 pub struct Chron {
-    cache: Option<(heed::Env, heed::Database<heed::types::Str, heed::types::Bytes>)>,
+    cache: Option<(heed::Env, heed::Database<heed::types::Str, heed::types::SerdeRmp<VersionedCacheEntry<ChronEntities<mmolb_parsing::Game>>>>)>,
     client: reqwest::Client,
     page_size: usize,
     page_size_string: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, EnumDiscriminants)]
+#[non_exhaustive]
+enum GenericChronEntities {
+    Game(ChronEntities<mmolb_parsing::Game>),
+    Player(ChronEntities<mmolb_parsing::feed_event::FeedEvent>),
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 enum VersionedCacheEntry<T> {
     V0(T),
+    V1(GenericChronEntities)
 }
 
 pub trait GameExt {
@@ -128,7 +137,7 @@ impl Chron {
             let mut create_db_txn = env.write_txn()?;
             
             let db = env.database_options()
-                .types::<heed::types::Str, heed::types::Bytes>()
+                .types() // Deduced from the assignment to Chron::cache
                 .name("chron-response-cache")
                 .create(&mut create_db_txn)?;
             
@@ -165,7 +174,7 @@ impl Chron {
         }
     }
 
-    fn get_cached<T: for<'d> Deserialize<'d>>(&self, key: &str) -> Result<Option<T>, ChronError> {
+    fn get_cached(&self, key: &str) -> Result<Option<ChronEntities<mmolb_parsing::Game>>, ChronError> {
         let total_start = Utc::now();
         let Some((env, db)) = &self.cache else {
             return Ok(None);
@@ -189,59 +198,33 @@ impl Chron {
         };
         let get_duration = (Utc::now() - get_start).as_seconds_f64();
 
-        let bindecode_start = Utc::now();
-        let (versions, bindecode_duration, commit_read_txn_duration) = match rmp_serde::from_slice(&cache_entry) {
-            Ok(versions) => {
-                let bindecode_duration = (Utc::now() - bindecode_start).as_seconds_f64();
-
-                let commit_read_txn_start = Utc::now();
-                read_txn.commit()?;
-                let commit_read_txn_duration = (Utc::now() - commit_read_txn_start).as_seconds_f64();
-
-                (versions, bindecode_duration, commit_read_txn_duration)
-            },
-            Err(err) => {
-                let bindecode_duration = (Utc::now() - bindecode_start).as_seconds_f64();
-
-                let commit_read_txn_start = Utc::now();
-                read_txn.commit()?;
-                let commit_read_txn_duration = (Utc::now() - commit_read_txn_start).as_seconds_f64();
-
-                warn!(
-                    "Cache entry could not be decoded: {:?}. Removing it from the cache.",
-                    err
-                );
-                
-                let combined_delete_start = Utc::now();
-                let mut write_txn = env.write_txn()?;
-                db.delete(&mut write_txn, key)?;
-                write_txn.commit()?;
-                let combined_delete_duration = (Utc::now() - combined_delete_start).as_seconds_f64();
-
-                let total_duration = (Utc::now() - total_start).as_seconds_f64();
-                info!("Processed corrupt cache entry in {total_duration:.3}s (\
-                {open_read_txn_duration:.3}s to open txn, \
-                {get_duration:.3}s to get(), \
-                {bindecode_duration:.3}s to decode, \
-                {commit_read_txn_duration:.3}s to commit read txn, \
-                {combined_delete_duration:.3}s to delete invalid entry\
-                )");
-                
-                return Ok(None);
-            }
-        };
+        let commit_read_txn_start = Utc::now();
+        read_txn.commit()?;
+        let commit_read_txn_duration = (Utc::now() - commit_read_txn_start).as_seconds_f64();
 
         let total_duration = (Utc::now() - total_start).as_seconds_f64();
         info!("Fetched cache entry in {total_duration:.3}s (\
                 {open_read_txn_duration:.3}s to open txn, \
                 {get_duration:.3}s to get(), \
-                {bindecode_duration:.3}s to decode, \
                 {commit_read_txn_duration:.3}s to commit read txn\
             )");
 
-
-        match versions {
+        match cache_entry {
             VersionedCacheEntry::V0(data) => Ok(Some(data)),
+            VersionedCacheEntry::V1(GenericChronEntities::Game(data)) => Ok(Some(data)),
+            VersionedCacheEntry::V1(other_type) => {
+                warn!(
+                    "We wanted this cache entry to have type {:?}, but it had type {:?}. \
+                    This entry will be removed.", 
+                    GenericChronEntitiesDiscriminants::Game, other_type.discriminant(),
+                );
+                
+                let mut write_txn = env.write_txn()?;
+                db.delete(&mut write_txn, key)?;
+                write_txn.commit()?;
+                
+                Ok(None)
+            },
         }
     }
 
@@ -297,13 +280,11 @@ impl Chron {
             }
 
             // Otherwise, save to cache
-            let cache_entry = VersionedCacheEntry::V0(entities);
+            let cache_entry = VersionedCacheEntry::V1(GenericChronEntities::Game(entities));
 
             // Save to cache
-            let entities_bin =
-                rmp_serde::to_vec(&cache_entry).map_err(ChronError::CacheSerializeError)?;
             let mut write_txn = env.write_txn()?;
-            db.put(&mut write_txn, url.as_str(), entities_bin.as_slice())?;
+            db.put(&mut write_txn, url.as_str(), &cache_entry)?;
             write_txn.commit()?;
 
             // Immediately fetch again from cache to verify everything is working
