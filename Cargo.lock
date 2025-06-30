@@ -1608,7 +1608,6 @@ dependencies = [
  "paste",
  "percent-encoding",
  "reqwest",
- "rmp-serde",
  "rocket",
  "rocket_dyn_templates",
  "rocket_sync_db_pools",

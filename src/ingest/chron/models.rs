@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use mmolb_parsing::enums::{Day, PositionType};
 use rocket::serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
@@ -15,6 +16,39 @@ pub struct ChronEntity<EntityT> {
     pub valid_from: DateTime<Utc>,
     pub valid_until: Option<DateTime<Utc>>,
     pub data: EntityT,
+}
+
+// We don't deserialize data we don't plan to store
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ChronPlayerModification {
+    pub name: String,
+    pub emoji: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ChronPlayer {
+    pub bats: String,
+    pub home: String,
+    pub likes: String,
+    pub number: i32,
+    pub team_id: String,
+    pub throws: String,
+    pub augments: i32,
+    pub birthday: Day,
+    pub dislikes: String,
+    pub last_name: String,
+    pub position: String,
+    pub first_name: String,
+    pub durability: f64,
+    pub lesser_boon: String,
+    pub birth_season: i32,
+    pub greater_boon: String,
+    // Ignoring SeasonStats for now
+    pub position_type: PositionType,
+    pub modifications: Vec<ChronPlayerModification>,
 }
 
 pub trait GameExt {
@@ -43,5 +77,5 @@ impl GameExt for mmolb_parsing::Game {
 #[non_exhaustive]
 pub enum GenericChronEntities {
     Game(ChronEntities<mmolb_parsing::Game>),
-    Player(ChronEntities<mmolb_parsing::feed_event::FeedEvent>),
+    Player(ChronEntities<ChronPlayer>),
 }
