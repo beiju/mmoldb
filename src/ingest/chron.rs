@@ -166,33 +166,79 @@ impl Chron {
     }
 
     fn get_cached<T: for<'d> Deserialize<'d>>(&self, key: &str) -> Result<Option<T>, ChronError> {
+        let total_start = Utc::now();
         let Some((env, db)) = &self.cache else {
             return Ok(None);
         };
         
+        let open_read_txn_start = Utc::now();
         let read_txn = env.read_txn()?;
+        let open_read_txn_duration = (Utc::now() - open_read_txn_start).as_seconds_f64();
 
+        let get_start = Utc::now();
         let Some(cache_entry) = db.get(&read_txn, key)? else {
+            let get_duration = (Utc::now() - get_start).as_seconds_f64();
+            
+            let commit_read_txn_start = Utc::now();
+            read_txn.commit()?;
+            let commit_read_txn_duration = (Utc::now() - commit_read_txn_start).as_seconds_f64();
+            
+            let total_duration = (Utc::now() - total_start).as_seconds_f64();
+            info!("Processed cache miss in {total_duration:.3}s ({open_read_txn_duration:.3}s to open txn, {get_duration:.3}s to get(), {commit_read_txn_duration:.3}s to commit txn)");
             return Ok(None);
         };
+        let get_duration = (Utc::now() - get_start).as_seconds_f64();
 
-        let versions = match rmp_serde::from_slice(&cache_entry) {
+        let bindecode_start = Utc::now();
+        let (versions, bindecode_duration, commit_read_txn_duration) = match rmp_serde::from_slice(&cache_entry) {
             Ok(versions) => {
+                let bindecode_duration = (Utc::now() - bindecode_start).as_seconds_f64();
+
+                let commit_read_txn_start = Utc::now();
                 read_txn.commit()?;
-                versions
+                let commit_read_txn_duration = (Utc::now() - commit_read_txn_start).as_seconds_f64();
+
+                (versions, bindecode_duration, commit_read_txn_duration)
             },
             Err(err) => {
+                let bindecode_duration = (Utc::now() - bindecode_start).as_seconds_f64();
+
+                let commit_read_txn_start = Utc::now();
                 read_txn.commit()?;
+                let commit_read_txn_duration = (Utc::now() - commit_read_txn_start).as_seconds_f64();
+
                 warn!(
                     "Cache entry could not be decoded: {:?}. Removing it from the cache.",
                     err
                 );
+                
+                let combined_delete_start = Utc::now();
                 let mut write_txn = env.write_txn()?;
                 db.delete(&mut write_txn, key)?;
                 write_txn.commit()?;
+                let combined_delete_duration = (Utc::now() - combined_delete_start).as_seconds_f64();
+
+                let total_duration = (Utc::now() - total_start).as_seconds_f64();
+                info!("Processed corrupt cache entry in {total_duration:.3}s (\
+                {open_read_txn_duration:.3}s to open txn, \
+                {get_duration:.3}s to get(), \
+                {bindecode_duration:.3}s to decode, \
+                {commit_read_txn_duration:.3}s to commit read txn, \
+                {combined_delete_duration:.3}s to delete invalid entry\
+                )");
+                
                 return Ok(None);
             }
         };
+
+        let total_duration = (Utc::now() - total_start).as_seconds_f64();
+        info!("Fetched cache entry in {total_duration:.3}s (\
+                {open_read_txn_duration:.3}s to open txn, \
+                {get_duration:.3}s to get(), \
+                {bindecode_duration:.3}s to decode, \
+                {commit_read_txn_duration:.3}s to commit read txn\
+            )");
+
 
         match versions {
             VersionedCacheEntry::V0(data) => Ok(Some(data)),
