@@ -25,7 +25,7 @@ use thiserror::Error;
 
 // First party dependencies
 use crate::db::Taxa;
-use crate::ingest::chron::{ChronEntities, ChronError};
+use crate::ingest::chron::{ChronEntities, ChronError, ChronStartupError};
 use crate::ingest::worker::{IngestWorker, IngestWorkerInProgress};
 use crate::{Db, db};
 
@@ -92,7 +92,7 @@ pub enum IngestFatalError {
     ReenteredNotStarted,
 
     #[error("Couldn't open HTTP cache database: {0}")]
-    OpenCacheDbError(#[from] sled::Error),
+    OpenCacheDbError(#[from] ChronStartupError),
 
     #[error("Couldn't get a database connection")]
     CouldNotGetConnection,

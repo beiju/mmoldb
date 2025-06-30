@@ -1,17 +1,28 @@
+use std::error::Error;
 use chrono::{DateTime, Utc};
 use humansize::{DECIMAL, format_size};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use std::io;
 use thiserror::Error;
+
+
+#[derive(Debug, Error)]
+pub enum ChronStartupError {
+    #[error("Couldn't create parent folder for HTTP cache database: {0}")]
+    CreateDbFolder(io::Error),
+    
+    #[error(transparent)]
+    OpenDb(#[from] heed::Error),
+}
 
 #[derive(Debug, Error)]
 pub enum ChronError {
     #[error("Error building Chron request: {0}")]
     RequestBuildError(reqwest::Error),
 
-    #[error("Error searching cache for games page: {0}")]
-    CacheGetError(sled::Error),
+    #[error("Cache database error: {0}")]
+    CacheDbError(#[from] heed::Error),
 
     #[error("Error executing Chron request: {0}")]
     RequestExecuteError(reqwest::Error),
@@ -21,15 +32,6 @@ pub enum ChronError {
 
     #[error("Error encoding Chron response for cache: {0}")]
     CacheSerializeError(rmp_serde::encode::Error),
-
-    #[error("Error inserting games page into cache: {0}")]
-    CachePutError(sled::Error),
-
-    #[error("Error removing invalid games page from cache: {0}")]
-    CacheRemoveError(sled::Error),
-
-    #[error("Error flushing cache to disk: {0}")]
-    CacheFlushError(sled::Error),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,7 +50,7 @@ pub struct ChronEntity<EntityT> {
 }
 
 pub struct Chron {
-    cache: Option<sled::Db>,
+    cache: Option<(heed::Env, heed::Database<heed::types::Str, heed::types::Bytes>)>,
     client: reqwest::Client,
     page_size: usize,
     page_size_string: String,
@@ -86,36 +88,53 @@ impl Chron {
         use_cache: bool,
         cache_path: P,
         page_size: usize,
-    ) -> Result<Self, sled::Error> {
+    ) -> Result<Self, ChronStartupError> {
         let cache = if use_cache {
-            info!(
-                "Opening cache db. This can be very, very slow for unknown reasons. Contributions \
-                to speed up the cache db would be greatly appreciated.",
-            );
-            let cache_path = cache_path.as_ref();
-            let open_cache_start = Utc::now();
-            let cache = sled::open(cache_path)?;
-            let open_cache_duration = (Utc::now() - open_cache_start).as_seconds_f64();
-            if cache.was_recovered() {
-                match cache.size_on_disk() {
-                    Ok(size) => {
-                        info!(
-                            "Opened existing {} cache at {cache_path:?} in {open_cache_duration}s",
-                            format_size(size, DECIMAL),
-                        );
-                    }
-                    Err(err) => {
-                        info!(
-                            "Opened existing cache at {cache_path:?} in {open_cache_duration}s. \
-                            Error retrieving size: {err}",
-                        );
-                    }
-                }
-            } else {
-                info!("Created new cache at {cache_path:?}");
+            info!("Opening LMDB db");
+            let cache_path = cache_path.as_ref().join("http-cache-v2");
+            match std::fs::create_dir(&cache_path) {
+                Ok(()) => info!("Created HTTP cache directory: {}", &cache_path.display()),
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
+                    info!("HTTP cache directory already exists: {}", &cache_path.display())
+                },
+                Err(err) => return Err(ChronStartupError::CreateDbFolder(err)),
             }
+            let open_cache_start = Utc::now();
+            let env = unsafe {
+                heed::EnvOpenOptions::new()
+                    // Sets the maximum size of the database
+                    .map_size(1024 * 1024 * 1024 * 100) // 100 GiB
+                    // I think unnamed DB counts towards the limit
+                    .max_dbs(2)
+                    .open(&cache_path)
+            }?;
+            let open_cache_duration = (Utc::now() - open_cache_start).as_seconds_f64();
 
-            Some(cache)
+            match env.real_disk_size() {
+                Ok(size) => {
+                    info!(
+                        "Opened {} cache at {cache_path:?} in {open_cache_duration}s",
+                        format_size(size, DECIMAL),
+                    );
+                }
+                Err(err) => {
+                    info!(
+                        "Opened cache at {cache_path:?} in {open_cache_duration}s. \
+                        Error retrieving size: {err}",
+                    );
+                }
+            }
+            
+            let mut create_db_txn = env.write_txn()?;
+            
+            let db = env.database_options()
+                .types::<heed::types::Str, heed::types::Bytes>()
+                .name("chron-response-cache")
+                .create(&mut create_db_txn)?;
+            
+            create_db_txn.commit()?;
+
+            Some((env, db))
         } else {
             None
         };
@@ -147,22 +166,30 @@ impl Chron {
     }
 
     fn get_cached<T: for<'d> Deserialize<'d>>(&self, key: &str) -> Result<Option<T>, ChronError> {
-        let Some(cache) = &self.cache else {
+        let Some((env, db)) = &self.cache else {
             return Ok(None);
         };
+        
+        let read_txn = env.read_txn()?;
 
-        let Some(cache_entry) = cache.get(key).map_err(ChronError::CacheGetError)? else {
+        let Some(cache_entry) = db.get(&read_txn, key)? else {
             return Ok(None);
         };
 
         let versions = match rmp_serde::from_slice(&cache_entry) {
-            Ok(versions) => versions,
+            Ok(versions) => {
+                read_txn.commit()?;
+                versions
+            },
             Err(err) => {
+                read_txn.commit()?;
                 warn!(
                     "Cache entry could not be decoded: {:?}. Removing it from the cache.",
                     err
                 );
-                cache.remove(key).map_err(ChronError::CacheRemoveError)?;
+                let mut write_txn = env.write_txn()?;
+                db.delete(&mut write_txn, key)?;
+                write_txn.commit()?;
                 return Ok(None);
             }
         };
@@ -201,7 +228,7 @@ impl Chron {
                     ChronError::RequestDeserializeError(e)
                 })?;
 
-            let Some(cache) = &self.cache else {
+            let Some((env, db)) = &self.cache else {
                 return Ok(entities);
             };
 
@@ -229,9 +256,9 @@ impl Chron {
             // Save to cache
             let entities_bin =
                 rmp_serde::to_vec(&cache_entry).map_err(ChronError::CacheSerializeError)?;
-            cache
-                .insert(url.as_str(), entities_bin.as_slice())
-                .map_err(ChronError::CachePutError)?;
+            let mut write_txn = env.write_txn()?;
+            db.put(&mut write_txn, url.as_str(), entities_bin.as_slice())?;
+            write_txn.commit()?;
 
             // Immediately fetch again from cache to verify everything is working
             let entities = self
@@ -241,12 +268,6 @@ impl Chron {
 
             Ok(entities)
         };
-
-        if let Some(cache) = &self.cache {
-            // Fetches are already so slow that cache flushing should be a drop in the bucket. Non-fetch
-            // requests shouldn't dirty the cache at all and so this should be near-instant.
-            cache.flush().map_err(ChronError::CacheFlushError)?;
-        }
 
         result
     }

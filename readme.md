@@ -41,6 +41,21 @@ preference:
    than its default, which is the number of CPU cores that Docker is configured
    to use. Lower values for `ingest_parallelism` will result in slower ingests.
 
+### If Jetbrains breaks the devcontainer again
+
+Jetbrains' devcontainer implementation appears to be particularly fragile. 
+These steps have allowed me to work around "Cannot build docker compose image"
+problems in the past:
+
+1. Comment out the entire `build` section in `.devcontainer/docker-compose.yml`
+2. In its place, add an `image: {the-image}` definition. `{the-image}` is the
+   image name used in the `FROM` declaration of .devcontainer/Dockerfile`.
+3. Start the devcontainer. If this fix is successful, you should be able to 
+   successfully build and enter the container but you'll get cargo errors as 
+   soon as it opens.
+4. Run all the `RUN` commands from the Dockerfile manually
+5. Undo your changes to `.devcontainer/docker-compose.yml`
+
 First-run Setup
 ---------------
 
