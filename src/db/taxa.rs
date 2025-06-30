@@ -62,6 +62,8 @@ taxa! {
         Double = 2,
         #[base_number: i64 = 3]
         Triple = 3,
+        #[base_number: i64 = 4]
+        HomeRun = 4,
     }
 }
 
@@ -71,6 +73,7 @@ impl Into<mmolb_parsing::enums::Distance> for TaxaHitType {
             Self::Single => mmolb_parsing::enums::Distance::Single,
             Self::Double => mmolb_parsing::enums::Distance::Double,
             Self::Triple => mmolb_parsing::enums::Distance::Triple,
+            Self::HomeRun => mmolb_parsing::enums::Distance::HomeRun,     
         }
     }
 }
@@ -81,7 +84,54 @@ impl From<mmolb_parsing::enums::Distance> for TaxaHitType {
             mmolb_parsing::enums::Distance::Single => Self::Single,
             mmolb_parsing::enums::Distance::Double => Self::Double,
             mmolb_parsing::enums::Distance::Triple => Self::Triple,
+            mmolb_parsing::enums::Distance::HomeRun => Self::HomeRun,
         }
+    }
+}
+
+taxa! {
+    #[
+        schema = crate::taxa_schema::taxa::leagues,
+        table = crate::taxa_schema::taxa::leagues::dsl::leagues,
+        id_column = crate::taxa_schema::taxa::leagues::dsl::id,
+    ]
+    pub enum TaxaLeagues {
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fe4", parent_team_id: str = "6805db0dac48194de3cd4257", emoji: str = "☘️", color: str = "39993a", league_type: str = "Greater"]
+        Clover = 1,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fe5", parent_team_id: str = "6805db0dac48194de3cd4258", emoji: str = "🍍", color: str = "feea63", league_type: str = "Greater"]
+        Pineapple = 2,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fe7", parent_team_id: str = "6805db0cac48194de3cd3ff7", emoji: str = "⚾", color: str = "47678e", league_type: str = "Lesser"]
+        Baseball = 3,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fe8", parent_team_id: str = "6805db0cac48194de3cd400a", emoji: str = "🎯", color: str = "507d45", league_type: str = "Lesser"] 
+        Precision = 4,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fe9", parent_team_id: str = "6805db0cac48194de3cd401d", emoji: str = "🔺", color: str = "7c65a3", league_type: str = "Lesser"]
+        Isosceles = 5,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fea", parent_team_id: str = "6805db0cac48194de3cd4030", emoji: str = "🗽", color: str = "2e768d", league_type: str = "Lesser"]
+        Liberty = 6,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3feb", parent_team_id: str = "6805db0cac48194de3cd4043", emoji: str = "🍁", color: str = "a13e33", league_type: str = "Lesser"]
+        Maple = 7,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fec", parent_team_id: str = "6805db0cac48194de3cd4056", emoji: str = "🦗", color: str = "4a8546", league_type: str = "Lesser"]
+        Cricket = 8,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fed", parent_team_id: str = "6805db0cac48194de3cd4069", emoji: str = "🌪️", color: str = "5a5e6e", league_type: str = "Lesser"]
+        Tornado = 9,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fee", parent_team_id: str = "6805db0cac48194de3cd407c", emoji: str = "🪲", color: str = "3f624d", league_type: str = "Lesser"]
+        Coleoptera = 10,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3fef", parent_team_id: str = "6805db0cac48194de3cd408f", emoji: str = "🧼", color: str = "88b9ba", league_type: str = "Lesser"]
+        Clean = 11,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3ff0", parent_team_id: str = "6805db0cac48194de3cd40a2", emoji: str = "✨", color: str = "e0d95a", league_type: str = "Lesser"]
+        Shiny = 12,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3ff1", parent_team_id: str = "6805db0cac48194de3cd40b5", emoji: str = "🔮", color: str = "734d92", league_type: str = "Lesser"]
+        Psychic = 13,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3ff2", parent_team_id: str = "6805db0cac48194de3cd40c8", emoji: str = "❓", color: str = "6c6c6c", league_type: str = "Lesser"]
+        Unidentified = 14,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3ff3", parent_team_id: str = "6805db0cac48194de3cd40db", emoji: str = "👻", color: str = "5b4b62", league_type: str = "Lesser"]
+        Ghastly = 15,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3ff4", parent_team_id: str = "6805db0cac48194de3cd40ee", emoji: str = "🐸", color: str = "5b9340", league_type: str = "Lesser"]
+        Amphibian = 16,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3ff5", parent_team_id: str = "6805db0cac48194de3cd4101", emoji: str = "🌊", color: str = "1a3a4f", league_type: str = "Lesser"]
+        Deep = 17,
+        #[mmolb_league_id: str = "6805db0cac48194de3cd3ff6", parent_team_id: str = "6805db0cac48194de3cd4114", emoji: str = "🎵", color: str = "659b87", league_type: str = "Lesser"]
+        Harmony = 18,
     }
 }
 
@@ -92,32 +142,32 @@ taxa! {
         id_column = crate::taxa_schema::taxa::position::dsl::id,
     ]
     pub enum TaxaPosition {
-        #[display_name: str = "Pitcher", abbreviation: str = "P"]
+        #[display_name: str = "Pitcher", abbreviation: str = "P", position_area: str = "Infield"]
         Pitcher = 1,
-        #[display_name: str = "Catcher", abbreviation: str = "C"]
+        #[display_name: str = "Catcher", abbreviation: str = "C", position_area: str = "Infield"]
         Catcher = 2,
-        #[display_name: str = "First base", abbreviation: str = "1B"]
+        #[display_name: str = "First base", abbreviation: str = "1B", position_area: str = "Infield"]
         FirstBase = 3,
-        #[display_name: str = "Second base", abbreviation: str = "2B"]
+        #[display_name: str = "Second base", abbreviation: str = "2B", position_area: str = "Infield"]
         SecondBase = 4,
-        #[display_name: str = "Third base", abbreviation: str = "3B"]
+        #[display_name: str = "Third base", abbreviation: str = "3B", position_area: str = "Infield"]
         ThirdBase = 5,
-        #[display_name: str = "Shortstop", abbreviation: str = "SS"]
+        #[display_name: str = "Shortstop", abbreviation: str = "SS", position_area: str = "Infield"]
         Shortstop = 6,
-        #[display_name: str = "Left fielder", abbreviation: str = "LF"]
+        #[display_name: str = "Left fielder", abbreviation: str = "LF", position_area: str = "Outfield"]
         LeftField = 7,
-        #[display_name: str = "Center fielder", abbreviation: str = "CF"]
+        #[display_name: str = "Center fielder", abbreviation: str = "CF", position_area: str = "Outfield"]
         CenterField = 8,
-        #[display_name: str = "Right fielder", abbreviation: str = "RF"]
+        #[display_name: str = "Right fielder", abbreviation: str = "RF", position_area: str = "Outfield"]
         RightField = 9,
         // TODO The following are roles, not positions
-        #[display_name: str = "Starting pitcher", abbreviation: str = "SP"]
+        #[display_name: str = "Starting pitcher", abbreviation: str = "SP", position_area: str = "Infield"]
         StartingPitcher = 10,
-        #[display_name: str = "Relief pitcher", abbreviation: str = "RP"]
+        #[display_name: str = "Relief pitcher", abbreviation: str = "RP", position_area: str = "Infield"]
         ReliefPitcher = 11,
-        #[display_name: str = "Closer", abbreviation: str = "CL"]
+        #[display_name: str = "Closer", abbreviation: str = "CL", position_area: str = "Infield"]
         Closer = 12,
-        #[display_name: str = "Designated hitter", abbreviation: str = "DH"]
+        #[display_name: str = "Designated hitter", abbreviation: str = "DH", position_area: str = "None"]
         DesignatedHitter = 13,
     }
 }
@@ -489,6 +539,7 @@ pub struct Taxa {
     base_description_format_mapping: EnumMap<TaxaBaseDescriptionFormat, i64>,
     fielding_error_type_mapping: EnumMap<TaxaFieldingErrorType, i64>,
     pitch_type_mapping: EnumMap<TaxaPitchType, i64>,
+    league_mapping: EnumMap<TaxaLeagues, i64>,
 }
 
 impl Taxa {
@@ -502,6 +553,7 @@ impl Taxa {
             base_description_format_mapping: TaxaBaseDescriptionFormat::make_id_mapping(conn)?,
             fielding_error_type_mapping: TaxaFieldingErrorType::make_id_mapping(conn)?,
             pitch_type_mapping: TaxaPitchType::make_id_mapping(conn)?,
+            league_mapping: TaxaLeagues::make_id_mapping(conn)?,
         })
     }
 
@@ -535,6 +587,10 @@ impl Taxa {
 
     pub fn pitch_type_id(&self, ty: TaxaPitchType) -> i64 {
         self.pitch_type_mapping[ty]
+    }
+
+    pub fn league_id(&self, ty: TaxaLeagues) -> i64 {
+        self.league_mapping[ty]
     }
 
     pub fn event_type_from_id(&self, id: i64) -> Option<TaxaEventType> {
@@ -599,4 +655,13 @@ impl Taxa {
             .expect("TODO Handle unknown pitch type")
             .0
     }
+
+    pub fn league_from_id(&self, id: i64) -> TaxaLeagues {
+        self.league_mapping
+            .iter()
+            .find(|(_, ty_id)| id == **ty_id)
+            .expect("TODO Handle unknown laegue")
+            .0
+    }
+
 }
