@@ -1,7 +1,6 @@
 use crate::db::{CompletedGameForDb, GameForDb, RowToEventError, Taxa, Timings};
-use crate::ingest::chron::{ChronEntities, ChronEntity, GameExt};
 use crate::ingest::sim::{self, Game, SimFatalError};
-use crate::ingest::{EventDetail, IngestConfig, IngestFatalError, IngestLog, IngestStats};
+use crate::ingest::{ChronEntities, ChronEntity, EventDetail, GameExt, IngestConfig, IngestFatalError, IngestLog, IngestStats};
 use crate::{Db, db};
 use chrono::Utc;
 use diesel::PgConnection;

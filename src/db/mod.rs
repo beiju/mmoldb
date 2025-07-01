@@ -22,7 +22,7 @@ pub use crate::db::taxa::{
     TaxaFairBallType, TaxaFieldingErrorType, TaxaHitType, TaxaPitchType, TaxaPosition, TaxaDayType
 };
 use crate::ingest::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewPlayerVersion, NewRawEvent};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -609,20 +609,12 @@ fn insert_games_internal<'e>(
             };
 
             let (day, superstar_day) = match &raw_game.day {
-                MaybeRecognized::Recognized(Day::Preseason) => {
-                    warn!("A game happened in the Preseason.");
-                    (None, None)
-                }
-                MaybeRecognized::Recognized(Day::SuperstarBreak) => {
-                    warn!("A game happened on a non-numbered Superstar Break day.");
-                    (None, None)
-                }
-                MaybeRecognized::Recognized(Day::Holiday) => {
-                    warn!("A game happened on a Holiday.");
-                    (None, None)
-                }
                 MaybeRecognized::Recognized(Day::Day(day)) => (Some(*day), None),
                 MaybeRecognized::Recognized(Day::SuperstarDay(day)) => (None, Some(*day)),
+                MaybeRecognized::Recognized(other) => {
+                    warn!("A game happened during {other}.");
+                    (None, None)
+                }
                 MaybeRecognized::NotRecognized(err) => {
                     warn!("Day was not recognized: {err}");
                     (None, None)
@@ -1030,12 +1022,42 @@ pub fn latest_player_version(conn: &mut PgConnection, player_ids: &[String]) -> 
         .order_by(pv_dsl::mmolb_id)
         .get_results::<DbPlayerVersion>(conn)?;
 
-    let result = player_ids.iter().map(|id| {
+    let latest_version_in_corresponding_order = player_ids.iter().map(|id| {
         db_versions.binary_search_by_key(&id, |val| &val.mmolb_id)
             .ok()
             .map(|index| db_versions.remove(index))
     })
         .collect();
 
-    Ok(result)
+    Ok(latest_version_in_corresponding_order)
+}
+
+pub fn insert_player_versions(
+    conn: &mut PgConnection,
+    players: &[(Option<i64>, NewPlayerVersion)],
+) -> QueryResult<()> {
+    use crate::data_schema::data::player_versions::dsl as pv_dsl;
+
+    // Update valid_until for any previous versions
+    // Diesel doesn't seem to support batched update. Maybe this can be done at the DB layer?
+    for (previous_version_id, new_version) in players {
+        if let Some(previous_version_id) = previous_version_id {
+            diesel::update(pv_dsl::player_versions)
+                .filter(pv_dsl::id.eq(previous_version_id))
+                .set(pv_dsl::valid_until.eq(new_version.valid_from))
+                .execute(conn)?;
+        }
+    }
+
+    let new_player_versions = players
+        .iter()
+        .map(|(_, new_player)| new_player)
+        .collect_vec();
+
+    // Insert new records
+    diesel::insert_into(pv_dsl::player_versions)
+        .values(new_player_versions)
+        .execute(conn)?;
+
+    Ok(())
 }

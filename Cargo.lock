@@ -1646,7 +1646,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.1.0"
-source = "git+https://github.com/beiju/mmolb_parsing.git?branch=new-day-variants#47ae8d70d8f59fc7a9a8ed9edda88b23d15f56a4"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=new-day-variants#64e1f558435e2c8e19e2703f3be48aa2db0c9d00"
 dependencies = [
  "nom",
  "nom-language",

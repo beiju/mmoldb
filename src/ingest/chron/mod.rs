@@ -1,6 +1,6 @@
-mod models;
+pub mod models;
 
-pub use models::*;
+use models::*;
 
 use std::error::Error;
 use chrono::{DateTime, Utc};
@@ -335,15 +335,15 @@ impl Chron {
     
                 if let Some(next_page_token) = page.next_page {
                     if page.items.len() >= page_size {
-                        // Then this was the last page. Yield this page, but there is no next page
-                        Some((Ok(page.items), None))
-                    } else {
                         // Then there are more pages
                         let next_page_fut = tokio::spawn(async move {
                             next_page_of_player_versions(client, page_size, start_at_for_first_fetch, Some(next_page_token))
                         });
-    
+
                         Some((Ok(page.items), Some(next_page_fut)))
+                    } else {
+                        // Then this was the last page. Yield this page, but there is no next page
+                        Some((Ok(page.items), None))
                     }
                 } else {
                     // If there's no next page token it's the last page. Yield this page,

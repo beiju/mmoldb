@@ -4,7 +4,7 @@ mod worker;
 
 // Reexports
 pub use sim::{EventDetail, EventDetailFielder, EventDetailRunner, IngestLog};
-pub use chron::ChronHandedness;
+pub use chron::models::*;
 
 // Third party dependencies
 use chrono::{DateTime, TimeZone, Utc};
@@ -26,11 +26,11 @@ use futures::{pin_mut, StreamExt};
 use itertools::Itertools;
 use mmolb_parsing::enums::Day;
 use thiserror::Error;
-use miette::{miette, Diagnostic, IntoDiagnostic, Report};
+use miette::{miette, Diagnostic, Report};
 
 // First party dependencies
 use crate::db::{Taxa, TaxaDayType};
-use crate::ingest::chron::{ChronEntities, ChronEntity, ChronError, ChronPlayer, ChronStartupError, ChronStreamError};
+use crate::ingest::chron::{ChronError, ChronStartupError, ChronStreamError};
 use crate::ingest::worker::{IngestWorker, IngestWorkerInProgress};
 use crate::{Db, db};
 use crate::models::NewPlayerVersion;
@@ -647,36 +647,52 @@ async fn do_ingest_of_players_internal(
     let conn = pool.get().await
         .ok_or(IngestFatalError::CouldNotGetConnection)?;
 
-        let player_version_chunks = chron.player_versions(None)
-            .chunks(1000); // TODO Make this size configurable
-        pin_mut!(player_version_chunks);
+    let player_version_chunks = chron.player_versions(None)
+        .chunks(2000); // TODO Make this size configurable
+    pin_mut!(player_version_chunks);
 
-        while let Some(versions) = player_version_chunks.next().await {
-            // Unwrap any errors
-            let versions = versions.into_iter()
-                .collect::<Result<Vec<_>, _>>()?;
+    while let Some(versions) = player_version_chunks.next().await {
+        // Unwrap any errors
+        let versions = versions.into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
 
-            let player_ids = versions.iter()
-                // TODO Can I avoid this clone?
-                .map(|v| v.entity_id.clone())
-                .collect_vec();
+        let player_ids = versions.iter()
+            // TODO Can I avoid this clone?
+            .map(|v| v.entity_id.clone())
+            .collect_vec();
 
-            let existing_versions = conn.run(move |mut conn| {
-                db::latest_player_version(&mut conn, &player_ids)
-            }).await?;
+        // TODO Can I avoid this clone?
+        let taxa = taxa.clone();
+        conn.run(move |mut conn| {
+            let existing_versions = db::latest_player_version(&mut conn, &player_ids)?;
 
-            let needs_update = iter::zip(versions, existing_versions)
-                .map(|(new_version, old_version)| {
-                    if let Some(old_version) = old_version {
-                        old_version.as_new() != chron_player_as_new(&new_version, &taxa)
+            let players_to_update = iter::zip(&versions, existing_versions)
+                .filter_map(|(new_version, old_version)| {
+                    let new_player = chron_player_as_new(&new_version, &taxa);
+                    if let Some(mut old_version) = old_version {
+                        assert_eq!(new_version.entity_id, old_version.mmolb_id);
+
+                        // Copy over the fields we don't want to compare
+                        old_version.valid_from = new_player.valid_from;
+                        old_version.valid_until = new_player.valid_until;
+
+                        if old_version.as_new() != new_player {
+                            Some((Some(old_version.id), new_player))
+                        } else {
+                            None
+                        }
                     } else {
-                        false
+                        Some((None, new_player))
                     }
                 })
                 .collect_vec();
 
-            todo!("Insert versions that need inserting")
-        }
+            info!("Inserting {} new player versions out of {}", players_to_update.len(), versions.len());
+            db::insert_player_versions(&mut conn, &players_to_update)
+
+            // TODO Also do modifications
+        }).await?;
+    }
 
     Ok(())
 }
@@ -688,6 +704,18 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) ->
         }
         Day::SuperstarBreak => {
             (taxa.day_type_id(TaxaDayType::SuperstarBreak), None, None)
+        }
+        Day::PostseasonPreview => {
+            (taxa.day_type_id(TaxaDayType::PostseasonPreview), None, None)
+        }
+        Day::PostseasonRound1 => {
+            (taxa.day_type_id(TaxaDayType::PostseasonRound1), None, None)
+        }
+        Day::PostseasonRound2 => {
+            (taxa.day_type_id(TaxaDayType::PostseasonRound2), None, None)
+        }
+        Day::PostseasonRound3 => {
+            (taxa.day_type_id(TaxaDayType::PostseasonRound3), None, None)
         }
         Day::Holiday => {
             (taxa.day_type_id(TaxaDayType::Holiday), None, None)
@@ -703,7 +731,7 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) ->
     NewPlayerVersion {
         mmolb_id: &entity.entity_id,
         valid_from: entity.valid_from.naive_utc(),
-        valid_until: entity.valid_until.map(|d| d.naive_utc()),
+        valid_until: None,
         first_name: &entity.data.first_name,
         last_name: &entity.data.last_name,
         batting_handedness: taxa.handedness_id(entity.data.bats.into()),
@@ -716,7 +744,7 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) ->
         likes: &entity.data.likes,
         dislikes: &entity.data.dislikes,
         number: entity.data.number,
-        mmolb_team_id: Some(&entity.data.team_id),
+        mmolb_team_id: entity.data.team_id.as_deref(),
         position: taxa.position_id(entity.data.position.into()),
         durability: entity.data.durability,
     }

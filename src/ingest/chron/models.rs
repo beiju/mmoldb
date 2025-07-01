@@ -45,7 +45,7 @@ pub struct ChronPlayer {
     pub likes: String,
     pub number: i32,
     #[serde(rename = "TeamID")]
-    pub team_id: String,
+    pub team_id: Option<String>, // Not every player is on a team (e.g. from relegation)
     pub throws: ChronHandedness,
     pub augments: i32,
     pub birthday: Day,

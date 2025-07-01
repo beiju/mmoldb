@@ -521,17 +521,30 @@ taxa! {
         table = crate::taxa_schema::taxa::day_type::dsl::day_type,
         id_column = crate::taxa_schema::taxa::day_type::dsl::id,
     ]
+    // I reserved numbers for every member of the `phase_times` object in the `times` entity type,
+    // in case they ever show up as Days
     pub enum TaxaDayType {
-        #[display_name: str = "Holiday"]
-        Holiday = 1,
+        #[display_name: str = "Preseason"]
+        Preseason = 1,
         #[display_name: str = "Day"]
         RegularDay = 2,
         #[display_name: str = "Superstar Break"]
         SuperstarBreak = 3,
         #[display_name: str = "Superstar Day"]
         SuperstarDay = 4,
-        #[display_name: str = "Preseason"]
-        Preseason = 5,
+        // Reserved 5 for HomeRunChallenge
+        // Reserved 6 for RegularSeasonResume
+        #[display_name: str = "Postseason Preview"]
+        PostseasonPreview = 7,
+        #[display_name: str = "Postseason Round 1"]
+        PostseasonRound1 = 8,
+        #[display_name: str = "Postseason Round 2"]
+        PostseasonRound2 = 9,
+        #[display_name: str = "Postseason Round 3"]
+        PostseasonRound3 = 10,
+        // Reserved 11 for ElectionStart
+        #[display_name: str = "Holiday"]
+        Holiday = 12,
     }
 }
 
