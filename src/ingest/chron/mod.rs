@@ -382,7 +382,7 @@ async fn next_page_of_player_versions(
         .query(&[("kind", "player"), ("count", &page_size_string), ("order", "asc")]);
 
     if let Some(start_at) = start_at {
-        request_builder = request_builder.query(&[("after", &start_at.to_string())]);
+        request_builder = request_builder.query(&[("after", &start_at.to_rfc3339())]);
     }
 
     if let Some(page) = page {

@@ -7,7 +7,7 @@ pub use sim::{EventDetail, EventDetailFielder, EventDetailRunner, IngestLog};
 pub use chron::models::*;
 
 // Third party dependencies
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use chrono_humanize::HumanTime;
 use diesel::PgConnection;
 use log::{error, info, warn};
@@ -646,8 +646,13 @@ async fn do_ingest_of_players_internal(
 ) -> Result<(), IngestFatalError> {
     let conn = pool.get().await
         .ok_or(IngestFatalError::CouldNotGetConnection)?;
+    
+    let latest_valid_from = conn.run(|mut conn| {
+        db::get_latest_player_valid_from(&mut conn)
+    }).await?;
+    let chron_start_time =latest_valid_from.as_ref().map(NaiveDateTime::and_utc);
 
-    let player_version_chunks = chron.player_versions(None)
+    let player_version_chunks = chron.player_versions(chron_start_time)
         .chunks(2000); // TODO Make this size configurable
     pin_mut!(player_version_chunks);
 
@@ -671,6 +676,21 @@ async fn do_ingest_of_players_internal(
                     let new_player = chron_player_as_new(&new_version, &taxa);
                     if let Some(mut old_version) = old_version {
                         assert_eq!(new_version.entity_id, old_version.mmolb_id);
+
+                        // It's normal for the "new" version to be the same age
+                        // as the "old" version -- the semantics of the Chron
+                        // API mean we sometimes re-request the latest version.
+                        // In this case there should never be any changes.
+                        // But if the "new" version is older than the "old"
+                        // version that indicates a bug in the code
+                        if old_version.valid_from > new_version.valid_from.naive_utc() {
+                            error!(
+                                "Received an out-of-order version for player {}: The lastest \
+                                stored version is {}, but we just got an update from {}",
+                                new_version.entity_id, old_version.valid_from,
+                                new_version.valid_from.naive_utc(),
+                            );
+                        }
 
                         // Copy over the fields we don't want to compare
                         old_version.valid_from = new_player.valid_from;

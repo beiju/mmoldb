@@ -1012,6 +1012,17 @@ pub fn insert_timings(
     .map(|_| ())
 }
 
+pub fn get_latest_player_valid_from(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
+    use crate::data_schema::data::player_versions::dsl as pv_dsl;
+    
+    pv_dsl::player_versions
+        .select(pv_dsl::valid_from)
+        .order(pv_dsl::valid_from.desc())
+        .limit(1)
+        .get_result(conn)
+        .optional()
+}
+
 pub fn latest_player_version(conn: &mut PgConnection, player_ids: &[String]) -> QueryResult<Vec<Option<DbPlayerVersion>>> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
