@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use mmolb_parsing::enums::{Day, PositionType};
+use mmolb_parsing::enums::{Day, Position, PositionType};
 use rocket::serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
@@ -27,20 +27,27 @@ pub struct ChronPlayerModification {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ChronHandedness {
+    Right,
+    Left,
+    Switch,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ChronPlayer {
-    pub bats: String,
+    pub bats: ChronHandedness,
     pub home: String,
     pub likes: String,
     pub number: i32,
     pub team_id: String,
-    pub throws: String,
+    pub throws: ChronHandedness,
     pub augments: i32,
     pub birthday: Day,
     pub dislikes: String,
     pub last_name: String,
-    pub position: String,
+    pub position: Position,
     pub first_name: String,
     pub durability: f64,
     pub lesser_boon: String,

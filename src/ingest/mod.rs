@@ -4,6 +4,7 @@ mod worker;
 
 // Reexports
 pub use sim::{EventDetail, EventDetailFielder, EventDetailRunner, IngestLog};
+pub use chron::ChronHandedness;
 
 // Third party dependencies
 use chrono::{DateTime, TimeZone, Utc};
@@ -17,17 +18,21 @@ use rocket::{Orbit, Rocket, Shutdown, figment, tokio};
 use rocket_sync_db_pools::ConnectionPool;
 use serde::Deserialize;
 use std::collections::VecDeque;
-use std::mem;
+use std::{iter, mem};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use futures::{pin_mut, StreamExt};
+use itertools::Itertools;
+use mmolb_parsing::enums::Day;
 use thiserror::Error;
 
 // First party dependencies
-use crate::db::Taxa;
-use crate::ingest::chron::{ChronEntities, ChronError, ChronStartupError};
+use crate::db::{Taxa, TaxaDayType};
+use crate::ingest::chron::{ChronEntities, ChronEntity, ChronError, ChronPlayer, ChronStartupError, ChronStreamError};
 use crate::ingest::worker::{IngestWorker, IngestWorkerInProgress};
 use crate::{Db, db};
+use crate::models::NewPlayerVersion;
 
 fn default_ingest_period() -> u64 {
     30 * 60 // 30 minutes, expressed in seconds
@@ -108,6 +113,9 @@ pub enum IngestFatalError {
 
     #[error("User requested early termination")]
     ShutdownRequested,
+
+    #[error(transparent)]
+    ChronStreamError(#[from] ChronStreamError),
 }
 
 // This is the publicly visible version of IngestTaskState
@@ -614,6 +622,99 @@ async fn fetch_games_page(
 }
 
 async fn do_ingest_internal(
+    pool: ConnectionPool<Db, PgConnection>,
+    taxa: &Taxa,
+    config: &IngestConfig,
+    chron: &chron::Chron,
+    ingest_id: i64,
+    start_page: Option<String>,
+) -> Result<(i64, Option<String>), IngestFatalError> {
+    do_ingest_of_players_internal(pool.clone(), taxa.clone(), chron).await?;
+    
+    do_ingest_of_games_internal(pool, taxa, config, chron, ingest_id, start_page).await
+}
+
+async fn do_ingest_of_players_internal(
+    pool: ConnectionPool<Db, PgConnection>,
+    taxa: Taxa,
+    chron: &chron::Chron,
+) -> Result<(), IngestFatalError> {
+    let conn = pool.get().await
+        .ok_or(IngestFatalError::CouldNotGetConnection)?;
+    
+        let player_version_chunks = chron.player_versions(None)
+            .chunks(1000); // TODO Make this size configurable
+        pin_mut!(player_version_chunks);
+
+        while let Some(versions) = player_version_chunks.next().await {
+            // Unwrap any errors
+            let versions = versions.into_iter()
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let player_ids = versions.iter()
+                // TODO Can I avoid this clone?
+                .map(|v| v.entity_id.clone())
+                .collect_vec();
+            
+            let existing_versions = conn.run(move |mut conn| {
+                db::latest_player_version(&mut conn, &player_ids)
+            }).await?;
+            
+            let needs_update = iter::zip(versions, existing_versions)
+                .map(|(new_version, old_version)| {
+                    if let Some(old_version) = old_version {
+                        old_version.as_new() != chron_player_as_new(&new_version, &taxa)
+                    } else {
+                        false
+                    }
+                })
+                .collect_vec();
+            
+            todo!("Insert versions that need inserting")
+        }
+    
+    Ok(())
+}
+
+fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) -> NewPlayerVersion<'a> {
+    let (birthday_type, birthday_day, birthday_superstar_day) = match entity.data.birthday {
+        Day::SuperstarBreak => {
+            (taxa.day_type_id(TaxaDayType::SuperstarBreak), None, None)
+        }
+        Day::Holiday => {
+            (taxa.day_type_id(TaxaDayType::Holiday), None, None)
+        }
+        Day::Day(day) => {
+            (taxa.day_type_id(TaxaDayType::RegularDay), Some(day as i32), None)
+        }
+        Day::SuperstarDay(day) => {
+            (taxa.day_type_id(TaxaDayType::SuperstarDay), None, Some(day as i32))
+        }
+    };
+    
+    NewPlayerVersion {
+        mmolb_id: &entity.entity_id,
+        valid_from: entity.valid_from.naive_utc(),
+        valid_until: entity.valid_until.map(|d| d.naive_utc()),
+        first_name: &entity.data.first_name,
+        last_name: &entity.data.last_name,
+        batting_handedness: taxa.handedness_id(entity.data.bats.into()),
+        pitching_handedness: taxa.handedness_id(entity.data.throws.into()),
+        home: &entity.data.home,
+        birth_season: entity.data.birth_season,
+        birthday_type,
+        birthday_day,
+        birthday_superstar_day,
+        likes: &entity.data.likes,
+        dislikes: &entity.data.dislikes,
+        number: entity.data.number,
+        mmolb_team_id: Some(&entity.data.team_id),
+        position: taxa.position_id(entity.data.position.into()),
+        durability: entity.data.durability,
+    }
+}
+
+async fn do_ingest_of_games_internal(
     pool: ConnectionPool<Db, PgConnection>,
     taxa: &Taxa,
     config: &IngestConfig,

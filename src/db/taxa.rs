@@ -6,6 +6,7 @@ use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
 use rocket_sync_db_pools::diesel::prelude::*;
 use std::collections::HashSet;
+use crate::ingest::ChronHandedness;
 
 taxa! {
     #[
@@ -87,37 +88,49 @@ impl From<mmolb_parsing::enums::Distance> for TaxaHitType {
 
 taxa! {
     #[
+        schema = crate::taxa_schema::taxa::position_type,
+        table = crate::taxa_schema::taxa::position_type::dsl::position_type,
+        id_column = crate::taxa_schema::taxa::position_type::dsl::id,
+    ]
+    pub enum TaxaPositionType {
+        Batter = 1,
+        Pitcher = 2,
+    }
+}
+
+taxa! {
+    #[
         schema = crate::taxa_schema::taxa::position,
         table = crate::taxa_schema::taxa::position::dsl::position,
         id_column = crate::taxa_schema::taxa::position::dsl::id,
     ]
     pub enum TaxaPosition {
-        #[display_name: str = "Pitcher", abbreviation: str = "P"]
+        #[display_name: str = "Pitcher", abbreviation: str = "P", type_: i64 = 2]
         Pitcher = 1,
-        #[display_name: str = "Catcher", abbreviation: str = "C"]
+        #[display_name: str = "Catcher", abbreviation: str = "C", type_: i64 = 1]
         Catcher = 2,
-        #[display_name: str = "First base", abbreviation: str = "1B"]
+        #[display_name: str = "First base", abbreviation: str = "1B", type_: i64 = 1]
         FirstBase = 3,
-        #[display_name: str = "Second base", abbreviation: str = "2B"]
+        #[display_name: str = "Second base", abbreviation: str = "2B", type_: i64 = 1]
         SecondBase = 4,
-        #[display_name: str = "Third base", abbreviation: str = "3B"]
+        #[display_name: str = "Third base", abbreviation: str = "3B", type_: i64 = 1]
         ThirdBase = 5,
-        #[display_name: str = "Shortstop", abbreviation: str = "SS"]
+        #[display_name: str = "Shortstop", abbreviation: str = "SS", type_: i64 = 1]
         Shortstop = 6,
-        #[display_name: str = "Left fielder", abbreviation: str = "LF"]
+        #[display_name: str = "Left fielder", abbreviation: str = "LF", type_: i64 = 1]
         LeftField = 7,
-        #[display_name: str = "Center fielder", abbreviation: str = "CF"]
+        #[display_name: str = "Center fielder", abbreviation: str = "CF", type_: i64 = 1]
         CenterField = 8,
-        #[display_name: str = "Right fielder", abbreviation: str = "RF"]
+        #[display_name: str = "Right fielder", abbreviation: str = "RF", type_: i64 = 1]
         RightField = 9,
         // TODO The following are roles, not positions
-        #[display_name: str = "Starting pitcher", abbreviation: str = "SP"]
+        #[display_name: str = "Starting pitcher", abbreviation: str = "SP", type_: i64 = 2]
         StartingPitcher = 10,
-        #[display_name: str = "Relief pitcher", abbreviation: str = "RP"]
+        #[display_name: str = "Relief pitcher", abbreviation: str = "RP", type_: i64 = 2]
         ReliefPitcher = 11,
-        #[display_name: str = "Closer", abbreviation: str = "CL"]
+        #[display_name: str = "Closer", abbreviation: str = "CL", type_: i64 = 2]
         Closer = 12,
-        #[display_name: str = "Designated hitter", abbreviation: str = "DH"]
+        #[display_name: str = "Designated hitter", abbreviation: str = "DH", type_: i64 = 2]
         DesignatedHitter = 13,
     }
 }
@@ -479,16 +492,60 @@ impl From<mmolb_parsing::enums::PitchType> for TaxaPitchType {
     }
 }
 
+taxa! {
+    #[
+        schema = crate::taxa_schema::taxa::handedness,
+        table = crate::taxa_schema::taxa::handedness::dsl::handedness,
+        id_column = crate::taxa_schema::taxa::handedness::dsl::id,
+    ]
+    pub enum TaxaHandedness {
+        Right = 1,
+        Left = 2,
+        Switch = 3,
+    }
+}
+
+impl From<ChronHandedness> for TaxaHandedness {
+    fn from(value: ChronHandedness) -> Self {
+        match value {
+            ChronHandedness::Right => { Self::Right }
+            ChronHandedness::Left => { Self::Left }
+            ChronHandedness::Switch => { Self::Switch }
+        }
+    }
+}
+
+taxa! {
+    #[
+        schema = crate::taxa_schema::taxa::day_type,
+        table = crate::taxa_schema::taxa::day_type::dsl::day_type,
+        id_column = crate::taxa_schema::taxa::day_type::dsl::id,
+    ]
+    pub enum TaxaDayType {
+        #[display_name: str = "Holiday"]
+        Holiday = 1,
+        #[display_name: str = "Day"]
+        RegularDay = 2,
+        #[display_name: str = "Superstar Break"]
+        SuperstarBreak = 3,
+        #[display_name: str = "Superstar Day"]
+        SuperstarDay = 4,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Taxa {
     event_type_mapping: EnumMap<TaxaEventType, i64>,
     hit_type_mapping: EnumMap<TaxaHitType, i64>,
+    position_type_mapping: EnumMap<TaxaPositionType, i64>,
     position_mapping: EnumMap<TaxaPosition, i64>,
     fair_ball_type_mapping: EnumMap<TaxaFairBallType, i64>,
     base_mapping: EnumMap<TaxaBase, i64>,
     base_description_format_mapping: EnumMap<TaxaBaseDescriptionFormat, i64>,
     fielding_error_type_mapping: EnumMap<TaxaFieldingErrorType, i64>,
     pitch_type_mapping: EnumMap<TaxaPitchType, i64>,
+    handedness_mapping: EnumMap<TaxaHandedness, i64>,
+    day_type_mapping: EnumMap<TaxaDayType, i64>,
 }
 
 impl Taxa {
@@ -496,12 +553,16 @@ impl Taxa {
         Ok(Self {
             event_type_mapping: TaxaEventType::make_id_mapping(conn)?,
             hit_type_mapping: TaxaHitType::make_id_mapping(conn)?,
+            // Must be before TaxaPosition::make_id_mapping
+            position_type_mapping: TaxaPositionType::make_id_mapping(conn)?,
             position_mapping: TaxaPosition::make_id_mapping(conn)?,
             fair_ball_type_mapping: TaxaFairBallType::make_id_mapping(conn)?,
             base_mapping: TaxaBase::make_id_mapping(conn)?,
             base_description_format_mapping: TaxaBaseDescriptionFormat::make_id_mapping(conn)?,
             fielding_error_type_mapping: TaxaFieldingErrorType::make_id_mapping(conn)?,
             pitch_type_mapping: TaxaPitchType::make_id_mapping(conn)?,
+            handedness_mapping: TaxaHandedness::make_id_mapping(conn)?,
+            day_type_mapping: TaxaDayType::make_id_mapping(conn)?,
         })
     }
 
@@ -531,6 +592,14 @@ impl Taxa {
 
     pub fn fielding_error_type_id(&self, ty: TaxaFieldingErrorType) -> i64 {
         self.fielding_error_type_mapping[ty]
+    }
+
+    pub fn handedness_id(&self, ty: TaxaHandedness) -> i64 {
+        self.handedness_mapping[ty]
+    }
+
+    pub fn day_type_id(&self, ty: TaxaDayType) -> i64 {
+        self.day_type_mapping[ty]
     }
 
     pub fn pitch_type_id(&self, ty: TaxaPitchType) -> i64 {
@@ -597,6 +666,14 @@ impl Taxa {
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
             .expect("TODO Handle unknown pitch type")
+            .0
+    }
+
+    pub fn handedness_from_id(&self, id: i64) -> TaxaHandedness {
+        self.handedness_mapping
+            .iter()
+            .find(|(_, ty_id)| id == **ty_id)
+            .expect("TODO Handle unknown handedness")
             .0
     }
 }

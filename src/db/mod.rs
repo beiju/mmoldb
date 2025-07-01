@@ -19,13 +19,10 @@ use std::iter;
 // First-party imports
 pub use crate::db::taxa::{
     Taxa, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
-    TaxaFairBallType, TaxaFieldingErrorType, TaxaHitType, TaxaPitchType, TaxaPosition,
+    TaxaFairBallType, TaxaFieldingErrorType, TaxaHitType, TaxaPitchType, TaxaPosition, TaxaDayType
 };
 use crate::ingest::{EventDetail, IngestLog};
-use crate::models::{
-    DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner,
-    NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent,
-};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -1017,4 +1014,24 @@ pub fn insert_timings(
     .insert_into(crate::info_schema::info::ingest_timings::dsl::ingest_timings)
     .execute(conn)
     .map(|_| ())
+}
+
+pub fn latest_player_version(conn: &mut PgConnection, player_ids: &[String]) -> QueryResult<Vec<Option<DbPlayerVersion>>> {
+    use crate::data_schema::data::player_versions::dsl as pv_dsl;
+    
+    let mut db_versions = pv_dsl::player_versions
+        .filter(pv_dsl::mmolb_id.eq_any(player_ids))
+        .filter(pv_dsl::valid_until.is_null())
+        .select(DbPlayerVersion::as_select())
+        .order_by(pv_dsl::mmolb_id)
+        .get_results::<DbPlayerVersion>(conn)?;
+    
+    let result = player_ids.iter().map(|id| {
+        db_versions.binary_search_by_key(&id, |val| &val.mmolb_id)
+            .ok()
+            .map(|index| db_versions.remove(index))
+    })
+        .collect();
+    
+    Ok(result)
 }

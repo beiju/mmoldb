@@ -74,6 +74,30 @@ pub mod data {
     }
 
     diesel::table! {
+        data.player_versions (id) {
+            id -> Int8,
+            mmolb_id -> Text,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            first_name -> Text,
+            last_name -> Text,
+            batting_handedness -> Int8,
+            pitching_handedness -> Int8,
+            home -> Text,
+            birth_season -> Int4,
+            birthday_type -> Int8,
+            birthday_day -> Nullable<Int4>,
+            birthday_superstar_day -> Nullable<Int4>,
+            likes -> Text,
+            dislikes -> Text,
+            number -> Int4,
+            mmolb_team_id -> Nullable<Text>,
+            position -> Int8,
+            durability -> Float8,
+        }
+    }
+
+    diesel::table! {
         data.weather (id) {
             id -> Int8,
             name -> Text,
@@ -92,6 +116,7 @@ pub mod data {
         event_fielders,
         events,
         games,
+        player_versions,
         weather,
     );
 }

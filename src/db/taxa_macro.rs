@@ -132,6 +132,9 @@ macro_rules! taxa {
             $($variants:tt)*
         }
     ) => {
+        // This errors with a vague error when the taxa! enum is empty.
+        //   Ideally we would either support this case or make the error 
+        //   better. 
         paste! {
             taxa_main_enum!($table, $id_column, $(($($derive),*))?, $vis, $enum_name, $($variants)*);
             taxa_insertable_enum!($schema, [<New $enum_name>], $($variants)*);

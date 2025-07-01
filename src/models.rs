@@ -289,3 +289,77 @@ pub struct DbFielder {
     pub play_order: i32,
     pub perfect_catch: Option<bool>,
 }
+
+
+#[derive(Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_versions)]
+pub struct NewPlayerVersion<'a> {
+    pub mmolb_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub first_name: &'a str,
+    pub last_name: &'a str,
+    pub batting_handedness: i64,
+    pub pitching_handedness: i64,
+    pub home: &'a str,
+    pub birth_season: i32,
+    pub birthday_type: i64,
+    pub birthday_day: Option<i32>,
+    pub birthday_superstar_day: Option<i32>,
+    pub likes: &'a str,
+    pub dislikes: &'a str,
+    pub number: i32,
+    pub mmolb_team_id: Option<&'a str>,
+    pub position: i64,
+    pub durability: f64,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerVersion {
+    pub id: i64,
+    pub mmolb_id: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub first_name: String,
+    pub last_name: String,
+    pub batting_handedness: i64,
+    pub pitching_handedness: i64,
+    pub home: String,
+    pub birth_season: i32,
+    pub birthday_type: i64,
+    pub birthday_day: Option<i32>,
+    pub birthday_superstar_day: Option<i32>,
+    pub likes: String,
+    pub dislikes: String,
+    pub number: i32,
+    pub mmolb_team_id: Option<String>,
+    pub position: i64,
+    pub durability: f64,
+}
+
+impl DbPlayerVersion {
+    pub fn as_new(&self) -> NewPlayerVersion {
+        NewPlayerVersion {
+            mmolb_id: &self.mmolb_id,
+            valid_from: self.valid_from,
+            valid_until: self.valid_until,
+            first_name: &self.first_name,
+            last_name: &self.last_name,
+            batting_handedness: self.batting_handedness,
+            pitching_handedness: self.pitching_handedness,
+            home: &self.home,
+            birth_season: self.birth_season,
+            birthday_type: self.birthday_type,
+            birthday_day: self.birthday_day,
+            birthday_superstar_day: self.birthday_superstar_day,
+            likes: &self.likes,
+            dislikes: &self.dislikes,
+            number: self.number,
+            mmolb_team_id: self.mmolb_team_id.as_deref(),
+            position: self.position,
+            durability: self.durability,
+        }
+    }
+}

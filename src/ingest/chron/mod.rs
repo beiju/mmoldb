@@ -8,7 +8,7 @@ use humansize::{DECIMAL, format_size};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::io;
-use futures::{stream, Stream, stream::StreamExt, stream::TryStreamExt};
+use futures::{stream, Stream, stream::StreamExt};
 use rocket::tokio;
 use strum::IntoDiscriminant;
 use thiserror::Error;
@@ -303,7 +303,6 @@ impl Chron {
         let next_page = tokio::spawn(async move {
             next_page_of_player_versions(client, page_size, start_at_for_first_fetch, None)
         });
-        
 
         // I do not understand why a non-async closure with an async block inside works,
         // but an async closure does not. Nevertheless, that's the situation.

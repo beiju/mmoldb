@@ -15,11 +15,19 @@ create table taxa.hit_type (
     unique (name)
 );
 
+-- "pitcher" or "batter"
+create table taxa.position_type (
+    id bigserial primary key not null,
+    name text not null,
+    unique (name)
+);
+
 create table taxa.position (
     id bigserial primary key not null,
     name text not null,
     display_name text not null,
     abbreviation text not null,
+    type bigint references taxa.position_type not null,
     unique (name)
 );
 
