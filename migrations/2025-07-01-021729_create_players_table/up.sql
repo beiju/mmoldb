@@ -18,15 +18,15 @@ create table data.player_versions (
     -- using "without time zone" because that's what the datablase did
     valid_from timestamp without time zone not null,
     valid_until timestamp without time zone, -- null means that it is currently valid
-    
+
     -- data
     first_name text not null,
     last_name text not null,
     batting_handedness bigint references taxa.handedness not null,
     pitching_handedness bigint references taxa.handedness not null,
     home text not null, -- birth location
-    birth_season int not null,
-    birthday_type bigint references taxa.day_type not null, 
+    birthseason int not null,
+    birthday_type bigint references taxa.day_type not null,
     birthday_day int, -- null indicates this player was not born on a regular season day
     birthday_superstar_day int, -- null indicates this player was not born on a superstar day
     likes text not null, -- flavor

@@ -530,6 +530,8 @@ taxa! {
         SuperstarBreak = 3,
         #[display_name: str = "Superstar Day"]
         SuperstarDay = 4,
+        #[display_name: str = "Preseason"]
+        Preseason = 5,
     }
 }
 

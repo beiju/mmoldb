@@ -16,7 +16,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 reqwest = { version = "0.12.15", features = ["json", "gzip", "brotli"] }
 chrono-humanize = "0.2.3"
 strum = { version = "0.27.1", features = ["derive"] }
-mmolb_parsing = { git = "https://github.com/unnamed-girl/mmolb_parsing.git" }
+mmolb_parsing = { git = "https://github.com/beiju/mmolb_parsing.git", branch = "new-day-variants" }
 enum-map = "2.7.3"
 itertools = "0.14.0"
 num-format = "0.4.4"
@@ -26,3 +26,5 @@ percent-encoding = "2.3.1"
 hashbrown = "0.15.4"
 heed = { version = "0.22.0", features = ["serde-rmp"] }
 futures = "0.3.31"
+miette = { version = "7.6.0", features = ["fancy"] }
+serde_json = "1.0.140"

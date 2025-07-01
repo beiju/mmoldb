@@ -26,6 +26,7 @@ use futures::{pin_mut, StreamExt};
 use itertools::Itertools;
 use mmolb_parsing::enums::Day;
 use thiserror::Error;
+use miette::{miette, Diagnostic, IntoDiagnostic, Report};
 
 // First party dependencies
 use crate::db::{Taxa, TaxaDayType};
@@ -76,7 +77,7 @@ struct IngestConfig {
     cache_path: PathBuf,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum IngestSetupError {
     #[error("Database error during ingest setup: {0}")]
     DbSetupError(#[from] diesel::result::Error),
@@ -88,7 +89,7 @@ pub enum IngestSetupError {
     LeftNotStartedTooEarly,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
     #[error("The ingest task was interrupted while manipulating the task state")]
     InterruptedManipulatingTaskState,
@@ -452,27 +453,31 @@ async fn ingest_task_runner(
                         );
                     }
                     Err(err) => {
-                        error!("Failed to mark game ingest as finished: {}", err);
+                        error!("Failed to mark game ingest as finished: {:?}", err);
                     }
                 }
             }
             Err((err, ingest_id)) => {
                 if let Some(ingest_id) = ingest_id {
                     error!(
-                        "Fatal error in game ingest: {}. This ingest is aborted.",
-                        err
+                        "{:?}",
+                        Report::new(err)
+                            .context("Fatal error in game ingest. This ingest is aborted."),
                     );
                     match db::mark_ingest_aborted(conn, ingest_id, Utc::now()) {
                         Ok(()) => {}
                         Err(err) => {
-                            error!("Failed to mark game ingest as aborted: {}", err);
+                            error!(
+                                "Failed to mark game ingest as aborted: {:?}",
+                                err,
+                            );
                         }
                     }
                 } else {
                     error!(
-                        "Fatal error in game ingest before adding ingest to database: {}. \
-                            This ingest is aborted.",
-                        err,
+                        "{:?}",
+                        miette!("Fatal error in game ingest occurred before adding ingest to database. This ingest is aborted.")
+                            .wrap_err(err),
                     );
                 }
             }
@@ -630,7 +635,7 @@ async fn do_ingest_internal(
     start_page: Option<String>,
 ) -> Result<(i64, Option<String>), IngestFatalError> {
     do_ingest_of_players_internal(pool.clone(), taxa.clone(), chron).await?;
-    
+
     do_ingest_of_games_internal(pool, taxa, config, chron, ingest_id, start_page).await
 }
 
@@ -641,7 +646,7 @@ async fn do_ingest_of_players_internal(
 ) -> Result<(), IngestFatalError> {
     let conn = pool.get().await
         .ok_or(IngestFatalError::CouldNotGetConnection)?;
-    
+
         let player_version_chunks = chron.player_versions(None)
             .chunks(1000); // TODO Make this size configurable
         pin_mut!(player_version_chunks);
@@ -655,11 +660,11 @@ async fn do_ingest_of_players_internal(
                 // TODO Can I avoid this clone?
                 .map(|v| v.entity_id.clone())
                 .collect_vec();
-            
+
             let existing_versions = conn.run(move |mut conn| {
                 db::latest_player_version(&mut conn, &player_ids)
             }).await?;
-            
+
             let needs_update = iter::zip(versions, existing_versions)
                 .map(|(new_version, old_version)| {
                     if let Some(old_version) = old_version {
@@ -669,15 +674,18 @@ async fn do_ingest_of_players_internal(
                     }
                 })
                 .collect_vec();
-            
+
             todo!("Insert versions that need inserting")
         }
-    
+
     Ok(())
 }
 
 fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) -> NewPlayerVersion<'a> {
     let (birthday_type, birthday_day, birthday_superstar_day) = match entity.data.birthday {
+        Day::Preseason => {
+            (taxa.day_type_id(TaxaDayType::Preseason), None, None)
+        }
         Day::SuperstarBreak => {
             (taxa.day_type_id(TaxaDayType::SuperstarBreak), None, None)
         }
@@ -691,7 +699,7 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) ->
             (taxa.day_type_id(TaxaDayType::SuperstarDay), None, Some(day as i32))
         }
     };
-    
+
     NewPlayerVersion {
         mmolb_id: &entity.entity_id,
         valid_from: entity.valid_from.naive_utc(),
@@ -701,7 +709,7 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) ->
         batting_handedness: taxa.handedness_id(entity.data.bats.into()),
         pitching_handedness: taxa.handedness_id(entity.data.throws.into()),
         home: &entity.data.home,
-        birth_season: entity.data.birth_season,
+        birthseason: entity.data.birthseason,
         birthday_type,
         birthday_day,
         birthday_superstar_day,

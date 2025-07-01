@@ -9,50 +9,68 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::io;
 use futures::{stream, Stream, stream::StreamExt};
+use miette::Diagnostic;
 use rocket::tokio;
 use strum::IntoDiscriminant;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum ChronStartupError {
-    #[error("Couldn't create parent folder for HTTP cache database: {0}")]
-    CreateDbFolder(io::Error),
+    #[error("couldn't create parent folder for HTTP cache database")]
+    CreateDbFolder(#[source] io::Error),
 
     #[error(transparent)]
     OpenDb(#[from] heed::Error),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum ChronError {
-    #[error("Error building Chron request: {0}")]
-    RequestBuildError(reqwest::Error),
+    #[error("error building Chron request")]
+    RequestBuildError(#[source] reqwest::Error),
 
-    #[error("Cache database error: {0}")]
+    #[error("cache database error")]
     CacheDbError(#[from] heed::Error),
 
-    #[error("Error executing Chron request: {0}")]
-    RequestExecuteError(reqwest::Error),
+    #[error("error executing Chron request")]
+    RequestExecuteError(#[source] reqwest::Error),
 
-    #[error("Error deserializing Chron response: {0}")]
-    RequestDeserializeError(reqwest::Error),
+    #[error("error deserializing Chron response")]
+    RequestDeserializeError(#[source] reqwest::Error),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum ChronStreamError {
-    #[error("Background fetch task exited abnormally: {0}")]
-    JoinFailure(tokio::task::JoinError),
+    #[error("background fetch task exited abnormally")]
+    JoinFailure(#[source] tokio::task::JoinError),
 
-    #[error("Error building Chron request: {0}")]
-    RequestBuildError(reqwest::Error),
+    #[error("error building Chron request")]
+    RequestBuildError(#[source] reqwest::Error),
 
-    #[error("Error executing Chron request: {0}")]
-    RequestExecuteError(reqwest::Error),
+    #[error("error executing Chron request")]
+    RequestExecuteError(#[source] reqwest::Error),
 
-    #[error("Chron reported error: {0}")]
-    ChronStatusError(reqwest::Error),
+    #[error("chron reported a server error")]
+    ChronStatusError(#[source] reqwest::Error),
 
-    #[error("Error deserializing Chron response: {0}")]
-    RequestDeserializeError(reqwest::Error),
+    #[error("error extracting response body")]
+    RequestBodyError(#[source] reqwest::Error),
+
+    #[error("error deserializing Chron response")]
+    RequestDeserializeError(#[source] reqwest::Error),
+
+    #[error("error deserializing Chron response structure")]
+    Stage1DeserializeError(#[source] serde_json::Error),
+
+    #[error("error deserializing Chron entity")]
+    Stage2DeserializeError(#[source] serde_json::Error),
+
+    #[error("error re-serializing Chron entity for display")]
+    ReserializeForDisplayError {
+        #[source] 
+        err: serde_json::Error,
+        // #[related]
+        // related: Option<serde_json::Error>,
+    },
 }
 
 pub struct Chron {
@@ -141,24 +159,6 @@ impl Chron {
         let request = self
             .client
             .get("https://freecashe.ws/api/chron/v0/entities")
-            .query(&[("kind", kind), ("count", count), ("order", "asc")]);
-
-        if let Some(page_token) = page {
-            request.query(&[("page", page_token)])
-        } else {
-            request
-        }
-    }
-
-    fn versions_request(
-        &self,
-        kind: &str,
-        count: &str,
-        page: Option<&str>,
-    ) -> reqwest::RequestBuilder {
-        let request = self
-            .client
-            .get("https://freecashe.ws/api/chron/v0/versions")
             .query(&[("kind", kind), ("count", count), ("order", "asc")]);
 
         if let Some(page_token) = page {
@@ -400,9 +400,44 @@ async fn next_page_of_player_versions(
         .map_err(ChronStreamError::ChronStatusError)?;
 
     let result = response
-        .json()
+        .text()
         .await
-        .map_err(ChronStreamError::RequestDeserializeError)?;
+        .map_err(ChronStreamError::RequestBodyError)?;
+
+    let partial_deserialized: ChronEntities<serde_json::Value> = serde_json::from_str(&result)
+        .map_err(ChronStreamError::Stage1DeserializeError)?;
+
+    let items = partial_deserialized.items.into_iter()
+        .map(|item| {
+            let entity = serde_json::from_value::<ChronPlayer>(item.data.clone())
+                .map_err(|e| {
+                    match serde_json::to_string_pretty(&item.data) {
+                        Ok(pretty_ser) => {
+                            println!("Error deserializing {{{pretty_ser}}}");
+
+                            ChronStreamError::Stage2DeserializeError(e)
+                        }
+                        Err(err) => {
+                            ChronStreamError::ReserializeForDisplayError {
+                                err,
+                                // related: Some(e)
+                            }
+                        }
+                    }
+                })?;
+            
+            Ok(ChronEntity {
+                kind: item.kind,
+                entity_id: item.entity_id,
+                valid_from: item.valid_from,
+                valid_until: item.valid_until,
+                data: entity,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     
-    Ok((client, result))
+    Ok((client, ChronEntities {
+        items,
+        next_page: partial_deserialized.next_page,
+    }))
 }

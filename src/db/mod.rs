@@ -609,6 +609,10 @@ fn insert_games_internal<'e>(
             };
 
             let (day, superstar_day) = match &raw_game.day {
+                MaybeRecognized::Recognized(Day::Preseason) => {
+                    warn!("A game happened in the Preseason.");
+                    (None, None)
+                }
                 MaybeRecognized::Recognized(Day::SuperstarBreak) => {
                     warn!("A game happened on a non-numbered Superstar Break day.");
                     (None, None)
@@ -1018,20 +1022,20 @@ pub fn insert_timings(
 
 pub fn latest_player_version(conn: &mut PgConnection, player_ids: &[String]) -> QueryResult<Vec<Option<DbPlayerVersion>>> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
-    
+
     let mut db_versions = pv_dsl::player_versions
         .filter(pv_dsl::mmolb_id.eq_any(player_ids))
         .filter(pv_dsl::valid_until.is_null())
         .select(DbPlayerVersion::as_select())
         .order_by(pv_dsl::mmolb_id)
         .get_results::<DbPlayerVersion>(conn)?;
-    
+
     let result = player_ids.iter().map(|id| {
         db_versions.binary_search_by_key(&id, |val| &val.mmolb_id)
             .ok()
             .map(|index| db_versions.remove(index))
     })
         .collect();
-    
+
     Ok(result)
 }

@@ -29,8 +29,11 @@ pub struct ChronPlayerModification {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ChronHandedness {
+    #[serde(rename = "R")]
     Right,
+    #[serde(rename = "L")]
     Left,
+    #[serde(rename = "S")]
     Switch,
 }
 
@@ -41,6 +44,7 @@ pub struct ChronPlayer {
     pub home: String,
     pub likes: String,
     pub number: i32,
+    #[serde(rename = "TeamID")]
     pub team_id: String,
     pub throws: ChronHandedness,
     pub augments: i32,
@@ -50,9 +54,9 @@ pub struct ChronPlayer {
     pub position: Position,
     pub first_name: String,
     pub durability: f64,
-    pub lesser_boon: String,
-    pub birth_season: i32,
-    pub greater_boon: String,
+    pub lesser_boon: Option<ChronPlayerModification>,
+    pub birthseason: i32, // Apparently birthseason is one word, like birthday
+    pub greater_boon: Option<ChronPlayerModification>,
     // Ignoring SeasonStats for now
     pub position_type: PositionType,
     pub modifications: Vec<ChronPlayerModification>,
