@@ -3,11 +3,13 @@ mod models;
 pub use models::*;
 
 use std::error::Error;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use humansize::{DECIMAL, format_size};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::io;
+use futures::{stream, Stream, stream::StreamExt, stream::TryStreamExt};
+use rocket::tokio;
 use strum::IntoDiscriminant;
 use thiserror::Error;
 
@@ -30,6 +32,24 @@ pub enum ChronError {
 
     #[error("Error executing Chron request: {0}")]
     RequestExecuteError(reqwest::Error),
+
+    #[error("Error deserializing Chron response: {0}")]
+    RequestDeserializeError(reqwest::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum ChronStreamError {
+    #[error("Background fetch task exited abnormally: {0}")]
+    JoinFailure(tokio::task::JoinError),
+
+    #[error("Error building Chron request: {0}")]
+    RequestBuildError(reqwest::Error),
+
+    #[error("Error executing Chron request: {0}")]
+    RequestExecuteError(reqwest::Error),
+
+    #[error("Chron reported error: {0}")]
+    ChronStatusError(reqwest::Error),
 
     #[error("Error deserializing Chron response: {0}")]
     RequestDeserializeError(reqwest::Error),
@@ -121,6 +141,24 @@ impl Chron {
         let request = self
             .client
             .get("https://freecashe.ws/api/chron/v0/entities")
+            .query(&[("kind", kind), ("count", count), ("order", "asc")]);
+
+        if let Some(page_token) = page {
+            request.query(&[("page", page_token)])
+        } else {
+            request
+        }
+    }
+
+    fn versions_request(
+        &self,
+        kind: &str,
+        count: &str,
+        page: Option<&str>,
+    ) -> reqwest::RequestBuilder {
+        let request = self
+            .client
+            .get("https://freecashe.ws/api/chron/v0/versions")
             .query(&[("kind", kind), ("count", count), ("order", "asc")]);
 
         if let Some(page_token) = page {
@@ -254,4 +292,118 @@ impl Chron {
 
         result
     }
+
+    fn player_version_pages(&self, start_at: Option<DateTime<Utc>>) -> impl Stream<Item = Result<Vec<ChronEntity<ChronPlayer>>, ChronStreamError>> {
+        // For lifetimes
+        let page_size = self.page_size;
+        let client = self.client.clone(); // This is internally reference counted
+        
+        // Use tokio::spawn to eagerly fetch the next page while the caller is doing other work
+        let start_at_for_first_fetch = start_at;
+        let next_page = tokio::spawn(async move {
+            next_page_of_player_versions(client, page_size, start_at_for_first_fetch, None)
+        });
+        
+
+        // I do not understand why a non-async closure with an async block inside works,
+        // but an async closure does not. Nevertheless, that's the situation.
+        stream::unfold(Some(next_page), move |next_page| {
+            async move {
+                let Some(next_page) = next_page else {
+                    // next_page being None indicates that we've finished. We couldn't
+                    // end the stream before because we hadn't produced the current page
+                    // yet.
+                    return None;
+                };
+    
+                // Can't use ? in here because the closure must return an Option.
+                // Note the double nesting is because the join can fail, and the
+                // join can succeed but the underlying task produced an error.
+                let (client, page) = match next_page.await {
+                    Ok(fut) => match fut.await {
+                        Ok(page) => page,
+                        Err(err) => {
+                            // Yield the current error, then end iteration
+                            return Some((Err(err), None))
+                        }
+
+                    }
+                    Err(err) => {
+                        // Yield the current error, then end iteration
+                        return Some((Err(ChronStreamError::JoinFailure(err)), None))
+                    }
+                };
+    
+                if let Some(next_page_token) = page.next_page {
+                    if page.items.len() >= page_size {
+                        // Then this was the last page. Yield this page, but there is no next page
+                        Some((Ok(page.items), None))
+                    } else {
+                        // Then there are more pages
+                        let next_page_fut = tokio::spawn(async move {
+                            next_page_of_player_versions(client, page_size, start_at_for_first_fetch, Some(next_page_token))
+                        });
+    
+                        Some((Ok(page.items), Some(next_page_fut)))
+                    }
+                } else {
+                    // If there's no next page token it's the last page. Yield this page,
+                    // but there is no next page
+                    Some((Ok(page.items), None))
+                }
+            }
+        })
+    }
+
+    pub fn player_versions(&self, start_at: Option<DateTime<Utc>>) -> impl Stream<Item = Result<ChronEntity<ChronPlayer>, ChronStreamError>> {
+        self.player_version_pages(start_at)
+            .flat_map(|val| match val {
+                Ok(vec) => {
+                    // Turn Vec<T> into a stream of Result<T, E>
+                    let results = vec.into_iter().map(Ok);
+                    stream::iter(results).left_stream()
+                }
+                Err(e) => {
+                    // Return a single error, as a stream
+                    stream::once(async { Err(e) }).right_stream()
+                }
+            })
+    }
+}
+
+async fn next_page_of_player_versions(
+    client: reqwest::Client,
+    page_size: usize,
+    start_at: Option<DateTime<Utc>>, page: Option<String>,
+) -> Result<(reqwest::Client, ChronEntities<ChronPlayer>), ChronStreamError> {
+    let page_size_string = page_size.to_string();
+    
+    let mut request_builder = client
+        .get("https://freecashe.ws/api/chron/v0/versions")
+        .query(&[("kind", "player"), ("count", &page_size_string), ("order", "asc")]);
+
+    if let Some(start_at) = start_at {
+        request_builder = request_builder.query(&[("after", &start_at.to_string())]);
+    }
+
+    if let Some(page) = page {
+        request_builder = request_builder.query(&[("page", &page)]);
+    }
+
+    let request = request_builder.build()
+        .map_err(ChronStreamError::RequestBuildError)?;
+
+    let response = client
+        .execute(request)
+        .await
+        .map_err(ChronStreamError::RequestExecuteError)?
+        .error_for_status()
+        .map_err(ChronStreamError::ChronStatusError)?;
+
+    let result = response
+        .json()
+        .await
+        .map_err(ChronStreamError::RequestDeserializeError)?;
+    
+    Ok((client, result))
 }

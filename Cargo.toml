@@ -25,3 +25,4 @@ humansize = "2.1.3"
 percent-encoding = "2.3.1"
 hashbrown = "0.15.4"
 heed = { version = "0.22.0", features = ["serde-rmp"] }
+futures = "0.3.31"
