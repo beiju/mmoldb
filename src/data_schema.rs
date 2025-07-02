@@ -79,6 +79,7 @@ pub mod data {
             mmolb_id -> Text,
             valid_from -> Timestamp,
             valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
             first_name -> Text,
             last_name -> Text,
             batting_handedness -> Int8,

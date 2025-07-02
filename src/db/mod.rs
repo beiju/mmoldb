@@ -1041,30 +1041,12 @@ pub fn latest_player_versions(conn: &mut PgConnection, player_ids: &[String]) ->
 
 pub fn insert_player_versions(
     conn: &mut PgConnection,
-    players: &[(Option<i64>, NewPlayerVersion)],
-) -> QueryResult<()> {
+    new_player_versions: &[NewPlayerVersion],
+) -> QueryResult<usize> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
-
-    // Update valid_until for any previous versions
-    // Diesel doesn't seem to support batched update. Maybe this can be done at the DB layer?
-    for (previous_version_id, new_version) in players {
-        if let Some(previous_version_id) = previous_version_id {
-            diesel::update(pv_dsl::player_versions)
-                .filter(pv_dsl::id.eq(previous_version_id))
-                .set(pv_dsl::valid_until.eq(new_version.valid_from))
-                .execute(conn)?;
-        }
-    }
-
-    let new_player_versions = players
-        .iter()
-        .map(|(_, new_player)| new_player)
-        .collect_vec();
 
     // Insert new records
     diesel::insert_into(pv_dsl::player_versions)
         .values(new_player_versions)
-        .execute(conn)?;
-
-    Ok(())
+        .execute(conn)
 }

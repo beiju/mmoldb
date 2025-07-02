@@ -18,11 +18,13 @@ use rocket::{Orbit, Rocket, Shutdown, figment, tokio};
 use rocket_sync_db_pools::ConnectionPool;
 use serde::Deserialize;
 use std::collections::VecDeque;
-use std::{iter, mem};
+use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use futures::{pin_mut, StreamExt};
+use hashbrown::{HashMap};
+use hashbrown::hash_map::Entry;
 use itertools::Itertools;
 use mmolb_parsing::enums::Day;
 use thiserror::Error;
@@ -669,70 +671,46 @@ async fn do_ingest_of_players_internal(
                 .map(|v| chron_player_as_new(&v, &taxa))
                 .collect_vec();
 
-            // Collapse adjacent players who would have identical DB rows. 
-            // Without this we can get multiple of the same entity with null
-            // valid_until
-            new_versions.sort_by(|a, b| (a.mmolb_id, a.valid_from).cmp(&(b.mmolb_id, b.valid_from)));
-            let mut i = 0;
-            while i + 1 < new_versions.len() {
-                i += 1; // Intentionally increment before using it, because we want to start at 1
-                if new_versions[i - 1].is_data_equivalent(&new_versions[i]) {
-                    new_versions[i - 1].valid_until = new_versions[i].valid_until;
-                    // Not the most efficient way to shrink a vec but I don't 
-                    // think it should matter much here 
-                    new_versions.remove(i);
-                }
+            // The handling of valid_until is entirely in the database layer, but its logic
+            // requires that a given batch of players does not have the same player twice. We
+            // provide that guarantee here.
+            let mut this_batch = HashMap::new();
+            while !new_versions.is_empty() {
+                // Pull out all players who don't yet appear
+                let remaining_versions = new_versions.into_iter()
+                    .flat_map(|version| {
+                        match this_batch.entry(version.mmolb_id) {
+                            Entry::Occupied(_) => {
+                                // Then retain this version for the next sub-batch
+                                Some(version)
+                            }
+                            Entry::Vacant(entry) => {
+                                // Then insert this version into the map and don't retain it
+                                entry.insert(version);
+                                None
+                            }
+                        }
+                    })
+                    .collect_vec();
+
+                let players_to_update = this_batch.into_iter()
+                    .map(|(_, version)| version)
+                    .collect_vec();
+
+                let inserted = db::insert_player_versions(&mut conn, &players_to_update)?;
+                info!(
+                    "Sent {} new player versions out of {} to the database. {} left of this batch. \
+                    {inserted} versions were actually inserted, the rest were duplicates.",
+                    players_to_update.len(), versions.len(), remaining_versions.len(),
+                );
+
+                new_versions = remaining_versions;
+                this_batch = HashMap::new();
             }
 
-            let new_versions_len = new_versions.len();
-            info!("Collapsed {} player versions", versions.len() - new_versions_len);
-
-            let player_ids = new_versions.iter()
-                // TODO Can I avoid this clone?
-                .map(|v| v.mmolb_id.to_string())
-                .collect_vec();
-            
-            // Everything up to here could have been outside the closure, but
-            // the closure imposes unnecessarily strict lifetime requirements
-
-            let existing_versions = db::latest_player_versions(&mut conn, &player_ids)?;
-            assert_eq!(existing_versions.len(), new_versions.len());
-
-            let players_to_update = new_versions.into_iter()
-                .filter_map(|(new_version, old_version)| {
-                    if let Some(old_version) = old_version {
-                        assert_eq!(new_version.mmolb_id, old_version.mmolb_id);
-
-                        // It's normal for the "new" version to be the same age
-                        // as the "old" version -- the semantics of the Chron
-                        // API mean we sometimes re-request the latest version.
-                        // In this case there should never be any changes.
-                        // But if the "new" version is older than the "old"
-                        // version that indicates a bug in the code
-                        if old_version.valid_from > new_version.valid_from {
-                            error!(
-                                "Received an out-of-order version for player {}: The lastest \
-                                stored version is {}, but we just got an update from {}",
-                                new_version.mmolb_id, old_version.valid_from,
-                                new_version.valid_from,
-                            );
-                        }
-
-                        if old_version.as_new().is_data_equivalent(&new_version) {
-                            Some((Some(old_version.id), new_version))
-                        } else {
-                            None
-                        }
-                    } else {
-                        Some((None, new_version))
-                    }
-                })
-                .collect_vec();
-
-            info!("Inserting {} new player versions out of {}", players_to_update.len(), new_versions_len);
-            db::insert_player_versions(&mut conn, &players_to_update)
-
             // TODO Also do modifications
+
+            Ok::<_, IngestFatalError>(())
         }).await?;
     }
 
