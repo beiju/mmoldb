@@ -10,15 +10,15 @@ use log::warn;
 // Uses hashbrown::HashMap because the std HashMap has a limitation on
 // tuples of references
 #[derive(Debug, Hash, Eq, PartialEq)]
-pub(super) struct UniqueWeather {
-    name: String,
-    emoji: String,
-    tooltip: String,
+pub struct NameEmojiTooltip {
+    pub name: String,
+    pub emoji: String,
+    pub tooltip: String,
 }
 
-impl Into<UniqueWeather> for DbWeather {
-    fn into(self) -> UniqueWeather {
-        UniqueWeather {
+impl Into<NameEmojiTooltip> for DbWeather {
+    fn into(self) -> NameEmojiTooltip {
+        NameEmojiTooltip {
             name: self.name,
             emoji: self.emoji,
             tooltip: self.tooltip,
@@ -26,13 +26,13 @@ impl Into<UniqueWeather> for DbWeather {
     }
 }
 
-impl Equivalent<UniqueWeather> for (&str, &str, &str) {
-    fn equivalent(&self, key: &UniqueWeather) -> bool {
+impl Equivalent<NameEmojiTooltip> for (&str, &str, &str) {
+    fn equivalent(&self, key: &NameEmojiTooltip) -> bool {
         self.0 == key.name && self.1 == key.emoji && self.2 == key.tooltip
     }
 }
 
-pub(super) type WeatherTable = HashMap<UniqueWeather, i64>;
+pub(super) type WeatherTable = HashMap<NameEmojiTooltip, i64>;
 
 pub(super) fn create_weather_table(
     conn: &mut PgConnection,
@@ -75,7 +75,7 @@ fn create_weather_table_inner(
             let id = weather.id; // Lifetime reasons
             (weather.into(), id)
         })
-        .collect::<QueryResult<HashMap<UniqueWeather, i64>>>()?;
+        .collect::<QueryResult<HashMap<NameEmojiTooltip, i64>>>()?;
 
     let new_weathers = games
         .iter()

@@ -31,7 +31,7 @@ use thiserror::Error;
 use miette::{miette, Diagnostic, Report};
 
 // First party dependencies
-use crate::db::{Taxa, TaxaDayType};
+use crate::db::{NameEmojiTooltip, Taxa, TaxaDayType};
 use crate::ingest::chron::{ChronError, ChronStartupError, ChronStreamError};
 use crate::ingest::worker::{IngestWorker, IngestWorkerInProgress};
 use crate::{Db, db};
@@ -648,9 +648,12 @@ async fn do_ingest_of_players_internal(
 ) -> Result<(), IngestFatalError> {
     let conn = pool.get().await
         .ok_or(IngestFatalError::CouldNotGetConnection)?;
-    
-    let latest_valid_from = conn.run(|mut conn| {
-        db::get_latest_player_valid_from(&mut conn)
+
+    let (latest_valid_from, mut modifications) = conn.run(|mut conn| {
+        let latest_valid_from = db::get_latest_player_valid_from(&mut conn)?;
+        let modifications = db::get_modifications_table(&mut conn)?;
+
+        Ok::<_, IngestFatalError>((latest_valid_from, modifications))
     }).await?;
     let chron_start_time =latest_valid_from.as_ref().map(NaiveDateTime::and_utc);
 
@@ -663,12 +666,36 @@ async fn do_ingest_of_players_internal(
         let versions = versions.into_iter()
             .collect::<Result<Vec<_>, _>>()?;
 
-        // TODO Can I avoid this clone?
+        // TODO Can I avoid this clone? (Probably yes, with explicit passing like `modifications`)
         let taxa = taxa.clone();
-        conn.run(move |mut conn| {
+        modifications = conn.run(move |mut conn| {
+            let latest_time = versions.last()
+                .map(|version| version.valid_from)
+                .unwrap_or(Utc::now());
+            let time_ago = latest_time.signed_duration_since(Utc::now());
+            let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
+            
+            // Collect any new modifications that need to be added
+            let new_modifications = versions.iter()
+                .flat_map(|version| {
+                    version.data.modifications.iter()
+                        .chain(&version.data.lesser_boon)
+                        .chain(&version.data.greater_boon)
+                        .filter(|m| {
+                            !modifications.contains_key(&(m.name.as_str(), m.emoji.as_str(), m.description.as_str()))
+                        })
+                })
+                .unique()
+                .collect_vec();
+            
+            let inserted_modifications = db::insert_modifications(&mut conn, &new_modifications)?;
+            assert_eq!(new_modifications.len(), inserted_modifications.len());
+            
+            modifications.extend(inserted_modifications);
+            
             // Convert to Insertable type
             let mut new_versions = versions.iter()
-                .map(|v| chron_player_as_new(&v, &taxa))
+                .map(|v| chron_player_as_new(&v, &taxa, &modifications))
                 .collect_vec();
 
             // The handling of valid_until is entirely in the database layer, but its logic
@@ -700,7 +727,8 @@ async fn do_ingest_of_players_internal(
                 let inserted = db::insert_player_versions(&mut conn, &players_to_update)?;
                 info!(
                     "Sent {} new player versions out of {} to the database. {} left of this batch. \
-                    {inserted} versions were actually inserted, the rest were duplicates.",
+                    {inserted} versions were actually inserted, the rest were duplicates. \
+                    Currently processing players from {human_time_ago}.",
                     players_to_update.len(), versions.len(), remaining_versions.len(),
                 );
 
@@ -708,16 +736,16 @@ async fn do_ingest_of_players_internal(
                 this_batch = HashMap::new();
             }
 
-            // TODO Also do modifications
+            // TODO Also do player_modifications
 
-            Ok::<_, IngestFatalError>(())
+            Ok::<_, IngestFatalError>(modifications)
         }).await?;
     }
 
     Ok(())
 }
 
-fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) -> NewPlayerVersion<'a> {
+fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa, modifications: &HashMap<NameEmojiTooltip, i64>) -> NewPlayerVersion<'a> {
     let (birthday_type, birthday_day, birthday_superstar_day) = match entity.data.birthday {
         Day::Preseason => {
             (taxa.day_type_id(TaxaDayType::Preseason), None, None)
@@ -750,6 +778,11 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) ->
             (taxa.day_type_id(TaxaDayType::SuperstarDay), None, Some(day as i32))
         }
     };
+    
+    let get_boon_id = |boon: &ChronPlayerModification| {
+        *modifications.get(&(boon.name.as_str(), boon.emoji.as_str(), boon.description.as_str()))
+            .expect("All modifications should have been added to the modifications table")
+    };
 
     NewPlayerVersion {
         mmolb_id: &entity.entity_id,
@@ -770,6 +803,8 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) ->
         mmolb_team_id: entity.data.team_id.as_deref(),
         position: taxa.position_id(entity.data.position.into()),
         durability: entity.data.durability,
+        greater_boon: entity.data.greater_boon.as_ref().map(get_boon_id),
+        lesser_boon: entity.data.lesser_boon.as_ref().map(get_boon_id),
     }
 }
 

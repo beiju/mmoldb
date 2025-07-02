@@ -11,6 +11,26 @@ create table taxa.day_type (
      unique (name)
 );
 
+create table data.modifications (
+    id bigserial primary key not null,
+    name text not null,
+    emoji text not null,
+    description text not null,
+    unique (name, emoji, description)
+);
+
+create table data.player_modifications (
+    -- bookkeeping
+    id bigserial primary key not null,
+    mmolb_id text not null,
+    -- using "without time zone" because that's what the datablase did
+    valid_from timestamp without time zone not null,
+    valid_until timestamp without time zone, -- null means that it is currently valid
+    duplicates int not null default 0,
+
+    modification_id bigint references data.modifications not null
+);
+
 create table data.player_versions (
     -- bookkeeping
     id bigserial primary key not null,
@@ -38,9 +58,10 @@ create table data.player_versions (
     mmolb_team_id text, -- null indicates this player is no longer on a team (e.g. relegated)
     position bigint references taxa.position not null,
     durability double precision not null, -- changes often -- may be extracted into its own table
-    -- TODO Lesser boon
-    -- TODO Greater boon
-    -- TODO modifications
+
+    greater_boon bigint references data.modifications, -- null means this player does not have a greater boon 
+    lesser_boon bigint references data.modifications, -- null means this player does not have a lesser boon 
+    
     unique (mmolb_id, valid_from),
     unique nulls not distinct (mmolb_id, valid_until)
 );

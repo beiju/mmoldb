@@ -290,6 +290,23 @@ pub struct DbFielder {
     pub perfect_catch: Option<bool>,
 }
 
+#[derive(Debug, Insertable)]
+#[diesel(table_name = crate::data_schema::data::modifications)]
+pub struct NewPlayerModification<'a> {
+    pub name: &'a str,
+    pub emoji: &'a str,
+    pub description: &'a str,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::modifications)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerModification {
+    pub id: i64,
+    pub name: String,
+    pub emoji: String,
+    pub description: String,
+}
 
 #[derive(Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_versions)]
@@ -312,6 +329,8 @@ pub struct NewPlayerVersion<'a> {
     pub mmolb_team_id: Option<&'a str>,
     pub position: i64,
     pub durability: f64,
+    pub greater_boon: Option<i64>,
+    pub lesser_boon: Option<i64>,
 }
 
 impl<'a> NewPlayerVersion<'a> {
@@ -349,29 +368,6 @@ pub struct DbPlayerVersion {
     pub mmolb_team_id: Option<String>,
     pub position: i64,
     pub durability: f64,
-}
-
-impl DbPlayerVersion {
-    pub fn as_new(&self) -> NewPlayerVersion {
-        NewPlayerVersion {
-            mmolb_id: &self.mmolb_id,
-            valid_from: self.valid_from,
-            valid_until: self.valid_until,
-            first_name: &self.first_name,
-            last_name: &self.last_name,
-            batting_handedness: self.batting_handedness,
-            pitching_handedness: self.pitching_handedness,
-            home: &self.home,
-            birthseason: self.birthseason,
-            birthday_type: self.birthday_type,
-            birthday_day: self.birthday_day,
-            birthday_superstar_day: self.birthday_superstar_day,
-            likes: &self.likes,
-            dislikes: &self.dislikes,
-            number: self.number,
-            mmolb_team_id: self.mmolb_team_id.as_deref(),
-            position: self.position,
-            durability: self.durability,
-        }
-    }
+    pub greater_boon: Option<i64>,
+    pub lesser_boon: Option<i64>,
 }

@@ -74,6 +74,26 @@ pub mod data {
     }
 
     diesel::table! {
+        data.modifications (id) {
+            id -> Int8,
+            name -> Text,
+            emoji -> Text,
+            description -> Text,
+        }
+    }
+
+    diesel::table! {
+        data.player_modifications (id) {
+            id -> Int8,
+            mmolb_id -> Text,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            modification_id -> Int8,
+        }
+    }
+
+    diesel::table! {
         data.player_versions (id) {
             id -> Int8,
             mmolb_id -> Text,
@@ -95,6 +115,8 @@ pub mod data {
             mmolb_team_id -> Nullable<Text>,
             position -> Int8,
             durability -> Float8,
+            greater_boon -> Nullable<Int8>,
+            lesser_boon -> Nullable<Int8>,
         }
     }
 
@@ -111,12 +133,15 @@ pub mod data {
     diesel::joinable!(event_fielders -> events (event_id));
     diesel::joinable!(events -> games (game_id));
     diesel::joinable!(games -> weather (weather));
+    diesel::joinable!(player_modifications -> modifications (modification_id));
 
     diesel::allow_tables_to_appear_in_same_query!(
         event_baserunners,
         event_fielders,
         events,
         games,
+        modifications,
+        player_modifications,
         player_versions,
         weather,
     );

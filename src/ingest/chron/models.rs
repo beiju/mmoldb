@@ -19,7 +19,7 @@ pub struct ChronEntity<EntityT> {
 }
 
 // We don't deserialize data we don't plan to store
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ChronPlayerModification {
     pub name: String,

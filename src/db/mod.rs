@@ -3,9 +3,9 @@ mod taxa_macro;
 mod to_db_format;
 mod weather;
 
-use std::collections::HashMap;
 // Reexports
 pub use to_db_format::RowToEventError;
+pub use weather::NameEmojiTooltip;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -16,13 +16,15 @@ use log::warn;
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{Day, MaybeRecognized};
 use std::iter;
+use hashbrown::HashMap;
+
 // First-party imports
 pub use crate::db::taxa::{
     Taxa, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
     TaxaFairBallType, TaxaFieldingErrorType, TaxaHitType, TaxaPitchType, TaxaPosition, TaxaDayType
 };
-use crate::ingest::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewPlayerVersion, NewRawEvent};
+use crate::ingest::{ChronPlayerModification, EventDetail, IngestLog};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewPlayerModification, NewPlayerVersion, NewRawEvent};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -1010,6 +1012,46 @@ pub fn insert_timings(
     .insert_into(crate::info_schema::info::ingest_timings::dsl::ingest_timings)
     .execute(conn)
     .map(|_| ())
+}
+
+pub fn get_modifications_table(conn: &mut PgConnection) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
+    use crate::data_schema::data::modifications::dsl as mod_dsl;
+    
+    let table = mod_dsl::modifications
+        .select((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
+        .get_results::<(i64, String, String, String)>(conn)?
+        .into_iter()
+        .map(|(id, name, emoji, tooltip)| (
+            NameEmojiTooltip { name, emoji, tooltip }, id
+        ))
+        .collect();
+    
+    Ok(table)
+}
+
+pub fn insert_modifications(conn: &mut PgConnection, new_modifications: &[&ChronPlayerModification]) -> QueryResult<Vec<(NameEmojiTooltip, i64)>> {
+    use crate::data_schema::data::modifications::dsl as mod_dsl;
+    
+    let to_insert = new_modifications
+        .iter()
+        .map(|m| NewPlayerModification {
+            name: &m.name,
+            emoji: &m.emoji,
+            description: &m.description,
+        })
+        .collect_vec();
+    
+    let results = diesel::insert_into(mod_dsl::modifications)
+        .values(to_insert)
+        .returning((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
+        .get_results::<(i64, String, String, String)>(conn)?
+        .into_iter()
+        .map(|(id, name, emoji, tooltip)| (
+            NameEmojiTooltip { name, emoji, tooltip }, id
+        ))
+        .collect();
+    
+    Ok(results)
 }
 
 pub fn get_latest_player_valid_from(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
