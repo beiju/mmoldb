@@ -542,7 +542,8 @@ taxa! {
         PostseasonRound2 = 9,
         #[display_name: str = "Postseason Round 3"]
         PostseasonRound3 = 10,
-        // Reserved 11 for ElectionStart
+        #[display_name: str = "Election"]
+        Election = 11,
         #[display_name: str = "Holiday"]
         Holiday = 12,
     }

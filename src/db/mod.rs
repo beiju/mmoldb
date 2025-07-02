@@ -1023,24 +1023,20 @@ pub fn get_latest_player_valid_from(conn: &mut PgConnection) -> QueryResult<Opti
         .optional()
 }
 
-pub fn latest_player_version(conn: &mut PgConnection, player_ids: &[String]) -> QueryResult<Vec<Option<DbPlayerVersion>>> {
+pub fn latest_player_versions(conn: &mut PgConnection, player_ids: &[String]) -> QueryResult<HashMap<String, DbPlayerVersion>> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
-    let mut db_versions = pv_dsl::player_versions
+    let map = pv_dsl::player_versions
         .filter(pv_dsl::mmolb_id.eq_any(player_ids))
         .filter(pv_dsl::valid_until.is_null())
         .select(DbPlayerVersion::as_select())
         .order_by(pv_dsl::mmolb_id)
-        .get_results::<DbPlayerVersion>(conn)?;
-
-    let latest_version_in_corresponding_order = player_ids.iter().map(|id| {
-        db_versions.binary_search_by_key(&id, |val| &val.mmolb_id)
-            .ok()
-            .map(|index| db_versions.remove(index))
-    })
+        .get_results::<DbPlayerVersion>(conn)?
+        .into_iter()
+        .map(|v| (v.mmolb_id.clone(), v))
         .collect();
-
-    Ok(latest_version_in_corresponding_order)
+    
+    Ok(map)
 }
 
 pub fn insert_player_versions(

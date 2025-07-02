@@ -661,21 +661,47 @@ async fn do_ingest_of_players_internal(
         let versions = versions.into_iter()
             .collect::<Result<Vec<_>, _>>()?;
 
-        let player_ids = versions.iter()
-            // TODO Can I avoid this clone?
-            .map(|v| v.entity_id.clone())
-            .collect_vec();
-
         // TODO Can I avoid this clone?
         let taxa = taxa.clone();
         conn.run(move |mut conn| {
-            let existing_versions = db::latest_player_version(&mut conn, &player_ids)?;
+            // Convert to Insertable type
+            let mut new_versions = versions.iter()
+                .map(|v| chron_player_as_new(&v, &taxa))
+                .collect_vec();
 
-            let players_to_update = iter::zip(&versions, existing_versions)
+            // Collapse adjacent players who would have identical DB rows. 
+            // Without this we can get multiple of the same entity with null
+            // valid_until
+            new_versions.sort_by(|a, b| (a.mmolb_id, a.valid_from).cmp(&(b.mmolb_id, b.valid_from)));
+            let mut i = 0;
+            while i + 1 < new_versions.len() {
+                i += 1; // Intentionally increment before using it, because we want to start at 1
+                if new_versions[i - 1].is_data_equivalent(&new_versions[i]) {
+                    new_versions[i - 1].valid_until = new_versions[i].valid_until;
+                    // Not the most efficient way to shrink a vec but I don't 
+                    // think it should matter much here 
+                    new_versions.remove(i);
+                }
+            }
+
+            let new_versions_len = new_versions.len();
+            info!("Collapsed {} player versions", versions.len() - new_versions_len);
+
+            let player_ids = new_versions.iter()
+                // TODO Can I avoid this clone?
+                .map(|v| v.mmolb_id.to_string())
+                .collect_vec();
+            
+            // Everything up to here could have been outside the closure, but
+            // the closure imposes unnecessarily strict lifetime requirements
+
+            let existing_versions = db::latest_player_versions(&mut conn, &player_ids)?;
+            assert_eq!(existing_versions.len(), new_versions.len());
+
+            let players_to_update = new_versions.into_iter()
                 .filter_map(|(new_version, old_version)| {
-                    let new_player = chron_player_as_new(&new_version, &taxa);
-                    if let Some(mut old_version) = old_version {
-                        assert_eq!(new_version.entity_id, old_version.mmolb_id);
+                    if let Some(old_version) = old_version {
+                        assert_eq!(new_version.mmolb_id, old_version.mmolb_id);
 
                         // It's normal for the "new" version to be the same age
                         // as the "old" version -- the semantics of the Chron
@@ -683,31 +709,27 @@ async fn do_ingest_of_players_internal(
                         // In this case there should never be any changes.
                         // But if the "new" version is older than the "old"
                         // version that indicates a bug in the code
-                        if old_version.valid_from > new_version.valid_from.naive_utc() {
+                        if old_version.valid_from > new_version.valid_from {
                             error!(
                                 "Received an out-of-order version for player {}: The lastest \
                                 stored version is {}, but we just got an update from {}",
-                                new_version.entity_id, old_version.valid_from,
-                                new_version.valid_from.naive_utc(),
+                                new_version.mmolb_id, old_version.valid_from,
+                                new_version.valid_from,
                             );
                         }
 
-                        // Copy over the fields we don't want to compare
-                        old_version.valid_from = new_player.valid_from;
-                        old_version.valid_until = new_player.valid_until;
-
-                        if old_version.as_new() != new_player {
-                            Some((Some(old_version.id), new_player))
+                        if old_version.as_new().is_data_equivalent(&new_version) {
+                            Some((Some(old_version.id), new_version))
                         } else {
                             None
                         }
                     } else {
-                        Some((None, new_player))
+                        Some((None, new_version))
                     }
                 })
                 .collect_vec();
 
-            info!("Inserting {} new player versions out of {}", players_to_update.len(), versions.len());
+            info!("Inserting {} new player versions out of {}", players_to_update.len(), new_versions_len);
             db::insert_player_versions(&mut conn, &players_to_update)
 
             // TODO Also do modifications
@@ -736,6 +758,9 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa) ->
         }
         Day::PostseasonRound3 => {
             (taxa.day_type_id(TaxaDayType::PostseasonRound3), None, None)
+        }
+        Day::Election => {
+            (taxa.day_type_id(TaxaDayType::Election), None, None)
         }
         Day::Holiday => {
             (taxa.day_type_id(TaxaDayType::Holiday), None, None)

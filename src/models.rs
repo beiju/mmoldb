@@ -314,6 +314,18 @@ pub struct NewPlayerVersion<'a> {
     pub durability: f64,
 }
 
+impl<'a> NewPlayerVersion<'a> {
+    pub fn is_data_equivalent(&self, other: &Self) -> bool {
+        let cmp = Self {
+            valid_from: other.valid_from,
+            valid_until: other.valid_until,
+            ..*self
+        };
+        
+        &cmp == other
+    }
+}
+
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::player_versions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
