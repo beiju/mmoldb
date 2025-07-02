@@ -35,7 +35,7 @@ use crate::db::{NameEmojiTooltip, Taxa, TaxaDayType};
 use crate::ingest::chron::{ChronError, ChronStartupError, ChronStreamError};
 use crate::ingest::worker::{IngestWorker, IngestWorkerInProgress};
 use crate::{Db, db};
-use crate::models::NewPlayerVersion;
+use crate::models::{NewPlayerModificationVersion, NewPlayerVersion};
 
 fn default_ingest_period() -> u64 {
     30 * 60 // 30 minutes, expressed in seconds
@@ -674,7 +674,7 @@ async fn do_ingest_of_players_internal(
                 .unwrap_or(Utc::now());
             let time_ago = latest_time.signed_duration_since(Utc::now());
             let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
-            
+
             // Collect any new modifications that need to be added
             let new_modifications = versions.iter()
                 .flat_map(|version| {
@@ -687,12 +687,12 @@ async fn do_ingest_of_players_internal(
                 })
                 .unique()
                 .collect_vec();
-            
+
             let inserted_modifications = db::insert_modifications(&mut conn, &new_modifications)?;
             assert_eq!(new_modifications.len(), inserted_modifications.len());
-            
+
             modifications.extend(inserted_modifications);
-            
+
             // Convert to Insertable type
             let mut new_versions = versions.iter()
                 .map(|v| chron_player_as_new(&v, &taxa, &modifications))
@@ -706,7 +706,7 @@ async fn do_ingest_of_players_internal(
                 // Pull out all players who don't yet appear
                 let remaining_versions = new_versions.into_iter()
                     .flat_map(|version| {
-                        match this_batch.entry(version.mmolb_id) {
+                        match this_batch.entry(version.0.mmolb_player_id) {
                             Entry::Occupied(_) => {
                                 // Then retain this version for the next sub-batch
                                 Some(version)
@@ -724,19 +724,18 @@ async fn do_ingest_of_players_internal(
                     .map(|(_, version)| version)
                     .collect_vec();
 
-                let inserted = db::insert_player_versions(&mut conn, &players_to_update)?;
+                let to_insert = players_to_update.len();
+                let inserted = db::insert_player_versions(&mut conn, players_to_update)?;
                 info!(
                     "Sent {} new player versions out of {} to the database. {} left of this batch. \
                     {inserted} versions were actually inserted, the rest were duplicates. \
                     Currently processing players from {human_time_ago}.",
-                    players_to_update.len(), versions.len(), remaining_versions.len(),
+                    to_insert, versions.len(), remaining_versions.len(),
                 );
 
                 new_versions = remaining_versions;
                 this_batch = HashMap::new();
             }
-
-            // TODO Also do player_modifications
 
             Ok::<_, IngestFatalError>(modifications)
         }).await?;
@@ -745,7 +744,7 @@ async fn do_ingest_of_players_internal(
     Ok(())
 }
 
-fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa, modifications: &HashMap<NameEmojiTooltip, i64>) -> NewPlayerVersion<'a> {
+fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa, modifications: &HashMap<NameEmojiTooltip, i64>) -> (NewPlayerVersion<'a>, Vec<NewPlayerModificationVersion<'a>>) {
     let (birthday_type, birthday_day, birthday_superstar_day) = match entity.data.birthday {
         Day::Preseason => {
             (taxa.day_type_id(TaxaDayType::Preseason), None, None)
@@ -778,14 +777,25 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa, mo
             (taxa.day_type_id(TaxaDayType::SuperstarDay), None, Some(day as i32))
         }
     };
-    
+
     let get_boon_id = |boon: &ChronPlayerModification| {
         *modifications.get(&(boon.name.as_str(), boon.emoji.as_str(), boon.description.as_str()))
             .expect("All modifications should have been added to the modifications table")
     };
 
-    NewPlayerVersion {
-        mmolb_id: &entity.entity_id,
+    let modifications = entity.data.modifications.iter()
+        .enumerate()
+        .map(|(i, m)| NewPlayerModificationVersion {
+            mmolb_player_id: &entity.entity_id,
+            valid_from: entity.valid_from.naive_utc(),
+            valid_until: None,
+            modification_order: i as i32,
+            modification_id: get_boon_id(m),
+        })
+        .collect_vec();
+
+    let player = NewPlayerVersion {
+        mmolb_player_id: &entity.entity_id,
         valid_from: entity.valid_from.naive_utc(),
         valid_until: None,
         first_name: &entity.data.first_name,
@@ -805,7 +815,9 @@ fn chron_player_as_new<'a>(entity: &'a ChronEntity<ChronPlayer>, taxa: &Taxa, mo
         durability: entity.data.durability,
         greater_boon: entity.data.greater_boon.as_ref().map(get_boon_id),
         lesser_boon: entity.data.lesser_boon.as_ref().map(get_boon_id),
-    }
+    };
+
+    (player, modifications)
 }
 
 async fn do_ingest_of_games_internal(

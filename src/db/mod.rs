@@ -24,7 +24,7 @@ pub use crate::db::taxa::{
     TaxaFairBallType, TaxaFieldingErrorType, TaxaHitType, TaxaPitchType, TaxaPosition, TaxaDayType
 };
 use crate::ingest::{ChronPlayerModification, EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewPlayerModification, NewPlayerVersion, NewRawEvent};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerModificationVersion, NewPlayerVersion, NewRawEvent};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -579,14 +579,14 @@ fn insert_games_internal<'e>(
     // game, but even in release mode we may need to delete partial games and replace them with
     // full games.
     let delete_old_games_start = Utc::now();
-    let game_mmolb_ids = games
+    let game_mmolb_player_ids = games
         .iter()
         .map(GameForDb::raw)
         .map(|(id, _)| id)
         .collect_vec();
 
     diesel::delete(games_dsl::games)
-        .filter(games_dsl::mmolb_game_id.eq_any(game_mmolb_ids))
+        .filter(games_dsl::mmolb_game_id.eq_any(game_mmolb_player_ids))
         .execute(conn)?;
     let delete_old_games_duration = (Utc::now() - delete_old_games_start).as_seconds_f64();
 
@@ -1016,7 +1016,7 @@ pub fn insert_timings(
 
 pub fn get_modifications_table(conn: &mut PgConnection) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
     use crate::data_schema::data::modifications::dsl as mod_dsl;
-    
+
     let table = mod_dsl::modifications
         .select((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
         .get_results::<(i64, String, String, String)>(conn)?
@@ -1025,22 +1025,22 @@ pub fn get_modifications_table(conn: &mut PgConnection) -> QueryResult<HashMap<N
             NameEmojiTooltip { name, emoji, tooltip }, id
         ))
         .collect();
-    
+
     Ok(table)
 }
 
 pub fn insert_modifications(conn: &mut PgConnection, new_modifications: &[&ChronPlayerModification]) -> QueryResult<Vec<(NameEmojiTooltip, i64)>> {
     use crate::data_schema::data::modifications::dsl as mod_dsl;
-    
+
     let to_insert = new_modifications
         .iter()
-        .map(|m| NewPlayerModification {
+        .map(|m| NewModification {
             name: &m.name,
             emoji: &m.emoji,
             description: &m.description,
         })
         .collect_vec();
-    
+
     let results = diesel::insert_into(mod_dsl::modifications)
         .values(to_insert)
         .returning((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
@@ -1050,13 +1050,13 @@ pub fn insert_modifications(conn: &mut PgConnection, new_modifications: &[&Chron
             NameEmojiTooltip { name, emoji, tooltip }, id
         ))
         .collect();
-    
+
     Ok(results)
 }
 
 pub fn get_latest_player_valid_from(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
-    
+
     pv_dsl::player_versions
         .select(pv_dsl::valid_from)
         .order(pv_dsl::valid_from.desc())
@@ -1069,23 +1069,34 @@ pub fn latest_player_versions(conn: &mut PgConnection, player_ids: &[String]) ->
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
     let map = pv_dsl::player_versions
-        .filter(pv_dsl::mmolb_id.eq_any(player_ids))
+        .filter(pv_dsl::mmolb_player_id.eq_any(player_ids))
         .filter(pv_dsl::valid_until.is_null())
         .select(DbPlayerVersion::as_select())
-        .order_by(pv_dsl::mmolb_id)
+        .order_by(pv_dsl::mmolb_player_id)
         .get_results::<DbPlayerVersion>(conn)?
         .into_iter()
-        .map(|v| (v.mmolb_id.clone(), v))
+        .map(|v| (v.mmolb_player_id.clone(), v))
         .collect();
-    
+
     Ok(map)
 }
 
 pub fn insert_player_versions(
     conn: &mut PgConnection,
-    new_player_versions: &[NewPlayerVersion],
+    new_player_versions: Vec<(NewPlayerVersion, Vec<NewPlayerModificationVersion>)>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
+    use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
+
+    let (new_player_versions, new_player_modification_versions): (Vec<NewPlayerVersion>, Vec<Vec<NewPlayerModificationVersion>>) = new_player_versions.into_iter().unzip();
+    let new_player_modification_versions = new_player_modification_versions.into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::insert_into(pmv_dsl::player_modification_versions)
+        .values(new_player_modification_versions)
+        .execute(conn)?;
 
     // Insert new records
     diesel::insert_into(pv_dsl::player_versions)

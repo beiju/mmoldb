@@ -292,7 +292,7 @@ pub struct DbFielder {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = crate::data_schema::data::modifications)]
-pub struct NewPlayerModification<'a> {
+pub struct NewModification<'a> {
     pub name: &'a str,
     pub emoji: &'a str,
     pub description: &'a str,
@@ -301,7 +301,7 @@ pub struct NewPlayerModification<'a> {
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::modifications)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbPlayerModification {
+pub struct DbModification {
     pub id: i64,
     pub name: String,
     pub emoji: String,
@@ -309,9 +309,19 @@ pub struct DbPlayerModification {
 }
 
 #[derive(Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_modification_versions)]
+pub struct NewPlayerModificationVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub modification_order: i32,
+    pub modification_id: i64,
+}
+
+#[derive(Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_versions)]
 pub struct NewPlayerVersion<'a> {
-    pub mmolb_id: &'a str,
+    pub mmolb_player_id: &'a str,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
     pub first_name: &'a str,
@@ -350,7 +360,7 @@ impl<'a> NewPlayerVersion<'a> {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbPlayerVersion {
     pub id: i64,
-    pub mmolb_id: String,
+    pub mmolb_player_id: String,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
     pub first_name: String,
