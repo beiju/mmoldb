@@ -2490,8 +2490,8 @@ impl<'g> Game<'g> {
                     } else {
                         // Otherwise the game does not end
                         ingest_logs.info(format!(
-                            "Game didn't end after the {side:#?} of the {number} because the score \
-                            was tied ({}-{})",
+                            "Game didn't end after the {side:#?} of the {number} \
+                            (with score {}-{})",
                             self.state.away_score, self.state.home_score,
                         ));
                         false
