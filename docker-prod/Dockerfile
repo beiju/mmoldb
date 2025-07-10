@@ -15,7 +15,7 @@ RUN cargo init
 COPY ../.cargo /code/.cargo
 COPY ../Cargo.toml ../Cargo.lock /code/
 RUN cargo fetch --manifest-path /code/Cargo.toml --locked
-RUN cargo build-dependencies --release  # third-party tool
+# RUN cargo build-dependencies --release  # third-party tool
 
 FROM setup AS builder
 
@@ -23,6 +23,7 @@ FROM setup AS builder
 COPY ../build.rs /code/
 COPY ../migrations /code/migrations
 COPY ../src /code/src
+COPY ../schema_docs /code/schema_docs
 RUN cargo build --release --offline
 
 FROM debian:bookworm
