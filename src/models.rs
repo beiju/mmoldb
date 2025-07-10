@@ -1,5 +1,6 @@
 use chrono::NaiveDateTime;
 use rocket_sync_db_pools::diesel::prelude::*;
+use serde::Serialize;
 
 #[derive(Insertable)]
 #[diesel(table_name = crate::info_schema::info::ingests)]
@@ -298,4 +299,12 @@ pub struct DbFielder {
     pub fielder_name: String,
     pub fielder_slot: i64,
     pub play_order: i32,
+}
+
+#[derive(Queryable, Selectable, Serialize)]
+#[diesel(table_name = crate::meta_schema::meta::schemata)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbSchema {
+    pub catalog_name: Option<String>,
+    pub schema_name: Option<String>,
 }

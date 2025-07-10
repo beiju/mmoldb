@@ -23,10 +23,7 @@ pub use crate::db::taxa::{
     TaxaSlot,
 };
 use crate::ingest::{EventDetail, IngestLog};
-use crate::models::{
-    DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner,
-    NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent,
-};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, DbSchema, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -1102,4 +1099,12 @@ pub fn insert_timings(
     .insert_into(crate::info_schema::info::ingest_timings::dsl::ingest_timings)
     .execute(conn)
     .map(|_| ())
+}
+
+pub fn docs_debug(conn: &mut PgConnection) -> QueryResult<Vec<DbSchema>> {
+    use crate::meta_schema::meta::schemata::dsl as schemata_dsl;
+
+    schemata_dsl::schemata
+        .select(DbSchema::as_select())
+        .get_results(conn)
 }

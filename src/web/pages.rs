@@ -9,6 +9,7 @@ use crate::web::error::AppError;
 use crate::web::utility_contexts::{DayContext, FormattedDateContext, GameContext};
 use crate::{Db, db};
 use crate::models::DbEventIngestLog;
+use super::docs_pages::*;
 
 const PAGE_OF_GAMES_SIZE: usize = 100;
 
@@ -368,18 +369,6 @@ pub async fn status_page(db: Db, ingest_task: &State<IngestTask>) -> Result<Temp
             number_of_ingests_not_shown: number_of_ingests_not_shown,
         },
     ))
-}
-
-#[get("/docs")]
-pub async fn docs_page() -> Template {
-    Template::render(
-        "docs",
-        context! {
-            index_url: uri!(index_page()),
-            status_url: uri!(status_page()),
-            docs_url: uri!(docs_page()),
-        },
-    )
 }
 
 #[get("/")]

@@ -9,6 +9,7 @@ mod ingest;
 mod models;
 mod parsing_extensions;
 mod web;
+mod meta_schema;
 
 use crate::ingest::{IngestFairing, IngestTask};
 use num_format::{Locale, ToFormattedString};
