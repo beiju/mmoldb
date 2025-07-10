@@ -1,0 +1,69 @@
+{% import "macros" as macros %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MMOLDB</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/index.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
+</head>
+<body>
+    <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
+
+    <section class="card nav">
+        <a class="nav-item" href="{{ status_url }}">Status</a>
+        <a class="nav-item current" href="{{ docs_url }}">Docs</a>
+    </section>
+
+    <section class="card">
+        <h2 class="about-heading">The 3 schema</h2>
+
+        <h3 class="about-heading"><code>data</code></h3>
+        <p>
+            This is where you mostly want to look. It contains the
+            actual data you'll be querying.
+        </p>
+
+        <h3 class="about-heading"><code>taxa</code></h3>
+        <p>
+            Contains categorical information. You can think of
+            each <code>taxa</code> table as an enum, and each row as a variant of
+            that enum. The difference between <code>taxa</code> and an actual enum
+            is that <code>taxa</code> tables have extra columns with properties
+            about the variants.
+        </p>
+        <p>
+            The correct way to use any column that references a <code>taxa</code> is
+            to join on said <code>taxa</code> table and use the taxa's <code>name</code>
+            in your <code>where</code> and <code>group by</code> clauses. However, I
+            recognize that I won't be able to stop people from using IDs instead, so
+            those are guaranteed to be stable.
+        </p>
+        <h3 class="about-heading"><code>info</code></h3>
+        <p>
+            Holds information that powers the MMOLB front-end
+            (the website you are probably reading this text on). You likely won't need
+            to use this schema, aside from the <code>info.raw_events</code> table, which
+            lets you see the game log message that corresponds to each row in
+            <code>data.events</code>. The <code>info.raw_events</code> table would be in the
+            <code>data</code> schema if not for a technological limitation.
+        </p>
+    </section>
+
+    <section class="card">
+        <h2 class="about-heading"><code>data</code></h2>
+
+        <h3 class="about-heading"><code>data.events</code></h3>
+        <p>
+            The main table. It contains a row for every pitch. Each `event` belongs
+            to exactly one game. The `game_event_index` identifies which event in the
+            game it is. Note that there are many things reported in the game's "events"
+            list which aren't recorded in this table (such as inning start and end
+            messages, and [currently] pitcher swaps), so there are gaps in
+            `game_event_index`.
+        </p>
+    </section>
+</body>
+</html>

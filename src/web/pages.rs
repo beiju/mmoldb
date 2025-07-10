@@ -271,8 +271,8 @@ pub async fn debug_no_games_page() -> Result<Template, AppError> {
     ))
 }
 
-#[get("/")]
-pub async fn index_page(db: Db, ingest_task: &State<IngestTask>) -> Result<Template, AppError> {
+#[get("/status")]
+pub async fn status_page(db: Db, ingest_task: &State<IngestTask>) -> Result<Template, AppError> {
     #[derive(Serialize, Default)]
     struct IngestTaskContext {
         is_starting: bool,
@@ -353,9 +353,11 @@ pub async fn index_page(db: Db, ingest_task: &State<IngestTask>) -> Result<Templ
         .and_then(|ingest| ingest.finished_at.clone());
 
     Ok(Template::render(
-        "index",
+        "status",
         context! {
             index_url: uri!(index_page()),
+            status_url: uri!(status_page()),
+            docs_url: uri!(docs_page()),
             games_page_url: uri!(games_page()),
             total_games: total_games,
             games_with_issues_page_url: uri!(games_with_issues_page()),
@@ -366,6 +368,30 @@ pub async fn index_page(db: Db, ingest_task: &State<IngestTask>) -> Result<Templ
             number_of_ingests_not_shown: number_of_ingests_not_shown,
         },
     ))
+}
+
+#[get("/docs")]
+pub async fn docs_page() -> Template {
+    Template::render(
+        "docs",
+        context! {
+            index_url: uri!(index_page()),
+            status_url: uri!(status_page()),
+            docs_url: uri!(docs_page()),
+        },
+    )
+}
+
+#[get("/")]
+pub async fn index_page() -> Template {
+    Template::render(
+        "index",
+        context! {
+            index_url: uri!(index_page()),
+            status_url: uri!(status_page()),
+            docs_url: uri!(docs_page()),
+        },
+    )
 }
 
 #[get("/debug-always-error")]

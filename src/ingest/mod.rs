@@ -626,7 +626,10 @@ async fn do_ingest_internal(
     ingest_id: i64,
     start_page: Option<String>,
 ) -> Result<(i64, Option<String>), IngestFatalError> {
-    info!("Recorded ingest start in database. Starting ingest...");
+    info!(
+        "Recorded ingest start in database. Starting ingest with up to {} workers.",
+        config.ingest_parallelism,
+    );
 
     struct PageProgress {
         // Track the page the next ingest should resume at.

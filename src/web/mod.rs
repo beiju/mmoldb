@@ -5,6 +5,8 @@ mod utility_contexts;
 pub fn routes() -> Vec<rocket::Route> {
     rocket::routes![
         pages::index_page,
+        pages::status_page,
+        pages::docs_page,
         pages::games_page,
         pages::paginated_games_page,
         pages::games_with_issues_page,

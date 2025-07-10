@@ -1,0 +1,62 @@
+{% import "macros" as macros %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MMOLDB</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/index.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
+</head>
+<body>
+    <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
+
+    <section class="card nav">
+        <a class="nav-item current" href="{{ status_url }}">Status</a>
+        <a class="nav-item" href="{{ docs_url }}">Docs</a>
+    </section>
+
+    <section class="card status-card">
+        <a class="status-item" href="{{ games_page_url }}">{{ total_games | num_format }} total games</a>
+        {% if total_games_with_issues > 0 %}
+        <a class="status-item with-issues" href="{{ games_with_issues_page_url }}">{{ total_games_with_issues | num_format }} games with import issues</a>
+        {% endif %}
+        <span class="status-item">
+            {% if task_status.error %}
+            Latest ingest failed!
+            {% elif task_status.is_starting %}
+            Ingest is starting...
+            {% elif task_status.is_stopping %}
+            Ingest is stopping...
+            {% elif task_status.is_running %}
+            Ingest running
+            {% elif last_ingest_finished_at %}
+            Last ingest finished {{ self::date_format(date=last_ingest_finished_at) }}
+            {% else %}
+            No ingest yet
+            {% endif %}
+        </span>
+    </section>
+
+    <section class="card">
+        <h2 class="ingests-heading">Latest ingests:</h2>
+
+        {% if ingests %}
+        <ul class="ingests">
+            {% for ingest in ingests %}
+                <li class="ingest">
+                    {# All one line to avoid newlines being turned into spaces by HTML whitespace collapse. #}
+                    <a href="{{ ingest.uri }}">Ingest of {{ ingest.num_games }} games</a> started {{ self::date_format(date=ingest.started_at) }}{% if ingest.finished_at %} and finished {{ self::date_format(date=ingest.finished_at) }}{% endif %}{% if ingest.aborted_at %} and aborted {{ self::date_format(date=ingest.aborted_at) }}{% endif %}.
+                </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="no-ingests">No ingests so far</p>
+        {% endif %}
+        {% if number_of_ingests_not_shown > 0 %}
+        <p class="more-ingests">...and {{ number_of_ingests_not_shown }} more.</p>
+        {% endif %}
+    </section>
+</body>
+</html>

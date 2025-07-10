@@ -68,22 +68,22 @@ pub mod taxa {
     }
 
     diesel::table! {
-        taxa.pitch_type (id) {
+        taxa.leagues (id) {
             id -> Int8,
             name -> Text,
-            display_name -> Text,
+            color -> Text,
+            emoji -> Text,
+            league_type -> Text,
+            parent_team_id -> Text,
+            mmolb_league_id -> Text,
         }
     }
 
     diesel::table! {
-        taxa.leagues (id) {
+        taxa.pitch_type (id) {
             id -> Int8,
             name -> Text,
-            mmolb_league_id -> Text,
-            parent_team_id -> Text,
-            emoji -> Text,
-            color -> Text,
-            league_type -> Text,
+            display_name -> Text,
         }
     }
 
@@ -110,6 +110,7 @@ pub mod taxa {
         fielder_location,
         fielding_error_type,
         hit_type,
+        leagues,
         pitch_type,
         slot,
     );
