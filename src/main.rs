@@ -143,3 +143,30 @@ fn rocket() -> _ {
         .attach(AdHoc::on_ignite("Migrations", run_migrations))
         .attach(IngestFairing::new())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    pub async fn get_db() -> Db {
+        let config = get_figment_with_constructed_db_url()
+            .merge(("port", openport::pick_random_unused_port()))
+            .merge(("databases", map!["mmoldb" => map!["pool_size" => 3]]));
+
+        let rocket = rocket::custom(config)
+            .attach(Db::fairing())
+            .ignite()
+            .await
+            .expect("Rocket failed to ignite");
+
+        Db::get_one(&rocket).await
+            .expect("Failed to get a database connection")
+    }
+
+    #[tokio::test]
+    async fn connect_to_db() {
+        let db = get_db().await;
+
+        db.run(|_| ()).await;
+    }
+}

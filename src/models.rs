@@ -308,3 +308,22 @@ pub struct DbSchema {
     pub catalog_name: Option<String>,
     pub schema_name: Option<String>,
 }
+
+
+#[derive(Queryable, Selectable, Serialize)]
+#[diesel(table_name = crate::meta_schema::meta::tables)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbTable {
+    table_catalog: Option<String>,
+    table_schema: Option<String>,
+    table_name: Option<String>,
+    table_type: Option<String>,
+    self_referencing_column_name: Option<String>,
+    reference_generation: Option<String>,
+    user_defined_type_catalog: Option<String>,
+    user_defined_type_schema: Option<String>,
+    user_defined_type_name: Option<String>,
+    is_insertable_into: Option<String>,
+    is_typed: Option<String>,
+    commit_action: Option<String>,
+}

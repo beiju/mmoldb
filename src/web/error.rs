@@ -5,9 +5,10 @@ use rocket::response::Responder;
 use rocket::{Request, Response, uri};
 use rocket_dyn_templates::{Template, context};
 use thiserror::Error;
-
+use crate::web::docs_pages::DocsError;
 use crate::web::pages::rocket_uri_macro_index_page;
 
+// TODO This should probably be some miette bullshit
 #[derive(Debug, Error, Diagnostic)]
 pub enum AppError {
     #[error("This URL produces a test error")]
@@ -15,6 +16,9 @@ pub enum AppError {
 
     #[error(transparent)]
     DbError(#[from] diesel::result::Error),
+
+    #[error(transparent)]
+    DocsError(#[from] DocsError),
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for AppError {

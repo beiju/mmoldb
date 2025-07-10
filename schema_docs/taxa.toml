@@ -1,0 +1,11 @@
+description = """
+Contains categorical information. You can think of each `taxa` table as
+an enum, and each row as a variant of that enum. The difference between
+`taxa` and an actual enum is that `taxa` tables have extra columns with
+properties about the variants.
+
+The correct way to use any column that references a `taxa` is to join on
+said `taxa` table and use the taxa's `name` in your `where` and `group
+by` clauses. However, I recognize that I won't be able to stop people
+from using IDs instead, so those are guaranteed to be stable.
+"""

@@ -23,7 +23,7 @@ pub use crate::db::taxa::{
     TaxaSlot,
 };
 use crate::ingest::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, DbSchema, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, DbSchema, DbTable, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -1101,10 +1101,14 @@ pub fn insert_timings(
     .map(|_| ())
 }
 
-pub fn docs_debug(conn: &mut PgConnection) -> QueryResult<Vec<DbSchema>> {
-    use crate::meta_schema::meta::schemata::dsl as schemata_dsl;
+pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_name: &str) -> QueryResult<Vec<DbTable>> {
+    use crate::meta_schema::meta::tables::dsl as tables_dsl;
 
-    schemata_dsl::schemata
-        .select(DbSchema::as_select())
+    tables_dsl::tables
+        .filter(
+            tables_dsl::table_catalog.eq(catalog_name)
+                .and(tables_dsl::table_schema.eq(schema_name)),
+        )
+        .select(DbTable::as_select())
         .get_results(conn)
 }

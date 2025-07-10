@@ -1,0 +1,8 @@
+description = """
+Holds information that powers the MMOLB front-end (the website you are
+probably reading this text on). You likely won't need to use this
+schema, aside from the `info.raw_events` table, which lets you see the
+game log message that corresponds to each row in `data.events`. The
+`info.raw_events` table would be in the `data` schema if not for a
+technological limitation.
+"""
