@@ -193,7 +193,6 @@ fn downgrade_parsed_places_to_match(
         ParsedEventMessage::DoublePlayCaught { .. } => {}
         ParsedEventMessage::ReachOnFieldingError { .. } => {}
         ParsedEventMessage::WeatherDelivery { .. } => {}
-        ParsedEventMessage::WeatherDeliveryDiscard { .. } => {}
         ParsedEventMessage::WeatherShipment { .. } => {}
         ParsedEventMessage::WeatherSpecialDelivery { .. } => {}
         ParsedEventMessage::Balk { .. } => {}

@@ -14,7 +14,7 @@ use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use itertools::{Itertools, Either};
 use log::warn;
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{Day, MaybeRecognized};
+use mmolb_parsing::enums::{Day};
 use std::iter;
 // First-party imports
 pub use crate::db::taxa::{
@@ -622,21 +622,41 @@ fn insert_games_internal<'e>(
             };
 
             let (day, superstar_day) = match &raw_game.day {
-                MaybeRecognized::Recognized(Day::SuperstarBreak) => {
+                Ok(Day::SuperstarBreak) => {
                     // TODO Convert this to a gamewide ingest log warning
                     warn!("A game happened on a non-numbered Superstar Break day.");
                     (None, None)
                 }
-                MaybeRecognized::Recognized(Day::Holiday) => {
+                Ok(Day::Holiday) => {
                     // TODO Convert this to a gamewide ingest log warning
                     warn!("A game happened on a Holiday.");
                     (None, None)
                 }
-                MaybeRecognized::Recognized(Day::Day(day)) => (Some(*day), None),
-                MaybeRecognized::Recognized(Day::SuperstarDay(day)) => (None, Some(*day)),
-                MaybeRecognized::NotRecognized(err) => {
+                Ok(Day::Day(day)) => (Some(*day), None),
+                Ok(Day::SuperstarDay(day)) => (None, Some(*day)),
+                Ok(Day::Election) => {
+                    // TODO Convert this to a gamewide ingest log warning
+                    warn!("A game happened on a Election.");
+                    (None, None)
+                },
+                Ok(Day::PostseasonPreview) => {
+                    // TODO Convert this to a gamewide ingest log warning
+                    warn!("A game happened on Postseason Preview.");
+                    (None, None)
+                },
+                Ok(Day::Preseason) => {
+                    // TODO Convert this to a gamewide ingest log warning
+                    warn!("A game happened on a Preseason.");
+                    (None, None)
+                },
+                Ok(Day::PostseasonRound(_)) => {
+                    // TODO Convert this to a gamewide ingest log warning
+                    warn!("A game happened on a Postseason Round (so far this type of day only shows up on player's birthdays).");
+                    (None, None)
+                },
+                Err(error) => {
                     // TODO Convert this to a gamewide ingest log error
-                    warn!("Day was not recognized: {err}");
+                    warn!("Day was not recognized: {error}");
                     (None, None)
                 }
             };

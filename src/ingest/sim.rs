@@ -9,7 +9,7 @@ use log::warn;
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, BatterStat, Day, Distance, FairBallDestination, FairBallType,
-    FieldingErrorType, FoulType, GameOverMessage, HomeAway, MaybeRecognized, NowBattingStats,
+    FieldingErrorType, FoulType, GameOverMessage, HomeAway, NowBattingStats,
     Place, StrikeType, TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
@@ -25,10 +25,8 @@ use strum::IntoDiscriminant;
 use thiserror::Error;
 
 #[derive(Debug, Error, Diagnostic)]
-#[error("{message}")]
-pub struct ParseError {
-    message: String,
-}
+#[error("Parse error: {}", .0)]
+pub struct ParseError(mmolb_parsing::parsed_event::GameEventParseError);
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum SimStartupError {
@@ -41,9 +39,8 @@ pub enum SimStartupError {
         previous: ParsedEventMessageDiscriminants,
     },
 
-    #[error("Parse error when attempting to parse {event_type} event")]
+    #[error(transparent)]
     ParseError {
-        event_type: String,
         #[diagnostic_source]
         source: ParseError,
     },
@@ -55,8 +52,8 @@ pub enum SimStartupError {
         received: ParsedEventMessageDiscriminants,
     },
 
-    #[error("Couldn't parse game day: {error}")]
-    FailedToParseGameDay { error: String },
+    #[error("Couldn't parse game day")]
+    FailedToParseGameDay { source: mmolb_parsing::NotRecognized },
 
     #[error("Couldn't parse starting pitcher \"{0}\"")]
     FailedToParseStartingPitcher(String),
@@ -64,9 +61,9 @@ pub enum SimStartupError {
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum SimEventError {
-    #[error("Parse error when attempting to parse {event_type} event")]
+    #[error(transparent)]
     ParseError {
-        event_type: String,
+        #[diagnostic_source]
         source: ParseError,
     },
 
@@ -378,9 +375,8 @@ macro_rules! extract_next_game_event {
         let expected = &[$($expected,)*];
         match $iter.next(expected)? {
             $($p => Ok($e),)*
-            ParsedEventMessage::ParseError { event_type, message } => Err(SimStartupError::ParseError {
-                event_type: event_type.to_string(),
-                source: ParseError { message: message.to_string() },
+            ParsedEventMessage::ParseError { error, .. } => Err(SimStartupError::ParseError {
+                source: ParseError(error.clone()),
             }),
             other => Err(SimStartupError::UnexpectedEventType {
                 expected,
@@ -413,9 +409,8 @@ macro_rules! game_event {
             $($p => {
                 Ok($e)
             })*
-            ParsedEventMessage::ParseError { event_type, message } => Err(SimEventError::ParseError {
-                event_type: event_type.to_string(),
-                source: ParseError { message: message.to_string() },
+            ParsedEventMessage::ParseError { error, .. } => Err(SimEventError::ParseError {
+                source: ParseError(error.clone()),
             }),
             other => Err(SimEventError::UnexpectedEventType {
                 expected,
@@ -1099,10 +1094,10 @@ impl<'g> Game<'g> {
             game_id,
             season: game_data.season.into(),
             day: match &game_data.day {
-                MaybeRecognized::Recognized(day) => *day,
-                MaybeRecognized::NotRecognized(error) => {
+                Ok(day) => *day,
+                Err(error) => {
                     return Err(SimStartupError::FailedToParseGameDay {
-                        error: error.clone(),
+                        source: error.clone(),
                     });
                 }
             },
@@ -1176,6 +1171,10 @@ impl<'g> Game<'g> {
             Day::Holiday => true,
             Day::Day(day) => day <= day_threshold,
             Day::SuperstarDay(_) => true,
+            Day::PostseasonRound(_) => false,
+            Day::PostseasonPreview => true,
+            Day::Preseason => true,
+            Day::Election => true,
         }
     }
 
@@ -1942,7 +1941,7 @@ impl<'g> Game<'g> {
                 let pitch = raw_event.pitch.as_ref().and_then(|p| {
                     Some(Pitch {
                         pitch_speed: p.speed,
-                        pitch_type: *p.pitch_type.inner()?,
+                        pitch_type: p.pitch_type.as_ref().copied().ok()?,
                         pitch_zone: p.zone,
                     })
                 });
@@ -2612,11 +2611,6 @@ impl<'g> Game<'g> {
                     // TODO Don't ignore weather delivery
                     None
                 },
-                [ParsedEventMessageDiscriminants::WeatherDeliveryDiscard]
-                ParsedEventMessage::WeatherDeliveryDiscard { .. } => {
-                    // TODO Don't ignore weather delivery discard
-                    None
-                },
                 [ParsedEventMessageDiscriminants::WeatherShipment]
                 ParsedEventMessage::WeatherShipment { .. } => {
                     // TODO Don't ignore weather shipment
@@ -2684,7 +2678,7 @@ fn check_now_batting_stats(
                 );
             }
         }
-        NowBattingStats::Stats { stats } => {
+        NowBattingStats::Stats(stats) => {
             let mut their_stats = stats.iter();
 
             match their_stats.next() {
