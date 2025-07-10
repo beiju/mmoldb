@@ -74,6 +74,30 @@ pub async fn docs_page() -> Result<Template, AppError> {
     ))
 }
 
+#[get("/docs/<schema_name>")]
+pub async fn docs_schema_page(schema_name: &str) -> Result<Template, AppError> {
+    #[derive(Debug, Serialize)]
+    struct Schema {
+        description: String,
+    }
+
+    let schema_file = SCHEMA_DOCS_DIR.get_file(schema_name)
+        .ok_or(DocsError::DocsFileMissing(schema_name.into()))?;
+
+    let docs: SchemaDocs = toml::from_slice(schema_file.contents())
+        .map_err(DocsError::CouldntDeserializeDocsFile)?;
+    
+    Ok(Template::render(
+        "docs_table",
+        context! {
+            index_url: uri!(index_page()),
+            status_url: uri!(status_page()),
+            docs_url: uri!(docs_page()),
+            table: docs,
+        },
+    ))
+}
+
 #[get("/docs/debug/<table_name>")]
 pub async fn docs_debug_page(table_name: String, db: Db) -> Result<Template, AppError> {
     let data = db.run(move |conn| {

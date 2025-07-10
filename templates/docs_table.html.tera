@@ -1,0 +1,26 @@
+{% import "macros" as macros %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MMOLDB</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/index.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
+</head>
+<body>
+    <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
+
+    <section class="card nav">
+        <a class="nav-item" href="{{ status_url }}">Status</a>
+        <a class="nav-item current" href="{{ docs_url }}">Docs</a>{# TODO Add sub-nav for which schema we're in #}
+    </section>
+
+    <section class="card">
+        <h1><code>{{ name }}</code></h1>
+
+        {{ schema.description | safe }}
+    </section>
+</body>
+</html>
