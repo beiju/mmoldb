@@ -1,0 +1,7 @@
+Changelog
+=========
+
+Upcoming
+--------
+
+- Added changelog
