@@ -16,6 +16,8 @@ use log::warn;
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{Day};
 use std::iter;
+use serde::Serialize;
+use thiserror::Error;
 // First-party imports
 pub use crate::db::taxa::{
     Taxa, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
@@ -23,7 +25,7 @@ pub use crate::db::taxa::{
     TaxaSlot,
 };
 use crate::ingest::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, DbSchema, DbTable, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, DbSchema, RawDbTable, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -1101,14 +1103,82 @@ pub fn insert_timings(
     .map(|_| ())
 }
 
-pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_name: &str) -> QueryResult<Vec<DbTable>> {
-    use crate::meta_schema::meta::tables::dsl as tables_dsl;
+#[derive(Debug, Error)]
+pub enum DbMetaQueryError {
+    #[error(transparent)]
+    Db(#[from] diesel::result::Error),
 
-    tables_dsl::tables
+    #[error("Table is missing required field {0}")]
+    TableMissingField(&'static str),
+
+    #[error("Column is missing required field {0}")]
+    ColumnMissingField(&'static str),
+}
+
+#[derive(Debug, Serialize)]
+pub struct DbColumn {
+    pub name: String,
+    pub r#type: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DbTable {
+    pub name: String,
+    pub columns: Vec<DbColumn>,
+}
+
+pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_name: &str) -> Result<Vec<DbTable>, DbMetaQueryError> {
+    use crate::meta_schema::meta::tables::dsl as tables_dsl;
+    use crate::meta_schema::meta::columns::dsl as columns_dsl;
+
+    let raw_tables = tables_dsl::tables
         .filter(
             tables_dsl::table_catalog.eq(catalog_name)
                 .and(tables_dsl::table_schema.eq(schema_name)),
         )
-        .select(DbTable::as_select())
-        .get_results(conn)
+        .order_by((
+            tables_dsl::table_catalog.asc(),
+            tables_dsl::table_schema.asc(),
+            tables_dsl::table_name.asc(),
+        ))
+        .select(RawDbTable::as_select())
+        .get_results(conn)?;
+
+    let raw_columns = columns_dsl::columns
+        .filter(
+            columns_dsl::table_catalog.eq(catalog_name)
+                .and(columns_dsl::table_schema.eq(schema_name)),
+        )
+        .order_by((
+            columns_dsl::table_catalog.asc(),
+            columns_dsl::table_schema.asc(),
+            columns_dsl::table_name.asc(),
+            columns_dsl::ordinal_position.asc(),
+        ))
+        .select(RawDbColumn::as_select())
+        .get_results(conn)?;
+
+    let raw_columns_grouped = raw_columns.into_iter()
+        .chunk_by(|col| (col.table_catalog.clone(), col.table_schema.clone(), col.table_name.clone()));
+
+    iter::zip(raw_tables, raw_columns_grouped.into_iter())
+        .map(|(table, (table_key, columns))| {
+            // Gotta unwrap the option to convert to tuple of references
+            let (table_key_catalog, table_key_schema, table_key_name) = table_key;
+            assert_eq!(
+                (&table_key_catalog, &table_key_schema, &table_key_name),
+                (&table.table_catalog, &table.table_schema, &table.table_name),
+            );
+
+            Ok(DbTable {
+                name: table.table_name.ok_or(DbMetaQueryError::TableMissingField("table_name"))?,
+                columns: columns
+                    .map(|column| Ok(DbColumn {
+                        name: column.column_name.ok_or(DbMetaQueryError::ColumnMissingField("column_name"))?,
+                        r#type: column.data_type.ok_or(DbMetaQueryError::ColumnMissingField("data_type"))?  ,
+                    }))
+                    .collect::<Result<Vec<_>, DbMetaQueryError>>()?,
+            })
+        })
+        .collect()
 }

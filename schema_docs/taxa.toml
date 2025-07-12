@@ -9,3 +9,6 @@ said `taxa` table and use the taxa's `name` in your `where` and `group
 by` clauses. However, I recognize that I won't be able to stop people
 from using IDs instead, so those are guaranteed to be stable.
 """
+
+[[tables]]
+name = "base"

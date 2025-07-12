@@ -113,12 +113,48 @@ pub async fn docs_debug_page(table_name: String, db: Db) -> Result<Template, App
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ColumnDocs {
+    pub name: String,
+    pub r#type: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TableDocs {
+    pub name: String,
+    pub description: String,
+    pub columns: Vec<ColumnDocs>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaDocs {
-    description: String,
+    pub description: String,
+    pub tables: Vec<TableDocs>,
+}
+
+// TODO Put this in some utils file somewhere
+pub fn associate<T, S>(a: Vec<T>, mut b: Vec<S>, is_associated: impl Fn(&T, &S) -> bool) -> (Vec<T>, Vec<(T, S)>, Vec<S>) {
+    let mut orphans_a = Vec::new();
+    let mut pairs = Vec::new();
+
+    for item_a in a {
+        if let Some(item_b_position) = b.iter().position(|item_b| is_associated(&item_a, item_b)) {
+            let item_b = b.remove(item_b_position);
+            pairs.push((item_a, item_b));
+        } else {
+            orphans_a.push(item_a);
+        }
+    }
+
+    // b is now orphans_b
+    b.shrink_to_fit();
+
+    (orphans_a, pairs, b)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::db::{DbColumn, DbTable};
     use super::*;
 
     macro_rules! test_schema_docs {
@@ -151,5 +187,41 @@ mod tests {
             db::tables_for_schema(conn, "mmoldb", schema_name)
         }).await
             .expect("Database query failed");
+
+        check_schema_table_docs(schema_name, tables, docs.tables);
+    }
+
+    fn check_schema_table_docs(schema_name: &str, tables: Vec<DbTable>, docs: Vec<TableDocs>) {
+        let (schemas_without_docs, schemas_with_docs, docs_without_schemas) =
+            associate(tables, docs, |table, doc| table.name == doc.name);
+
+        for schema in schemas_without_docs {
+            assert!(false, "Table {schema_name}.{} is not documented", schema.name);
+        }
+
+        for doc in docs_without_schemas {
+            assert!(false, "Documented table {schema_name}.{} does not exist", doc.name);
+        }
+
+        for (schema, docs) in schemas_with_docs {
+            check_schema_column_docs(schema_name, &schema.name, schema.columns, docs.columns);
+        }
+    }
+
+    fn check_schema_column_docs(schema_name: &str, table_name: &str, columns: Vec<DbColumn>, docs: Vec<ColumnDocs>) {
+        let (schemas_without_docs, schemas_with_docs, docs_without_schemas) =
+            associate(columns, docs, |column, doc| column.name == doc.name);
+
+        for schema in schemas_without_docs {
+            assert!(false, "Column {} in {schema_name}.{table_name} is not documented", schema.name);
+        }
+
+        for doc in docs_without_schemas {
+            assert!(false, "Documented column {} does not exist {schema_name}.{table_name}", doc.name);
+        }
+
+        for (schema, docs) in schemas_with_docs {
+            assert_eq!(schema.r#type, docs.r#type, "Type mismatch for column {} in {schema_name}.{table_name}", schema.name);
+        }
     }
 }

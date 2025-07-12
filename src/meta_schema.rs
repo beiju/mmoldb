@@ -5,11 +5,6 @@ pub mod meta {
         information_schema.schemata (catalog_name, schema_name) {
             catalog_name -> Nullable<Text>,
             schema_name -> Nullable<Text>,
-            schema_owner -> Nullable<Text>,
-            default_character_set_catalog -> Nullable<Text>,
-            default_character_set_schema -> Nullable<Text>,
-            default_character_set_name -> Nullable<Text>,
-            sql_path -> Nullable<Text>,
         }
     }
 
@@ -19,14 +14,6 @@ pub mod meta {
             table_schema -> Nullable<Text>,
             table_name -> Nullable<Text>,
             table_type -> Nullable<Text>,
-            self_referencing_column_name -> Nullable<Text>,
-            reference_generation -> Nullable<Text>,
-            user_defined_type_catalog -> Nullable<Text>,
-            user_defined_type_schema -> Nullable<Text>,
-            user_defined_type_name -> Nullable<Text>,
-            is_insertable_into -> Nullable<Text>,
-            is_typed -> Nullable<Text>,
-            commit_action -> Nullable<Text>,
         }
     }
 
@@ -49,34 +36,6 @@ pub mod meta {
             datetime_precision -> Nullable<Integer>,
             interval_type -> Nullable<Text>,
             interval_precision -> Nullable<Integer>,
-            character_set_catalog -> Nullable<Text>,
-            character_set_schema -> Nullable<Text>,
-            character_set_name -> Nullable<Text>,
-            collation_catalog -> Nullable<Text>,
-            collation_schema -> Nullable<Text>,
-            collation_name -> Nullable<Text>,
-            domain_catalog -> Nullable<Text>,
-            domain_schema -> Nullable<Text>,
-            domain_name -> Nullable<Text>,
-            udt_catalog -> Nullable<Text>,
-            udt_schema -> Nullable<Text>,
-            udt_name -> Nullable<Text>,
-            scope_catalog -> Nullable<Text>,
-            scope_schema -> Nullable<Text>,
-            scope_name -> Nullable<Text>,
-            maximum_cardinality -> Nullable<Integer>,
-            dtd_identifier -> Nullable<Text>,
-            is_self_referencing -> Nullable<Text>,
-            is_identity -> Nullable<Text>,
-            identity_generation -> Nullable<Text>,
-            identity_start -> Nullable<Text>,
-            identity_increment -> Nullable<Text>,
-            identity_maximum -> Nullable<Text>,
-            identity_minimum -> Nullable<Text>,
-            identity_cycle -> Nullable<Text>,
-            is_generated -> Nullable<Text>,
-            generation_expression -> Nullable<Text>,
-            is_updatable -> Nullable<Text>,
         }
     }
 

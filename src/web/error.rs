@@ -18,6 +18,9 @@ pub enum AppError {
     DbError(#[from] diesel::result::Error),
 
     #[error(transparent)]
+    DbMetaQueryError(#[from] crate::db::DbMetaQueryError),
+
+    #[error(transparent)]
     DocsError(#[from] DocsError),
 }
 

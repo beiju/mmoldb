@@ -310,20 +310,35 @@ pub struct DbSchema {
 }
 
 
-#[derive(Queryable, Selectable, Serialize)]
+#[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::meta_schema::meta::tables)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbTable {
-    table_catalog: Option<String>,
-    table_schema: Option<String>,
-    table_name: Option<String>,
-    table_type: Option<String>,
-    self_referencing_column_name: Option<String>,
-    reference_generation: Option<String>,
-    user_defined_type_catalog: Option<String>,
-    user_defined_type_schema: Option<String>,
-    user_defined_type_name: Option<String>,
-    is_insertable_into: Option<String>,
-    is_typed: Option<String>,
-    commit_action: Option<String>,
+pub struct RawDbTable {
+    pub table_catalog: Option<String>,
+    pub table_schema: Option<String>,
+    pub table_name: Option<String>,
+    pub table_type: Option<String>,
+}
+
+
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = crate::meta_schema::meta::columns)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct RawDbColumn {
+    pub table_catalog: Option<String>,
+    pub table_schema: Option<String>,
+    pub table_name: Option<String>,
+    pub column_name: Option<String>,
+    pub ordinal_position: Option<i32>,
+    pub column_default: Option<String>,
+    pub column_is_nullable: Option<String>,
+    pub data_type: Option<String>,
+    pub character_maximum_length: Option<i32>,
+    pub character_octet_length: Option<i32>,
+    pub numeric_precision: Option<i32>,
+    pub numeric_precision_radix: Option<i32>,
+    pub numeric_scale: Option<i32>,
+    pub datetime_precision: Option<i32>,
+    pub interval_type: Option<String>,
+    pub interval_precision: Option<i32>,
 }

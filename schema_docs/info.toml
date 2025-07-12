@@ -6,3 +6,6 @@ game log message that corresponds to each row in `data.events`. The
 `info.raw_events` table would be in the `data` schema if not for a
 technological limitation.
 """
+
+[[tables]]
+name = "event_ingest_log"
