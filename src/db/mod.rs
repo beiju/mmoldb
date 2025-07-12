@@ -1113,12 +1113,20 @@ pub enum DbMetaQueryError {
 
     #[error("Column is missing required field {0}")]
     ColumnMissingField(&'static str),
+
+    #[error("Unexpected value {actual_value} in field {field}. Expected one of {expected_values:?}")]
+    UnexpectedValueInField {
+        field: &'static str,
+        actual_value: String,
+        expected_values: &'static [&'static str],
+    },
 }
 
 #[derive(Debug, Serialize)]
 pub struct DbColumn {
     pub name: String,
     pub r#type: String,
+    pub is_nullable: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1175,7 +1183,19 @@ pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_nam
                 columns: columns
                     .map(|column| Ok(DbColumn {
                         name: column.column_name.ok_or(DbMetaQueryError::ColumnMissingField("column_name"))?,
-                        r#type: column.data_type.ok_or(DbMetaQueryError::ColumnMissingField("data_type"))?  ,
+                        r#type: column.data_type.ok_or(DbMetaQueryError::ColumnMissingField("data_type"))?,
+                        is_nullable: match column.column_is_nullable.as_deref() {
+                            // Note that I renamed it to column_is_nullable for diesel to avoid a
+                            // name conflict. The sql name for it is just is_nullable.
+                            None => return Err(DbMetaQueryError::ColumnMissingField("is_nullable")),
+                            Some("YES") => true,
+                            Some("NO") => true,
+                            Some(other) => return Err(DbMetaQueryError::UnexpectedValueInField {
+                                field: "is_nullable",
+                                actual_value: other.to_owned(),
+                                expected_values: &["YES", "NO"],
+                            }),
+                        },
                     }))
                     .collect::<Result<Vec<_>, DbMetaQueryError>>()?,
             })

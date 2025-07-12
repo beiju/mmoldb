@@ -4,11 +4,304 @@ an enum, and each row as a variant of that enum. The difference between
 `taxa` and an actual enum is that `taxa` tables have extra columns with
 properties about the variants.
 
-The correct way to use any column that references a `taxa` is to join on
-said `taxa` table and use the taxa's `name` in your `where` and `group
-by` clauses. However, I recognize that I won't be able to stop people
-from using IDs instead, so those are guaranteed to be stable.
+The correct way to use any column that references a `taxa` is to join
+on said `taxa` table and use the taxa's `name` in your `where` and
+`group by` clauses. However, I recognize that I won't be able to stop
+people from using IDs instead, so those are guaranteed to be stable.
 """
 
-[[tables]]
+[[table]]
+name = "event_type"
+description = """
+The outcome of the pitch (or lack of pitch, in the case of a balk).
+The types are very granular to facilitate grouping them in as many
+ways as possible. Some common ways to group events are provided by
+the many boolean `is_*` columns.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for an event type. When this appears as a foreign key
+you are encouraged to join this `taxa` and use its `name` column,
+rather than directly using event type ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this event type. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this event type.
+"""
+
+[[table.column]]
+name = "ends_plate_appearance"
+type = "bool"
+description = """
+Does an event of this type end the current plate appearance?
+"""
+
+[[table.column]]
+name = "is_in_play"
+type = "bool"
+description = """
+Does an event of this type result in a ball in play?
+"""
+
+[[table.column]]
+name = "is_hit"
+type = "bool"
+description = """
+Does an event of this type count as a hit, for the purposes of batter
+statistics?
+"""
+
+[[table.column]]
+name = "is_ball"
+type = "bool"
+description = """
+Does an event of this type represent a pitch outside the strike zone on
+which the batter did not swing?
+"""
+
+[[table.column]]
+name = "is_strike"
+type = "bool"
+description = """
+Does an event of this type represent either a pitch inside the strike
+zone or a pitch on which the batter swung?
+"""
+
+[[table.column]]
+name = "is_strikeout"
+type = "bool"
+description = """
+Does an event of this type count as a strikeout, for the purposes of
+pitcher statistics?
+"""
+
+[[table.column]]
+name = "is_basic_strike"
+type = "bool"
+description = """
+Does an event of this type count as either a strikeout or a
+non-PA-ending strike?
+"""
+
+[[table.column]]
+name = "is_foul"
+type = "bool"
+description = """
+Does an event of this type count as a foul ball or foul tip?
+"""
+
+[[table.column]]
+name = "is_foul"
+type = "bool"
+description = """
+Does an event of this type count as a foul tip?
+"""
+
+[[table.column]]
+name = "is_foul"
+type = "bool"
+description = """
+Does an event of this type represent a pitch on which the batter swung?
+"""
+
+[[table]]
+name = "fielder_location"
+description = """
+A location on the field, identified by its associated fielder position.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+The standard baseball fielder number. 1 = pitcher, 2 = catcher, etc.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this fielder location. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this fielder location.
+"""
+
+[[table.column]]
+name = "abbreviation"
+type = "text"
+description = """
+The standard one- or two-letter abbreviation for this fielder location.
+"""
+
+[[table.column]]
+name = "area"
+type = "text"
+description = """
+`'Infield'` or `'Outfield'`
+"""
+
+[[table]]
+name = "fair_ball_type"
+description = """
+The characterization of a batted ball's trajectory.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a fair ball type. When this appears as a foreign
+key you are encouraged to join this `taxa` and use its `name` column,
+rather than directly using fair ball type ids in your queries or
+results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this fair ball type. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this fair ball type.
+"""
+
+[[table]]
+name = "slot"
+description = """
+A possibly-approximate player slot in the roster.
+
+MMOLB has been inconsistent in the past with how it identifies pitchers
+who field a ball. At different times (and in different events) they
+have been identified just as the pitcher ("P"), as the type of pitcher
+(e.g. "SP"), and with their full roster slot identification (e.g.
+"SP3"). We do the best we can to provide the most specific
+identification available.
+
+Note that because of this MMOLB inconsistency, a position player who is
+currently pitching may be identified as "Pitcher" or as their assigned
+roster slot.
+
+Eventually we plan to reference other sources to accurately determine
+the player's roster slot, at which time the approximate values will be
+removed from this `taxa`.
+
+Approximate slots will also be used in case there is a pitcher with a
+higher slot than expected, e.g. "SP6" or "RP4". There are no instances
+of this as of this writing (at the end of Season 2).
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+The slot's ordinal position on the MMOLB team page, for concrete slots.
+For approximate slots (see the table description) this is an arbitrary
+number.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this slot. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this slot.
+"""
+
+[[table.column]]
+name = "abbreviation"
+type = "text"
+description = """
+The standard abbreviation for this slot, as seen on the MMOLB team
+page.
+"""
+
+[[table.column]]
+name = "role"
+type = "text"
+description = """
+`'Pitcher'` or `'Batter'`. NOTE: Players in a batting slot who are
+currently pitching may have either value. See the table description
+for details.
+"""
+
+[[table.column]]
+name = "pitcher_type"
+type = "text"
+description = """
+For pitching slots, `'Starter'`, `'Reliever'`, `'Closer'`, or
+`'Unknown'`. `'Unknown'` indicates this is a pitcher, but we don't know
+which type.
+"""
+nullable_explanation = """
+`null` for non-pitching slots.
+"""
+
+[[table.column]]
+name = "slot_number"
+type = "int"
+description = """
+The slot number, if any (1 for SP1, 2 for SP2, etc.). You typically
+won't need to use this column, since it's already baked into the slot's
+name and abbreviation. It's provided in case it's ever convenient to
+manipulate a slot number numerically.
+"""
+nullable_explanation = """
+`null` for non-numbered slots (anything besides Starter and Reliever).
+"""
+
+[[table.column]]
+name = "location"
+type = "text"
+description = """
+The fielder location where this slot typically plays, if applicable.
+This is a foreign key into `taxa.fielder_location`.
+
+WARNING: a player in a batting slot who is currently pitching may be
+recorded as occupying their batting slot or the Pitcher approximate
+slot, meaning their location may be recorded as Pitcher or as their
+typical fielder location. See the table description for details.
+"""
+nullable_explanation = """
+`null` for the Designated Hitter.
+"""
+
+[[table]]
 name = "base"
+description = """
+A base. Like from baseball.
+"""
+
+[[table.column]]

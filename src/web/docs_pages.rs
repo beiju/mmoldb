@@ -117,18 +117,24 @@ pub struct ColumnDocs {
     pub name: String,
     pub r#type: String,
     pub description: String,
+    #[serde(default)]
+    pub nullable_explanation: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TableDocs {
     pub name: String,
     pub description: String,
+    // It's more ergonomic to use the singular in the TOML file
+    #[serde(rename = "column")]
     pub columns: Vec<ColumnDocs>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaDocs {
     pub description: String,
+    // It's more ergonomic to use the singular in the TOML file
+    #[serde(rename = "table")]
     pub tables: Vec<TableDocs>,
 }
 
@@ -222,6 +228,7 @@ mod tests {
 
         for (schema, docs) in schemas_with_docs {
             assert_eq!(schema.r#type, docs.r#type, "Type mismatch for column {} in {schema_name}.{table_name}", schema.name);
+            assert_eq!(schema.is_nullable, docs.nullable_explanation.is_some(), "Nullability mismatch for column {} in {schema_name}.{table_name}", schema.name);
         }
     }
 }
