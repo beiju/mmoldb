@@ -21,11 +21,10 @@ use thiserror::Error;
 // First-party imports
 pub use crate::db::taxa::{
     Taxa, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
-    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaHitType, TaxaPitchType,
-    TaxaSlot,
+    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
 };
 use crate::ingest::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, DbSchema, RawDbTable, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, RawDbTable, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -1189,7 +1188,7 @@ pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_nam
                             // name conflict. The sql name for it is just is_nullable.
                             None => return Err(DbMetaQueryError::ColumnMissingField("is_nullable")),
                             Some("YES") => true,
-                            Some("NO") => true,
+                            Some("NO") => false,
                             Some(other) => return Err(DbMetaQueryError::UnexpectedValueInField {
                                 field: "is_nullable",
                                 actual_value: other.to_owned(),

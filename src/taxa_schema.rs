@@ -5,7 +5,7 @@ pub mod taxa {
         taxa.base (id) {
             id -> Int8,
             name -> Text,
-            bases_achieved -> Int8,
+            bases_achieved -> Int4,
         }
     }
 
@@ -60,14 +60,6 @@ pub mod taxa {
     }
 
     diesel::table! {
-        taxa.hit_type (id) {
-            id -> Int8,
-            name -> Text,
-            base_number -> Int4,
-        }
-    }
-
-    diesel::table! {
         taxa.leagues (id) {
             id -> Int8,
             name -> Text,
@@ -84,6 +76,7 @@ pub mod taxa {
             id -> Int8,
             name -> Text,
             display_name -> Text,
+            abbreviation -> Text,
         }
     }
 
@@ -109,7 +102,6 @@ pub mod taxa {
         fair_ball_type,
         fielder_location,
         fielding_error_type,
-        hit_type,
         leagues,
         pitch_type,
         slot,

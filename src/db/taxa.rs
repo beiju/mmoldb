@@ -302,47 +302,6 @@ taxa! {
 
 taxa! {
     #[
-        schema = crate::taxa_schema::taxa::hit_type,
-        table = crate::taxa_schema::taxa::hit_type::dsl::hit_type,
-        id_column = crate::taxa_schema::taxa::hit_type::dsl::id,
-    ]
-    pub enum TaxaHitType {
-        #[base_number: i32 = 1]
-        Single = 1,
-        #[base_number: i32 = 2]
-        Double = 2,
-        #[base_number: i32 = 3]
-        Triple = 3,
-        #[base_number: i32 = 0]
-        HomeRun = 4,
-    }
-}
-
-impl TryInto<mmolb_parsing::enums::Distance> for TaxaHitType {
-    type Error = ();
-
-    fn try_into(self) -> Result<mmolb_parsing::enums::Distance, Self::Error> {
-        match self {
-            Self::Single => Ok(mmolb_parsing::enums::Distance::Single),
-            Self::Double => Ok(mmolb_parsing::enums::Distance::Double),
-            Self::Triple => Ok(mmolb_parsing::enums::Distance::Triple),
-            Self::HomeRun => Err(()),
-        }
-    }
-}
-
-impl From<mmolb_parsing::enums::Distance> for TaxaHitType {
-    fn from(other: mmolb_parsing::enums::Distance) -> Self {
-        match other {
-            mmolb_parsing::enums::Distance::Single => Self::Single,
-            mmolb_parsing::enums::Distance::Double => Self::Double,
-            mmolb_parsing::enums::Distance::Triple => Self::Triple,
-        }
-    }
-}
-
-taxa! {
-    #[
         schema = crate::taxa_schema::taxa::fielder_location,
         table = crate::taxa_schema::taxa::fielder_location::dsl::fielder_location,
         id_column = crate::taxa_schema::taxa::fielder_location::dsl::id,
@@ -744,13 +703,13 @@ taxa! {
         derive = (PartialOrd,)
     ]
     pub enum TaxaBase {
-        #[bases_achieved: i64 = 4]
+        #[bases_achieved: i32 = 4]
         Home = 0,
-        #[bases_achieved: i64 = 1]
+        #[bases_achieved: i32 = 1]
         First = 1,
-        #[bases_achieved: i64 = 2]
+        #[bases_achieved: i32 = 2]
         Second = 2,
-        #[bases_achieved: i64 = 3]
+        #[bases_achieved: i32 = 3]
         Third = 3,
     }
 }
@@ -1024,7 +983,6 @@ taxa! {
 #[derive(Debug, Clone)]
 pub struct Taxa {
     event_type_mapping: EnumMap<TaxaEventType, i64>,
-    hit_type_mapping: EnumMap<TaxaHitType, i64>,
     fielder_location_mapping: EnumMap<TaxaFielderLocation, i64>,
     slot_mapping: EnumMap<TaxaSlot, i64>,
     fair_ball_type_mapping: EnumMap<TaxaFairBallType, i64>,
@@ -1039,7 +997,6 @@ impl Taxa {
     pub fn new(conn: &mut PgConnection) -> QueryResult<Self> {
         Ok(Self {
             event_type_mapping: TaxaEventType::make_id_mapping(conn)?,
-            hit_type_mapping: TaxaHitType::make_id_mapping(conn)?,
             // fielder_location_mapping must appear before slot_mapping in the initializer
             // (it doesn't matter what order it is in the struct declaration)
             fielder_location_mapping: TaxaFielderLocation::make_id_mapping(conn)?,
@@ -1059,10 +1016,6 @@ impl Taxa {
 
     pub fn event_type_id(&self, ty: TaxaEventType) -> i64 {
         self.event_type_mapping[ty]
-    }
-
-    pub fn hit_type_id(&self, ty: TaxaHitType) -> i64 {
-        self.hit_type_mapping[ty]
     }
 
     pub fn fielder_location(&self, ty: TaxaFielderLocation) -> i64 {
@@ -1098,14 +1051,6 @@ impl Taxa {
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
             .map(|(val, _)| val)
-    }
-
-    pub fn hit_type_from_id(&self, id: i64) -> TaxaHitType {
-        self.hit_type_mapping
-            .iter()
-            .find(|(_, ty_id)| id == **ty_id)
-            .expect("TODO Handle unknown hit type")
-            .0
     }
 
     pub fn fielder_location_from_id(&self, id: i64) -> TaxaFielderLocation {

@@ -198,8 +198,8 @@ mod tests {
     }
 
     fn check_schema_table_docs(schema_name: &str, tables: Vec<DbTable>, docs: Vec<TableDocs>) {
-        let (schemas_without_docs, schemas_with_docs, docs_without_schemas) =
-            associate(tables, docs, |table, doc| table.name == doc.name);
+        let (docs_without_schemas, schemas_with_docs, schemas_without_docs) =
+            associate(docs, tables, |table, doc| table.name == doc.name);
 
         for schema in schemas_without_docs {
             assert!(false, "Table {schema_name}.{} is not documented", schema.name);
@@ -209,14 +209,14 @@ mod tests {
             assert!(false, "Documented table {schema_name}.{} does not exist", doc.name);
         }
 
-        for (schema, docs) in schemas_with_docs {
+        for (docs, schema) in schemas_with_docs {
             check_schema_column_docs(schema_name, &schema.name, schema.columns, docs.columns);
         }
     }
 
     fn check_schema_column_docs(schema_name: &str, table_name: &str, columns: Vec<DbColumn>, docs: Vec<ColumnDocs>) {
-        let (schemas_without_docs, schemas_with_docs, docs_without_schemas) =
-            associate(columns, docs, |column, doc| column.name == doc.name);
+        let (docs_without_schemas, schemas_with_docs, schemas_without_docs) =
+            associate(docs, columns, |column, doc| column.name == doc.name);
 
         for schema in schemas_without_docs {
             assert!(false, "Column {} in {schema_name}.{table_name} is not documented", schema.name);
@@ -226,7 +226,7 @@ mod tests {
             assert!(false, "Documented column {} does not exist {schema_name}.{table_name}", doc.name);
         }
 
-        for (schema, docs) in schemas_with_docs {
+        for (docs, schema) in schemas_with_docs {
             assert_eq!(schema.r#type, docs.r#type, "Type mismatch for column {} in {schema_name}.{table_name}", schema.name);
             assert_eq!(schema.is_nullable, docs.nullable_explanation.is_some(), "Nullability mismatch for column {} in {schema_name}.{table_name}", schema.name);
         }

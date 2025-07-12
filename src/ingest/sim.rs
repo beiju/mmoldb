@@ -1,7 +1,6 @@
 use crate::db::{
     TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
-    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaHitType, TaxaPitchType,
-    TaxaSlot,
+    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
 };
 use crate::parsing_extensions::{BestEffortSlot, BestEffortSlottedPlayer};
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
@@ -113,7 +112,7 @@ pub struct EventDetail<StrT: Clone> {
     pub fielders: Vec<EventDetailFielder<StrT>>,
 
     pub detail_type: TaxaEventType,
-    pub hit_type: Option<TaxaHitType>,
+    pub hit_base: Option<TaxaBase>,
     pub fair_ball_type: Option<TaxaFairBallType>,
     pub fair_ball_direction: Option<TaxaFielderLocation>,
     pub fielding_error_type: Option<TaxaFieldingErrorType>,
@@ -477,7 +476,7 @@ struct EventDetailBuilder<'g> {
     pitcher: BestEffortSlottedPlayer<&'g str>,
     fair_ball_type: Option<TaxaFairBallType>,
     fair_ball_direction: Option<TaxaFielderLocation>,
-    hit_type: Option<TaxaHitType>,
+    hit_base: Option<TaxaBase>,
     fielding_error_type: Option<TaxaFieldingErrorType>,
     pitch: Option<Pitch>,
     described_as_sacrifice: Option<bool>,
@@ -500,8 +499,8 @@ impl<'g> EventDetailBuilder<'g> {
         self
     }
 
-    fn hit_type(mut self, hit_type: TaxaHitType) -> Self {
-        self.hit_type = Some(hit_type);
+    fn hit_base(mut self, base: TaxaBase) -> Self {
+        self.hit_base = Some(base);
         self
     }
 
@@ -910,7 +909,7 @@ impl<'g> EventDetailBuilder<'g> {
             },
             fielders: self.fielders,
             detail_type: type_detail,
-            hit_type: self.hit_type,
+            hit_base: self.hit_base,
             fair_ball_type: self.fair_ball_type,
             fair_ball_direction: self.fair_ball_direction,
             fielding_error_type: self.fielding_error_type,
@@ -1320,7 +1319,7 @@ impl<'g> Game<'g> {
             pitcher: self.defending_team().active_pitcher,
             fielders: Vec::new(),
             advances: Vec::new(),
-            hit_type: None,
+            hit_base: None,
             fair_ball_type: None,
             fair_ball_direction: None,
             fielding_error_type: None,
@@ -2203,7 +2202,7 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
-                        .hit_type((*distance).into())
+                        .hit_base((*distance).into())
                         .fielder(*fielder, ingest_logs)?
                         .runner_changes(advances.clone(), scores.clone())
                         .add_runner(batter, (*distance).into())
@@ -2258,7 +2257,7 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
-                        .hit_type(TaxaHitType::HomeRun)
+                        .hit_base(TaxaBase::Home)
                         .runner_changes(Vec::new(), scores.clone())
                         .set_batter_scores()
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::HomeRun)
@@ -2795,13 +2794,13 @@ pub enum ToParsedError<'g> {
     #[error("{event_type} must have a fielding_error_type")]
     MissingFieldingErrorType { event_type: TaxaEventType },
 
-    #[error("{event_type} must have a hit_type")]
-    MissingHitType { event_type: TaxaEventType },
+    #[error("{event_type} must have a hit_base")]
+    MissingHitBase { event_type: TaxaEventType },
 
-    #[error("{event_type} hit_type must be {expected}, but it was {hit_type}")]
-    InvalidHitType{
+    #[error("{event_type} hit_base must be {expected}, but it was {hit_base}")]
+    InvalidHitBase {
         event_type: TaxaEventType,
-        hit_type: TaxaHitType,
+        hit_base: TaxaBase,
         expected: &'static str,
     },
 
@@ -3070,19 +3069,19 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
-                distance: match self.hit_type {
+                distance: match self.hit_base {
                     None => {
-                        return Err(ToParsedError::MissingHitType {
+                        return Err(ToParsedError::MissingHitBase {
                             event_type: self.detail_type,
                         });
                     }
-                    Some(TaxaHitType::Single) => Distance::Single,
-                    Some(TaxaHitType::Double) => Distance::Double,
-                    Some(TaxaHitType::Triple) => Distance::Triple,
+                    Some(TaxaBase::First) => Distance::Single,
+                    Some(TaxaBase::Second) => Distance::Double,
+                    Some(TaxaBase::Third) => Distance::Triple,
                     Some(other) => {
-                        return Err(ToParsedError::InvalidHitType {
+                        return Err(ToParsedError::InvalidHitBase {
                             event_type: self.detail_type,
-                            hit_type: other,
+                            hit_base: other,
                             expected: "Single, Double, or Triple",
                         })
                     },
@@ -3177,17 +3176,17 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 // there's no scores or if the last score doesn't match the batter's name.
                 scores.pop();
 
-                match self.hit_type {
+                match self.hit_base {
                     None => {
-                        return Err(ToParsedError::MissingHitType {
+                        return Err(ToParsedError::MissingHitBase {
                             event_type: self.detail_type,
                         });
                     }
-                    Some(TaxaHitType::HomeRun) => {},
+                    Some(TaxaBase::Home) => {},
                     Some(other) => {
-                        return Err(ToParsedError::InvalidHitType {
+                        return Err(ToParsedError::InvalidHitBase {
                             event_type: self.detail_type,
-                            hit_type: other,
+                            hit_base: other,
                             expected: "HomeRun",
                         });
                     },

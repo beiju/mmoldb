@@ -11,7 +11,6 @@ drop table taxa.base_description_format;
 drop table taxa.base;
 drop table taxa.fair_ball_type;
 drop table taxa.position;
-drop table taxa.hit_type;
 drop table taxa.event_type;
 drop table taxa.pitch_type;
 drop schema taxa;

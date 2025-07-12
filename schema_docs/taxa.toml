@@ -45,21 +45,21 @@ The human-friendly name for this event type.
 
 [[table.column]]
 name = "ends_plate_appearance"
-type = "bool"
+type = "boolean"
 description = """
 Does an event of this type end the current plate appearance?
 """
 
 [[table.column]]
 name = "is_in_play"
-type = "bool"
+type = "boolean"
 description = """
 Does an event of this type result in a ball in play?
 """
 
 [[table.column]]
 name = "is_hit"
-type = "bool"
+type = "boolean"
 description = """
 Does an event of this type count as a hit, for the purposes of batter
 statistics?
@@ -67,7 +67,7 @@ statistics?
 
 [[table.column]]
 name = "is_ball"
-type = "bool"
+type = "boolean"
 description = """
 Does an event of this type represent a pitch outside the strike zone on
 which the batter did not swing?
@@ -75,7 +75,7 @@ which the batter did not swing?
 
 [[table.column]]
 name = "is_strike"
-type = "bool"
+type = "boolean"
 description = """
 Does an event of this type represent either a pitch inside the strike
 zone or a pitch on which the batter swung?
@@ -83,7 +83,7 @@ zone or a pitch on which the batter swung?
 
 [[table.column]]
 name = "is_strikeout"
-type = "bool"
+type = "boolean"
 description = """
 Does an event of this type count as a strikeout, for the purposes of
 pitcher statistics?
@@ -91,7 +91,7 @@ pitcher statistics?
 
 [[table.column]]
 name = "is_basic_strike"
-type = "bool"
+type = "boolean"
 description = """
 Does an event of this type count as either a strikeout or a
 non-PA-ending strike?
@@ -99,21 +99,21 @@ non-PA-ending strike?
 
 [[table.column]]
 name = "is_foul"
-type = "bool"
+type = "boolean"
 description = """
 Does an event of this type count as a foul ball or foul tip?
 """
 
 [[table.column]]
-name = "is_foul"
-type = "bool"
+name = "is_foul_tip"
+type = "boolean"
 description = """
 Does an event of this type count as a foul tip?
 """
 
 [[table.column]]
-name = "is_foul"
-type = "bool"
+name = "batter_swung"
+type = "boolean"
 description = """
 Does an event of this type represent a pitch on which the batter swung?
 """
@@ -271,7 +271,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "slot_number"
-type = "int"
+type = "integer"
 description = """
 The slot number, if any (1 for SP1, 2 for SP2, etc.). You typically
 won't need to use this column, since it's already baked into the slot's
@@ -284,7 +284,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "location"
-type = "text"
+type = "bigint"
 description = """
 The fielder location where this slot typically plays, if applicable.
 This is a foreign key into `taxa.fielder_location`.
@@ -305,3 +305,193 @@ A base. Like from baseball.
 """
 
 [[table.column]]
+name = "id"
+type = "bigint"
+description = """
+The base number. Note that Home is base number 0. There is (currently)
+no base number 4.
+
+This numbering was chosen to accommodate potential additional bases.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this base. Guaranteed to contain alphanumeric
+characters only and start with a letter.
+
+This is (currently) also the human-friendly name for this base.
+"""
+
+[[table.column]]
+name = "bases_achieved"
+type = "integer"
+description = """
+The number of bases the player has to advance to end up on this base.
+Equal to the base id for every base other than Home.
+
+This column will be deleted if additional bases are ever added to
+MMOLB. A new column will be added (not necessarily to this schema) to
+record the total number of bases.
+"""
+
+[[table]]
+name = "base_description_format"
+description = """
+MMOLB occasionally describes bases in different formats. The same base
+may be described as "first", "first base", or "1st". This records which
+format was used for a particular description.
+
+This taxa only exists for the purpose of exactly recreating game event
+messages from the database (aka "round-tripping"). If you find a
+genuine use for it in MMOLB analysis please let us know!
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a base description format. When this appears as a
+foreign key you are encouraged to join this `taxa` and use its `name`
+column, rather than directly using base description format ids in your
+queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this base description format. Guaranteed to
+contain alphanumeric characters only and start with a letter.
+"""
+
+[[table]]
+name = "fielding_error_type"
+description = """
+The type of a fielding error: throwing or catching.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a fielding error type. When this appears as a
+foreign key you are encouraged to join this `taxa` and use its `name`
+column, rather than directly using fielding error type ids in your
+queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this base description format. Guaranteed to
+contain alphanumeric characters only and start with a letter.
+
+This is (currently) also the human-friendly name.
+"""
+
+
+[[table]]
+name = "pitch_type"
+description = """
+Pitch type, as described by the pitch information at the right side of
+a pitch event.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a pitch type. When this appears as a
+foreign key you are encouraged to join this `taxa` and use its `name`
+column, rather than directly using fielding error type ids in your
+queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this pitch type. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this pitch type.
+"""
+
+[[table.column]]
+name = "abbreviation"
+type = "text"
+description = """
+The standard baseball abbreviation for this pitch type.
+"""
+
+[[table]]
+name = "leagues"
+description = """
+The leagues of MMOLB, both greater and lesser.
+
+These leagues are hard-coded. In future this taxa will be replaced with
+a `data.leagues` table which is populated dynamically from MMOLB.
+
+This is currently not referenced in any other tables. We know it would
+be desired, but it will take significant work to get there.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID number for a league.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The league's name.
+"""
+
+[[table.column]]
+name = "color"
+type = "text"
+description = """
+The league's background color as shown on the MMOLB lesser league page.
+Greater league teams also have background colors in the API.
+"""
+
+[[table.column]]
+name = "emoji"
+type = "text"
+description = """
+The league's emoji.
+"""
+
+[[table.column]]
+name = "league_type"
+type = "text"
+description = """
+`'Greater'` or `'Lesser'`.
+"""
+
+[[table.column]]
+name = "parent_team_id"
+type = "text"
+description = """
+The MMOLB team id for the league's parent team. For Lesser League teams,
+this is the Greater League team they're associated with. For Greater
+League teams, this is the league's Superstar team.
+"""
+
+[[table.column]]
+name = "mmolb_league_id"
+type = "text"
+description = """
+The MMOLB id for the league itself.
+"""

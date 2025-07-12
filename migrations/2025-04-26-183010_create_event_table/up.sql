@@ -26,13 +26,6 @@ create table taxa.event_type (
     unique (name)
 );
 
-create table taxa.hit_type (
-    id bigserial primary key not null,
-    name text not null,
-    base_number int not null,
-    unique (name)
-);
-
 create table taxa.fielder_location (
     id bigserial primary key not null,
     name text not null,
@@ -70,7 +63,7 @@ create table taxa.slot (
 create table taxa.base (
     id bigserial primary key not null,
     name text not null,
-    bases_achieved bigint not null,
+    bases_achieved int not null,
     unique (name)
 );
 
@@ -90,6 +83,7 @@ create table taxa.pitch_type (
     id bigserial primary key not null,
     name text not null,
     display_name text not null,
+    abbreviation text not null,
     unique (name)
 );
 
@@ -98,7 +92,7 @@ create table taxa.leagues (
     name text not null,
     color text not null,
     emoji text not null,
-    league_type text not null,
+    league_type text not null, check ( league_type in ('Greater', 'Lesser') ),
     parent_team_id text not null,
     mmolb_league_id text not null
 );
@@ -224,8 +218,8 @@ create table data.events (
 
     -- event data
     event_type bigint references taxa.event_type not null,
-    -- should be populated for every event_type==Hit
-    hit_type bigint references taxa.hit_type,
+    -- should be populated for every event_type==Hit and HomeRun
+    hit_base bigint references taxa.base,
     -- should be populated for every event type where there's a fair ball
     fair_ball_type bigint references taxa.fair_ball_type,
     fair_ball_direction bigint references taxa.fielder_location,

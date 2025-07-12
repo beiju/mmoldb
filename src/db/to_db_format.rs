@@ -16,7 +16,7 @@ pub fn event_to_row<'e>(
         inning: event.inning as i32,
         top_of_inning: event.top_of_inning,
         event_type: taxa.event_type_id(event.detail_type),
-        hit_type: event.hit_type.map(|ty| taxa.hit_type_id(ty)),
+        hit_base: event.hit_base.map(|ty| taxa.base_id(ty)),
         fair_ball_type: event.fair_ball_type.map(|ty| taxa.fair_ball_type_id(ty)),
         fair_ball_direction: event
             .fair_ball_direction
@@ -143,7 +143,7 @@ pub fn row_to_event<'e>(
         detail_type: taxa
             .event_type_from_id(event.event_type)
             .ok_or_else(|| RowToEventError::InvalidEventTypeId(event.event_type))?,
-        hit_type: event.hit_type.map(|id| taxa.hit_type_from_id(id)),
+        hit_base: event.hit_base.map(|id| taxa.base_from_id(id)),
         fair_ball_type: event
             .fair_ball_type
             .map(|id| taxa.fair_ball_type_from_id(id)),

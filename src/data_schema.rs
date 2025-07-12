@@ -33,7 +33,7 @@ pub mod data {
             inning -> Int4,
             top_of_inning -> Bool,
             event_type -> Int8,
-            hit_type -> Nullable<Int8>,
+            hit_base -> Nullable<Int8>,
             fair_ball_type -> Nullable<Int8>,
             fair_ball_direction -> Nullable<Int8>,
             fielding_error_type -> Nullable<Int8>,
