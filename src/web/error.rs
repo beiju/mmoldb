@@ -36,7 +36,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for AppError {
             context! {
                 index_url: uri!(index_page()),
                 error_text: format!("{:}", self),
-                error_debug: if is_debug { Some(format!("{:?}", self)) } else { None },
+                error_debug: if is_debug { Some(format!("{:#?}", self)) } else { None },
             },
         )
         .unwrap();

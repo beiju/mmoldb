@@ -76,7 +76,6 @@ pub mod taxa {
             id -> Int8,
             name -> Text,
             display_name -> Text,
-            abbreviation -> Text,
         }
     }
 

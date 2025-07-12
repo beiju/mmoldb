@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use diesel::IntoSql;
 use include_dir::{include_dir, Dir};
 use itertools::Itertools;
 use miette::Diagnostic;

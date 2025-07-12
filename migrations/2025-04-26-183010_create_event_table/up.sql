@@ -83,7 +83,6 @@ create table taxa.pitch_type (
     id bigserial primary key not null,
     name text not null,
     display_name text not null,
-    abbreviation text not null,
     unique (name)
 );
 

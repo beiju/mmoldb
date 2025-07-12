@@ -7,5 +7,4 @@ game log message that corresponds to each row in `data.events`. The
 technological limitation.
 """
 
-[[table]]
-name = "event_ingest_log"
+table = []
