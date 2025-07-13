@@ -3088,7 +3088,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                         return Err(ToParsedError::InvalidHitBase {
                             event_type: self.detail_type,
                             hit_base: other,
-                            expected: "Single, Double, or Triple",
+                            expected: "First, Second, or Third",
                         })
                     },
                 },
@@ -3188,12 +3188,12 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                             event_type: self.detail_type,
                         });
                     }
-                    Some(TaxaBase::Third) => {},
+                    Some(TaxaBase::Home) => {},
                     Some(other) => {
                         return Err(ToParsedError::InvalidHitBase {
                             event_type: self.detail_type,
                             hit_base: other,
-                            expected: "HomeRun",
+                            expected: "Home",
                         });
                     },
                 }
