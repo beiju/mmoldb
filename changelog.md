@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Upcoming
---------
+2025-07-12
+----------
 
 - Added changelog.
 - Added `abbreviation` to `taxa.pitch_type`.
