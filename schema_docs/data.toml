@@ -226,8 +226,20 @@ description = """
 An arbitrary numeric ID. These IDs are *not* stable. You should not
 store these ids between queries, nor hard-code them into queries.
 To identify a particular event use the combination of its
-`mmolb_game_id` (which you access by joining `data.games` on the `id`
-column) and `game_event_index`.
+`mmolb_game_id` (which you access by joining `data.games` on the
+`game_id` column) and `game_event_index`.
+"""
+
+[[table.column]]
+name = "game_id"
+type = "integer"
+description = """
+The id of the game this event belongs to. References the `data.games`
+table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
+which you access by joining `data.games` on this column.
 """
 
 [[table.column]]
@@ -389,7 +401,11 @@ The assignment of numbers to pitch zones comes straight from MMOLB.
 The zones are arranged like so:
 
 ```
-TODO find that diagram
+11       12
+   1-2-3
+   4-5-6
+   7-8-9
+13       14
 ```
 """
 nullable_explanation = """
@@ -582,7 +598,7 @@ type = "text"
 description = """
 The active pitcher's name.
 
-The pitcher's id is not yet available, but we're working on it.
+The pitcher's ID is not yet available, but we're working on it.
 """
 
 [[table.column]]
@@ -611,7 +627,7 @@ type = "text"
 description = """
 The active batter's name.
 
-The batter's id is not yet available, but we're working on it.
+The batter's ID is not yet available, but we're working on it.
 """
 
 [[table.column]]
@@ -684,3 +700,204 @@ there should only be one event with `ends_plate_appearance = true` for
 each `(game_id, top_of_inning, batter_count)` combination.
 """
 
+[[table]]
+name = "event_baserunners"
+description = """
+Baserunner activity for each event in `data.events`.
+
+This contains a row for every baserunner that existed at any point
+during each event. That includes runners who stayed on the same base,
+runners who scored, and batters who become batter-runners but are
+called out before reaching a base.
+
+The particulars:
+- A batter-runner always has a row in this table, even if they were put
+  out before reaching a base. Their `base_before` will be `null`.
+- Automatic runners (aka ghost runners or Manfred runners) appear in
+  this table with a `base_before` of 2. There is no row with
+  `base_before = null` for an automatic runner. As of Season 2, this is
+  the only way for a chain of `event_baserunners` rows to begin with a
+  non-null `base_before`.
+- Once a runner reaches base (including the automatic runner) they will
+  have a row in this table for every subsequent event until one of the
+  following happens:
+  1. They score, in which case the last row in the chain has
+     `base_after = 0` and `is_out = false`.
+  2. They are put out, in which case the last row in the chain has
+     `is_out = true`. Note that runners can be put out at home.
+  3. They are stranded on base when the inning ends, in which case the
+     last row in the chain has `base_after <> 0` and `is_out = false`.
+  Each subsequent row for a given batter will have `base_before` equal
+  to their previous row's `base_after`.
+- Runners who do not move during an event have a row with
+  `base_before = base_after`.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not
+store these ids between queries, nor hard-code them into queries.
+To identify a particular baserunner on a particular event use the
+combination of its `mmolb_game_id`, `game_event_index`, and
+`base_before`. You have to join the `data.events` table to access
+`game_event_index`, and from there join the `data.games` tables to
+access `game_event_index`.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "integer"
+description = """
+The id of the event this baserunner belongs to. References the
+`data.events` table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use the combination
+of `mmolb_game_id` and `game_event_index` as described in the
+documentation for `data.events`' `id` column.
+"""
+
+[[table.column]]
+name = "baserunner_name"
+type = "text"
+description = """
+The baserunner's name.
+
+The baserunner's ID is not yet available, but we're working on it.
+"""
+
+[[table.column]]
+name = "base_before"
+type = "bigint"
+description = """
+The base the runner occupied before this event. References `taxa.base`.
+"""
+nullable_explanation = """
+`null` indicates this is the batter-runner. The batter is not
+considered to be at any base while they are batting.
+"""
+
+[[table.column]]
+name = "base_after"
+type = "bigint"
+description = """
+The base the runner occupied after this event, or the base they were
+put out at. References `taxa.base`.
+
+Runners who score always have a row in this table with
+`base_after = 0`.
+
+Most queries which reference this column should also reference `is_out`.
+"""
+
+[[table.column]]
+name = "is_out"
+type = "bigint"
+description = """
+Whether the runner was put out on this event. If so, `base_after` is
+the base they were put out at.
+"""
+
+[[table.column]]
+name = "base_description_format"
+type = "bigint"
+description = """
+The flavor used to describe which base the player reached or was put
+out at. References `taxa.base_description_format`.
+
+MMOLB describes the same base in different ways for variety. This
+column stores which way was used for a particular event, mostly for use
+in reconstructing event text.
+"""
+
+[[table.column]]
+name = "steal"
+type = "boolean"
+description = """
+Whether this baserunner *attempted* to steal a base during this event.
+Reference `is_out` to tell whether the attempt was successful.
+"""
+
+[[table]]
+name = "event_fielders"
+description = """
+Fielder activity for each event in `data.events`.
+
+This contains a row for every fielder involved in the play.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not
+store these ids between queries, nor hard-code them into queries.
+To identify a particular baserunner on a particular event use the
+combination of its `mmolb_game_id`, `game_event_index`, and
+`play_order`. You have to join the `data.events` table to access
+`game_event_index`, and from there join the `data.games` tables to
+access `game_event_index`.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "integer"
+description = """
+The id of the event this fielder belongs to. References the
+`data.events` table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use the combination
+of `mmolb_game_id` and `game_event_index` as described in the
+documentation for `data.events`' `id` column.
+"""
+
+[[table.column]]
+name = "fielder_name"
+type = "text"
+description = """
+The fielder's name.
+
+The fielder's ID is not yet available, but we're working on it.
+"""
+
+[[table.column]]
+name = "fielder_slot"
+type = "bigint"
+description = """
+A best-effort attempt at recording the fielder's slot. Due to various
+inconvenient behaviors of MMOLB this is not always accurate. References
+`taxa.slot`.
+
+At various times in MMOLB's short history, and for various event types,
+the fielders have been identified differently. There are two main
+issues:
+
+1. Pitchers are sometimes described as "P" (for "Pitcher"), and at
+   other times with their assigned slot on the team's roster. This
+   means that when a position player is pitching, and fields the ball,
+   they are sometimes (correctly) called "pitcher" and other times
+   (incorrectly) labeled with the position they usually play.
+2. Players on superstar teams play different positions than they do on
+   their usual teams. Superstar games sometimes describe the player
+   with their correct position for the superstar team, and other times
+   (incorrectly) use the position that player has on usual team.
+
+See the documentation of `taxa.slot` for even more details.
+
+We want to correct these errors within MMOLDB, but it's going to take
+some time to lay the groundwork that will allow us to do so. In the
+meantime, take this value with a handful of salt.
+"""
+
+[[table.column]]
+name = "play_order"
+type = "integer"
+description = """
+The order of this fielder within the play. This is primarily used as a
+sort key. It can also be used along with `mmolb_game_id` and
+`game_event_index` to uniquely and stably identify a row in this table.
+See the documentation of `id` for more.
+"""

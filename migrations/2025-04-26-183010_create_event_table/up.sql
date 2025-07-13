@@ -63,7 +63,7 @@ create table taxa.slot (
 create table taxa.base (
     id bigserial primary key not null,
     name text not null,
-    bases_achieved int not null,
+    bases_achieved bigint not null,
     unique (name)
 );
 
@@ -219,7 +219,7 @@ create table data.events (
 
     -- event data
     event_type bigint references taxa.event_type not null,
-    -- should be populated for every event_type==Hit and HomeRun
+    -- should be populated for every event_type==Hit
     hit_base bigint references taxa.base,
     -- should be populated for every event type where there's a fair ball
     fair_ball_type bigint references taxa.fair_ball_type,
