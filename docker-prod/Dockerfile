@@ -24,6 +24,7 @@ COPY ../build.rs /code/
 COPY ../migrations /code/migrations
 COPY ../src /code/src
 COPY ../schema_docs /code/schema_docs
+COPY ../changelog.md /code/
 RUN cargo build --release --offline
 
 FROM debian:bookworm

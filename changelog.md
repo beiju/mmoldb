@@ -1,6 +1,11 @@
 Changelog
 =========
 
+2025-07-12 Hotfix 1
+----------
+
+- Added missing file to production build
+
 2025-07-12
 ----------
 
