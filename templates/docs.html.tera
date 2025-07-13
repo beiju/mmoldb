@@ -27,6 +27,7 @@
                 <h2><code>{{ schema.name }}.{{ table.name }}</code></h2>
                 {{ table.description | safe }}
 
+                {% if table.columns %}
                 <table>
                     <thead>
                         <tr>
@@ -48,6 +49,7 @@
                     {% endfor %}
                     </tbody>
                 </table>
+                {% endif %}
             {% endfor %}
         </section>
     {% endfor %}

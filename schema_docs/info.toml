@@ -8,4 +8,201 @@ game log message that corresponds to each row in `data.events`. The
 technological limitation.
 """
 
-table = []
+[[table]]
+name = "ingests"
+description = """
+Record of each time ingest ran.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. This table's primary key.
+"""
+
+[[table.column]]
+name = "started_at"
+type = "timestamp without time zone"
+description = """
+When this ingest was started, in UTC.
+"""
+
+[[table.column]]
+name = "finished_at"
+type = "timestamp without time zone"
+description = """
+When this ingest finished, in UTC.
+"""
+nullable_explanation = """
+`null` if the ingest is ongoing or was aborted.
+"""
+
+[[table.column]]
+name = "aborted_at"
+type = "timestamp without time zone"
+description = """
+When this ingest was aborted, in UTC.
+"""
+nullable_explanation = """
+`null` if the ingest is ongoing, finished successfully, or was aborted
+in a way that prevented us from updating the database.
+"""
+
+[[table.column]]
+name = "start_next_ingest_at_page"
+type = "text"
+description = """
+The next_page token that came with the latest Chronicler page that
+we've fully ingested. This is internal bookkeeping for the ingest task
+and is unlikely to be useful to anyone but MMOLDB itself.
+"""
+nullable_explanation = """
+`null` if the first page is not yet fully ingested.
+"""
+
+[[table]]
+name = "raw_events"
+description = """
+Game event messages directly from the API, without MMOLDB processing.
+Useful for understanding confusing game events and diagnosing issues
+with your query, MMOLDB, or MMOLB.
+
+Every event in `data.events` correlates with at least one of these by
+`game_id` and `game_event_index`. Some events correlate with a second
+by `game_id` and `fair_ball_event_index`.
+
+A common way to use this table is to add the following to an existing
+query that uses `data.events`:
+
+```
+left join info.raw_events on raw_events.game_id=events.game_id
+    and raw_events.game_event_index=events.game_event_index
+```
+
+Or, if you're looking at `fair_ball_type` and/or `fair_ball_direction`:
+```
+left join info.raw_events on raw_events.game_id=events.game_id
+    and raw_events.game_event_index=events.fair_ball_event_index
+```
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. This table's primary key.
+"""
+
+[[table.column]]
+name = "game_id"
+type = "bigint"
+description = """
+The game this raw event belongs to. References `data.games`.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
+which you access by joining `data.games` on this column.
+"""
+
+[[table.column]]
+name = "game_event_index"
+type = "integer"
+description = """
+The index of this game event (starting at 0) in its game's event log.
+This is used in combination with `mmolb_game_id` to identify a game
+event.
+"""
+
+[[table.column]]
+name = "event_text"
+type = "text"
+description = """
+The full text of this event, as it appeared on mmolb.com and in the
+API. Almost all the information in `data.events` was parsed from this
+message.
+"""
+
+[[table]]
+name = "event_ingest_log"
+description = """
+Informational messages MMOLDB generated while it was processing game
+events. This table powers the game view on the MMOLDB website. It's
+unlikely to be useful in queries.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. This table's primary key.
+"""
+
+[[table.column]]
+name = "game_id"
+type = "bigint"
+description = """
+The game this event log belongs to. References `data.games`.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
+which you access by joining `data.games` on this column.
+"""
+
+[[table.column]]
+name = "game_event_index"
+type = "integer"
+description = """
+The index of the game event this log belogngs to (starting at 0) in its
+game's event log. This is used in combination with `mmolb_game_id` to
+identify a game event.
+"""
+nullable_explanation = """
+`null` indicates that this log item belongs to its game as a whole, and
+not to a specific event.
+"""
+
+[[table.column]]
+name = "log_index"
+type = "integer"
+description = """
+The index of this log item within its game event. This is used as a
+sort key.
+"""
+
+[[table.column]]
+name = "log_level"
+type = "integer"
+description = """
+The severity level of this log entry.
+
+0 = Critical error
+1 = Error
+2 = Warning
+3 = Info
+4 = Debug
+5 = Trace
+
+Logs of level 2 and below are considered "issues", and they cause their
+game to be displayed on the "games with issues" page.
+"""
+
+[[table.column]]
+name = "log_text"
+type = "text"
+description = """
+The actual text of the log item.
+"""
+
+[[table]]
+name = "ingest_timings"
+description = """
+Exists entirely for debugging performance issues with ingest.
+
+The columns are not documented, but if you choose to use them anyway
+be warned that some of durations overlap. `db_insert_duration` overlaps
+all the other `db_insert_*_duration`s, `db_fetch_for_check_duration`
+overlaps all the other `db_fetch_for_check_*_duration`s, and
+`save_duration` overlaps everything but `fetch_duration`.
+"""
+allow_undocumented = true
