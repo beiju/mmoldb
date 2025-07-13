@@ -63,5 +63,11 @@
             forget to take it off before getting your final results.
         </p>
     </section>
+
+    {% if changelog %}
+    <section class="card">
+        {{ changelog | safe }}
+    </section>
+    {% endif %}
 </body>
 </html>

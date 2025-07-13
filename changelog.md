@@ -4,8 +4,8 @@ Changelog
 Upcoming
 --------
 
-- Added changelog
-- Added `abbreviation` to `taxa.pitch_type`
+- Added changelog.
+- Added `abbreviation` to `taxa.pitch_type`.
 - (Breaking) Deleted `taxa.hit_type`. Changed `data.events` column `hit_type` 
   to reference `taxa.base` instead and renamed it to `hit_base`.
 - Change `taxa.base` column `bases_achieved` from bigint to int. It never 
@@ -22,4 +22,5 @@ Upcoming
 - Added an index that will hopefully speed up queries that group by plate 
   appearance.
 - Sprinkled a few more Postgres constraints into the db.
-- Reordered away_* and home_* fields to put away first.
+- Reordered `away_*` and `home_*` fields to put away first.
+- Added the changelog to the index page.
