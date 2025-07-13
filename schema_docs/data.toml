@@ -86,13 +86,6 @@ The MMOLB game ID. This is the preferred way to identify a game.
 """
 
 [[table.column]]
-name = "emoji"
-type = "text"
-description = """
-The weather's emoji, as displayed on mmolb.com.
-"""
-
-[[table.column]]
 name = "weather"
 type = "bigint"
 description = """
@@ -104,14 +97,14 @@ and use the weather name (and emoji and tooltip if you like) instead.
 
 [[table.column]]
 name = "season"
-type = "int"
+type = "integer"
 description = """
 The MMOLB season during which this game was played.
 """
 
 [[table.column]]
 name = "day"
-type = "int"
+type = "integer"
 description = """
 The MMOLB regular or postseason day during which this game was played.
 """
@@ -123,7 +116,7 @@ Exactly one of `day` and `superstar_day` is non-null.
 
 [[table.column]]
 name = "superstar_day"
-type = "int"
+type = "integer"
 description = """
 The superstar day during which this game was played.
 """
@@ -232,7 +225,7 @@ To identify a particular event use the combination of its
 
 [[table.column]]
 name = "game_id"
-type = "integer"
+type = "bigint"
 description = """
 The id of the game this event belongs to. References the `data.games`
 table.
@@ -333,7 +326,7 @@ nullable_explanation = """
 """
 
 [[table.column]]
-name = "fielder_location"
+name = "fair_ball_direction"
 type = "bigint"
 description = """
 If this event is a fair ball, the fielder position that ball was
@@ -348,7 +341,7 @@ nullable_explanation = """
 """
 
 [[table.column]]
-name = "fielder_location"
+name = "fielding_error_type"
 type = "bigint"
 description = """
 If this event is a fielding error, the type of error (throwing or
@@ -379,7 +372,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "pitch_speed"
-type = "bigint"
+type = "double precision"
 description = """
 If this event is a pitch, the speed of the pitch.
 
@@ -392,7 +385,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "pitch_zone"
-type = "bigint"
+type = "integer"
 description = """
 If this event is a pitch, the region of the strike zone (or near the
 strike zone) that the pitch went through.
@@ -414,7 +407,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "described_as_sacrifice"
-type = "bigint"
+type = "boolean"
 description = """
 Records whether MMOLB described this event as a sacrifice.
 
@@ -505,7 +498,7 @@ left join taxa.event_type et on et.id = ev.event_type
 """
 
 [[table.column]]
-name = "balls_before"
+name = "strikes_before"
 type = "integer"
 description = """
 Number of strikes in the count before this event.
@@ -748,7 +741,7 @@ access `game_event_index`.
 
 [[table.column]]
 name = "event_id"
-type = "integer"
+type = "bigint"
 description = """
 The id of the event this baserunner belongs to. References the
 `data.events` table.
@@ -794,7 +787,7 @@ Most queries which reference this column should also reference `is_out`.
 
 [[table.column]]
 name = "is_out"
-type = "bigint"
+type = "boolean"
 description = """
 Whether the runner was put out on this event. If so, `base_after` is
 the base they were put out at.
@@ -810,6 +803,9 @@ out at. References `taxa.base_description_format`.
 MMOLB describes the same base in different ways for variety. This
 column stores which way was used for a particular event, mostly for use
 in reconstructing event text.
+"""
+nullable_explanation = """
+`null` for event types which never describe a base.
 """
 
 [[table.column]]
@@ -843,7 +839,7 @@ access `game_event_index`.
 
 [[table.column]]
 name = "event_id"
-type = "integer"
+type = "bigint"
 description = """
 The id of the event this fielder belongs to. References the
 `data.events` table.
