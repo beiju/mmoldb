@@ -54,10 +54,10 @@ pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppErr
         day: DayContext,
         away_team_emoji: String,
         away_team_name: String,
-        away_team_id: String,
+        away_team_mmolb_id: String,
         home_team_emoji: String,
         home_team_name: String,
-        home_team_id: String,
+        home_team_mmolb_id: String,
         game_wide_logs: Vec<LogContext>,
         events: Vec<EventContext>,
     }
@@ -75,10 +75,10 @@ pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppErr
         day: (full_game.game.day, full_game.game.superstar_day).into(),
         away_team_emoji: full_game.game.away_team_emoji,
         away_team_name: full_game.game.away_team_name,
-        away_team_id: full_game.game.away_team_id,
+        away_team_mmolb_id: full_game.game.away_team_mmolb_id,
         home_team_emoji: full_game.game.home_team_emoji,
         home_team_name: full_game.game.home_team_name,
-        home_team_id: full_game.game.home_team_id,
+        home_team_mmolb_id: full_game.game.home_team_mmolb_id,
         game_wide_logs: full_game.game_wide_logs.into_iter()
             .map(Into::into)
             .collect(),

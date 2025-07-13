@@ -6,6 +6,7 @@ mod weather;
 use std::collections::HashMap;
 // Reexports
 pub use to_db_format::RowToEventError;
+pub use taxa_macro::AsInsertable;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -683,11 +684,11 @@ fn insert_games_internal<'e>(
                 weather: *weather_id,
                 away_team_emoji: &raw_game.away_team_emoji,
                 away_team_name: &raw_game.away_team_name,
-                away_team_id: &raw_game.away_team_id,
+                away_team_mmolb_id: &raw_game.away_team_id,
                 away_team_final_score,
                 home_team_emoji: &raw_game.home_team_emoji,
                 home_team_name: &raw_game.home_team_name,
-                home_team_id: &raw_game.home_team_id,
+                home_team_mmolb_id: &raw_game.home_team_id,
                 home_team_final_score,
                 is_finished: game.is_complete(),
             }

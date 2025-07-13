@@ -4,4 +4,575 @@ This is where you mostly want to look. It contains the
 actual data you'll be querying.
 """
 
-table = []
+[[table]]
+name = "weather"
+description = """
+MMOLB weathers.
+
+This table is populated dynamically from API data in a non-determinstic
+order. This means ids are *not* stable. You should not store weather
+ids between queries, nor hard-code weather ids into queries. Always
+join with the `weather` table.
+
+Two weathers are considered distinct if their name, emoji, *or* tooltip
+are different. There may be many entries in this table with the same
+name, but their emoji and/or tooltip will be different.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not
+store weather ids between queries, nor hard-code weather ids into
+queries. Always join with the `weather` table.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The weather's name, as displayed on mmolb.com.
+"""
+
+[[table.column]]
+name = "emoji"
+type = "text"
+description = """
+The weather's emoji, as displayed on mmolb.com.
+"""
+
+[[table.column]]
+name = "tooltip"
+type = "text"
+description = """
+The text that appears when you hover over a weather on mmolb.com.
+"""
+
+[[table]]
+name = "games"
+description = """
+All* known MMOLB games. This includes incomplete games, even though we
+don't process game events until the game is finished.
+
+\\* Excluding a set of games from Season 0 which never finished and
+will never finish. Those games are excluded from MMOLDB.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not
+store these ids between queries, nor hard-code them into queries.
+Always use `mmolb_game_id` for that instead.
+"""
+
+[[table.column]]
+name = "ingest"
+type = "bigint"
+description = """
+The ID of the ingest that added this game. References `info.ingests`.
+
+Incomplete games are deleted and re-added, so a given game's `ingest`
+may change over time.
+"""
+
+[[table.column]]
+name = "mmolb_game_id"
+type = "text"
+description = """
+The MMOLB game ID. This is the preferred way to identify a game.
+"""
+
+[[table.column]]
+name = "emoji"
+type = "text"
+description = """
+The weather's emoji, as displayed on mmolb.com.
+"""
+
+[[table.column]]
+name = "weather"
+type = "bigint"
+description = """
+The active weather during this game. This references `data.weather`.
+Weather ids are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Always join to `data.weather`
+and use the weather name (and emoji and tooltip if you like) instead.
+"""
+
+[[table.column]]
+name = "season"
+type = "int"
+description = """
+The MMOLB season during which this game was played.
+"""
+
+[[table.column]]
+name = "day"
+type = "int"
+description = """
+The MMOLB regular or postseason day during which this game was played.
+"""
+nullable_explanation = """
+`null` for superstar games --- they have a `superstar_day` instead.
+
+Exactly one of `day` and `superstar_day` is non-null.
+"""
+
+[[table.column]]
+name = "superstar_day"
+type = "int"
+description = """
+The superstar day during which this game was played.
+"""
+nullable_explanation = """
+`null` for non-superstar games --- they have a `day` instead.
+
+Exactly one of `day` and `superstar_day` is non-null.
+"""
+
+[[table.column]]
+name = "away_team_emoji"
+type = "text"
+description = """
+The away team's emoji.
+"""
+
+[[table.column]]
+name = "away_team_name"
+type = "text"
+description = """
+The away team's name.
+"""
+
+[[table.column]]
+name = "away_team_mmolb_id"
+type = "text"
+description = """
+The away team's MMOLB ID.
+"""
+
+[[table.column]]
+name = "away_team_final_score"
+type = "integer"
+description = """
+The away team's final score.
+"""
+nullable_explanation = """
+`null` for incomplete games.
+"""
+
+[[table.column]]
+name = "home_team_emoji"
+type = "text"
+description = """
+The home team's emoji.
+"""
+
+[[table.column]]
+name = "home_team_name"
+type = "text"
+description = """
+The home team's name.
+"""
+
+[[table.column]]
+name = "home_team_mmolb_id"
+type = "text"
+description = """
+The home team's MMOLB ID.
+"""
+
+[[table.column]]
+name = "home_team_final_score"
+type = "integer"
+description = """
+The home team's final score.
+"""
+nullable_explanation = """
+`null` for incomplete games.
+"""
+
+[[table.column]]
+name = "is_finished"
+type = "boolean"
+description = """
+Whether this game is over.
+"""
+
+[[table]]
+name = "events"
+description = """
+The big one. Contains a row for each pitch and certain non-pitch events
+(e.g. balk).
+
+This table does not contain a row for every item in the game event log.
+Formulaic events, like game start and end messages, batter up messages,
+etc. are not included. Mound visits are also not included and are
+currently not available anywhere in the database. Item drops, falling
+stars, or other weather events are also not included. These items may
+be added in future.
+
+`data.event_baserunners` and `data.event_fielders` are child tables of
+`data.events`.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not
+store these ids between queries, nor hard-code them into queries.
+To identify a particular event use the combination of its
+`mmolb_game_id` (which you access by joining `data.games` on the `id`
+column) and `game_event_index`.
+"""
+
+[[table.column]]
+name = "game_event_index"
+type = "integer"
+description = """
+The index of this game event (starting at 0) in its game's event log.
+This is used in combination with `mmolb_game_id` to identify a game
+event.
+"""
+
+[[table.column]]
+name = "fair_ball_event_index"
+type = "integer"
+description = """
+Fair balls emit two consecutive messages in MMOLB. The first declares
+that the ball is fair and gives its type and direction, then the second
+gives its outcome. The second event's id is stored in
+`game_event_index` and the first event's id is stored in
+`fair_ball_event_index`.
+
+This would be more accurately named `fair_ball_game_event_index` but
+the name is already long enough as it is.
+"""
+nullable_explanation = """
+`null` if this event is not a fair ball.
+"""
+
+[[table.column]]
+name = "inning"
+type = "integer"
+description = """
+The inning number, 1-indexed.
+
+There are event messages that happen during "inning 0" (before the game
+announces the top of the 1st), but none of them are any of the event
+types that we store in this table.
+"""
+
+[[table.column]]
+name = "top_of_inning"
+type = "boolean"
+description = """
+`true` when it's the top of the inning, `false` when it's the bottom.
+
+When it's `true`, the home team is defending and the away team is
+batting. When it's false, the away team is defending and the home team
+is batting.
+"""
+
+[[table.column]]
+name = "event_type"
+type = "bigint"
+description = """
+The event's type. References `taxa.event_type`.
+
+`taxa.event_type` ids *are* stable, but you are encouraged to join
+`taxa.event_type` and use its `name` column rather than directly
+using event type ids in your queries or results.
+"""
+
+[[table.column]]
+name = "hit_base"
+type = "bigint"
+description = """
+If this event is a hit, the base the batter reached. Home plate (0th
+base) indicates a home run. References `taxa.base`.
+
+`taxa.base` has meaningful id numbers, so it's fine to use them
+directly in your queries and results (so long as you remember that
+home plate is 0th base). You can of course still join `taxa.base` if
+it's convenient to do so.
+"""
+nullable_explanation = """
+`null` if this event is not a hit.
+"""
+
+[[table.column]]
+name = "fair_ball_type"
+type = "bigint"
+description = """
+If this event is a fair ball, the batted ball type. References
+`taxa.fair_ball_type`.
+
+`taxa.fair_ball_type` ids *are* stable, but you are encouraged to join
+`taxa.fair_ball_type` and use its `name` column rather than directly
+using fair ball type ids in your queries or results.
+"""
+nullable_explanation = """
+`null` if this event is not a fair ball.
+"""
+
+[[table.column]]
+name = "fielder_location"
+type = "bigint"
+description = """
+If this event is a fair ball, the fielder position that ball was
+heading towards. References `taxa.fielder_location`.
+
+`taxa.fielder_location` ids *are* stable, but you are encouraged to
+join `taxa.fielder_location` and use its `name` column rather than
+directly using fielder location ids in your queries or results.
+"""
+nullable_explanation = """
+`null` if this event is not a fair ball.
+"""
+
+[[table.column]]
+name = "fielder_location"
+type = "bigint"
+description = """
+If this event is a fielding error, the type of error (throwing or
+catching). References `taxa.fielding_error_type`.
+
+`taxa.fielding_error_type` ids *are* stable, but you are encouraged to
+join `taxa.fielding_error_type` and use its `name` column rather than
+directly using fielding error type ids in your queries or results.
+"""
+nullable_explanation = """
+`null` if this event is not a fielding error.
+"""
+
+[[table.column]]
+name = "pitch_type"
+type = "bigint"
+description = """
+If this event is a pitch, the type of pitch. References
+`taxa.pitch_type`.
+
+`taxa.pitch_type` ids *are* stable, but you are encouraged to join
+`taxa.pitch_type` and use its `name` column rather than directly using
+pitch type ids in your queries or results.
+"""
+nullable_explanation = """
+`null` if this event is not a pitch (e.g. a balk).
+"""
+
+[[table.column]]
+name = "pitch_speed"
+type = "bigint"
+description = """
+If this event is a pitch, the speed of the pitch.
+
+This value is parsed from the display text, which is (as of this
+writing) truncated to one decimal place.
+"""
+nullable_explanation = """
+`null` if this event is not a pitch (e.g. a balk).
+"""
+
+[[table.column]]
+name = "pitch_zone"
+type = "bigint"
+description = """
+If this event is a pitch, the region of the strike zone (or near the
+strike zone) that the pitch went through.
+
+The assignment of numbers to pitch zones comes straight from MMOLB.
+The zones are arranged like so:
+
+```
+TODO find that diagram
+```
+"""
+nullable_explanation = """
+`null` if this event is not a pitch (e.g. a balk).
+"""
+
+[[table.column]]
+name = "described_as_sacrifice"
+type = "bigint"
+description = """
+Records whether MMOLB described this event as a sacrifice.
+
+Ordinarily this would not be stored, and sacrifices would be detected
+by examining the baserunners. However, early in MMOLB's history, some
+plays were described as sacrifices despite not scoring nor advancing
+any runners. [See the bug report on the MMOLB official discord.][bug]
+This means the only way to know if an event is a *purported* sacrifice
+is to store that information separately.
+
+Although this column exists because of the bug, it is not specific to
+the bugged events. This will be `true` for events which are correctly
+described as sacrifices, in addition to events which are incorrectly
+described as sacrifices.
+
+This column is mainly intended to ensure game event messages can be
+perfectly reconstructed from the database (aka "round-tripped"), but
+it may be useful for analysis as well.
+
+[bug]: https://discord.com/channels/1136709081319604324/1378254049325092894
+"""
+nullable_explanation = """
+`null` if events of this type cannot be a sacrifice. As of this
+writing, the only event types that can be sacrifices are caught outs
+and grounded double plays.
+"""
+
+[[table.column]]
+name = "is_toasty"
+type = "boolean"
+description = """
+"toasty" is an easter egg that Danny (the creator of MMOLB) has said
+exists to prevent a situation would otherwise be cause crash in the
+sim. In season 2 and earlier it manifested as the text "Perfect catch!"
+at the end of an event. During the s2 postseason Danny [shared his
+intent][toasty] (in Discord) to change the message to "Amazing throw!"
+for ground balls. That message is also how know that "toasty" is the
+generic term for a perfect catch or amazing throw.
+
+This column is mainly intended to ensure game event messages can be
+perfectly reconstructed from the database (aka "round-tripped"), but
+it may be useful for analysis as well.
+
+[toasty]: https://discord.com/channels/1136709081319604324/1364685052419510404/1390859849524314212
+"""
+nullable_explanation = """
+`null` if events of this type can never be toasty. Note that toasty is
+a very rare occurrence, so there may be events that can be toasty that
+we don't yet know can be toasty.
+"""
+
+[[table.column]]
+name = "balls_before"
+type = "integer"
+description = """
+Number of balls in the count before this event.
+
+The number of balls in the count after this event can be easily
+computed using the helper columns on `taxa.event_type`. For example,
+if you want walks to be represented with a count of 4-X, you can use
+`event.balls_before + event_type.is_ball::int`. In a query that might
+look like:
+
+```
+select
+    ev.balls_before + et.is_ball::int as balls_after
+from data.events ev
+left join taxa.event_type et on et.id = ev.event_type
+```
+
+If you want the count to be zeroed for a PA-ending event, like it is
+on mmolb.com, use the slightly longer `case when
+event_type.ends_plate_appearance then 0 else event.balls_before +
+event_type.is_ball::int end`. In a query that might look like:
+
+```
+select
+    (case when
+        et.ends_plate_appearance
+    then
+        0
+    else
+        ev.balls_before + et.is_strike::int
+    end) as balls_after
+from data.events ev
+left join taxa.event_type et on et.id = ev.event_type
+```
+"""
+
+[[table.column]]
+name = "balls_before"
+type = "integer"
+description = """
+Number of strikes in the count before this event.
+
+The number of strikes in the count after this event can be easily
+computed using the helper columns on `taxa.event_type`. For example,
+if you want outs and batted balls to add to the strike total, you can
+use `event.strikes_before + event_type.is_strike::int`. In a query that
+might look like:
+
+```
+select
+    ev.strikes_before + et.is_strike::int as strikes_after
+from data.events ev
+left join taxa.event_type et on et.id = ev.event_type
+```
+
+If you want strikeouts (including foul tip strikeouts) to add to the
+count, but not batted balls, replace `is_strike` with
+`is_basic_strike`.
+
+If you want the count to be zeroed for a PA-ending event, like it is
+on mmolb.com, use the slightly longer `case when
+event_type.ends_plate_appearance then 0 else event.strikes_before +
+event_type.is_strike::int end`. In a query that might look like:
+
+```
+select
+    (case when
+        et.ends_plate_appearance
+    then
+        0
+    else
+        ev.strikes_before + et.is_strike::int
+    end) as strikes_after
+from data.events ev
+left join taxa.event_type et on et.id = ev.event_type
+```
+"""
+
+[[table.column]]
+name = "outs_before"
+type = "integer"
+description = """
+The number of outs in the half-inning before this event.
+"""
+
+[[table.column]]
+name = "outs_after"
+type = "integer"
+description = """
+The number of outs in the half-inning after this event.
+
+Computing `outs_after` within a query, while possible, is much more
+complicated than `balls_after` or `strikes_after`. It's also
+unambiguous, unlike `balls_after` or `strikes_after`.
+"""
+
+[[table.column]]
+name = "away_team_score_before"
+type = "integer"
+description = """
+The away team's score before this event.
+"""
+
+[[table.column]]
+name = "away_team_score_after"
+type = "integer"
+description = """
+The away team's score after this event.
+"""
+
+[[table.column]]
+name = "home_team_score_before"
+type = "integer"
+description = """
+The home team's score before this event.
+"""
+
+[[table.column]]
+name = "home_team_score_after"
+type = "integer"
+description = """
+The home team's score after this event.
+"""
+

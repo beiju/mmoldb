@@ -1,3 +1,4 @@
+use crate::db::AsInsertable;
 use crate::db::{
     TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
     TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
@@ -99,14 +100,14 @@ pub struct EventDetail<StrT: Clone> {
     pub fair_ball_event_index: Option<usize>,
     pub inning: u8,
     pub top_of_inning: bool,
-    pub count_balls: u8,
-    pub count_strikes: u8,
+    pub balls_before: u8,
+    pub strikes_before: u8,
     pub outs_before: i32,
     pub outs_after: i32,
-    pub home_team_score_before: u8,
-    pub home_team_score_after: u8,
     pub away_team_score_before: u8,
     pub away_team_score_after: u8,
+    pub home_team_score_before: u8,
+    pub home_team_score_after: u8,
     pub pitcher_name: StrT,
     pub batter_name: StrT,
     pub fielders: Vec<EventDetailFielder<StrT>>,
@@ -269,7 +270,6 @@ impl BatterStats {
 pub struct TeamInGame<'g> {
     team_name: &'g str,
     team_emoji: &'g str,
-    team_id: &'g str,
     // I need another field to store the automatic runner because it's
     // not always the batter who most recently stepped up, in the case
     // of automatic runners after an inning-ending CS
@@ -892,14 +892,14 @@ impl<'g> EventDetailBuilder<'g> {
             fair_ball_event_index: self.fair_ball_event_index,
             inning: game.state.inning_number,
             top_of_inning: game.state.inning_half.is_top(),
-            count_balls: game.state.count_balls,
-            count_strikes: game.state.count_strikes,
+            balls_before: self.prev_game_state.count_balls,
+            strikes_before: self.prev_game_state.count_strikes,
             outs_before: self.prev_game_state.outs,
             outs_after: game.state.outs,
-            home_team_score_before: self.prev_game_state.home_score,
-            home_team_score_after: game.state.home_score,
             away_team_score_before: self.prev_game_state.away_score,
             away_team_score_after: game.state.away_score,
+            home_team_score_before: self.prev_game_state.home_score,
+            home_team_score_after: game.state.home_score,
             batter_name,
             pitcher_name: if let MaybePlayer::Player(pitcher) = &self.raw_event.pitcher {
                 pitcher
@@ -1103,7 +1103,6 @@ impl<'g> Game<'g> {
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
-                team_id: game_data.away_team_id.as_str(),
                 automatic_runner: None,
                 active_pitcher: BestEffortSlottedPlayer {
                     name: away_pitcher_name,
@@ -1121,7 +1120,6 @@ impl<'g> Game<'g> {
             home: TeamInGame {
                 team_name: home_team_name,
                 team_emoji: home_team_emoji,
-                team_id: game_data.home_team_id.as_str(),
                 automatic_runner: None,
                 active_pitcher: BestEffortSlottedPlayer {
                     name: home_pitcher_name,
@@ -2848,7 +2846,15 @@ pub enum ToParsedContactError {
 
 impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
     fn count(&self) -> (u8, u8) {
-        (self.count_balls, self.count_strikes)
+        let props = self.detail_type.as_insertable();
+        if props.ends_plate_appearance {
+            (0, 0)
+        } else {
+            (
+                self.balls_before + if props.is_ball { 1 } else { 0 },
+                self.strikes_before + if props.is_strike { 1 } else { 0 },
+            )
+        }
     }
 
     fn fielders_iter(&self) -> impl Iterator<Item = PlacedPlayer<&str>> {
@@ -3182,7 +3188,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                             event_type: self.detail_type,
                         });
                     }
-                    Some(TaxaBase::Home) => {},
+                    Some(TaxaBase::Third) => {},
                     Some(other) => {
                         return Err(ToParsedError::InvalidHitBase {
                             event_type: self.detail_type,

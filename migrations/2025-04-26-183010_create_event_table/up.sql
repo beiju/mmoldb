@@ -116,13 +116,14 @@ create table data.games (
     season int not null,
     day int, -- day is null for superstar games
     superstar_day int, -- superstar_day is null for non-superstar games
+    check ( num_nonnulls(day, superstar_day) = 1 ),
     away_team_emoji text not null,
     away_team_name text not null,
-    away_team_id text not null,
+    away_team_mmolb_id text not null,
     away_team_final_score int, -- away_team_final_score is null for unfinished games
     home_team_emoji text not null,
     home_team_name text not null,
-    home_team_id text not null,
+    home_team_mmolb_id text not null,
     home_team_final_score int, -- home_team_final_score is null for unfinished games
 
     -- Indicates whether this game has been ingested
@@ -253,16 +254,20 @@ create table data.events (
     -- know that "toasty" is the generic term for those messages:
     -- https://discord.com/channels/1136709081319604324/1364685052419510404/1390859849524314212
     is_toasty bool, -- null indicates an event that, as far as we know, can never be toasty
-    count_balls int not null,
-    count_strikes int not null,
+    balls_before int not null,
+    strikes_before int not null,
     outs_before int not null,
     outs_after int not null,
     -- note: runs scored, outs on play, steal info, etc. are all computed from data.event_baserunners
 
-    home_team_score_before int not null,
-    home_team_score_after int not null,
+    -- TODO Consider removing and replacing with a member in the (not-currently-extant) events_extended
+    --   table. Score can be computed by counting the number of baserunner entries for this game with
+    --   base_after = 0, is_out = false, and game_event_index < or <= (for before and after respectively)
+    --   this event's game_event_index.
     away_team_score_before int not null,
     away_team_score_after int not null,
+    home_team_score_before int not null,
+    home_team_score_after int not null,
 
     -- player info
     pitcher_name text not null,

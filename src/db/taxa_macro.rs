@@ -1,4 +1,4 @@
-pub(super) trait AsInsertable<'a> {
+pub trait AsInsertable<'a> {
     type Insertable;
 
     fn as_insertable(&self) -> Self::Insertable;
@@ -60,9 +60,9 @@ macro_rules! taxa_insertable_enum {
         #[derive(Insertable, AsChangeset)]
         #[diesel(table_name = $schema)]
         pub struct $insertable_name<'a> {
-            id: i64,
-            name: &'a str,
-            $($attr_name: $attr_type,)*
+            pub id: i64,
+            pub name: &'a str,
+            $(pub $attr_name: $attr_type,)*
         }
     };
     // This is intended to match when there is no attribute, hopefully it works
@@ -70,8 +70,8 @@ macro_rules! taxa_insertable_enum {
         #[derive(Insertable, AsChangeset)]
         #[diesel(table_name = $schema)]
         pub struct $insertable_name<'a> {
-            id: i64,
-            name: &'a str,
+            pub id: i64,
+            pub name: &'a str,
         }
     };
 }
