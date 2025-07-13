@@ -55,7 +55,7 @@ async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
         .extract_inner("databases.mmoldb")
         .expect("mmoldb database connection information was not found in Rocket.toml");
 
-    rocket::tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         PgConnection::establish(&config.url)
             .expect("Failed to connect to mmoldb database during migrations")
             .run_pending_migrations(MIGRATIONS)

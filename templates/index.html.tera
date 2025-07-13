@@ -29,26 +29,24 @@
             query tool (<a href="https://www.pgadmin.org/">pgAdmin</a>
             is a popular choice). Connect using these settings:
         </p>
-        <p class="about">
-            <ul>
-                <li>
-                    Hostname: <code>mmoldb.beiju.me</code>. Do not add http
-                    or https &mdash; the connection uses a different protocol.
-                </li>
-                <li>
-                    Port: <code>42416</code>
-                </li>
-                <li>
-                    Database: <code>mmoldb</code>
-                </li>
-                <li>
-                    Username: <code>guest</code>
-                </li>
-                <li>
-                    Password: <code>moldybees</code>
-                </li>
-            </ul>
-        </p>
+        <ul class="about">
+            <li>
+                Hostname: <code>mmoldb.beiju.me</code>. Do not add http
+                or https &mdash; the connection uses a different protocol.
+            </li>
+            <li>
+                Port: <code>42416</code>
+            </li>
+            <li>
+                Database: <code>mmoldb</code>
+            </li>
+            <li>
+                Username: <code>guest</code>
+            </li>
+            <li>
+                Password: <code>moldybees</code>
+            </li>
+        </ul>
         <p class="about">
             All other settings you should be able to leave at their defaults.
         </p>

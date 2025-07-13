@@ -24,7 +24,7 @@
         {{ schema.description | safe }}
 
         {% for table in schema.tables %}
-            <h2><code>{{ schema.name }}.{{ table.name }}</code</h2>
+            <h2><code>{{ schema.name }}.{{ table.name }}</code></h2>
             {{ table.description | safe }}
         {% endfor %}
     </section>
