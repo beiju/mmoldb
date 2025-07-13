@@ -1,3 +1,4 @@
+display_order = 3
 description = """
 Holds information that powers the MMOLB front-end (the website you are
 probably reading this text on). You likely won't need to use this

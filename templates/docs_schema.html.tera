@@ -17,11 +17,16 @@
         <a class="nav-item current" href="{{ docs_url }}">Docs</a>
     </section>
 
-    {% for name, schema in schemata %}
+    {% for schema in schemata %}
     <section class="card">
-        <h1><code>{{ name }}</code></h1>
+        <h1><code>{{ schema.name }}</code></h1>
 
         {{ schema.description | safe }}
+
+        {% for table in schema.tables %}
+            <h2><code>{{ schema.name }}.{{ table.name }}</code</h2>
+            {{ table.description | safe }}
+        {% endfor %}
     </section>
     {% endfor %}
     </body>

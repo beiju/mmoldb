@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use include_dir::{include_dir, Dir};
 use itertools::Itertools;
@@ -31,11 +30,29 @@ pub enum DocsError {
 #[get("/docs")]
 pub async fn docs_page() -> Result<Template, AppError> {
     #[derive(Debug, Serialize)]
-    struct Schema {
+    struct Column {
+        name: String,
+        r#type: String,
         description: String,
+        nullable_explanation: Option<String>,
     }
 
-    let schemata = SCHEMA_DOCS_DIR.entries()
+    #[derive(Debug, Serialize)]
+    struct Table {
+        name: String,
+        description: String,
+        columns: Vec<Column>,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct Schema {
+        display_order: Option<usize>,
+        name: &'static str,
+        description: String,
+        tables: Vec<Table>,
+    }
+
+    let mut schemata = SCHEMA_DOCS_DIR.entries()
         .iter()
         .map(|entry| {
             let os_name = entry.path().file_stem()
@@ -53,14 +70,30 @@ pub async fn docs_page() -> Result<Template, AppError> {
 
             Ok::<_, DocsError>((name, docs))
         })
-        .map_ok(|(key, val)| {
-            let new_val = Schema {
-                description: markdown::to_html(&val.description),
-            };
-
-            (key, new_val)
+        .map_ok(|(name, schema)| {
+            Schema {
+                display_order: schema.display_order,
+                name,
+                description: markdown::to_html(&schema.description),
+                tables: schema.tables.into_iter()
+                    .map(|table| Table {
+                        name: table.name,
+                        description: markdown::to_html(&table.description),
+                        columns: table.columns.into_iter()
+                            .map(|column| Column {
+                                name: column.name,
+                                r#type: column.r#type,
+                                description: markdown::to_html(&column.description),
+                                nullable_explanation: column.nullable_explanation.as_deref().map(markdown::to_html),
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            }
         })
-        .collect::<Result<HashMap<_, _>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?;
+
+    schemata.sort_by_key(|s| s.display_order.unwrap_or(usize::MAX));
 
     Ok(Template::render(
         "docs",
@@ -131,6 +164,7 @@ pub struct TableDocs {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaDocs {
+    pub display_order: Option<usize>,
     pub description: String,
     // It's more ergonomic to use the singular in the TOML file
     #[serde(rename = "table")]
@@ -225,7 +259,7 @@ mod tests {
             assert!(false, "Documented column {} does not exist {schema_name}.{table_name}", doc.name);
         }
 
-        for (docs, schema) in schemas_with_docs {
+        for (schd) in schemas_with_docs {
             assert_eq!(schema.r#type, docs.r#type, "Type mismatch for column {} in {schema_name}.{table_name}", schema.name);
             assert_eq!(schema.is_nullable, docs.nullable_explanation.is_some(), "Nullability mismatch for column {} in {schema_name}.{table_name}", schema.name);
         }

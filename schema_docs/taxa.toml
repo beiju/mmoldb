@@ -1,3 +1,4 @@
+display_order = 1
 description = """
 Contains categorical information. You can think of each `taxa` table as
 an enum, and each row as a variant of that enum. The difference between
