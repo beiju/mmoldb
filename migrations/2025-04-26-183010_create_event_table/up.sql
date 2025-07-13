@@ -298,6 +298,8 @@ create table data.events (
 
 -- `on delete cascade` is very slow without the appropriate index
 create index events_game_id_index on data.events (game_id);
+-- speeds up grouping plate appearances (theoretically; untested)
+create index plate_appearance_index on data.events (game_id, top_of_inning, batter_count, batter_subcount);
 
 create table data.event_baserunners (
     -- bookkeeping

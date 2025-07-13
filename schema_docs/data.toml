@@ -576,3 +576,111 @@ description = """
 The home team's score after this event.
 """
 
+[[table.column]]
+name = "pitcher_name"
+type = "text"
+description = """
+The active pitcher's name.
+
+The pitcher's id is not yet available, but we're working on it.
+"""
+
+[[table.column]]
+name = "pitcher_count"
+type = "integer"
+description = """
+A number that starts at 0 at the beginning of each game and is
+incremented each time there is a pitcher change.
+
+For the purposes of this column, a pitcher change is when a different
+pitching *slot* is chosen to be the active pitcher for this game. When
+pitchers are swapped as a result of an augment, or when a player
+Retires and is replaced in the middle of a game (due to a falling star,
+for example) this number does not increase. Note that augments have
+fired during games as late as Season 2 (although after season 0 it's
+rare).
+
+Each team maintains a separate `pitcher_count`. The `pitcher_count`
+stored in an event is the defending team's `pitcher_count`. Use
+`top_of_inning` to tell which team is defending.
+"""
+
+[[table.column]]
+name = "batter_name"
+type = "text"
+description = """
+The active batter's name.
+
+The batter's id is not yet available, but we're working on it.
+"""
+
+[[table.column]]
+name = "batter_count"
+type = "integer"
+description = """
+A number that starts at 0 at the start of each game and is
+incremented each time a *different* batter begins a PA.
+
+Note that this does not increase when the same batter begins a PA
+multiple times in a row. As of Season 2 this only happens when the
+previous PA was interrupted by an inning-ending caught stealing. To
+separate multiple consecutive appearances by the same batter, use
+`batter_subcount`.
+
+This number also does not increase when a batter is swapped mid-PA as a
+result of an augment, or when a player Retires and is replaced in the
+middle of a PA (due to a falling star, for example). Note that augments
+have fired during games as late as Season 2 (although after season 0
+it's rare).
+
+Each team maintains a separate `batter_count`. The `batter_count`
+stored in an event is the batting team's `batter_count`. Use
+`top_of_inning` to tell which team is batting.
+"""
+
+[[table.column]]
+name = "batter_subcount"
+type = "integer"
+description = """
+A number that is reset to 0 each time `batter_count` changes and is
+incremented each time the previously-active batter begins a new PA.
+
+As of Season 2 this only happens when the previous PA was interrupted
+by an inning-ending caught stealing. As of Season 2 the only possible
+values for `batter_subcount` are 0 and 1, but future game mechanics may
+make higher numbers possible.
+
+This is used in combination with `batter_count` to group plate
+appearances. If you want to group all the pitches, from before and
+after the caught-stealing, into a single plate appearance use
+`group by batter_count`. If you want to count the interrupted plate
+appearance and the subsequent plate appearances as two separate groups
+of events, use `group by batter_count, batter_subcount`. If you want to
+only include events from the last consecutive plate appearance
+(discarding the rest), the query is more complicated.
+Here's an example:
+
+```
+select
+    count(1)
+from data.events e
+where batter_subcount = (
+    select max(batter_subcount)
+    from data.events e2
+    where e2.game_id = e.game_id
+      and e2.top_of_inning = e.top_of_inning
+      and e2.batter_count = e.batter_count)
+group by game_id, top_of_inning, batter_count, batter_subcount
+```
+
+Note that if you only want last event in each group of consecutive
+plate appearances, it's sufficient to group by `batter_count` and then
+select the row with the highest `game_event_index`, which should be
+much faster.
+
+Or, if you only want the plate-appearance-ending events, join
+`taxa.event_type` and filter on `ends_plate_appearance`. As of Season 2
+there should only be one event with `ends_plate_appearance = true` for
+each `(game_id, top_of_inning, batter_count)` combination.
+"""
+
