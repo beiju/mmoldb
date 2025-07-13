@@ -259,7 +259,7 @@ mod tests {
             assert!(false, "Documented column {} does not exist {schema_name}.{table_name}", doc.name);
         }
 
-        for (schd) in schemas_with_docs {
+        for (docs, schema) in schemas_with_docs {
             assert_eq!(schema.r#type, docs.r#type, "Type mismatch for column {} in {schema_name}.{table_name}", schema.name);
             assert_eq!(schema.is_nullable, docs.nullable_explanation.is_some(), "Nullability mismatch for column {} in {schema_name}.{table_name}", schema.name);
         }

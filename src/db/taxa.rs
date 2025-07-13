@@ -709,7 +709,7 @@ taxa! {
         First = 1,
         #[bases_achieved: i32 = 2]
         Second = 2,
-        #[bases_achieved: i32 = 3]
+        #[bases_achieved: i64 = 3]
         Third = 3,
     }
 }
@@ -881,23 +881,23 @@ taxa! {
         id_column = crate::taxa_schema::taxa::pitch_type::dsl::id,
     ]
     pub enum TaxaPitchType {
-        #[display_name: &'a str = "Fastball"]
+        #[display_name: &'a str = "Fastball", abbreviation: &'a str = "FF"]
         Fastball = 1,
-        #[display_name: &'a str = "Sinker"]
+        #[display_name: &'a str = "Sinker", abbreviation: &'a str = "SI"]
         Sinker = 2,
-        #[display_name: &'a str = "Slider"]
+        #[display_name: &'a str = "Slider", abbreviation: &'a str = "SL"]
         Slider = 3,
-        #[display_name: &'a str = "Changeup"]
+        #[display_name: &'a str = "Changeup", abbreviation: &'a str = "CH"]
         Changeup = 4,
-        #[display_name: &'a str = "Curveball"]
+        #[display_name: &'a str = "Curveball", abbreviation: &'a str = "CU"]
         Curveball = 5,
-        #[display_name: &'a str = "Cutter"]
+        #[display_name: &'a str = "Cutter", abbreviation: &'a str = "FC"]
         Cutter = 6,
-        #[display_name: &'a str = "Sweeper"]
+        #[display_name: &'a str = "Sweeper", abbreviation: &'a str = "ST"]
         Sweeper = 7,
-        #[display_name: &'a str = "Knuckle curve"]
+        #[display_name: &'a str = "Knuckle curve", abbreviation: &'a str = "KC"]
         KnuckleCurve = 8,
-        #[display_name: &'a str = "Splitter"]
+        #[display_name: &'a str = "Splitter", abbreviation: &'a str = "FS"]
         Splitter = 9,
     }
 }
