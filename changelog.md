@@ -10,7 +10,7 @@ Changelog
   to reference `taxa.base` instead and renamed it to `hit_base`.
 - Change `taxa.base` column `bases_achieved` from bigint to int. It never 
   should have been a bigint in the first place.
-- Added documentation for `taxa` and `data` tables. `info` coming soon.
+- Added documentation for `taxa`, `data`, and `info` schemata.
 - (Breaking) Renamed `home_team_id` and `away_team_id` to `home_team_mmolb_id` 
   and `away_team_mmolb_id` in `data.games`. 
 - (Breaking) Removed `count_strikes` and `count_balls`, which used to store the 
