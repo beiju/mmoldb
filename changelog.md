@@ -9,6 +9,8 @@ Upcoming
 - Change `taxa.base` column `bases_achieved` from bigint to int again? I swear
   I did that in the last big update.
 - Skip over FallingStar events instead of erroring 
+- When the batter name in the event doesn't match the stored batter name,
+  use the one from the event
 
 2025-07-12 Hotfix 1
 ----------

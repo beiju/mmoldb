@@ -13,10 +13,7 @@ use mmolb_parsing::enums::{
     Place, StrikeType, TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{
-    BaseSteal, EmojiTeam, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer,
-    RunnerAdvance, RunnerOut, StartOfInningPitcher,
-};
+use mmolb_parsing::parsed_event::{BaseSteal, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
 use std::fmt::{Debug, Formatter};
@@ -2001,7 +1998,7 @@ impl<'g> Game<'g> {
 
                         self.update_runners_steals_only(steals, ingest_logs);
                         self.add_out();
-                        self.finish_pa(batter_name);
+                        self.finish_pa(batter);
 
                         let event_type = match (foul, strike) {
                             (None, StrikeType::Looking) => { TaxaEventType::CalledStrikeout }
@@ -2023,7 +2020,7 @@ impl<'g> Game<'g> {
                         detail_builder
                             .pitch(pitch)
                             .steals(steals.clone())
-                            .build_some(self, batter_name, ingest_logs, event_type)
+                            .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
                     ParsedEventMessage::Foul { foul, steals, count } => {
@@ -2047,7 +2044,7 @@ impl<'g> Game<'g> {
                     ParsedEventMessage::FairBall { batter, fair_ball_type, destination } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
-                        self.state.context = EventContext::ExpectFairBallOutcome(batter_name, FairBall {
+                        self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
                             game_event_index,
                             fair_ball_type: *fair_ball_type,
                             fair_ball_destination: *destination,
@@ -2065,13 +2062,13 @@ impl<'g> Game<'g> {
                             runner_added: Some((batter, TaxaBase::First)),
                             ..Default::default()
                         }, ingest_logs);
-                        self.finish_pa(batter_name);
+                        self.finish_pa(batter);
 
                         detail_builder
                             .pitch(pitch)
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
-                            .build_some(self, batter_name, ingest_logs, TaxaEventType::Walk)
+                            .build_some(self, batter, ingest_logs, TaxaEventType::Walk)
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]
                     ParsedEventMessage::HitByPitch { batter, advances, scores } => {
@@ -2083,13 +2080,13 @@ impl<'g> Game<'g> {
                             runner_added: Some((batter, TaxaBase::First)),
                             ..Default::default()
                         }, ingest_logs);
-                        self.finish_pa(batter_name);
+                        self.finish_pa(batter);
 
                         detail_builder
                             .pitch(pitch)
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
-                            .build_some(self, batter_name, ingest_logs, TaxaEventType::HitByPitch)
+                            .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)
                     },
                     [ParsedEventMessageDiscriminants::MoundVisit]
                     ParsedEventMessage::MoundVisit { team, mound_visit_type: _ } => {
@@ -2450,7 +2447,7 @@ impl<'g> Game<'g> {
             EventContext::ExpectFallingStarOutcome { falling_star_hit_player, batter_name } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::FallingStarOutcome]
-                ParsedEventMessage::FallingStarOutcome { deflection, player_name, .. } => {
+                ParsedEventMessage::FallingStarOutcome { deflection, player_name, outcome } => {
                     if let Some(player_name) = deflection {
                         if *player_name != falling_star_hit_player {
                             ingest_logs.warn(format!(
@@ -2471,7 +2468,23 @@ impl<'g> Game<'g> {
 
                     }
 
-                    self.state.context = EventContext::ExpectPitch(batter_name);
+                    self.state.context = EventContext::ExpectPitch(if let FallingStarOutcome::Retired(new_batter_name) = outcome {
+                        if let Some(replacement_batter_name) = new_batter_name {
+                            ingest_logs.info(format!(
+                                "Replacing stored batter {batter_name} with replacement {replacement_batter_name}",
+                            ));
+                            replacement_batter_name
+                        } else {
+                            // NOTE: We can't use the name from the event metadata because it's still
+                            // the previous player's name
+                            ingest_logs.error(format!(
+                                "MMOLB did not name {batter_name}'s replacement. This event requires manual correction."
+                            ));
+                            batter_name // This is wrong
+                        }
+                    } else {
+                        batter_name
+                    });
 
                     // TODO Don't ignore falling star
                     None
