@@ -16,7 +16,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 reqwest = { version = "0.12.15", features = ["json", "gzip", "brotli"] }
 chrono-humanize = "0.2.3"
 strum = { version = "0.27.1", features = ["derive"] }
-mmolb_parsing = { git = "https://github.com/unnamed-girl/mmolb_parsing.git" }
+mmolb_parsing = { git = "https://github.com/beiju/mmolb_parsing.git", branch = "falling-star-support" }
 enum-map = "2.7.3"
 itertools = "0.14.0"
 num-format = "0.4.4"
@@ -33,4 +33,3 @@ toml = "0.9.0"
 include_dir = "0.7.4"
 markdown = "1.0.0"
 openport = { version = "0.1.1", features = ["rand"] }
-

@@ -8,6 +8,7 @@ Upcoming
 - Fixed foul ball handling relating to new `strikes_before` column
 - Change `taxa.base` column `bases_achieved` from bigint to int again? I swear
   I did that in the last big update.
+- Skip over FallingStar events instead of erroring 
 
 2025-07-12 Hotfix 1
 ----------

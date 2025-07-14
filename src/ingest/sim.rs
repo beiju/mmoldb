@@ -242,6 +242,10 @@ enum EventContext<'g> {
     ExpectNowBatting,
     ExpectPitch(&'g str),
     ExpectFairBallOutcome(&'g str, FairBall),
+    ExpectFallingStarOutcome {
+        falling_star_hit_player: &'g str,
+        batter_name: &'g str,
+    },
     ExpectInningEnd,
     ExpectMoundVisitOutcome(ContextAfterMoundVisitOutcome<'g>),
     ExpectGameEnd,
@@ -942,7 +946,9 @@ struct RunnerUpdate<'g, 'a> {
 // Returns true for events that happen in the ExpectPitch context but
 // don't have an associated pitch
 fn is_pitchless_pitch(ty: ParsedEventMessageDiscriminants) -> bool {
-    ty == ParsedEventMessageDiscriminants::MoundVisit || ty == ParsedEventMessageDiscriminants::Balk
+    ty == ParsedEventMessageDiscriminants::MoundVisit
+        || ty == ParsedEventMessageDiscriminants::Balk
+        || ty == ParsedEventMessageDiscriminants::FallingStar
 }
 
 impl<'g> Game<'g> {
@@ -2107,6 +2113,14 @@ impl<'g> Game<'g> {
                             .runner_changes(advances.clone(), scores.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Balk)
                     },
+                    [ParsedEventMessageDiscriminants::FallingStar]
+                    ParsedEventMessage::FallingStar { player_name } => {
+                        self.state.context = EventContext::ExpectFallingStarOutcome {
+                            falling_star_hit_player: player_name,
+                            batter_name,
+                        };
+                        None
+                    }
                 )
             }
             EventContext::ExpectNowBatting => game_event!(
@@ -2431,6 +2445,36 @@ impl<'g> Game<'g> {
                                 .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
                         }
                     }
+                },
+            ),
+            EventContext::ExpectFallingStarOutcome { falling_star_hit_player, batter_name } => game_event!(
+                (previous_event, event),
+                [ParsedEventMessageDiscriminants::FallingStarOutcome]
+                ParsedEventMessage::FallingStarOutcome { deflection, player_name, .. } => {
+                    if let Some(player_name) = deflection {
+                        if *player_name != falling_star_hit_player {
+                            ingest_logs.warn(format!(
+                                "Expected a falling star to be deflected off {}, but it was \
+                                deflected off {}",
+                                falling_star_hit_player,
+                                player_name,
+                            ));
+                        }
+                    } else {
+                        if *player_name != falling_star_hit_player {
+                            ingest_logs.warn(format!(
+                                "Expected a falling star to hit {}, but it hit {}",
+                                falling_star_hit_player,
+                                player_name,
+                            ));
+                        }
+
+                    }
+
+                    self.state.context = EventContext::ExpectPitch(batter_name);
+
+                    // TODO Don't ignore falling star
+                    None
                 },
             ),
             EventContext::ExpectInningEnd => game_event!(

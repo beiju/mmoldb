@@ -1666,7 +1666,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.1.0"
-source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#83a798755f22abcb1831bf1aa7689c7eead6bf5e"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=falling-star-support#f3940f3238beb0e017f894a6f3d66be6fee0e003"
 dependencies = [
  "nom",
  "nom-language",

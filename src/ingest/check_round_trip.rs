@@ -4,7 +4,7 @@ use crate::ingest::worker::IngestLogs;
 use itertools::{EitherOrBoth, Itertools};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Place;
-use mmolb_parsing::parsed_event::{KnownBug, PlacedPlayer};
+use mmolb_parsing::parsed_event::PlacedPlayer;
 use strum::IntoDiscriminant;
 
 fn log_if_error<'g, E: std::fmt::Display>(
@@ -36,33 +36,6 @@ fn downgrade_parsed_places_to_match(
     // TODO The bodies of the non-empty members of this are nearly
     //   identical. Refactor that logic out into a function somehow.
     match ours {
-        ParsedEventMessage::ParseError { .. } => {}
-        ParsedEventMessage::KnownBug { bug } => match bug {
-            KnownBug::FirstBasemanChoosesAGhost { .. } => {}
-        },
-        ParsedEventMessage::LiveNow { .. } => {}
-        ParsedEventMessage::PitchingMatchup { .. } => {}
-        ParsedEventMessage::Lineup { .. } => {
-            // There are PlacedPlayers in this event but I don't think we can upgrade them
-        }
-        ParsedEventMessage::PlayBall => {}
-        ParsedEventMessage::GameOver { .. } => {}
-        ParsedEventMessage::Recordkeeping { .. } => {}
-        ParsedEventMessage::InningStart { .. } => {
-            // There are PlacedPlayers in this event but I don't think we can upgrade them
-        }
-        ParsedEventMessage::NowBatting { .. } => {}
-        ParsedEventMessage::InningEnd { .. } => {}
-        ParsedEventMessage::MoundVisit { .. } => {}
-        ParsedEventMessage::PitcherRemains { .. } => {}
-        ParsedEventMessage::PitcherSwap { .. } => {}
-        ParsedEventMessage::Ball { .. } => {}
-        ParsedEventMessage::Strike { .. } => {}
-        ParsedEventMessage::Foul { .. } => {}
-        ParsedEventMessage::Walk { .. } => {}
-        ParsedEventMessage::HitByPitch { .. } => {}
-        ParsedEventMessage::FairBall { .. } => {}
-        ParsedEventMessage::StrikeOut { .. } => {}
         ParsedEventMessage::BatterToBase { fielder, .. } => {
             if let ParsedEventMessage::BatterToBase {
                 fielder: original_fielder,
@@ -88,7 +61,6 @@ fn downgrade_parsed_places_to_match(
                 );
             }
         }
-        ParsedEventMessage::HomeRun { .. } => {}
         ParsedEventMessage::CaughtOut { caught_by, .. } => {
             if let ParsedEventMessage::CaughtOut {
                 caught_by: original_caught_by,
@@ -189,13 +161,7 @@ fn downgrade_parsed_places_to_match(
                 );
             }
         }
-        ParsedEventMessage::DoublePlayGrounded { .. } => {}
-        ParsedEventMessage::DoublePlayCaught { .. } => {}
-        ParsedEventMessage::ReachOnFieldingError { .. } => {}
-        ParsedEventMessage::WeatherDelivery { .. } => {}
-        ParsedEventMessage::WeatherShipment { .. } => {}
-        ParsedEventMessage::WeatherSpecialDelivery { .. } => {}
-        ParsedEventMessage::Balk { .. } => {}
+        _ => {}
     }
 }
 
