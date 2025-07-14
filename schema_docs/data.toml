@@ -467,21 +467,21 @@ Number of balls in the count before this event.
 
 The number of balls in the count after this event can be easily
 computed using the helper columns on `taxa.event_type`. For example,
-if you want walks to be represented with a count of 4-X, you can use
-`event.balls_before + event_type.is_ball::int`. In a query that might
-look like:
+if you want walks to be represented with a count of 4-X, you can
+use the provided `balls_after` function, which takes the event and
+event type as arguments. In a query that might look like:
 
 ```
 select
-    ev.balls_before + et.is_ball::int as balls_after
+    data.balls_after(ev, et)
 from data.events ev
 left join taxa.event_type et on et.id = ev.event_type
 ```
 
 If you want the count to be zeroed for a PA-ending event, like it is
 on mmolb.com, use the slightly longer `case when
-event_type.ends_plate_appearance then 0 else event.balls_before +
-event_type.is_ball::int end`. In a query that might look like:
+event_type.ends_plate_appearance then 0 else data.balls_after(ev, et)
+end`. In a query that might look like:
 
 ```
 select
@@ -490,8 +490,8 @@ select
     then
         0
     else
-        ev.balls_before + et.is_strike::int
-    end) as balls_after
+        data.balls_after(ev, et)
+    end)
 from data.events ev
 left join taxa.event_type et on et.id = ev.event_type
 ```
@@ -506,12 +506,12 @@ Number of strikes in the count before this event.
 The number of strikes in the count after this event can be easily
 computed using the helper columns on `taxa.event_type`. For example,
 if you want outs and batted balls to add to the strike total, you can
-use `event.strikes_before + event_type.is_strike::int`. In a query that
-might look like:
+use the provided `strikes_after` function, which takes the event and
+event type as arguments. In a query that might look like:
 
 ```
 select
-    ev.strikes_before + et.is_strike::int as strikes_after
+    data.strikes_after(ev, et)
 from data.events ev
 left join taxa.event_type et on et.id = ev.event_type
 ```
@@ -522,8 +522,8 @@ count, but not batted balls, replace `is_strike` with
 
 If you want the count to be zeroed for a PA-ending event, like it is
 on mmolb.com, use the slightly longer `case when
-event_type.ends_plate_appearance then 0 else event.strikes_before +
-event_type.is_strike::int end`. In a query that might look like:
+event_type.ends_plate_appearance then 0 else data.strikes_after(event,
+event_type) end`. In a query that might look like:
 
 ```
 select
@@ -532,8 +532,8 @@ select
     then
         0
     else
-        ev.strikes_before + et.is_strike::int
-    end) as strikes_after
+        data.strikes_after(ev, et)
+    end)
 from data.events ev
 left join taxa.event_type et on et.id = ev.event_type
 ```

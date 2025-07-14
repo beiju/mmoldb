@@ -63,7 +63,7 @@ create table taxa.slot (
 create table taxa.base (
     id bigserial primary key not null,
     name text not null,
-    bases_achieved bigint not null,
+    bases_achieved int not null,
     unique (name)
 );
 
@@ -355,3 +355,18 @@ create table data.event_fielders (
 
 -- `on delete cascade` is very slow without the appropriate index
 create index event_fielders_event_id_index on data.event_fielders (event_id);
+
+-- convenience functions
+create or replace function data.strikes_after(ev data.events, et taxa.event_type) returns int as
+$$
+begin
+return case when et.name = 'FoulBall' and ev.strikes_before = 2 then ev.strikes_before else ev.strikes_before + et.is_strike::int end;
+end;
+$$ LANGUAGE plpgsql;
+
+create or replace function data.balls_after(ev data.events, et taxa.event_type) returns int as
+$$
+begin
+return ev.balls_before + et.is_ball::int;
+end;
+$$ LANGUAGE plpgsql;

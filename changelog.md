@@ -4,7 +4,10 @@ Changelog
 Upcoming
 ----------
 
-- Fix `hit_base` for home runs being `Third` for some reason
+- Fixed `hit_base` for home runs being `Third` for some reason
+- Fixed foul ball handling relating to new `strikes_before` column
+- Change `taxa.base` column `bases_achieved` from bigint to int again? I swear
+  I did that in the last big update.
 
 2025-07-12 Hotfix 1
 ----------

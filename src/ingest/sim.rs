@@ -2849,6 +2849,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
         let props = self.detail_type.as_insertable();
         if props.ends_plate_appearance {
             (0, 0)
+        } else if self.detail_type == TaxaEventType::FoulBall && self.strikes_before == 2 {
+            (self.balls_before, self.strikes_before)
         } else {
             (
                 self.balls_before + if props.is_ball { 1 } else { 0 },
