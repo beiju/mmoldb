@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Upcoming
+2025-07-14
 ----------
 
 - Fixed `hit_base` for home runs being `Third` for some reason
