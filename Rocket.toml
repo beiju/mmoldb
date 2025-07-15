@@ -72,7 +72,6 @@ timeout = 5
 [debug]
 start_ingest_every_launch = true
 cache_http_responses = true
-ingest_parallelism = 1
 
 # For some reason the database configuration needs to be repeated for debug 
 # mode. I don't know why. That's not how this is supposed to work.
