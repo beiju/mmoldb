@@ -1,5 +1,4 @@
 mod check_round_trip;
-mod chron;
 mod sim;
 mod worker;
 
@@ -14,7 +13,7 @@ use log::{error, info, warn};
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::tokio::sync::{Notify, RwLock};
 use rocket::tokio::task::JoinHandle;
-use rocket::{Orbit, Rocket, Shutdown, figment, tokio};
+use rocket::{figment, tokio, Orbit, Rocket, Shutdown};
 use rocket_sync_db_pools::ConnectionPool;
 use serde::Deserialize;
 use std::collections::VecDeque;
@@ -27,9 +26,9 @@ use thiserror::Error;
 
 // First party dependencies
 use crate::db::Taxa;
-use crate::ingest::chron::{ChronEntities, ChronError};
+use crate::chron::{ChronEntities, ChronError};
 use crate::ingest::worker::{IngestWorker, IngestWorkerInProgress};
-use crate::{Db, db};
+use crate::{chron, db, Db};
 
 fn default_ingest_period() -> u64 {
     30 * 60 // 30 minutes, expressed in seconds

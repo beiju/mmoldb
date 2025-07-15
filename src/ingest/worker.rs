@@ -1,5 +1,5 @@
 use crate::db::{CompletedGameForDb, GameForDb, Taxa, Timings};
-use crate::ingest::chron::{ChronEntities, ChronEntity, GameExt};
+use crate::chron::{ChronEntities, ChronEntity, GameExt};
 use crate::ingest::sim::{self, Game, SimStartupError};
 use crate::ingest::{IngestConfig, IngestFatalError, IngestLog, IngestStats, check_round_trip};
 use crate::{Db, db};

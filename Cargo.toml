@@ -3,11 +3,19 @@ name = "mmoldb"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[[bin]]
+name = "ingest"
+path = "src/ingest_main.rs"
+
 [dependencies]
 rocket = "0.5.1"
 rocket_sync_db_pools = { version = "0.1.0", features = ["diesel_postgres_pool"] }
 rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
-diesel = { version = "~2", features = ["chrono", "postgres", "64-column-tables"] }
+diesel = { version = "~2", features = ["chrono", "postgres", "64-column-tables", "serde_json"] }
 diesel_migrations = "~2"
 chrono = { version = "0.4.41", features = ["serde"] }
 thiserror = "2.0.12"
@@ -33,3 +41,5 @@ toml = "0.9.0"
 include_dir = "0.7.4"
 markdown = "1.0.0"
 openport = { version = "0.1.1", features = ["rand"] }
+env_logger = "0.11.8"
+serde_json = "1.0.140"

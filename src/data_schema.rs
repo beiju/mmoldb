@@ -80,6 +80,16 @@ pub mod data {
     }
 
     diesel::table! {
+        data.versions (kind, entity_id, valid_from) {
+            kind -> Text,
+            entity_id -> Text,
+            valid_from -> Timestamp,
+            valid_to -> Nullable<Timestamp>,
+            data -> Jsonb,
+        }
+    }
+
+    diesel::table! {
         data.weather (id) {
             id -> Int8,
             name -> Text,
@@ -98,6 +108,7 @@ pub mod data {
         event_fielders,
         events,
         games,
+        versions,
         weather,
     );
 }
