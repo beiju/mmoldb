@@ -2443,6 +2443,20 @@ impl<'g> Game<'g> {
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::FallingStarOutcome]
                 ParsedEventMessage::FallingStarOutcome { deflection, player_name, outcome } => {
+                    // Deflected retirements were bugged at first. (Note we
+                    // only know it was a deflection because Danny said so. The
+                    // event message doesn't say who it was deflected off so we
+                    // can't fill it in.)
+                    let (player_name, outcome) = if self.game_id == "68741e50f86033e4ba111a3f" && falling_star_hit_player == "Mia Parks" {
+                        ingest_logs.info(
+                            "Manually corrected a bugged retirement. This event should have said \
+                            that Mia Parks Retired and was replaced by Louise Galvan"
+                        );
+                        ("Mia Parks", FallingStarOutcome::Retired(Some("Louise Galvan")))
+                    } else {
+                        (*player_name, *outcome)
+                    };
+
                     if let Some(player_name) = deflection {
                         if *player_name != falling_star_hit_player {
                             ingest_logs.warn(format!(
@@ -2453,19 +2467,17 @@ impl<'g> Game<'g> {
                             ));
                         }
                     } else {
-                        if *player_name != falling_star_hit_player {
+                        if player_name != falling_star_hit_player {
                             ingest_logs.warn(format!(
                                 "Expected a falling star to hit {}, but it hit {}",
                                 falling_star_hit_player,
                                 player_name,
                             ));
                         }
-
                     }
 
-                    self.state.context = EventContext::ExpectPitch(batter_after_retirement(batter_name, player_name, *outcome, ingest_logs));
+                    self.state.context = EventContext::ExpectPitch(self.batter_after_retirement(batter_name, player_name, outcome, ingest_logs));
 
-                    // TODO Don't ignore falling star
                     None
                 },
             ),
@@ -2678,43 +2690,57 @@ impl<'g> Game<'g> {
 
         Ok(result)
     }
-}
 
-fn batter_after_retirement<'g>(batter_name: &'g str, hit_player_name: &str, outcome: FallingStarOutcome<&'g str>, ingest_logs: &mut IngestLogs) -> &'g str {
-    // First: If the hit player doesn't match the batter name, it can't
-    // be a batter replacement
-    if batter_name != hit_player_name {
-        return batter_name;
+    fn batter_after_retirement(&self, batter_name: &'g str, hit_player_name: &str, outcome: FallingStarOutcome<&'g str>, ingest_logs: &mut IngestLogs) -> &'g str {
+        // First: If the hit player doesn't match the batter name, it can't
+        // be a batter replacement
+        if batter_name != hit_player_name {
+            return batter_name;
+        }
+
+        // Next: If it's not a Retired outcome, it can't be a batter
+        // replacement
+        let FallingStarOutcome::Retired(replacement_name) = outcome else {
+            return batter_name;
+        };
+
+        // If we don't know the replacement's name, our only option is to
+        // proceed as if the batter wasn't replaced, even if they were
+        let Some(replacement_name) = replacement_name else {
+            if self.game_id == "686ee660e52e01aa1b9eb7ca" && batter_name == "Vicki Nagai" {
+                ingest_logs.info(
+                    "Hard-coded player replacement: Norma Muñoz for Vicki Nagai"
+                );
+                return "Norma Muñoz";
+            } else if self.game_id == "686ee660e52e01aa1b9eb7ca" && batter_name == "Lena Vitale" {
+                ingest_logs.info(
+                    "Hard-coded player replacement: Ido Barrington for Lena Vitale"
+                );
+                return "Ido Barrington";
+            } else {
+                ingest_logs.error(format!(
+                    "MMOLB did not name {batter_name}'s replacement. This event requires manual \
+                    correction. In the meantime, we'll act as if {batter_name} was not replaced."
+                ));
+                return batter_name;
+            };
+        };
+
+        // Then, if we've gotten this far, we have to assume this is a
+        // batter replacement.
+        ingest_logs.info(format!(
+            "Replacing stored batter {batter_name} with replacement player {replacement_name}.
+
+            Note: MMOLB currently cannot detect cases when a different player with the same name \
+            as the active batter is replaced. If you find an example of this, please let us know \
+            so we can handle it manually.",
+        ));
+
+        replacement_name
     }
 
-    // Next: If it's not a Retired outcome, it can't be a batter
-    // replacement
-    let FallingStarOutcome::Retired(replacement_name) = outcome else {
-        return batter_name;
-    };
-
-    // If we don't know the replacement's name, our only option is to
-    // proceed as if the batter wasn't replaced, even if they were
-    let Some(replacement_name) = replacement_name else {
-        ingest_logs.error(format!(
-            "MMOLB did not name {batter_name}'s replacement. This event requires manual \
-            correction. In the meantime, we'll act as if {batter_name} was not replaced."
-        ));
-        return batter_name;
-    };
-
-    // Then, if we've gotten this far, we have to assume this is a
-    // batter replacement.
-    ingest_logs.info(format!(
-        "Replacing stored batter {batter_name} with replacement player {replacement_name}.
-
-        Note: MMOLB currently cannot detect cases when a different player with the same name \
-        as the active batter is replaced. If you find an example of this, please let us know \
-        so we can handle it manually.",
-    ));
-
-    replacement_name
 }
+
 
 fn format_lineup(lineup: &[PlacedPlayer<impl AsRef<str>>]) -> String {
     let mut s = String::new();
