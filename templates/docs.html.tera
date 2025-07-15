@@ -17,8 +17,7 @@
         <a class="nav-item current" href="{{ docs_url }}">Docs</a>
     </section>
 
-    {% for schema in schemata %}
-        <section class="card">
+    <section class="card">
         <p>
             This page lists the 3 schemata of MMOLDB, each table within them,
             and each column of each table.
@@ -30,9 +29,12 @@
             over at the
             <a href="https://github.com/beiju/mmoldb">MMOLDB github</a> and
             <a href="https://discord.com/channels/1136709081319604324/1366497767090028554">
-            discord channel</a>.
+                discord channel</a>.
         </p>
+    </section>
 
+    {% for schema in schemata %}
+        <section class="card">
             <h1><code>{{ schema.name }}</code></h1>
 
             {{ schema.description | safe }}
