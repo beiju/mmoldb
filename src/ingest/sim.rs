@@ -691,6 +691,9 @@ impl<'g> EventDetailBuilder<'g> {
         game: &Game<'g>,
         ingest_logs: &mut IngestLogs,
         type_detail: TaxaEventType,
+        // Note: this *cannot* be replaced with the batter name from the
+        // RawEvent, because that name is sometimes incorrect following a
+        // player Retirement. See game 687464a0336fee7c9e05b0f6 event 70.
         batter_name: &'g str,
     ) -> EventDetail<&'g str> {
         // Note: game.state.runners_on gets cleared if this event is an
@@ -846,14 +849,6 @@ impl<'g> EventDetailBuilder<'g> {
                 }
             }),
         );
-
-        // TODO Replace the batter_name arg with this and see if anything breaks
-        let batter_name = if let MaybePlayer::Player(batter) = &self.raw_event.batter {
-            batter
-        } else {
-            // TODO Correct error handling
-            panic!("Must have a batter when building an EventDetail");
-        };
 
         // Finally, on a home run the batter scores
         if self.batter_scores {
