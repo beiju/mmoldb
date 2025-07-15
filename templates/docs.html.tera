@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <title>MMOLDB</title>
     <link rel="stylesheet" href="/static/style.css" />
-    <link rel="stylesheet" href="/static/index.css" />
+    <link rel="stylesheet" href="/static/docs.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
 </head>
 <body>
@@ -19,6 +19,20 @@
 
     {% for schema in schemata %}
         <section class="card">
+        <p>
+            This page lists the 3 schemata of MMOLDB, each table within them,
+            and each column of each table.
+        </p>
+
+        <p>
+            The formatting is hopefully serviceable, but not ideal. We are
+            eagerly accepting any help to improve the looks and legibility
+            over at the
+            <a href="https://github.com/beiju/mmoldb">MMOLDB github</a> and
+            <a href="https://discord.com/channels/1136709081319604324/1366497767090028554">
+            discord channel</a>.
+        </p>
+
             <h1><code>{{ schema.name }}</code></h1>
 
             {{ schema.description | safe }}

@@ -16,6 +16,7 @@ Changelog
   player has Retired
 - Remove an unnecessary warning about the automatic runner that had lots of
   false positives
+- Cheeky little CSS and HTML update after the deploy
 
 2025-07-12 Hotfix 1
 ----------

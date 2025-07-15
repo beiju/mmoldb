@@ -1,0 +1,17 @@
+tbody tr {
+    background: rgba(255, 255, 255, 0.1);
+    vertical-align: baseline;
+}
+table {
+    border-collapse: collapse;
+    margin: 1em 0;
+}
+tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.05);
+}
+td, th {
+    padding: 6px 12px;
+}
+thead tr {
+    background: rgba(0, 0, 0, 1);
+}
