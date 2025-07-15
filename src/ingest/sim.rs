@@ -2463,23 +2463,7 @@ impl<'g> Game<'g> {
 
                     }
 
-                    self.state.context = EventContext::ExpectPitch(if let FallingStarOutcome::Retired(new_batter_name) = outcome {
-                        if let Some(replacement_batter_name) = new_batter_name {
-                            ingest_logs.info(format!(
-                                "Replacing stored batter {batter_name} with replacement {replacement_batter_name}",
-                            ));
-                            replacement_batter_name
-                        } else {
-                            // NOTE: We can't use the name from the event metadata because it's still
-                            // the previous player's name
-                            ingest_logs.error(format!(
-                                "MMOLB did not name {batter_name}'s replacement. This event requires manual correction."
-                            ));
-                            batter_name // This is wrong
-                        }
-                    } else {
-                        batter_name
-                    });
+                    self.state.context = EventContext::ExpectPitch(batter_after_retirement(batter_name, player_name, *outcome, ingest_logs));
 
                     // TODO Don't ignore falling star
                     None
@@ -2694,6 +2678,42 @@ impl<'g> Game<'g> {
 
         Ok(result)
     }
+}
+
+fn batter_after_retirement<'g>(batter_name: &'g str, hit_player_name: &str, outcome: FallingStarOutcome<&'g str>, ingest_logs: &mut IngestLogs) -> &'g str {
+    // First: If the hit player doesn't match the batter name, it can't
+    // be a batter replacement
+    if batter_name != hit_player_name {
+        return batter_name;
+    }
+
+    // Next: If it's not a Retired outcome, it can't be a batter
+    // replacement
+    let FallingStarOutcome::Retired(replacement_name) = outcome else {
+        return batter_name;
+    };
+
+    // If we don't know the replacement's name, our only option is to
+    // proceed as if the batter wasn't replaced, even if they were
+    let Some(replacement_name) = replacement_name else {
+        ingest_logs.error(format!(
+            "MMOLB did not name {batter_name}'s replacement. This event requires manual \
+            correction. In the meantime, we'll act as if {batter_name} was not replaced."
+        ));
+        return batter_name;
+    };
+
+    // Then, if we've gotten this far, we have to assume this is a
+    // batter replacement.
+    ingest_logs.info(format!(
+        "Replacing stored batter {batter_name} with replacement player {replacement_name}.
+
+        Note: MMOLB currently cannot detect cases when a different player with the same name \
+        as the active batter is replaced. If you find an example of this, please let us know \
+        so we can handle it manually.",
+    ));
+
+    replacement_name
 }
 
 fn format_lineup(lineup: &[PlacedPlayer<impl AsRef<str>>]) -> String {
