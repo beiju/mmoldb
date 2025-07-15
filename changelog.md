@@ -8,9 +8,14 @@ Upcoming
 - Fixed foul ball handling relating to new `strikes_before` column
 - Change `taxa.base` column `bases_achieved` from bigint to int again? I swear
   I did that in the last big update.
-- Skip over FallingStar events instead of erroring 
-- When the batter name in the event doesn't match the stored batter name,
-  use the one from the event
+- Handle FallingStar events. We don't do anything with infusions, but we now 
+  properly handle retirements.
+- When the batter name parsed from the event doesn't match the stored batter 
+  name, use the one from the event
+- Don't use the batter name from the event metadata because it's wrong when a
+  player has Retired
+- Remove an unnecessary warning about the automatic runner that had lots of
+  false positives
 
 2025-07-12 Hotfix 1
 ----------
