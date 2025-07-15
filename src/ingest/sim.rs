@@ -1875,17 +1875,14 @@ impl<'g> Game<'g> {
                     // This way they will just show up on base without having an event that put
                     // them there, which I think is the correct interpretation.
                     if *number > 9 && self.automatic_runner_rule_is_active() {
-                        // Before a certain point the automatic runner
-                        // wasn't announced in the event. You just had
-                        // to figure out who it was based on the
-                        // lineup. There were two events in this period
-                        // where mote timing means we predict the wrong
-                        // automatic runner. Since it's only two, and
-                        // going forward the game will announce the
-                        // automatic runner, we just hard-code fixes
-                        // for the mispredictions.
-                        // It's just a coincidence that they're both
-                        // bottoms of 10ths... or is it...
+                        // Before a certain point the automatic runner  wasn't announced
+                        // in the event. You just had to figure out who it was based on the
+                        // lineup. There were two events in this period where mote timing
+                        // means we predict the wrong automatic runner. Since it's only two,
+                        // and going forward the game will announce the automatic runner, we
+                        // just hard-code fixes for the mispredictions.
+                        // It's just a coincidence that they're both  bottoms of 10ths... or
+                        // is it...
                         let stored_automatic_runner = if self.game_id == "680b4f1d11f35e62dba3ebb2" && *number == 10 && *side == TopBottom::Bottom {
                             "Victoria Persson"
                         } else if self.game_id == "6812571a17b36c4c9b40e06d" && *number == 10 && *side == TopBottom::Bottom {
@@ -1898,18 +1895,11 @@ impl<'g> Game<'g> {
                         };
 
                         let runner_name = if let Some(runner_name) = automatic_runner {
-                            // On s1d2, a bug causing batters to bat in reverse order was fixed.
-                            // There happened to be games running during that fix, and their
-                            // lineup abruptly reversed order, causing a lot of automatic runner
-                            // warnings. MMOLDB still uses the correct runners, though, so it's
-                            // sufficient to just silence the warnings for this day.
-                            if *runner_name != stored_automatic_runner && (self.season, self.day) != (1, Day::Day(2)) {
-                                ingest_logs.warn(format!(
-                                    "Unexpected automatic runner: expected {}, but saw {}",
-                                    stored_automatic_runner, runner_name,
-                                ));
-                            }
-                            // Use the automatic runner from the message if there's a conflict
+                            // The automatic runner from the message should always take
+                            // priority, because certain things (like augments firing during
+                            // a game) can cause the stored runner to be incorrect. Those
+                            // cases have already been detected and overridden for all games
+                            // that happened before the automatic runner was announced.
                             runner_name
                         } else {
                             stored_automatic_runner
