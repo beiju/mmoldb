@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use humansize::{DECIMAL, format_size};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use futures::{stream, Stream, StreamExt};
@@ -308,6 +308,7 @@ impl Chron {
                     // next_page being None indicates that we've finished. We couldn't
                     // end the stream before because we hadn't produced the current page
                     // yet.
+                    debug!("Stream of pages has finished");
                     return None;
                 };
 
@@ -319,12 +320,14 @@ impl Chron {
                         Ok(page) => page,
                         Err(err) => {
                             // Yield the current error, then end iteration
+                            debug!("Stream of pages is yielding an error");
                             return Some((Err(err), None))
                         }
 
                     }
                     Err(err) => {
                         // Yield the current error, then end iteration
+                        debug!("Stream of pages is yielding an error");
                         return Some((Err(ChronStreamError::JoinFailure(err)), None))
                     }
                 };
@@ -336,14 +339,17 @@ impl Chron {
                             get_next_page(client, url, kind, page_size, start_at_for_first_fetch, Some(next_page_token))
                         });
 
+                        debug!("Yielding a page");
                         Some((Ok(page.items), Some(next_page_fut)))
                     } else {
                         // Then this was the last page. Yield this page, but there is no next page
+                        debug!("Yielding the last page");
                         Some((Ok(page.items), None))
                     }
                 } else {
                     // If there's no next page token it's the last page. Yield this page,
                     // but there is no next page
+                    debug!("Yielding the last page");
                     Some((Ok(page.items), None))
                 }
             }
@@ -379,8 +385,11 @@ async fn get_next_page<T: for<'de> serde::Deserialize<'de>>(
     url: &str,
     kind: &str,
     page_size: usize,
-    start_at: Option<DateTime<Utc>>, page: Option<String>,
+    start_at: Option<DateTime<Utc>>,
+    page: Option<String>,
 ) -> Result<(reqwest::Client, ChronEntities<T>), ChronStreamError> {
+    debug!("Fetching {kind} page {page:?}");
+
     let page_size_string = page_size.to_string();
 
     let mut request_builder = client

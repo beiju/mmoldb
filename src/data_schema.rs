@@ -2,6 +2,15 @@
 
 pub mod data {
     diesel::table! {
+        data.entities (kind, entity_id) {
+            kind -> Text,
+            entity_id -> Text,
+            valid_from -> Timestamp,
+            data -> Jsonb,
+        }
+    }
+
+    diesel::table! {
         data.event_baserunners (id) {
             id -> Int8,
             event_id -> Int8,
@@ -104,6 +113,7 @@ pub mod data {
     diesel::joinable!(games -> weather (weather));
 
     diesel::allow_tables_to_appear_in_same_query!(
+        entities,
         event_baserunners,
         event_fielders,
         events,
