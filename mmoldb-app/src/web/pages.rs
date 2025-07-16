@@ -381,7 +381,7 @@ pub async fn index_page() -> Template {
             docs_url: uri!(docs_page()),
             // This markdown conversion could be cached
             changelog: markdown::to_html(
-                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/changelog.md")),
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../changelog.md")),
             ),
         },
     )

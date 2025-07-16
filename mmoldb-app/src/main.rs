@@ -48,7 +48,7 @@ impl rocket_dyn_templates::tera::Filter for NumFormat {
 async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
-    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
     let config: rocket_sync_db_pools::Config = rocket
         .figment()
         .extract_inner("databases.mmoldb")
@@ -75,7 +75,7 @@ fn get_figment_with_constructed_db_url() -> figment::Figment {
 fn rocket() -> _ {
     rocket::custom(get_figment_with_constructed_db_url())
         .mount("/", web::routes())
-        .mount("/static", rocket::fs::FileServer::from("static"))
+        .mount("/static", rocket::fs::FileServer::from("./static"))
         .manage(IngestTask::new())
         .attach(Template::custom(|engines| {
             engines.tera.register_filter("num_format", NumFormat);

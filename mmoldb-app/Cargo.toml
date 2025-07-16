@@ -1,0 +1,46 @@
+[package]
+name = "mmoldb"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[[bin]]
+name = "ingest"
+path = "src/ingest_main.rs"
+
+[dependencies]
+rocket = "0.5.1"
+rocket_sync_db_pools = { version = "0.1.0", features = ["diesel_postgres_pool"] }
+rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
+diesel = { version = "~2", features = ["chrono", "postgres", "64-column-tables", "serde_json"] }
+diesel_migrations = "~2"
+chrono = { version = "0.4.41", features = ["serde"] }
+thiserror = "2.0.12"
+log = "0.4.27"
+serde = { version = "1.0.219", features = ["derive"] }
+reqwest = { version = "0.12.15", features = ["json", "gzip", "brotli"] }
+chrono-humanize = "0.2.3"
+strum = { version = "0.27.1", features = ["derive"] }
+mmolb_parsing = { git = "https://github.com/unnamed-girl/mmolb_parsing.git" }
+enum-map = "2.7.3"
+itertools = "0.14.0"
+num-format = "0.4.4"
+paste = "1.0.15"
+futures = "0.3.31"
+sled = "0.34.7"
+rmp-serde = "1.3.0"
+humansize = "2.1.3"
+percent-encoding = "2.3.1"
+hashbrown = "0.15.4"
+miette = { version = "7.6.0", features = ["fancy"] }
+tokio = "1.46.1"
+toml = "0.9.0"
+include_dir = "0.7.4"
+markdown = "1.0.0"
+openport = { version = "0.1.1", features = ["rand"] }
+env_logger = "0.11.8"
+serde_json = "1.0.140"
+tokio-util = "0.7.15"

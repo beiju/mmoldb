@@ -13,17 +13,17 @@ FROM base AS setup
 WORKDIR /code
 RUN cargo init
 COPY ../.cargo /code/.cargo
-COPY ../Cargo.toml ../Cargo.lock /code/
+COPY ../mmoldb-app/Cargo.toml ../Cargo.lock /code/
 RUN cargo fetch --manifest-path /code/Cargo.toml --locked
 # RUN cargo build-dependencies --release  # third-party tool
 
 FROM setup AS builder
 
 # Yes, I do need all these separate copies. No, I'm not happy about it.
-COPY ../build.rs /code/
+COPY ../mmoldb-app/build.rs /code/
 COPY ../migrations /code/migrations
-COPY ../src /code/src
-COPY ../schema_docs /code/schema_docs
+COPY ../mmoldb-app/src /code/src
+COPY ../mmoldb-app/schema_docs /code/schema_docs
 COPY ../changelog.md /code/
 RUN cargo build --release --offline
 
@@ -44,8 +44,8 @@ WORKDIR /code
 # Rocket app depends on some files in the code
 # NOTE: You can't combine the folder copies into one or they will be flattened.
 # There's no easy way to disable this behavior: https://stackoverflow.com/questions/37715224/copy-multiple-directories-with-one-command
-COPY ../static /code/static
-COPY ../templates /code/templates
-COPY ../Rocket.toml /code
+COPY ../mmoldb-app/static /code/static
+COPY ../mmoldb-app/templates /code/templates
+COPY ../mmoldb-app/Rocket.toml /code
 
 CMD [ "/mmoldb" ]
