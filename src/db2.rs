@@ -48,3 +48,39 @@ pub fn insert_entities(conn: &mut PgConnection, entities: Vec<ChronEntity<serde_
         .from_insertable(&new_entities)
         .execute(conn)
 }
+
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = crate::data_schema::data::entities)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+struct Entity {
+    pub kind: String,
+    pub entity_id: String,
+    pub valid_from: NaiveDateTime,
+    pub data: serde_json::Value,
+}
+
+pub fn get_batch_of_unprocessed_games(conn: &mut PgConnection, batch_size: usize) -> QueryResult<Vec<ChronEntity<serde_json::Value>>> {
+    use crate::data_schema::data::entities::dsl as entities_dsl;
+    use crate::data_schema::data::games::dsl as games_dsl;
+
+    entities_dsl::entities
+        .filter(entities_dsl::kind.eq("game"))
+        // TODO Also store the valid_from that this Game was generated from, and
+        //   use it to re-process games that have a new version. This should be rare.
+        .left_join(games_dsl::games.on(entities_dsl::entity_id.eq(games_dsl::mmolb_game_id)))
+        .filter(games_dsl::mmolb_game_id.is_null())
+        .limit(batch_size as i64)
+        .select(Entity::as_select())
+        .get_results(conn)
+        .map(|entities| entities
+            .into_iter()
+            .map(|e| ChronEntity {
+                kind: e.kind,
+                entity_id: e.entity_id,
+                valid_from: e.valid_from.and_utc(),
+                valid_until: None,
+                data: e.data,
+            })
+            .collect_vec()
+        )
+}

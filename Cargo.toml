@@ -43,3 +43,4 @@ markdown = "1.0.0"
 openport = { version = "0.1.1", features = ["rand"] }
 env_logger = "0.11.8"
 serde_json = "1.0.140"
+tokio-util = "0.7.15"
