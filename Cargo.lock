@@ -1825,7 +1825,6 @@ dependencies = [
  "log",
  "markdown",
  "miette",
- "mmolb_parsing",
  "mmoldb-db",
  "num-format",
  "openport",
@@ -1874,12 +1873,18 @@ version = "0.1.0"
 dependencies = [
  "chron",
  "chrono",
+ "chrono-humanize",
  "env_logger",
  "futures",
+ "itertools",
  "log",
  "miette",
+ "mmolb_parsing",
  "mmoldb-db",
+ "serde",
+ "serde_default",
  "serde_json",
+ "strum",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -2919,6 +2924,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e7bbbec7196bfde255ab54b65e34087c0849629280028238e67ee25d6a4b7da"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "serde_default"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "486b028b311aaaea83e0ba65a3e6e3cbef381e74e9d0bd6263faefd1fb503c1d"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

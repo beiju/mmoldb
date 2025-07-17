@@ -2,17 +2,17 @@
 # see https://diesel.rs/guides/configuring-diesel-cli
 
 [print_schema.data]
-file = "src/mmoldb-db/data_schema.rs"
+file = "mmoldb-db/src/schema/data_schema.rs"
 schema = "data"
 custom_type_derives = ["diesel::query_builder::QueryId", "Clone"]
 
 [print_schema.taxa]
-file = "src/mmoldb-db/taxa_schema.rs"
+file = "mmoldb-db/src/schema/taxa_schema.rs"
 schema = "taxa"
 custom_type_derives = ["diesel::query_builder::QueryId", "Clone"]
 
 [print_schema.info]
-file = "src/mmoldb-db/info_schema.rs"
+file = "mmoldb-db/src/schema/info_schema.rs"
 schema = "info"
 custom_type_derives = ["diesel::query_builder::QueryId", "Clone"]
 

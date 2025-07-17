@@ -1,11 +1,11 @@
 use crate::db::RowToEventError;
-use crate::ingest::EventDetail;
 use crate::ingest::worker::IngestLogs;
 use itertools::{EitherOrBoth, Itertools};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Place;
 use mmolb_parsing::parsed_event::PlacedPlayer;
 use strum::IntoDiscriminant;
+use mmoldb_db::EventDetail;
 
 fn log_if_error<'g, E: std::fmt::Display>(
     ingest_logs: &mut IngestLogs,

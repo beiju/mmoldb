@@ -512,7 +512,7 @@ pub fn events_for_games(
     ))
 }
 
-pub(crate) struct CompletedGameForDb<'g> {
+pub struct CompletedGameForDb<'g> {
     pub id: &'g str,
     pub raw_game: &'g mmolb_parsing::Game,
     pub events: Vec<EventDetail<&'g str>>,
@@ -521,7 +521,7 @@ pub(crate) struct CompletedGameForDb<'g> {
     pub parsed_game: Vec<ParsedEventMessage<&'g str>>,
 }
 
-pub(crate) enum GameForDb<'g> {
+pub enum GameForDb<'g> {
     Incomplete {
         game_id: &'g str,
         raw_game: &'g mmolb_parsing::Game,
@@ -556,7 +556,7 @@ impl<'g> GameForDb<'g> {
     }
 }
 
-pub(crate) struct InsertGamesTimings {
+pub struct InsertGamesTimings {
     pub delete_old_games_duration: f64,
     pub update_weather_table_duration: f64,
     pub insert_games_duration: f64,
@@ -1034,7 +1034,7 @@ pub fn game_and_raw_events(
 }
 
 pub struct Timings {
-    pub fetch_duration: f64,
+    pub deserialize_games_duration: f64,
     pub filter_finished_games_duration: f64,
     pub parse_and_sim_duration: f64,
     pub db_insert_duration: f64,
@@ -1055,7 +1055,7 @@ pub fn insert_timings(
     NewGameIngestTimings {
         ingest_id,
         index: index as i32,
-        fetch_duration: timings.fetch_duration,
+        deserialize_games_duration: timings.deserialize_games_duration,
         filter_finished_games_duration: timings.filter_finished_games_duration,
         parse_and_sim_duration: timings.parse_and_sim_duration,
         db_fetch_for_check_get_game_id_duration: timings

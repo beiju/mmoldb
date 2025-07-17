@@ -197,8 +197,7 @@ pub struct NewGameIngestTimings {
     pub ingest_id: i64,
     pub index: i32,
 
-    pub fetch_duration: f64,
-
+    pub deserialize_games_duration: f64,
     pub filter_finished_games_duration: f64,
     pub parse_and_sim_duration: f64,
     pub db_insert_duration: f64,
@@ -233,7 +232,7 @@ pub struct DbGameIngestTimings {
     pub id: i64,
     pub ingest_id: i64,
     pub index: i32,
-    pub fetch_duration: f64,
+    pub deserialize_games_duration: f64,
     pub filter_finished_games_duration: f64,
     pub parse_and_sim_duration: f64,
     pub db_insert_duration: f64,
