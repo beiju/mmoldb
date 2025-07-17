@@ -1,10 +1,13 @@
+use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
 use log::warn;
-use chron::{ChronEntity};
 
-pub fn get_latest_entity_valid_from(conn: &mut PgConnection, kind: &str) -> QueryResult<Option<NaiveDateTime>> {
+pub fn get_latest_entity_valid_from(
+    conn: &mut PgConnection,
+    kind: &str,
+) -> QueryResult<Option<NaiveDateTime>> {
     use crate::data_schema::data::entities::dsl as entities_dsl;
 
     entities_dsl::entities
@@ -26,13 +29,20 @@ struct NewEntity<'a> {
     pub data: &'a serde_json::Value,
 }
 
-pub fn insert_entities(conn: &mut PgConnection, entities: Vec<ChronEntity<serde_json::Value>>) -> QueryResult<usize> {
+pub fn insert_entities(
+    conn: &mut PgConnection,
+    entities: Vec<ChronEntity<serde_json::Value>>,
+) -> QueryResult<usize> {
     use crate::data_schema::data::entities::dsl as entities_dsl;
 
-    let new_entities = entities.iter()
+    let new_entities = entities
+        .iter()
         .map(|v| {
             if v.valid_until.is_some() {
-                warn!("Chron returned a {} with a non-null valid_until: {}", v.kind, v.entity_id);
+                warn!(
+                    "Chron returned a {} with a non-null valid_until: {}",
+                    v.kind, v.entity_id
+                );
             }
 
             NewEntity {
@@ -59,7 +69,10 @@ struct Entity {
     pub data: serde_json::Value,
 }
 
-pub fn get_batch_of_unprocessed_games(conn: &mut PgConnection, batch_size: usize) -> QueryResult<Vec<ChronEntity<serde_json::Value>>> {
+pub fn get_batch_of_unprocessed_games(
+    conn: &mut PgConnection,
+    batch_size: usize,
+) -> QueryResult<Vec<ChronEntity<serde_json::Value>>> {
     use crate::data_schema::data::entities::dsl as entities_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
 
@@ -72,15 +85,16 @@ pub fn get_batch_of_unprocessed_games(conn: &mut PgConnection, batch_size: usize
         .limit(batch_size as i64)
         .select(Entity::as_select())
         .get_results(conn)
-        .map(|entities| entities
-            .into_iter()
-            .map(|e| ChronEntity {
-                kind: e.kind,
-                entity_id: e.entity_id,
-                valid_from: e.valid_from.and_utc(),
-                valid_until: None,
-                data: e.data,
-            })
-            .collect_vec()
-        )
+        .map(|entities| {
+            entities
+                .into_iter()
+                .map(|e| ChronEntity {
+                    kind: e.kind,
+                    entity_id: e.entity_id,
+                    valid_from: e.valid_from.and_utc(),
+                    valid_until: None,
+                    data: e.data,
+                })
+                .collect_vec()
+        })
 }

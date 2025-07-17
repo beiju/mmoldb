@@ -1,7 +1,7 @@
+mod docs_pages;
 mod error;
 mod pages;
 mod utility_contexts;
-mod docs_pages;
 
 pub fn routes() -> Vec<rocket::Route> {
     rocket::routes![

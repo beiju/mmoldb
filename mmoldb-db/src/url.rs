@@ -1,6 +1,6 @@
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 use std::path::PathBuf;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 pub fn postgres_url_from_environment() -> String {
     #[derive(Debug, PartialEq, Deserialize)]

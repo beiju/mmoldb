@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
+use futures::{Stream, StreamExt, stream};
 use log::{debug, error};
-use serde::{Deserialize, Serialize};
-use futures::{stream, Stream, StreamExt};
 use miette::Diagnostic;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Error, Diagnostic)]
@@ -79,18 +79,17 @@ impl Chron {
         kind: &'static str,
         start_at: Option<DateTime<Utc>>,
     ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
-        self.pages(url, kind, start_at)
-            .flat_map(|val| match val {
-                Ok(vec) => {
-                    // Turn Vec<T> into a stream of Result<T, E>
-                    let results = vec.into_iter().map(Ok);
-                    stream::iter(results).left_stream()
-                }
-                Err(e) => {
-                    // Return a single error, as a stream
-                    stream::once(async { Err(e) }).right_stream()
-                }
-            })
+        self.pages(url, kind, start_at).flat_map(|val| match val {
+            Ok(vec) => {
+                // Turn Vec<T> into a stream of Result<T, E>
+                let results = vec.into_iter().map(Ok);
+                stream::iter(results).left_stream()
+            }
+            Err(e) => {
+                // Return a single error, as a stream
+                stream::once(async { Err(e) }).right_stream()
+            }
+        })
     }
 
     fn pages(
@@ -130,14 +129,13 @@ impl Chron {
                         Err(err) => {
                             // Yield the current error, then end iteration
                             debug!("Stream of pages is yielding an error");
-                            return Some((Err(err), None))
+                            return Some((Err(err), None));
                         }
-
-                    }
+                    },
                     Err(err) => {
                         // Yield the current error, then end iteration
                         debug!("Stream of pages is yielding an error");
-                        return Some((Err(ChronStreamError::JoinFailure(err)), None))
+                        return Some((Err(ChronStreamError::JoinFailure(err)), None));
                     }
                 };
 
@@ -145,7 +143,14 @@ impl Chron {
                     if page.items.len() >= page_size {
                         // Then there are more pages
                         let next_page_fut = tokio::spawn(async move {
-                            get_next_page(client, url, kind, page_size, start_at_for_first_fetch, Some(next_page_token))
+                            get_next_page(
+                                client,
+                                url,
+                                kind,
+                                page_size,
+                                start_at_for_first_fetch,
+                                Some(next_page_token),
+                            )
                         });
 
                         debug!("Yielding a page");
@@ -178,9 +183,11 @@ async fn get_next_page(
 
     let page_size_string = page_size.to_string();
 
-    let mut request_builder = client
-        .get(url)
-        .query(&[("kind", kind), ("count", &page_size_string), ("order", "asc")]);
+    let mut request_builder = client.get(url).query(&[
+        ("kind", kind),
+        ("count", &page_size_string),
+        ("order", "asc"),
+    ]);
 
     if let Some(start_at) = start_at {
         request_builder = request_builder.query(&[("after", &start_at.to_rfc3339())]);
@@ -190,7 +197,8 @@ async fn get_next_page(
         request_builder = request_builder.query(&[("page", &page)]);
     }
 
-    let request = request_builder.build()
+    let request = request_builder
+        .build()
         .map_err(ChronStreamError::RequestBuildError)?;
 
     let response = client
@@ -205,8 +213,8 @@ async fn get_next_page(
         .await
         .map_err(ChronStreamError::RequestBodyError)?;
 
-    let items: ChronEntities<serde_json::Value> = serde_json::from_str(&result)
-        .map_err(ChronStreamError::DeserializeError)?;
+    let items: ChronEntities<serde_json::Value> =
+        serde_json::from_str(&result).map_err(ChronStreamError::DeserializeError)?;
 
     Ok((client, items))
 }

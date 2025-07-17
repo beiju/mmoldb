@@ -1,13 +1,15 @@
-use std::sync::Arc;
+mod ingest;
+
 use chron::{Chron, ChronEntity};
 use chrono::NaiveDateTime;
-use futures::{pin_mut, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt, pin_mut};
 use log::{debug, info, warn};
 use miette::{Diagnostic, IntoDiagnostic};
+use mmoldb_db::{Connection, PgConnection, db};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
-use mmoldb_db::{db, Connection, PgConnection};
 
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_GAME_INSERT_BATCH_SIZE: usize = 1000;
@@ -29,9 +31,7 @@ async fn main() -> miette::Result<()> {
         let url = url.clone();
         let notify = notify.clone();
         let finish = finish.clone();
-        async move {
-            process_games(&url, notify, finish).await
-        }
+        async move { process_games(&url, notify, finish).await }
     });
 
     info!("Launched process games task");
@@ -82,11 +82,15 @@ async fn ingest_raw_games(url: &str, notify: Arc<Notify>) -> miette::Result<()> 
     Ok(())
 }
 
-async fn process_games(url: &str, notify: Arc<Notify>, finish: CancellationToken) -> miette::Result<()> {
+async fn process_games(
+    url: &str,
+    notify: Arc<Notify>,
+    finish: CancellationToken,
+) -> miette::Result<()> {
     let mut conn = PgConnection::establish(url).into_diagnostic()?;
 
     while {
-        debug!("Process games task is waiting");
+        debug!("Process games task is waiting to be woken up");
         tokio::select! {
             // When notified, keep going
             _ = notify.notified() => { true }
@@ -98,14 +102,18 @@ async fn process_games(url: &str, notify: Arc<Notify>, finish: CancellationToken
 
         // The inner loop is over batches of games to process
         loop {
-            let raw_games = db::get_batch_of_unprocessed_games(&mut conn, PROCESS_GAME_BATCH_SIZE).into_diagnostic()?;
+            let raw_games = db::get_batch_of_unprocessed_games(&mut conn, PROCESS_GAME_BATCH_SIZE)
+                .into_diagnostic()?;
             if raw_games.is_empty() {
                 debug!("All games have been processed. Waiting to be woken up again.");
                 break;
             }
             info!("Processing batch of {} raw games", raw_games.len());
 
-            warn!("This loop will be infinite until raw games processing is implemented. Breaking early.");
+            warn!(
+                "This loop will be infinite until raw games processing is implemented. \
+                Breaking early."
+            );
             break;
         }
     }

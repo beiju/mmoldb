@@ -4,14 +4,14 @@ pub use taxa_macro::AsInsertable;
 
 use paste::paste;
 
-use taxa_macro::*;
+use crate::parsing_extensions;
 use diesel::QueryResult;
+use diesel::prelude::*;
 use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
 use log::error;
-use diesel::prelude::*;
 use std::collections::HashSet;
-use crate::parsing_extensions;
+use taxa_macro::*;
 
 taxa! {
     #[
@@ -951,7 +951,7 @@ taxa! {
         Pineapple = 2,
         #[mmolb_league_id: &'a str ="6805db0cac48194de3cd3fe7", parent_team_id: &'a str ="6805db0cac48194de3cd3ff7", emoji: &'a str ="⚾", color: &'a str ="47678e", league_type: &'a str ="Lesser"]
         Baseball = 3,
-        #[mmolb_league_id: &'a str ="6805db0cac48194de3cd3fe8", parent_team_id: &'a str ="6805db0cac48194de3cd400a", emoji: &'a str ="🎯", color: &'a str ="507d45", league_type: &'a str ="Lesser"] 
+        #[mmolb_league_id: &'a str ="6805db0cac48194de3cd3fe8", parent_team_id: &'a str ="6805db0cac48194de3cd400a", emoji: &'a str ="🎯", color: &'a str ="507d45", league_type: &'a str ="Lesser"]
         Precision = 4,
         #[mmolb_league_id: &'a str ="6805db0cac48194de3cd3fe9", parent_team_id: &'a str ="6805db0cac48194de3cd401d", emoji: &'a str ="🔺", color: &'a str ="7c65a3", league_type: &'a str ="Lesser"]
         Isosceles = 5,
@@ -1013,7 +1013,7 @@ impl Taxa {
             league_mapping: TaxaLeagues::make_id_mapping(conn)?,
         })
     }
-    
+
     pub fn league_id(&self, ty: TaxaLeagues) -> i64 {
         self.league_mapping[ty]
     }

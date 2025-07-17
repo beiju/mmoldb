@@ -1,7 +1,7 @@
-use miette::Diagnostic;
-use crate::taxa::Taxa;
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
 use crate::models::{DbEvent, DbFielder, DbRunner, NewBaserunner, NewEvent, NewFielder};
+use crate::taxa::Taxa;
+use miette::Diagnostic;
 use thiserror::Error;
 
 pub fn event_to_row<'e>(

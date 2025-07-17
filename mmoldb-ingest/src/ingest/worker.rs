@@ -33,7 +33,6 @@ impl GameExt for mmolb_parsing::Game {
     }
 }
 
-
 pub(super) struct IngestWorker {
     pool: ConnectionPool<Db, PgConnection>,
     taxa: Taxa,
@@ -142,7 +141,8 @@ impl IngestWorker {
             .count();
         let num_already_ingested_games_skipped = all_games_len - games_for_ingest.len();
         let num_terminal_incomplete_games_skipped = games_for_ingest.len() - games_for_db.len();
-        let num_games_imported = games_for_db.len() - num_ongoing_games_skipped - num_games_with_fatal_errors;
+        let num_games_imported =
+            games_for_db.len() - num_ongoing_games_skipped - num_games_with_fatal_errors;
         info!(
             "Ingesting {num_games_imported} games, skipping {num_games_with_fatal_errors} games \
             due to fatal errors, ignoring {num_already_ingested_games_skipped} already-ingested \
@@ -305,10 +305,12 @@ impl IngestWorkerInProgress {
 }
 
 fn diagnostic_to_string(err: miette::Report) -> String {
-    let handler = miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor());
+    let handler =
+        miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor());
 
     let mut error_message = String::new();
-    handler.render_report(&mut error_message, err.as_ref())
+    handler
+        .render_report(&mut error_message, err.as_ref())
         .expect("Formatting into a String buffer can't fail");
 
     error_message
@@ -327,13 +329,11 @@ fn prepare_game_for_db(
             .wrap_err("Error constructing the initial state. This entire game will be skipped.");
         match game_result {
             Ok(game) => GameForDb::Completed(game),
-            Err(err) => {
-                GameForDb::FatalError {
-                    game_id: &entity.entity_id,
-                    raw_game: &entity.data,
-                    error_message: diagnostic_to_string(err),
-                }
-            }
+            Err(err) => GameForDb::FatalError {
+                game_id: &entity.entity_id,
+                raw_game: &entity.data,
+                error_message: diagnostic_to_string(err),
+            },
         }
     } else {
         return None;
@@ -374,7 +374,8 @@ fn prepare_completed_game_for_db(
                 ));
             }
 
-            let event_result = game.next(game_event_index, &parsed, &raw, &mut ingest_logs)
+            let event_result = game
+                .next(game_event_index, &parsed, &raw, &mut ingest_logs)
                 .wrap_err(
                     "Error processing game event. This event will be skipped, and further \
                     errors are likely if this error left the game in an incorrect state.",

@@ -1,4 +1,7 @@
-use crate::taxa::{TaxaBase, TaxaBaseDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot};
+use crate::taxa::{
+    TaxaBase, TaxaBaseDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation,
+    TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
+};
 
 #[derive(Debug, Clone)]
 pub struct EventDetailRunner<StrT: Clone> {

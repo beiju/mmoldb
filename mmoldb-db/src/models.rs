@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
-use serde::Serialize;
 use diesel::prelude::*;
+use serde::Serialize;
 
 #[derive(Insertable)]
 #[diesel(table_name = crate::info_schema::info::ingests)]
@@ -309,7 +309,6 @@ pub struct DbSchema {
     pub schema_name: Option<String>,
 }
 
-
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::meta_schema::meta::tables)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -319,7 +318,6 @@ pub struct RawDbTable {
     pub table_name: Option<String>,
     pub table_type: Option<String>,
 }
-
 
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::meta_schema::meta::columns)]

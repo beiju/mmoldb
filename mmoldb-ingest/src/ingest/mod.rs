@@ -10,10 +10,11 @@ use chrono::{DateTime, TimeZone, Utc};
 use chrono_humanize::HumanTime;
 use diesel::PgConnection;
 use log::{error, info, warn};
+use miette::Diagnostic;
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::tokio::sync::{Notify, RwLock};
 use rocket::tokio::task::JoinHandle;
-use rocket::{figment, tokio, Orbit, Rocket, Shutdown};
+use rocket::{Orbit, Rocket, Shutdown, figment, tokio};
 use rocket_sync_db_pools::ConnectionPool;
 use serde::Deserialize;
 use std::collections::VecDeque;
@@ -22,14 +23,13 @@ use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use miette::Diagnostic;
 use thiserror::Error;
 
 // First party dependencies
-use chron::{ChronEntities, ChronStreamError};
 use crate::db::Taxa;
 use crate::ingest::worker::{IngestWorker, IngestWorkerInProgress};
-use crate::{db, Db};
+use crate::{Db, db};
+use chron::{ChronEntities, ChronStreamError};
 
 fn default_ingest_period() -> u64 {
     30 * 60 // 30 minutes, expressed in seconds

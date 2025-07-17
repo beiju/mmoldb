@@ -6,18 +6,21 @@ use crate::db::{
 use crate::parsing_extensions::{BestEffortSlot, BestEffortSlottedPlayer};
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
 use log::warn;
+use miette::Diagnostic;
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, BatterStat, Day, Distance, FairBallDestination, FairBallType,
-    FieldingErrorType, FoulType, GameOverMessage, HomeAway, NowBattingStats,
-    Place, StrikeType, TopBottom,
+    FieldingErrorType, FoulType, GameOverMessage, HomeAway, NowBattingStats, Place, StrikeType,
+    TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{BaseSteal, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher};
+use mmolb_parsing::parsed_event::{
+    BaseSteal, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug,
+    ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher,
+};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
 use std::fmt::{Debug, Formatter};
-use miette::Diagnostic;
 use strum::IntoDiscriminant;
 use thiserror::Error;
 
@@ -50,7 +53,9 @@ pub enum SimStartupError {
     },
 
     #[error("Couldn't parse game day")]
-    FailedToParseGameDay { source: mmolb_parsing::NotRecognized },
+    FailedToParseGameDay {
+        source: mmolb_parsing::NotRecognized,
+    },
 
     #[error("Couldn't parse starting pitcher \"{0}\"")]
     FailedToParseStartingPitcher(String),
@@ -74,7 +79,6 @@ pub enum SimEventError {
     #[error("Expected the automatic runner to be set by inning {inning_num}")]
     MissingAutomaticRunner { inning_num: u8 },
 }
-
 
 // A utility to more conveniently build a Vec<IngestLog>
 pub struct IngestLogs {
@@ -550,10 +554,7 @@ impl<'g> EventDetailBuilder<'g> {
             .into_iter()
             .map(|f| {
                 self.placed_player_slot(f, ingest_logs)
-                    .map(|slot| EventDetailFielder {
-                        name: f.name,
-                        slot,
-                    })
+                    .map(|slot| EventDetailFielder { name: f.name, slot })
             })
             .collect::<Result<_, _>>()?;
 
@@ -2372,7 +2373,10 @@ impl<'g> Game<'g> {
                     }
                 },
             ),
-            EventContext::ExpectFallingStarOutcome { falling_star_hit_player, batter_name } => game_event!(
+            EventContext::ExpectFallingStarOutcome {
+                falling_star_hit_player,
+                batter_name,
+            } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::FallingStarOutcome]
                 ParsedEventMessage::FallingStarOutcome { deflection, player_name, outcome } => {
@@ -2624,7 +2628,13 @@ impl<'g> Game<'g> {
         Ok(result)
     }
 
-    fn batter_after_retirement(&self, batter_name: &'g str, hit_player_name: &str, outcome: FallingStarOutcome<&'g str>, ingest_logs: &mut IngestLogs) -> &'g str {
+    fn batter_after_retirement(
+        &self,
+        batter_name: &'g str,
+        hit_player_name: &str,
+        outcome: FallingStarOutcome<&'g str>,
+        ingest_logs: &mut IngestLogs,
+    ) -> &'g str {
         // First: If the hit player doesn't match the batter name, it can't
         // be a batter replacement
         if batter_name != hit_player_name {
@@ -2641,14 +2651,10 @@ impl<'g> Game<'g> {
         // proceed as if the batter wasn't replaced, even if they were
         let Some(replacement_name) = replacement_name else {
             if self.game_id == "686ee660e52e01aa1b9eb7ca" && batter_name == "Vicki Nagai" {
-                ingest_logs.info(
-                    "Hard-coded player replacement: Norma Muñoz for Vicki Nagai"
-                );
+                ingest_logs.info("Hard-coded player replacement: Norma Muñoz for Vicki Nagai");
                 return "Norma Muñoz";
             } else if self.game_id == "686ee660e52e01aa1b9eb7ca" && batter_name == "Lena Vitale" {
-                ingest_logs.info(
-                    "Hard-coded player replacement: Ido Barrington for Lena Vitale"
-                );
+                ingest_logs.info("Hard-coded player replacement: Ido Barrington for Lena Vitale");
                 return "Ido Barrington";
             } else {
                 ingest_logs.error(format!(
@@ -2671,9 +2677,7 @@ impl<'g> Game<'g> {
 
         replacement_name
     }
-
 }
-
 
 fn format_lineup(lineup: &[PlacedPlayer<impl AsRef<str>>]) -> String {
     let mut s = String::new();
@@ -3056,51 +3060,39 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 steals: self.steals(),
                 count: self.count(),
             },
-            TaxaEventType::CalledStrike => {
-                ParsedEventMessage::Strike {
-                    strike: StrikeType::Looking,
-                    steals: self.steals(),
-                    count: self.count(),
-                }
-            }
-            TaxaEventType::CalledStrikeout => {
-                ParsedEventMessage::StrikeOut {
-                    foul: None,
-                    batter: self.batter_name.as_ref(),
-                    strike: StrikeType::Looking,
-                    steals: self.steals(),
-                }
-            }
-            TaxaEventType::SwingingStrike => {
-                ParsedEventMessage::Strike {
-                    strike: StrikeType::Swinging,
-                    steals: self.steals(),
-                    count: self.count(),
-                }
-            }
-            TaxaEventType::SwingingStrikeout => {
-                ParsedEventMessage::StrikeOut {
-                    foul: None,
-                    batter: self.batter_name.as_ref(),
-                    strike: StrikeType::Swinging,
-                    steals: self.steals(),
-                }
-            }
-            TaxaEventType::FoulTip => {
-                ParsedEventMessage::Foul {
-                    foul: FoulType::Tip,
-                    steals: self.steals(),
-                    count: self.count(),
-                }
-            }
-            TaxaEventType::FoulTipStrikeout => {
-                ParsedEventMessage::StrikeOut {
-                    foul: Some(FoulType::Tip),
-                    batter: self.batter_name.as_ref(),
-                    strike: StrikeType::Swinging,
-                    steals: self.steals(),
-                }
-            }
+            TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
+                strike: StrikeType::Looking,
+                steals: self.steals(),
+                count: self.count(),
+            },
+            TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
+                foul: None,
+                batter: self.batter_name.as_ref(),
+                strike: StrikeType::Looking,
+                steals: self.steals(),
+            },
+            TaxaEventType::SwingingStrike => ParsedEventMessage::Strike {
+                strike: StrikeType::Swinging,
+                steals: self.steals(),
+                count: self.count(),
+            },
+            TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
+                foul: None,
+                batter: self.batter_name.as_ref(),
+                strike: StrikeType::Swinging,
+                steals: self.steals(),
+            },
+            TaxaEventType::FoulTip => ParsedEventMessage::Foul {
+                foul: FoulType::Tip,
+                steals: self.steals(),
+                count: self.count(),
+            },
+            TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
+                foul: Some(FoulType::Tip),
+                batter: self.batter_name.as_ref(),
+                strike: StrikeType::Swinging,
+                steals: self.steals(),
+            },
             TaxaEventType::FoulBall => ParsedEventMessage::Foul {
                 foul: FoulType::Ball,
                 steals: self.steals(),
@@ -3122,8 +3114,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                             event_type: self.detail_type,
                             hit_base: other,
                             expected: "First, Second, or Third",
-                        })
-                    },
+                        });
+                    }
                 },
                 fair_ball_type: mandatory_fair_ball_type()?,
                 fielder: exactly_one_fielder()?,
@@ -3174,11 +3166,11 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 })?;
 
                 let caught_by = placed_player_as_ref(&fielder);
-                let perfect =
-                    self.is_toasty
-                        .ok_or_else(|| ToParsedError::MissingIsToasty {
-                            event_type: self.detail_type,
-                        })?;
+                let perfect = self
+                    .is_toasty
+                    .ok_or_else(|| ToParsedError::MissingIsToasty {
+                        event_type: self.detail_type,
+                    })?;
 
                 ParsedEventMessage::CaughtOut {
                     batter: self.batter_name.as_ref(),
@@ -3190,17 +3182,17 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     perfect,
                 }
             }
-            TaxaEventType::GroundedOut => {
-                ParsedEventMessage::GroundedOut {
-                    batter: self.batter_name.as_ref(),
-                    fielders: self.fielders(),
-                    scores: self.scores(),
-                    advances: self.advances(false),
-                    perfect: self.is_toasty.ok_or_else(|| ToParsedError::MissingIsToasty {
+            TaxaEventType::GroundedOut => ParsedEventMessage::GroundedOut {
+                batter: self.batter_name.as_ref(),
+                fielders: self.fielders(),
+                scores: self.scores(),
+                advances: self.advances(false),
+                perfect: self
+                    .is_toasty
+                    .ok_or_else(|| ToParsedError::MissingIsToasty {
                         event_type: self.detail_type,
                     })?,
-                }
-            }
+            },
             TaxaEventType::Walk => ParsedEventMessage::Walk {
                 batter: self.batter_name.as_ref(),
                 scores: self.scores(),
@@ -3221,14 +3213,14 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                             event_type: self.detail_type,
                         });
                     }
-                    Some(TaxaBase::Home) => {},
+                    Some(TaxaBase::Home) => {}
                     Some(other) => {
                         return Err(ToParsedError::InvalidHitBase {
                             event_type: self.detail_type,
                             hit_base: other,
                             expected: "Home",
                         });
-                    },
+                    }
                 }
 
                 let grand_slam = scores.len() == 3;

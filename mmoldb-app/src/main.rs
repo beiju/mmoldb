@@ -3,11 +3,11 @@ mod web;
 use num_format::{Locale, ToFormattedString};
 use rocket::fairing::AdHoc;
 use rocket::figment::map;
-use rocket::{figment, launch, Build, Rocket};
+use rocket::{Build, Rocket, figment, launch};
 use rocket_dyn_templates::Template;
 use rocket_dyn_templates::tera::Value;
 use rocket_sync_db_pools::database;
-use rocket_sync_db_pools::diesel::{prelude::*, PgConnection};
+use rocket_sync_db_pools::diesel::{PgConnection, prelude::*};
 use std::collections::HashMap;
 
 #[database("mmoldb")]
@@ -84,7 +84,8 @@ mod tests {
             .await
             .expect("Rocket failed to ignite");
 
-        Db::get_one(&rocket).await
+        Db::get_one(&rocket)
+            .await
             .expect("Failed to get a database connection")
     }
 

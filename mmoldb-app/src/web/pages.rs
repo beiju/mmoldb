@@ -1,14 +1,14 @@
 use diesel::Connection;
+use mmoldb_db::db;
+use mmoldb_db::models::DbEventIngestLog;
 use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
-use mmoldb_db::db;
-use mmoldb_db::models::{DbEventIngestLog};
 
+use super::docs_pages::*;
+use crate::Db;
 use crate::web::error::AppError;
 use crate::web::utility_contexts::{DayContext, FormattedDateContext, GameContext};
-use crate::Db;
-use super::docs_pages::*;
 
 const PAGE_OF_GAMES_SIZE: usize = 100;
 
@@ -65,7 +65,10 @@ pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppErr
         .run(move |conn| db::game_and_raw_events(conn, &mmolb_game_id))
         .await?;
     let watch_uri = format!("https://mmolb.com/watch/{}", full_game.game.mmolb_game_id);
-    let api_uri = format!("https://mmolb.com/api/game/{}", full_game.game.mmolb_game_id);
+    let api_uri = format!(
+        "https://mmolb.com/api/game/{}",
+        full_game.game.mmolb_game_id
+    );
     let game = GameContext {
         id: full_game.game.mmolb_game_id,
         watch_uri,
@@ -78,18 +81,18 @@ pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppErr
         home_team_emoji: full_game.game.home_team_emoji,
         home_team_name: full_game.game.home_team_name,
         home_team_mmolb_id: full_game.game.home_team_mmolb_id,
-        game_wide_logs: full_game.game_wide_logs.into_iter()
+        game_wide_logs: full_game
+            .game_wide_logs
+            .into_iter()
             .map(Into::into)
             .collect(),
-        events: full_game.raw_events_with_logs
+        events: full_game
+            .raw_events_with_logs
             .into_iter()
             .map(|(raw_event, logs)| EventContext {
                 game_event_index: raw_event.game_event_index,
                 text: raw_event.event_text,
-                logs: logs
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
+                logs: logs.into_iter().map(Into::into).collect(),
             })
             .collect(),
     };

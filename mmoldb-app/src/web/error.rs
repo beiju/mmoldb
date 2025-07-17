@@ -1,3 +1,5 @@
+use crate::web::docs_pages::DocsError;
+use crate::web::pages::rocket_uri_macro_index_page;
 use log::error;
 use miette::Diagnostic;
 use rocket::http::Status;
@@ -5,8 +7,6 @@ use rocket::response::Responder;
 use rocket::{Request, Response, uri};
 use rocket_dyn_templates::{Template, context};
 use thiserror::Error;
-use crate::web::docs_pages::DocsError;
-use crate::web::pages::rocket_uri_macro_index_page;
 
 // TODO This should probably be some miette bullshit
 #[derive(Debug, Error, Diagnostic)]

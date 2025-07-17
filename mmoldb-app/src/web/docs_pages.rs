@@ -1,15 +1,15 @@
-use std::path::PathBuf;
-use include_dir::{include_dir, Dir};
-use itertools::Itertools;
-use miette::Diagnostic;
-use rocket::{get, uri};
-use rocket_dyn_templates::{context, Template};
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-use mmoldb_db::db;
+use super::pages::*;
 use crate::Db;
 use crate::web::error::AppError;
-use super::pages::*;
+use include_dir::{Dir, include_dir};
+use itertools::Itertools;
+use miette::Diagnostic;
+use mmoldb_db::db;
+use rocket::{get, uri};
+use rocket_dyn_templates::{Template, context};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use thiserror::Error;
 
 static SCHEMA_DOCS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/schema_docs");
 
@@ -53,44 +53,54 @@ pub async fn docs_page() -> Result<Template, AppError> {
         tables: Vec<Table>,
     }
 
-    let mut schemata = SCHEMA_DOCS_DIR.entries()
+    let mut schemata = SCHEMA_DOCS_DIR
+        .entries()
         .iter()
         .map(|entry| {
-            let os_name = entry.path().file_stem()
+            let os_name = entry
+                .path()
+                .file_stem()
                 .ok_or(DocsError::DocsFileHasNoStem(entry.path().to_path_buf()))?;
 
-            let name = os_name.to_str()
+            let name = os_name
+                .to_str()
                 .ok_or(DocsError::NonUnicodeFileName(entry.path().to_path_buf()))?;
 
-            let file_contents = entry.as_file()
+            let file_contents = entry
+                .as_file()
                 .ok_or_else(|| DocsError::DocsFileMissing(entry.path().to_path_buf()))?
                 .contents();
 
-            let docs: SchemaDocs = toml::from_slice(file_contents)
-                .map_err(DocsError::CouldntDeserializeDocsFile)?;
+            let docs: SchemaDocs =
+                toml::from_slice(file_contents).map_err(DocsError::CouldntDeserializeDocsFile)?;
 
             Ok::<_, DocsError>((name, docs))
         })
-        .map_ok(|(name, schema)| {
-            Schema {
-                display_order: schema.display_order,
-                name,
-                description: markdown::to_html(&schema.description),
-                tables: schema.tables.into_iter()
-                    .map(|table| Table {
-                        name: table.name,
-                        description: markdown::to_html(&table.description),
-                        columns: table.columns.into_iter()
-                            .map(|column| Column {
-                                name: column.name,
-                                r#type: column.r#type,
-                                description: markdown::to_html(&column.description),
-                                nullable_explanation: column.nullable_explanation.as_deref().map(markdown::to_html),
-                            })
-                            .collect(),
-                    })
-                    .collect(),
-            }
+        .map_ok(|(name, schema)| Schema {
+            display_order: schema.display_order,
+            name,
+            description: markdown::to_html(&schema.description),
+            tables: schema
+                .tables
+                .into_iter()
+                .map(|table| Table {
+                    name: table.name,
+                    description: markdown::to_html(&table.description),
+                    columns: table
+                        .columns
+                        .into_iter()
+                        .map(|column| Column {
+                            name: column.name,
+                            r#type: column.r#type,
+                            description: markdown::to_html(&column.description),
+                            nullable_explanation: column
+                                .nullable_explanation
+                                .as_deref()
+                                .map(markdown::to_html),
+                        })
+                        .collect(),
+                })
+                .collect(),
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -114,12 +124,13 @@ pub async fn docs_schema_page(schema_name: &str) -> Result<Template, AppError> {
         description: String,
     }
 
-    let schema_file = SCHEMA_DOCS_DIR.get_file(schema_name)
+    let schema_file = SCHEMA_DOCS_DIR
+        .get_file(schema_name)
         .ok_or(DocsError::DocsFileMissing(schema_name.into()))?;
 
-    let docs: SchemaDocs = toml::from_slice(schema_file.contents())
-        .map_err(DocsError::CouldntDeserializeDocsFile)?;
-    
+    let docs: SchemaDocs =
+        toml::from_slice(schema_file.contents()).map_err(DocsError::CouldntDeserializeDocsFile)?;
+
     Ok(Template::render(
         "docs_table",
         context! {
@@ -133,15 +144,15 @@ pub async fn docs_schema_page(schema_name: &str) -> Result<Template, AppError> {
 
 #[get("/docs/debug/<table_name>")]
 pub async fn docs_debug_page(table_name: String, db: Db) -> Result<Template, AppError> {
-    let data = db.run(move |conn| {
-        db::tables_for_schema(conn, "mmoldb", &table_name)
-    }).await?;
+    let data = db
+        .run(move |conn| db::tables_for_schema(conn, "mmoldb", &table_name))
+        .await?;
 
     Ok(Template::render(
         "json_renderer",
         context! {
-                data: data,
-            },
+            data: data,
+        },
     ))
 }
 
@@ -177,7 +188,11 @@ pub struct SchemaDocs {
 }
 
 // TODO Put this in some utils file somewhere
-pub fn associate<T, S>(a: Vec<T>, mut b: Vec<S>, is_associated: impl Fn(&T, &S) -> bool) -> (Vec<T>, Vec<(T, S)>, Vec<S>) {
+pub fn associate<T, S>(
+    a: Vec<T>,
+    mut b: Vec<S>,
+    is_associated: impl Fn(&T, &S) -> bool,
+) -> (Vec<T>, Vec<(T, S)>, Vec<S>) {
     let mut orphans_a = Vec::new();
     let mut pairs = Vec::new();
 
@@ -198,9 +213,9 @@ pub fn associate<T, S>(a: Vec<T>, mut b: Vec<S>, is_associated: impl Fn(&T, &S) 
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::db::{DbColumn, DbTable};
     use crate::models::DbSchema;
-    use super::*;
 
     macro_rules! test_schema_docs {
         ($schema_name:ident) => {
@@ -218,19 +233,20 @@ mod tests {
     // The lifetime could be relaxed from 'static but i'm not sure how
     async fn check_schema_docs(schema_name: &'static str) {
         let filename = format!("{}.toml", schema_name);
-        let file = SCHEMA_DOCS_DIR.get_file(&filename)
+        let file = SCHEMA_DOCS_DIR
+            .get_file(&filename)
             .expect(&format!("Missing docs file for schema {schema_name}"));
 
         let file_contents = file.contents();
 
-        let docs: SchemaDocs = toml::from_slice(file_contents)
-            .expect("Couldn't deserialize  schema docs file");
+        let docs: SchemaDocs =
+            toml::from_slice(file_contents).expect("Couldn't deserialize  schema docs file");
 
         let db = crate::tests::get_db().await;
 
-        let tables = db.run(move |conn| {
-            db::tables_for_schema(conn, "mmoldb", schema_name)
-        }).await
+        let tables = db
+            .run(move |conn| db::tables_for_schema(conn, "mmoldb", schema_name))
+            .await
             .expect("Database query failed");
 
         check_schema_table_docs(schema_name, tables, docs);
@@ -241,7 +257,11 @@ mod tests {
             associate(docs.tables, tables, |table, doc| table.name == doc.name);
 
         for doc in docs_without_schemas {
-            assert!(false, "Documented table {schema_name}.{} does not exist", doc.name);
+            assert!(
+                false,
+                "Documented table {schema_name}.{} does not exist",
+                doc.name
+            );
         }
 
         for (docs, schema) in schemas_with_docs {
@@ -250,27 +270,51 @@ mod tests {
 
         if !docs.allow_undocumented {
             for schema in schemas_without_docs {
-                assert!(false, "Table {schema_name}.{} is not documented", schema.name);
+                assert!(
+                    false,
+                    "Table {schema_name}.{} is not documented",
+                    schema.name
+                );
             }
         }
     }
 
     fn check_schema_column_docs(schema_name: &str, table: DbTable, docs: TableDocs) {
         let (docs_without_schemas, schemas_with_docs, schemas_without_docs) =
-            associate(docs.columns, table.columns, |column, doc| column.name == doc.name);
+            associate(docs.columns, table.columns, |column, doc| {
+                column.name == doc.name
+            });
 
         for doc in docs_without_schemas {
-            assert!(false, "Documented column {} does not exist {schema_name}.{}", doc.name, table.name);
+            assert!(
+                false,
+                "Documented column {} does not exist {schema_name}.{}",
+                doc.name, table.name
+            );
         }
 
         for (docs, schema) in schemas_with_docs {
-            assert_eq!(schema.r#type, docs.r#type, "Type mismatch for column {} in {schema_name}.{}", schema.name, table.name);
-            assert_eq!(schema.is_nullable, docs.nullable_explanation.is_some(), "Nullability mismatch for column {} in {schema_name}.{}", schema.name, table.name);
+            assert_eq!(
+                schema.r#type, docs.r#type,
+                "Type mismatch for column {} in {schema_name}.{}",
+                schema.name, table.name
+            );
+            assert_eq!(
+                schema.is_nullable,
+                docs.nullable_explanation.is_some(),
+                "Nullability mismatch for column {} in {schema_name}.{}",
+                schema.name,
+                table.name
+            );
         }
 
         if !docs.allow_undocumented {
             for schema in schemas_without_docs {
-                assert!(false, "Column {} in {schema_name}.{} is not documented", schema.name, table.name);
+                assert!(
+                    false,
+                    "Column {} in {schema_name}.{} is not documented",
+                    schema.name, table.name
+                );
             }
         }
     }

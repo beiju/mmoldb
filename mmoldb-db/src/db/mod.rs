@@ -1,30 +1,34 @@
+mod raw;
 mod to_db_format;
 mod weather;
-mod raw;
 
 use std::collections::HashMap;
 // Reexports
-pub use to_db_format::RowToEventError;
 pub use raw::*;
+pub use to_db_format::RowToEventError;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
-use itertools::{Itertools, Either};
+use itertools::{Either, Itertools};
 use log::warn;
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{Day};
-use std::iter;
+use mmolb_parsing::enums::Day;
 use serde::Serialize;
+use std::iter;
 use thiserror::Error;
 // First-party imports
+use crate::event_detail::{EventDetail, IngestLog};
+use crate::models::{
+    DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner,
+    NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn,
+    RawDbTable,
+};
 use crate::taxa::{
     Taxa, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
     TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
 };
-use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, RawDbTable, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -535,7 +539,9 @@ impl<'g> GameForDb<'g> {
         match self {
             GameForDb::Incomplete { game_id, raw_game } => (*game_id, raw_game),
             GameForDb::Completed(game) => (&game.id, &game.raw_game),
-            GameForDb::FatalError { game_id, raw_game, .. } => (*game_id, raw_game),
+            GameForDb::FatalError {
+                game_id, raw_game, ..
+            } => (*game_id, raw_game),
         }
     }
 
@@ -543,7 +549,7 @@ impl<'g> GameForDb<'g> {
         match self {
             GameForDb::Incomplete { .. } => false,
             GameForDb::Completed(_) => true,
-            // We only produce a fatal error on a completed game. Also, trying 
+            // We only produce a fatal error on a completed game. Also, trying
             // to re-ingest a fatal-error game will not change the outcome.
             GameForDb::FatalError { .. } => true,
         }
@@ -711,12 +717,10 @@ fn insert_games_internal<'e>(
     let (completed_games, error_games): (Vec<_>, Vec<_>) = iter::zip(&game_ids, games)
         .flat_map(|(game_id, game)| match game {
             GameForDb::Incomplete { .. } => None,
-            GameForDb::Completed(game) => {
-                Some(Either::Left((*game_id, game)))
-            },
+            GameForDb::Completed(game) => Some(Either::Left((*game_id, game))),
             GameForDb::FatalError { error_message, .. } => {
                 Some(Either::Right((*game_id, error_message)))
-            },
+            }
         })
         .partition_map(|x| x);
 
@@ -772,14 +776,15 @@ fn insert_games_internal<'e>(
                 })
         })
         .chain(
-            error_games.iter()
+            error_games
+                .iter()
                 .map(|(game_id, error_message)| NewEventIngestLog {
                     game_id: *game_id,
                     game_event_index: None, // None => applies to the entire game
-                    log_index: 0, // there's only ever one
-                    log_level: 0, // critical
+                    log_index: 0,           // there's only ever one
+                    log_level: 0,           // critical
                     log_text: error_message,
-                })
+                }),
         )
         .collect_vec();
 
@@ -997,12 +1002,9 @@ pub fn game_and_raw_events(
         .peekable();
 
     let mut game_wide_logs = Vec::new();
-    while let Some(event) =
-        raw_logs.next_if(|log| log.game_event_index.is_none())
-    {
+    while let Some(event) = raw_logs.next_if(|log| log.game_event_index.is_none()) {
         game_wide_logs.push(event);
     }
-
 
     let logs_by_event = raw_events
         .iter()
@@ -1113,7 +1115,9 @@ pub enum DbMetaQueryError {
     #[error("Column is missing required field {0}")]
     ColumnMissingField(&'static str),
 
-    #[error("Unexpected value {actual_value} in field {field}. Expected one of {expected_values:?}")]
+    #[error(
+        "Unexpected value {actual_value} in field {field}. Expected one of {expected_values:?}"
+    )]
     UnexpectedValueInField {
         field: &'static str,
         actual_value: String,
@@ -1134,13 +1138,18 @@ pub struct DbTable {
     pub columns: Vec<DbColumn>,
 }
 
-pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_name: &str) -> Result<Vec<DbTable>, DbMetaQueryError> {
-    use crate::meta_schema::meta::tables::dsl as tables_dsl;
+pub fn tables_for_schema(
+    conn: &mut PgConnection,
+    catalog_name: &str,
+    schema_name: &str,
+) -> Result<Vec<DbTable>, DbMetaQueryError> {
     use crate::meta_schema::meta::columns::dsl as columns_dsl;
+    use crate::meta_schema::meta::tables::dsl as tables_dsl;
 
     let raw_tables = tables_dsl::tables
         .filter(
-            tables_dsl::table_catalog.eq(catalog_name)
+            tables_dsl::table_catalog
+                .eq(catalog_name)
                 .and(tables_dsl::table_schema.eq(schema_name)),
         )
         .order_by((
@@ -1153,7 +1162,8 @@ pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_nam
 
     let raw_columns = columns_dsl::columns
         .filter(
-            columns_dsl::table_catalog.eq(catalog_name)
+            columns_dsl::table_catalog
+                .eq(catalog_name)
                 .and(columns_dsl::table_schema.eq(schema_name)),
         )
         .order_by((
@@ -1165,8 +1175,13 @@ pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_nam
         .select(RawDbColumn::as_select())
         .get_results(conn)?;
 
-    let raw_columns_grouped = raw_columns.into_iter()
-        .chunk_by(|col| (col.table_catalog.clone(), col.table_schema.clone(), col.table_name.clone()));
+    let raw_columns_grouped = raw_columns.into_iter().chunk_by(|col| {
+        (
+            col.table_catalog.clone(),
+            col.table_schema.clone(),
+            col.table_name.clone(),
+        )
+    });
 
     iter::zip(raw_tables, raw_columns_grouped.into_iter())
         .map(|(table, (table_key, columns))| {
@@ -1178,24 +1193,36 @@ pub fn tables_for_schema(conn: &mut PgConnection, catalog_name: &str, schema_nam
             );
 
             Ok(DbTable {
-                name: table.table_name.ok_or(DbMetaQueryError::TableMissingField("table_name"))?,
+                name: table
+                    .table_name
+                    .ok_or(DbMetaQueryError::TableMissingField("table_name"))?,
                 columns: columns
-                    .map(|column| Ok(DbColumn {
-                        name: column.column_name.ok_or(DbMetaQueryError::ColumnMissingField("column_name"))?,
-                        r#type: column.data_type.ok_or(DbMetaQueryError::ColumnMissingField("data_type"))?,
-                        is_nullable: match column.column_is_nullable.as_deref() {
-                            // Note that I renamed it to column_is_nullable for diesel to avoid a
-                            // name conflict. The sql name for it is just is_nullable.
-                            None => return Err(DbMetaQueryError::ColumnMissingField("is_nullable")),
-                            Some("YES") => true,
-                            Some("NO") => false,
-                            Some(other) => return Err(DbMetaQueryError::UnexpectedValueInField {
-                                field: "is_nullable",
-                                actual_value: other.to_owned(),
-                                expected_values: &["YES", "NO"],
-                            }),
-                        },
-                    }))
+                    .map(|column| {
+                        Ok(DbColumn {
+                            name: column
+                                .column_name
+                                .ok_or(DbMetaQueryError::ColumnMissingField("column_name"))?,
+                            r#type: column
+                                .data_type
+                                .ok_or(DbMetaQueryError::ColumnMissingField("data_type"))?,
+                            is_nullable: match column.column_is_nullable.as_deref() {
+                                // Note that I renamed it to column_is_nullable for diesel to avoid a
+                                // name conflict. The sql name for it is just is_nullable.
+                                None => {
+                                    return Err(DbMetaQueryError::ColumnMissingField("is_nullable"));
+                                }
+                                Some("YES") => true,
+                                Some("NO") => false,
+                                Some(other) => {
+                                    return Err(DbMetaQueryError::UnexpectedValueInField {
+                                        field: "is_nullable",
+                                        actual_value: other.to_owned(),
+                                        expected_values: &["YES", "NO"],
+                                    });
+                                }
+                            },
+                        })
+                    })
                     .collect::<Result<Vec<_>, DbMetaQueryError>>()?,
             })
         })
