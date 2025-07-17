@@ -2,7 +2,7 @@ use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
 use log::warn;
-use crate::chron::ChronEntity;
+use chron::{ChronEntity};
 
 pub fn get_latest_entity_valid_from(conn: &mut PgConnection, kind: &str) -> QueryResult<Option<NaiveDateTime>> {
     use crate::data_schema::data::entities::dsl as entities_dsl;

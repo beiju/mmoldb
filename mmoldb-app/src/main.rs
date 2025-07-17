@@ -1,17 +1,8 @@
 mod db;
-#[rustfmt::skip] // This is a generated file
-mod data_schema;
-#[rustfmt::skip] // This is a generated file
-mod taxa_schema;
-#[rustfmt::skip] // This is a generated file
-mod info_schema;
 mod ingest;
 mod models;
 mod parsing_extensions;
 mod web;
-mod meta_schema;
-mod shared;
-mod chron;
 
 use crate::ingest::{IngestFairing, IngestTask};
 use num_format::{Locale, ToFormattedString};
@@ -67,7 +58,7 @@ async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
 }
 
 fn get_figment_with_constructed_db_url() -> figment::Figment {
-    let url = shared::postgres_url_from_environment();
+    let url = mmoldb_db::postgres_url_from_environment();
     rocket::Config::figment().merge(("databases", map!["mmoldb" => map!["url" => url]]))
 }
 

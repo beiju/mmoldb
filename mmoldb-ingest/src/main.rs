@@ -1,19 +1,13 @@
 use std::sync::Arc;
-use crate::chron::{Chron, ChronEntity};
+use chron::{Chron, ChronEntity};
 use chrono::NaiveDateTime;
-use diesel::{Connection, PgConnection};
 use futures::{pin_mut, StreamExt, TryStreamExt};
 use log::{debug, info, warn};
 use miette::{Diagnostic, IntoDiagnostic};
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
-
-mod chron;
-mod db2;
-mod shared;
-
-mod data_schema;
+use mmoldb_db::{db, Connection, PgConnection};
 
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_GAME_INSERT_BATCH_SIZE: usize = 1000;
@@ -27,7 +21,7 @@ struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
 async fn main() -> miette::Result<()> {
     env_logger::init();
 
-    let url = shared::postgres_url_from_environment();
+    let url = mmoldb_db::postgres_url_from_environment();
     let notify = Arc::new(Notify::new());
     let finish = CancellationToken::new();
 
@@ -55,14 +49,14 @@ async fn main() -> miette::Result<()> {
 async fn ingest_raw_games(url: &str, notify: Arc<Notify>) -> miette::Result<()> {
     let mut conn = PgConnection::establish(url).into_diagnostic()?;
 
-    let start_date = db2::get_latest_entity_valid_from(&mut conn, "game")
+    let start_date = db::get_latest_entity_valid_from(&mut conn, "game")
         .into_diagnostic()?
         .as_ref()
         .map(NaiveDateTime::and_utc);
 
     info!("Fetch will start at {:?}", start_date);
 
-    let chron = Chron::new(false, "", CHRON_FETCH_PAGE_SIZE).into_diagnostic()?;
+    let chron = Chron::new(CHRON_FETCH_PAGE_SIZE);
 
     let stream = chron
         .entities("game", start_date)
@@ -75,7 +69,7 @@ async fn ingest_raw_games(url: &str, notify: Arc<Notify>) -> miette::Result<()> 
             Err(err) => (err.0, Some(err.1)),
         };
         info!("Saving {} games", chunk.len());
-        let inserted = db2::insert_entities(&mut conn, chunk).into_diagnostic()?;
+        let inserted = db::insert_entities(&mut conn, chunk).into_diagnostic()?;
         info!("Saved {} games", inserted);
 
         notify.notify_one();
@@ -101,10 +95,10 @@ async fn process_games(url: &str, notify: Arc<Notify>, finish: CancellationToken
         }
     } {
         debug!("Process games task is woken up");
-        
+
         // The inner loop is over batches of games to process
         loop {
-            let raw_games = db2::get_batch_of_unprocessed_games(&mut conn, PROCESS_GAME_BATCH_SIZE).into_diagnostic()?;
+            let raw_games = db::get_batch_of_unprocessed_games(&mut conn, PROCESS_GAME_BATCH_SIZE).into_diagnostic()?;
             if raw_games.is_empty() {
                 debug!("All games have been processed. Waiting to be woken up again.");
                 break;

@@ -17,6 +17,7 @@ use rocket::{figment, tokio, Orbit, Rocket, Shutdown};
 use rocket_sync_db_pools::ConnectionPool;
 use serde::Deserialize;
 use std::collections::VecDeque;
+use std::convert::Infallible;
 use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,10 +26,10 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 // First party dependencies
+use chron::{ChronEntities, ChronStreamError};
 use crate::db::Taxa;
-use crate::chron::{ChronEntities, ChronError};
 use crate::ingest::worker::{IngestWorker, IngestWorkerInProgress};
-use crate::{chron, db, Db};
+use crate::{db, Db};
 
 fn default_ingest_period() -> u64 {
     30 * 60 // 30 minutes, expressed in seconds
@@ -66,10 +67,6 @@ struct IngestConfig {
     game_list_page_size: usize,
     #[serde(default = "default_ingest_parallelism")]
     ingest_parallelism: usize,
-    #[serde(default)]
-    cache_http_responses: bool,
-    // cache_path gets overwritten in code. Don't set it in Rocket.toml.
-    cache_path: PathBuf,
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -99,7 +96,7 @@ pub enum IngestFatalError {
     CouldNotGetConnection,
 
     #[error(transparent)]
-    ChronError(#[from] ChronError),
+    ChronError(#[from] ChronStreamError),
 
     #[error(transparent)]
     DbError(#[from] diesel::result::Error),
@@ -537,12 +534,7 @@ async fn do_ingest(
     // The only thing that errors here is opening the http cache, which
     // could be worked around by just not caching. I don't currently support
     // running without a cache but it could be added fairly easily.
-    let chron = chron::Chron::new(
-        config.cache_http_responses,
-        &config.cache_path,
-        config.game_list_page_size,
-    )
-    .map_err(|err| (err.into(), None))?;
+    let chron = chron::Chron::new(config.game_list_page_size);
 
     info!("Initialized chron");
 
@@ -610,9 +602,9 @@ async fn fetch_games_page(
     chron: &chron::Chron,
     page: Option<String>,
     index: usize,
-) -> Result<(ChronEntities<mmolb_parsing::Game>, usize, f64), ChronError> {
+) -> Result<(ChronEntities<mmolb_parsing::Game>, usize, f64), ChronStreamError> {
     let fetch_start = Utc::now();
-    let page = chron.games_page(page.as_deref()).await?;
+    let page = todo!();
     let fetch_duration = (Utc::now() - fetch_start).as_seconds_f64();
     Ok((page, index, fetch_duration))
 }

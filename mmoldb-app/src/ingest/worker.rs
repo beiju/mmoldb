@@ -1,8 +1,8 @@
 use crate::db::{CompletedGameForDb, GameForDb, Taxa, Timings};
-use crate::chron::{ChronEntities, ChronEntity, GameExt};
 use crate::ingest::sim::{self, Game, SimStartupError};
 use crate::ingest::{IngestConfig, IngestFatalError, IngestLog, IngestStats, check_round_trip};
 use crate::{Db, db};
+use chron::{ChronEntities, ChronEntity};
 use chrono::Utc;
 use diesel::PgConnection;
 use itertools::{Itertools, izip};
@@ -10,6 +10,29 @@ use log::{error, info};
 use miette::Context;
 use rocket::tokio;
 use rocket_sync_db_pools::ConnectionPool;
+
+pub trait GameExt {
+    /// Returns true for any game which will never be updated. This includes all
+    /// finished games and a set of games from s0d60 that the sim lost track of
+    /// and will never be finished.
+    fn is_terminal(&self) -> bool;
+
+    /// True for any game in the "Completed" state
+    fn is_completed(&self) -> bool;
+}
+
+impl GameExt for mmolb_parsing::Game {
+    fn is_terminal(&self) -> bool {
+        // There are some games from season 0 that aren't completed and never
+        // will be.
+        self.season == 0 || self.is_completed()
+    }
+
+    fn is_completed(&self) -> bool {
+        self.state == "Complete"
+    }
+}
+
 
 pub(super) struct IngestWorker {
     pool: ConnectionPool<Db, PgConnection>,

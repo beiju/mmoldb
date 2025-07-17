@@ -1,0 +1,17 @@
+[package]
+name = "mmoldb-ingest"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chron = { path = "../chron" }
+mmoldb-db = { path = "../mmoldb-db" }
+futures = "0.3.31"
+miette = { version = "7.6.0", features = ["fancy"] }
+tokio = { version = "1.46.1", features = ["full"] }
+env_logger = "0.11.8"
+serde_json = "1.0.140"
+tokio-util = "0.7.15"
+thiserror = "2.0.12"
+log = "0.4.27"
+chrono = { version = "0.4.41", features = ["serde"] }
