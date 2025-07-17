@@ -1,8 +1,8 @@
-use crate::db::GameWithIssueCounts;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use chrono_humanize::HumanTime;
 use log::warn;
 use rocket::serde::Serialize;
+use mmoldb_db::db::GameWithIssueCounts;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FormattedDateContext {

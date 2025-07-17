@@ -1,6 +1,6 @@
 use miette::Diagnostic;
-use crate::db::taxa::Taxa;
-use crate::ingest::{EventDetail, EventDetailFielder, EventDetailRunner};
+use crate::taxa::Taxa;
+use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
 use crate::models::{DbEvent, DbFielder, DbRunner, NewBaserunner, NewEvent, NewFielder};
 use thiserror::Error;
 

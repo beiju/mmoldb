@@ -2,13 +2,12 @@ use diesel::Connection;
 use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
+use mmoldb_db::db;
+use mmoldb_db::models::{DbEventIngestLog};
 
-use crate::db::PageOfGames;
-use crate::ingest::{IngestStatus, IngestTask};
 use crate::web::error::AppError;
 use crate::web::utility_contexts::{DayContext, FormattedDateContext, GameContext};
-use crate::{Db, db};
-use crate::models::DbEventIngestLog;
+use crate::Db;
 use super::docs_pages::*;
 
 const PAGE_OF_GAMES_SIZE: usize = 100;
@@ -207,7 +206,7 @@ struct PaginatedGamesContext<'a> {
 }
 
 fn paginated_games_context(
-    page: PageOfGames,
+    page: db::PageOfGames,
     paginated_uri_builder: impl Fn(&str) -> String,
     non_paginated_uri_builder: impl Fn() -> String,
 ) -> PaginatedGamesContext<'static> {
@@ -273,7 +272,7 @@ pub async fn debug_no_games_page() -> Result<Template, AppError> {
 }
 
 #[get("/status")]
-pub async fn status_page(db: Db, ingest_task: &State<IngestTask>) -> Result<Template, AppError> {
+pub async fn status_page(db: Db) -> Result<Template, AppError> {
     #[derive(Serialize, Default)]
     struct IngestTaskContext {
         is_starting: bool,
@@ -283,29 +282,8 @@ pub async fn status_page(db: Db, ingest_task: &State<IngestTask>) -> Result<Temp
         error: Option<String>,
     }
 
-    let ingest_task_status = match ingest_task.state().await {
-        IngestStatus::Starting => IngestTaskContext {
-            is_starting: true,
-            ..Default::default()
-        },
-        IngestStatus::FailedToStart(err) => IngestTaskContext {
-            error: Some(err),
-            ..Default::default()
-        },
-        IngestStatus::Idle => IngestTaskContext::default(),
-        IngestStatus::Running => IngestTaskContext {
-            is_running: true,
-            ..Default::default()
-        },
-        IngestStatus::ExitedWithError(err) => IngestTaskContext {
-            error: Some(err),
-            ..Default::default()
-        },
-        IngestStatus::ShuttingDown => IngestTaskContext {
-            is_stopping: true,
-            ..Default::default()
-        },
-    };
+    // TODO Restore status report for ingest task
+    let ingest_task_status = IngestTaskContext::default();
 
     #[derive(Serialize)]
     struct IngestContext {

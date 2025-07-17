@@ -1,12 +1,11 @@
-mod taxa;
-mod taxa_macro;
 mod to_db_format;
 mod weather;
+mod raw;
 
 use std::collections::HashMap;
 // Reexports
 pub use to_db_format::RowToEventError;
-pub use taxa_macro::AsInsertable;
+pub use raw::*;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -20,11 +19,11 @@ use std::iter;
 use serde::Serialize;
 use thiserror::Error;
 // First-party imports
-pub use crate::db::taxa::{
+use crate::taxa::{
     Taxa, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
     TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
 };
-use crate::ingest::{EventDetail, IngestLog};
+use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner, RawDbTable, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -177,7 +176,7 @@ macro_rules! log_only_assert {
 #[derive(QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::games)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub(crate) struct GameWithIssueCounts {
+pub struct GameWithIssueCounts {
     #[diesel(embed)]
     pub game: DbGame,
     #[diesel(sql_type = Int8)]
@@ -252,7 +251,7 @@ pub fn ingest_with_games(
     Ok((ingest, games))
 }
 
-pub(crate) struct PageOfGames {
+pub struct PageOfGames {
     pub games: Vec<GameWithIssueCounts>,
     pub next_page: Option<String>,
     // Nested option: The outer layer is whether there is a previous page. The inner
@@ -964,7 +963,7 @@ pub fn insert_additional_ingest_logs(
     Ok(())
 }
 
-pub(crate) struct DbFullGameWithLogs {
+pub struct DbFullGameWithLogs {
     pub game: DbGame,
     pub game_wide_logs: Vec<DbEventIngestLog>,
     pub raw_events_with_logs: Vec<(DbRawEvent, Vec<DbEventIngestLog>)>,

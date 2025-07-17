@@ -1,18 +1,15 @@
 mod url;
+mod schema;
+mod parsing_extensions;
 pub mod db;
+pub mod models;
+pub mod taxa;
 
-#[rustfmt::skip] // This is a generated file
-mod data_schema;
-#[rustfmt::skip] // This is a generated file
-mod taxa_schema;
-#[rustfmt::skip] // This is a generated file
-mod info_schema;
-#[rustfmt::skip] // This is a generated file
-mod meta_schema;
+mod event_detail;
 
+pub(crate) use schema::*;
 
 pub use url::*;
+pub use db::DbMetaQueryError;
 
 pub use diesel::{Connection, PgConnection};
-
-

@@ -6,7 +6,8 @@ use rocket::{get, uri};
 use rocket_dyn_templates::{context, Template};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use crate::{db, Db};
+use mmoldb_db::db;
+use crate::Db;
 use crate::web::error::AppError;
 use super::pages::*;
 

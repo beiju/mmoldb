@@ -1853,12 +1853,19 @@ dependencies = [
  "chron",
  "chrono",
  "diesel",
+ "enum-map",
  "figment",
+ "hashbrown 0.15.4",
  "itertools",
  "log",
+ "miette",
+ "mmolb_parsing",
+ "paste",
  "percent-encoding",
  "serde",
  "serde_json",
+ "strum",
+ "thiserror",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
-use rocket_sync_db_pools::diesel::prelude::*;
 use serde::Serialize;
+use diesel::prelude::*;
 
 #[derive(Insertable)]
 #[diesel(table_name = crate::info_schema::info::ingests)]

@@ -1,13 +1,17 @@
+mod taxa_macro;
+
+pub use taxa_macro::AsInsertable;
+
 use paste::paste;
 
-use super::taxa_macro::*;
-use crate::parsing_extensions;
+use taxa_macro::*;
 use diesel::QueryResult;
 use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
 use log::error;
-use rocket_sync_db_pools::diesel::prelude::*;
+use diesel::prelude::*;
 use std::collections::HashSet;
+use crate::parsing_extensions;
 
 taxa! {
     #[

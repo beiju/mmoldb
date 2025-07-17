@@ -1,10 +1,5 @@
-mod db;
-mod ingest;
-mod models;
-mod parsing_extensions;
 mod web;
 
-use crate::ingest::{IngestFairing, IngestTask};
 use num_format::{Locale, ToFormattedString};
 use rocket::fairing::AdHoc;
 use rocket::figment::map;
@@ -13,8 +8,8 @@ use rocket_dyn_templates::Template;
 use rocket_dyn_templates::tera::Value;
 use rocket_sync_db_pools::database;
 use rocket_sync_db_pools::diesel::{prelude::*, PgConnection};
-use serde::Deserialize;
 use std::collections::HashMap;
+
 #[database("mmoldb")]
 struct Db(PgConnection);
 
@@ -67,13 +62,11 @@ fn rocket() -> _ {
     rocket::custom(get_figment_with_constructed_db_url())
         .mount("/", web::routes())
         .mount("/static", rocket::fs::FileServer::from("./static"))
-        .manage(IngestTask::new())
         .attach(Template::custom(|engines| {
             engines.tera.register_filter("num_format", NumFormat);
         }))
         .attach(Db::fairing())
         .attach(AdHoc::on_ignite("Migrations", run_migrations))
-        .attach(IngestFairing::new())
 }
 
 #[cfg(test)]
