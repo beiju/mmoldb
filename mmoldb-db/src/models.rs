@@ -54,7 +54,8 @@ pub struct NewGame<'a> {
     pub home_team_name: &'a str,
     pub home_team_mmolb_id: &'a str,
     pub home_team_final_score: Option<i32>,
-    pub is_finished: bool,
+    pub is_ongoing: bool,
+    pub from_version: NaiveDateTime,
 }
 
 #[derive(Identifiable, Queryable, Selectable, Associations, QueryableByName)]
@@ -74,7 +75,8 @@ pub struct DbGame {
     pub home_team_emoji: String,
     pub home_team_name: String,
     pub home_team_mmolb_id: String,
-    pub is_finished: bool,
+    pub is_ongoing: bool,
+    pub from_version: NaiveDateTime,
 }
 
 #[derive(Insertable)]
@@ -197,6 +199,7 @@ pub struct NewGameIngestTimings {
     pub ingest_id: i64,
     pub index: i32,
 
+    pub get_batch_to_process_duration: f64,
     pub deserialize_games_duration: f64,
     pub filter_finished_games_duration: f64,
     pub parse_and_sim_duration: f64,
@@ -232,6 +235,7 @@ pub struct DbGameIngestTimings {
     pub id: i64,
     pub ingest_id: i64,
     pub index: i32,
+    pub get_batch_to_process_duration: f64,
     pub deserialize_games_duration: f64,
     pub filter_finished_games_duration: f64,
     pub parse_and_sim_duration: f64,

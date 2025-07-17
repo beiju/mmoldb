@@ -1,12 +1,11 @@
 use crate::ingest::sim::{self, Game, SimStartupError};
-use crate::ingest::{IngestConfig, IngestFatalError, IngestStats, check_round_trip};
-use chron::{ChronEntities, ChronEntity};
+use crate::ingest::{IngestFatalError, IngestStats, check_round_trip};
+use chron::{ChronEntity};
 use chrono::Utc;
 use itertools::{Itertools, izip};
 use log::{error, info};
 use miette::Context;
-use mmoldb_db::{db, IngestLog, PgConnection, QueryResult};
-use tokio;
+use mmoldb_db::{db, IngestLog, PgConnection};
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
 
@@ -33,15 +32,17 @@ impl GameExt for mmolb_parsing::Game {
 }
 
 pub fn ingest_page_of_games(
-    config: &IngestConfig,
     taxa: &Taxa,
     ingest_id: i64,
     page_index: usize,
+    get_batch_to_process_duration: f64,
     all_games_json: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
 ) -> Result<IngestStats, IngestFatalError> {
     let save_start = Utc::now();
     let deserialize_games_start = Utc::now();
+    // TODO Turn game deserialize failure into a GameForDb::FatalError case
+    //   instead of propagating it
     let all_games = all_games_json.into_iter()
         .map(|game_json| Ok::<_, serde_json::Error>(ChronEntity {
             kind: game_json.kind,
@@ -54,40 +55,40 @@ pub fn ingest_page_of_games(
     let deserialize_games_duration = (Utc::now() - deserialize_games_start).as_seconds_f64();
 
     let filter_finished_games_start = Utc::now();
-    let all_games_len = all_games.len();
-    let games_for_ingest = filter_out_finished_games(config, conn, all_games)?;
     let filter_finished_games_duration =
         (Utc::now() - filter_finished_games_start).as_seconds_f64();
 
     let parse_and_sim_start = Utc::now();
-    let games_for_db = games_for_ingest
+    let games_for_db = all_games
         .iter()
-        .filter_map(prepare_game_for_db)
+        .map(prepare_game_for_db)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let num_ongoing_games_skipped = games_for_db
-        .iter()
-        .filter(|g| match g {
-            GameForDb::Incomplete { .. } => true,
-            _ => false,
-        })
-        .count();
-    let num_games_with_fatal_errors = games_for_db
-        .iter()
-        .filter(|g| match g {
-            GameForDb::FatalError { .. } => true,
-            _ => false,
-        })
-        .count();
-    let num_already_ingested_games_skipped = all_games_len - games_for_ingest.len();
-    let num_terminal_incomplete_games_skipped = games_for_ingest.len() - games_for_db.len();
-    let num_games_imported =
-        games_for_db.len() - num_ongoing_games_skipped - num_games_with_fatal_errors;
+    assert_eq!(
+        games_for_db.len(), all_games.len(),
+        "Ingest logic requires all games to have an entry in the db, otherwise it will keep trying \
+        to ingest them forever.",
+    );
+
+    // Kind of confusing, but "skipped" games still have entries in
+    // data.games. They just don't have anything in data.events.
+    let mut num_ongoing_games_skipped = 0;
+    let mut num_bugged_games_skipped = 0;
+    let mut num_games_imported = 0;
+    let mut num_games_with_fatal_errors = 0;
+    for game in &games_for_db {
+        match game {
+            GameForDb::Ongoing { .. } => { num_ongoing_games_skipped += 1; }
+            GameForDb::ForeverIncomplete { .. } => { num_bugged_games_skipped += 1; }
+            GameForDb::Completed { .. } => { num_games_imported += 1; }
+            GameForDb::FatalError { .. } => { num_games_with_fatal_errors += 1; }
+        }
+    }
+    assert_eq!(num_ongoing_games_skipped + num_bugged_games_skipped + num_games_imported + num_games_with_fatal_errors, games_for_db.len());
     info!(
         "Ingesting {num_games_imported} games, skipping {num_games_with_fatal_errors} games \
-        due to fatal errors, ignoring {num_already_ingested_games_skipped} already-ingested \
-        games, ignoring {num_ongoing_games_skipped} games in progress, and skipping \
-        {num_terminal_incomplete_games_skipped} terminal incomplete games.",
+        due to fatal errors, ignoring {num_ongoing_games_skipped} games in progress, and skipping \
+        {num_bugged_games_skipped} bugged games.",
     );
     let parse_and_sim_duration = (Utc::now() - parse_and_sim_start).as_seconds_f64();
 
@@ -104,7 +105,7 @@ pub fn ingest_page_of_games(
     let mmolb_game_ids = games_for_db
         .iter()
         .filter_map(|game| match game {
-            GameForDb::Completed(game) => Some(game.id),
+            GameForDb::Completed { game, .. } => Some(game.id),
             _ => None,
         })
         .collect_vec();
@@ -117,7 +118,7 @@ pub fn ingest_page_of_games(
     let check_round_trip_start = Utc::now();
     let additional_logs = games_for_db.iter()
         .filter_map(|game| match game {
-            GameForDb::Completed(game) => Some(game),
+            GameForDb::Completed { game, .. } => Some(game),
             _ => None,
         })
         .zip(&ingested_games)
@@ -178,6 +179,7 @@ pub fn ingest_page_of_games(
         ingest_id,
         page_index,
         Timings {
+            get_batch_to_process_duration,
             deserialize_games_duration,
             filter_finished_games_duration,
             parse_and_sim_duration,
@@ -193,43 +195,9 @@ pub fn ingest_page_of_games(
 
     Ok::<_, IngestFatalError>(IngestStats {
         num_ongoing_games_skipped,
-        num_terminal_incomplete_games_skipped,
-        num_already_ingested_games_skipped,
+        num_bugged_games_skipped,
         num_games_with_fatal_errors,
         num_games_imported,
-    })
-}
-
-fn filter_out_finished_games(
-    config: &IngestConfig,
-    conn: &mut PgConnection,
-    all_games: Vec<ChronEntity<mmolb_parsing::Game>>,
-) -> Result<Vec<ChronEntity<mmolb_parsing::Game>>, IngestFatalError> {
-    Ok(if !config.reimport_all_games {
-        let all_game_ids = all_games.iter().map(|e| e.entity_id.as_str()).collect_vec();
-        // Remove any games which are fully imported
-        let mut is_finished = db::is_finished(conn, &all_game_ids)?.into_iter().peekable();
-        all_games
-            .into_iter()
-            .filter_map(|game| {
-                if let Some((_, finished)) =
-                    is_finished.next_if(|(id, _)| id == &game.entity_id)
-                {
-                    if finished {
-                        // Game is finished, don't import it again
-                        None
-                    } else {
-                        // Game is not finished, do import it again
-                        Some(game)
-                    }
-                } else {
-                    // Game is not in the db, import it for the first time
-                    Some(game)
-                }
-            })
-            .collect()
-    } else {
-        all_games
     })
 }
 
@@ -247,26 +215,35 @@ fn diagnostic_to_string(err: miette::Report) -> String {
 
 fn prepare_game_for_db(
     entity: &ChronEntity<mmolb_parsing::Game>,
-) -> Option<Result<GameForDb, IngestFatalError>> {
-    Some(Ok(if !entity.data.is_terminal() {
-        GameForDb::Incomplete {
+) -> Result<GameForDb, IngestFatalError> {
+    Ok(if !entity.data.is_terminal() {
+        GameForDb::Ongoing {
             game_id: &entity.entity_id,
+            from_version: entity.valid_from,
             raw_game: &entity.data,
         }
     } else if entity.data.is_completed() {
         let game_result = prepare_completed_game_for_db(entity)
             .wrap_err("Error constructing the initial state. This entire game will be skipped.");
         match game_result {
-            Ok(game) => GameForDb::Completed(game),
+            Ok(game) => GameForDb::Completed {
+                game,
+                from_version: entity.valid_from,
+            },
             Err(err) => GameForDb::FatalError {
                 game_id: &entity.entity_id,
+                from_version: entity.valid_from,
                 raw_game: &entity.data,
                 error_message: diagnostic_to_string(err),
             },
         }
     } else {
-        return None;
-    }))
+        GameForDb::ForeverIncomplete {
+            game_id: &entity.entity_id,
+            from_version: entity.valid_from,
+            raw_game: &entity.data,
+        }
+    })
 }
 
 fn prepare_completed_game_for_db(

@@ -25,10 +25,7 @@ use crate::models::{
     NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn,
     RawDbTable,
 };
-use crate::taxa::{
-    Taxa, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
-    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
-};
+use crate::taxa::{Taxa};
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -36,12 +33,12 @@ pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     dsl::ingests.count().get_result(conn)
 }
 
-pub fn is_finished(conn: &mut PgConnection, ids: &[&str]) -> QueryResult<Vec<(String, bool)>> {
+pub fn is_ongoing(conn: &mut PgConnection, ids: &[&str]) -> QueryResult<Vec<(String, bool)>> {
     use crate::data_schema::data::games::dsl;
 
     dsl::games
         .filter(dsl::mmolb_game_id.eq_any(ids))
-        .select((dsl::mmolb_game_id, dsl::is_finished))
+        .select((dsl::mmolb_game_id, dsl::is_ongoing))
         .order_by(dsl::mmolb_game_id)
         .get_results(conn)
 }
@@ -522,36 +519,47 @@ pub struct CompletedGameForDb<'g> {
 }
 
 pub enum GameForDb<'g> {
-    Incomplete {
+    Ongoing {
         game_id: &'g str,
+        from_version: DateTime<Utc>,
         raw_game: &'g mmolb_parsing::Game,
     },
-    Completed(CompletedGameForDb<'g>),
+    ForeverIncomplete {
+        game_id: &'g str,
+        from_version: DateTime<Utc>,
+        raw_game: &'g mmolb_parsing::Game,
+    },
+    Completed {
+        game: CompletedGameForDb<'g>,
+        from_version: DateTime<Utc>,
+    },
     FatalError {
         game_id: &'g str,
+        from_version: DateTime<Utc>,
         raw_game: &'g mmolb_parsing::Game,
         error_message: String,
     },
 }
 
 impl<'g> GameForDb<'g> {
-    pub fn raw(&self) -> (&'g str, &'g mmolb_parsing::Game) {
+    pub fn raw(&self) -> (&'g str, DateTime<Utc>, &'g mmolb_parsing::Game) {
         match self {
-            GameForDb::Incomplete { game_id, raw_game } => (*game_id, raw_game),
-            GameForDb::Completed(game) => (&game.id, &game.raw_game),
+            GameForDb::Ongoing { game_id, from_version, raw_game } => (*game_id, *from_version, raw_game),
+            GameForDb::ForeverIncomplete { game_id, from_version, raw_game } => (*game_id, *from_version, raw_game),
+            GameForDb::Completed { game, from_version } => (&game.id, *from_version, &game.raw_game),
             GameForDb::FatalError {
-                game_id, raw_game, ..
-            } => (*game_id, raw_game),
+                game_id, from_version, raw_game, ..
+            } => (*game_id, *from_version, raw_game),
         }
     }
 
-    pub fn is_complete(&self) -> bool {
+    pub fn is_ongoing(&self) -> bool {
         match self {
-            GameForDb::Incomplete { .. } => false,
-            GameForDb::Completed(_) => true,
-            // We only produce a fatal error on a completed game. Also, trying
-            // to re-ingest a fatal-error game will not change the outcome.
-            GameForDb::FatalError { .. } => true,
+            GameForDb::Ongoing { .. } => true,
+            GameForDb::ForeverIncomplete { .. } => false,
+            GameForDb::Completed { .. } => false,
+            // We only produce a fatal error on a completed game.
+            GameForDb::FatalError { .. } => false,
         }
     }
 }
@@ -597,7 +605,7 @@ fn insert_games_internal<'e>(
     let game_mmolb_ids = games
         .iter()
         .map(GameForDb::raw)
-        .map(|(id, _)| id)
+        .map(|(id, _, _)| id)
         .collect_vec();
 
     diesel::delete(games_dsl::games)
@@ -613,7 +621,7 @@ fn insert_games_internal<'e>(
     let new_games = games
         .iter()
         .map(|game| {
-            let (game_id, raw_game) = game.raw();
+            let (game_id, from_version, raw_game) = game.raw();
             let Some(weather_id) = weather_table.get(&(
                 raw_game.weather.name.as_str(),
                 raw_game.weather.emoji.as_str(),
@@ -666,7 +674,7 @@ fn insert_games_internal<'e>(
             };
 
             let (away_team_final_score, home_team_final_score) =
-                if let GameForDb::Completed(complete_game) = game {
+                if let GameForDb::Completed { game: complete_game, .. } = game {
                     complete_game
                         .events
                         .last()
@@ -695,7 +703,8 @@ fn insert_games_internal<'e>(
                 home_team_name: &raw_game.home_team_name,
                 home_team_mmolb_id: &raw_game.home_team_id,
                 home_team_final_score,
-                is_finished: game.is_complete(),
+                is_ongoing: game.is_ongoing(),
+                from_version: from_version.naive_utc(),
             }
         })
         .collect_vec();
@@ -714,12 +723,27 @@ fn insert_games_internal<'e>(
     );
 
     // From now on, we don't need unfinished games
-    let (completed_games, error_games): (Vec<_>, Vec<_>) = iter::zip(&game_ids, games)
+    let (completed_games, game_wide_logs): (Vec<_>, Vec<_>) = iter::zip(&game_ids, games)
         .flat_map(|(game_id, game)| match game {
-            GameForDb::Incomplete { .. } => None,
-            GameForDb::Completed(game) => Some(Either::Left((*game_id, game))),
+            GameForDb::Ongoing { .. } => None,
+            GameForDb::ForeverIncomplete { .. } => {
+                Some(Either::Right(NewEventIngestLog {
+                    game_id: *game_id,
+                    game_event_index: None, // None => applies to the entire game
+                    log_index: 0,           // there's only ever one
+                    log_level: 3,           // info
+                    log_text: "This is a bugged terminally-incomplete game. It will never be ingested.",
+                }))
+            },
+            GameForDb::Completed { game, .. } => Some(Either::Left((*game_id, game))),
             GameForDb::FatalError { error_message, .. } => {
-                Some(Either::Right((*game_id, error_message)))
+                Some(Either::Right(NewEventIngestLog {
+                    game_id: *game_id,
+                    game_event_index: None, // None => applies to the entire game
+                    log_index: 0,           // there's only ever one
+                    log_level: 0,           // critical
+                    log_text: error_message,
+                }))
             }
         })
         .partition_map(|x| x);
@@ -775,17 +799,7 @@ fn insert_games_internal<'e>(
                     })
                 })
         })
-        .chain(
-            error_games
-                .iter()
-                .map(|(game_id, error_message)| NewEventIngestLog {
-                    game_id: *game_id,
-                    game_event_index: None, // None => applies to the entire game
-                    log_index: 0,           // there's only ever one
-                    log_level: 0,           // critical
-                    log_text: error_message,
-                }),
-        )
+        .chain(game_wide_logs)
         .collect_vec();
 
     let n_logs_to_insert = new_logs.len();
@@ -1034,6 +1048,7 @@ pub fn game_and_raw_events(
 }
 
 pub struct Timings {
+    pub get_batch_to_process_duration: f64,
     pub deserialize_games_duration: f64,
     pub filter_finished_games_duration: f64,
     pub parse_and_sim_duration: f64,
@@ -1055,6 +1070,7 @@ pub fn insert_timings(
     NewGameIngestTimings {
         ingest_id,
         index: index as i32,
+        get_batch_to_process_duration: timings.get_batch_to_process_duration,
         deserialize_games_duration: timings.deserialize_games_duration,
         filter_finished_games_duration: timings.filter_finished_games_duration,
         parse_and_sim_duration: timings.parse_and_sim_duration,

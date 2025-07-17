@@ -42,6 +42,7 @@ pub mod info {
             insert_extra_logs_duration -> Float8,
             save_duration -> Float8,
             deserialize_games_duration -> Float8,
+            get_batch_to_process_duration -> Float8,
         }
     }
 

@@ -84,7 +84,8 @@ pub mod data {
             home_team_name -> Text,
             home_team_mmolb_id -> Text,
             home_team_final_score -> Nullable<Int4>,
-            is_finished -> Bool,
+            is_ongoing -> Bool,
+            from_version -> Timestamp,
         }
     }
 

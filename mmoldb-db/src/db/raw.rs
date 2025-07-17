@@ -78,9 +78,12 @@ pub fn get_batch_of_unprocessed_games(
 
     entities_dsl::entities
         .filter(entities_dsl::kind.eq("game"))
-        // TODO Also store the valid_from that this Game was generated from, and
-        //   use it to re-process games that have a new version. This should be rare.
-        .left_join(games_dsl::games.on(entities_dsl::entity_id.eq(games_dsl::mmolb_game_id)))
+        // Join on data.games to see if we have a game imported _from this game version_...
+        .left_join(games_dsl::games.on(
+            entities_dsl::entity_id.eq(games_dsl::mmolb_game_id)
+                .and(entities_dsl::valid_from.eq(games_dsl::from_version))
+        ))
+        // ...then filter to only games where we do _not_.
         .filter(games_dsl::mmolb_game_id.is_null())
         .limit(batch_size as i64)
         .select(Entity::as_select())

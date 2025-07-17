@@ -1,9 +1,9 @@
 mod ingest;
 
 use chron::{Chron, ChronEntity};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
-use log::{debug, info, warn};
+use log::{debug, info};
 use miette::{Diagnostic, IntoDiagnostic};
 use mmoldb_db::{Connection, PgConnection, db};
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use thiserror::Error;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use mmoldb_db::taxa::Taxa;
-use crate::ingest::{ingest_page_of_games, IngestConfig};
+use crate::ingest::{ingest_page_of_games};
 
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_GAME_INSERT_BATCH_SIZE: usize = 1000;
@@ -25,8 +25,6 @@ struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
 async fn main() -> miette::Result<()> {
     env_logger::init();
 
-    let config = IngestConfig::default();
-
     let url = mmoldb_db::postgres_url_from_environment();
     let notify = Arc::new(Notify::new());
     let finish = CancellationToken::new();
@@ -38,7 +36,7 @@ async fn main() -> miette::Result<()> {
         let url = url.clone();
         let notify = notify.clone();
         let finish = finish.clone();
-        async move { process_games(&url, config, ingest_id, notify, finish).await }
+        async move { process_games(&url, ingest_id, notify, finish).await }
     });
 
     info!("Launched process games task");
@@ -54,7 +52,6 @@ async fn main() -> miette::Result<()> {
 }
 
 async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
-
     let start_date = db::get_latest_entity_valid_from(&mut conn, "game")
         .into_diagnostic()?
         .as_ref()
@@ -90,7 +87,6 @@ async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette
 
 async fn process_games(
     url: &str,
-    config: IngestConfig,
     ingest_id: i64,
     notify: Arc<Notify>,
     finish: CancellationToken,
@@ -98,13 +94,17 @@ async fn process_games(
     let mut conn = PgConnection::establish(url).into_diagnostic()?;
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
+    // Permit ourselves to start processing right away, in case there
+    // are unprocessed games left over from a previous ingest. This
+    // will happen after every derived data reset.
+    notify.notify_one();
+
     let mut page_index = 0;
     while {
         debug!("Process games task is waiting to be woken up");
         tokio::select! {
-            // When notified, keep going
+            biased; // We always want to try to complete the latest ingest before exiting
             _ = notify.notified() => { true }
-            // When finished, exit
             _ = finish.cancelled() => { false }
         }
     } {
@@ -112,8 +112,10 @@ async fn process_games(
 
         // The inner loop is over batches of games to process
         loop {
+            let get_batch_to_process_start = Utc::now();
             let raw_games = db::get_batch_of_unprocessed_games(&mut conn, PROCESS_GAME_BATCH_SIZE)
                 .into_diagnostic()?;
+            let get_batch_to_process_duration = (Utc::now() - get_batch_to_process_start).as_seconds_f64();
             if raw_games.is_empty() {
                 debug!("All games have been processed. Waiting to be woken up again.");
                 break;
@@ -121,20 +123,19 @@ async fn process_games(
 
             info!("Processing batch of {} raw games", raw_games.len());
             let stats = ingest_page_of_games(
-                &config,
                 &taxa,
                 ingest_id,
                 page_index,
+                get_batch_to_process_duration,
                 raw_games,
                 &mut conn,
             ).into_diagnostic()?;
-            info!("{} games successfully ingested", stats.num_games_imported);
-            info!("{} ongoing games skipped", stats.num_ongoing_games_skipped);
-            // TODO Don't skip them, instead add a new state games can be in for "bugged" and
-            //   save them so they can be linked to in the web interface
-            info!("{} bugged games skipped", stats.num_terminal_incomplete_games_skipped);
-            info!("{} games failed to ingest", stats.num_games_with_fatal_errors);
-            info!("{} games had already been ingested", stats.num_already_ingested_games_skipped);
+            info!(
+                "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
+                progress, and skipped {} bugged games.",
+                stats.num_games_imported, stats.num_games_with_fatal_errors,
+                stats.num_ongoing_games_skipped, stats.num_bugged_games_skipped,
+            );
 
             page_index += 1;
         }
