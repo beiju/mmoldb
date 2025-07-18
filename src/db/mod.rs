@@ -677,7 +677,7 @@ fn insert_games_internal<'e>(
                     (None, None)
                 };
 
-            let stadium = match game {
+            let stadium_name = match game {
                 GameForDb::Completed(game) => { game.stadium }
                 _ => { None }
             };
@@ -698,7 +698,7 @@ fn insert_games_internal<'e>(
                 home_team_mmolb_id: &raw_game.home_team_id,
                 home_team_final_score,
                 is_finished: game.is_complete(),
-                stadium,
+                stadium_name,
             }
         })
         .collect_vec();

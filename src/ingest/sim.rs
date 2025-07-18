@@ -7,12 +7,8 @@ use crate::parsing_extensions::{BestEffortSlot, BestEffortSlottedPlayer};
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
 use log::warn;
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{
-    Base, BaseNameVariant, BatterStat, Day, Distance, FairBallDestination, FairBallType,
-    FieldingErrorType, FoulType, GameOverMessage, HomeAway, NowBattingStats,
-    Place, StrikeType, TopBottom,
-};
-use mmolb_parsing::game::MaybePlayer;
+use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, Distance, EventType, FairBallDestination, FairBallType, FieldingErrorType, FoulType, GameOverMessage, HomeAway, NowBattingStats, Place, StrikeType, TopBottom};
+use mmolb_parsing::game::{MaybePlayer};
 use mmolb_parsing::parsed_event::{BaseSteal, Cheer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
@@ -73,6 +69,9 @@ pub enum SimEventError {
 
     #[error("Expected the automatic runner to be set by inning {inning_num}")]
     MissingAutomaticRunner { inning_num: u8 },
+
+    #[error("Event following bugged season 3 mound visit had no batter name ({0:?}).")]
+    UnknownBatterNameAfterSeason3BuggedMoundVisit(MaybePlayer<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -221,15 +220,31 @@ struct FairBall {
 #[derive(Debug, Copy, Clone)]
 enum ContextAfterMoundVisitOutcome<'g> {
     ExpectNowBatting,
-    ExpectPitch(&'g str),
+    ExpectPitch {
+        batter_name: &'g str,
+        first_pitch_of_plate_appearance: bool,
+    },
 }
 
-impl<'g> Into<EventContext<'g>> for ContextAfterMoundVisitOutcome<'g> {
-    fn into(self) -> EventContext<'g> {
+impl<'g> ContextAfterMoundVisitOutcome<'g> {
+    pub fn to_event_context(self, season: i64, day: Day, game_event_index: usize) -> EventContext<'g> {
         match self {
-            ContextAfterMoundVisitOutcome::ExpectNowBatting => EventContext::ExpectNowBatting,
-            ContextAfterMoundVisitOutcome::ExpectPitch(batter_name) => {
-                EventContext::ExpectPitch(batter_name)
+            ContextAfterMoundVisitOutcome::ExpectNowBatting => if season == 3 && (
+                day == Day::Day(2) || day == Day::Day(3) || day == Day::Day(4) || (
+                    day == Day::Day(5) && game_event_index < 461
+            )) {
+                EventContext::ExpectMissingNowBattingBug
+            } else {
+                EventContext::ExpectNowBatting
+            },
+            ContextAfterMoundVisitOutcome::ExpectPitch {
+                batter_name,
+                first_pitch_of_plate_appearance,
+            } => {
+                EventContext::ExpectPitch {
+                    batter_name,
+                    first_pitch_of_plate_appearance,
+                }
             }
         }
     }
@@ -239,11 +254,18 @@ impl<'g> Into<EventContext<'g>> for ContextAfterMoundVisitOutcome<'g> {
 enum EventContext<'g> {
     ExpectInningStart,
     ExpectNowBatting,
-    ExpectPitch(&'g str),
+    // From s3d2 to s3d4, the game didn't publish NowBatting events
+    // after pitcher swaps. We have to resolve those ourselves.
+    ExpectMissingNowBattingBug,
+    ExpectPitch {
+        batter_name: &'g str,
+        first_pitch_of_plate_appearance: bool,
+    },
     ExpectFairBallOutcome(&'g str, FairBall),
     ExpectFallingStarOutcome {
         falling_star_hit_player: &'g str,
         batter_name: &'g str,
+        first_pitch_of_plate_appearance: bool,
     },
     ExpectInningEnd,
     ExpectMoundVisitOutcome(ContextAfterMoundVisitOutcome<'g>),
@@ -1820,6 +1842,9 @@ impl<'g> Game<'g> {
         let previous_event = self.state.prev_event_type;
         let this_event_discriminant = event.discriminant();
 
+        self.handle_season_3_missing_now_batting_after_mound_visit(raw_event, ingest_logs)?;
+        self.handle_season_3_duplicate_now_batting(event, ingest_logs)?;
+
         let detail_builder = self.detail_builder(self.state.clone(), game_event_index, raw_event);
 
         let result = match self.state.context.clone() {
@@ -1937,7 +1962,13 @@ impl<'g> Game<'g> {
                     self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectNowBatting)
                 },
             ),
-            EventContext::ExpectPitch(batter_name) => {
+            EventContext::ExpectPitch { batter_name, first_pitch_of_plate_appearance } => {
+                // After this pitch it will no longer be the first pitch of the PA
+                self.state.context = EventContext::ExpectPitch {
+                    batter_name,
+                    first_pitch_of_plate_appearance: false,
+                };
+
                 let pitch = raw_event.pitch.as_ref().and_then(|p| {
                     Some(Pitch {
                         pitch_speed: p.speed,
@@ -2097,7 +2128,13 @@ impl<'g> Game<'g> {
                     },
                     [ParsedEventMessageDiscriminants::MoundVisit]
                     ParsedEventMessage::MoundVisit { team, mound_visit_type: _ } => {
-                        self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectPitch(batter_name))
+                        self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectPitch {
+                            batter_name,
+                            // Mound visit isn't a pitch, so if we're currently expecting
+                            // the first pitch, after the mound visit we will still
+                            // expect the first pitch.
+                            first_pitch_of_plate_appearance,
+                        })
                     },
                     [ParsedEventMessageDiscriminants::Balk]
                     ParsedEventMessage::Balk { advances, pitcher, scores } => {
@@ -2122,10 +2159,17 @@ impl<'g> Game<'g> {
                         self.state.context = EventContext::ExpectFallingStarOutcome {
                             falling_star_hit_player: player_name,
                             batter_name,
+                            first_pitch_of_plate_appearance,
                         };
                         None
                     }
                 )
+            }
+            EventContext::ExpectMissingNowBattingBug => {
+                panic!(
+                    "ExpectMissingNowBattingBug event context must be resolved before processing \
+                    the event.",
+                );
             }
             EventContext::ExpectNowBatting => game_event!(
                 (previous_event, event),
@@ -2153,7 +2197,10 @@ impl<'g> Game<'g> {
 
                     check_now_batting_stats(&stats, self.batter_stats_mut(batter), ingest_logs);
 
-                    self.state.context = EventContext::ExpectPitch(batter);
+                    self.state.context = EventContext::ExpectPitch {
+                        batter_name: batter,
+                        first_pitch_of_plate_appearance: true,
+                    };
                     None
                 },
                 [ParsedEventMessageDiscriminants::MoundVisit]
@@ -2451,7 +2498,7 @@ impl<'g> Game<'g> {
                     }
                 },
             ),
-            EventContext::ExpectFallingStarOutcome { falling_star_hit_player, batter_name } => game_event!(
+            EventContext::ExpectFallingStarOutcome { falling_star_hit_player, batter_name, first_pitch_of_plate_appearance } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::FallingStarOutcome]
                 ParsedEventMessage::FallingStarOutcome { deflection, player_name, outcome } => {
@@ -2488,7 +2535,10 @@ impl<'g> Game<'g> {
                         }
                     }
 
-                    self.state.context = EventContext::ExpectPitch(self.batter_after_retirement(batter_name, player_name, outcome, ingest_logs));
+                    self.state.context = EventContext::ExpectPitch {
+                        batter_name: self.batter_after_retirement(batter_name, player_name, outcome, ingest_logs),
+                        first_pitch_of_plate_appearance,
+                    };
 
                     None
                 },
@@ -2566,19 +2616,19 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::PitcherRemains]
                 ParsedEventMessage::PitcherRemains { remaining_pitcher } => {
                     ingest_logs.info(format!("Not incrementing pitcher_count on remaining pitcher {remaining_pitcher}"));
-                    self.state.context = context_after.into();
+                    self.state.context = context_after.to_event_context(self.season, self.day, game_event_index);
                     None
                 },
                 [ParsedEventMessageDiscriminants::PitcherSwap]
-                ParsedEventMessage::PitcherSwap { leaving_pitcher, arriving_pitcher_name, arriving_pitcher_place } => {
-                    ingest_logs.debug(format!("Arriving pitcher {arriving_pitcher_name} with place {arriving_pitcher_place:?}"));
+                ParsedEventMessage::PitcherSwap { leaving_pitcher, leaving_pitcher_emoji, arriving_pitcher_name, arriving_pitcher_emoji, arriving_pitcher_place } => {
+                    ingest_logs.debug(format!("Arriving pitcher {arriving_pitcher_emoji:?} {arriving_pitcher_name} with place {arriving_pitcher_place:?}"));
                     self.defending_team_mut().active_pitcher = BestEffortSlottedPlayer {
                         name: *arriving_pitcher_name,
                         slot: arriving_pitcher_place.map_or(BestEffortSlot::GenericPitcher, Into::into),
                     };
                     self.defending_team_mut().pitcher_count += 1;
-                    ingest_logs.info(format!("Incrementing pitcher_count as {leaving_pitcher} is replaced by {arriving_pitcher_name}."));
-                    self.state.context = context_after.into();
+                    ingest_logs.info(format!("Incrementing pitcher_count as {leaving_pitcher_emoji:?} {leaving_pitcher} is replaced by {arriving_pitcher_name}."));
+                    self.state.context = context_after.to_event_context(self.season, self.day, game_event_index);
                     None
                 },
             ),
@@ -2677,6 +2727,11 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::WeatherSpecialDelivery { .. } => {
                     // TODO Don't ignore weather shipment
                     None
+                },
+                [ParsedEventMessageDiscriminants::WeatherProsperity]
+                ParsedEventMessage::WeatherProsperity { .. } => {
+                    // TODO Don't ignore prosperity weather
+                    None
                 }
             ),
             EventContext::Finished => game_event!((previous_event, event)),
@@ -2701,6 +2756,75 @@ impl<'g> Game<'g> {
         }
 
         Ok(result)
+    }
+
+    fn handle_season_3_missing_now_batting_after_mound_visit(&mut self, raw_event: &'g mmolb_parsing::game::Event, ingest_logs: &mut IngestLogs) -> Result<(), SimEventError> {
+        // Handle a Season 3 bug where NowBatting events weren't sent
+        // after a mound visit
+        if let EventContext::ExpectMissingNowBattingBug = self.state.context {
+            match &raw_event.event {
+                Ok(EventType::Pitch) => {},
+                other => {
+                    ingest_logs.error(format!(
+                        "Expected a Pitch after bugged season 3 mound visit, but saw {other:?}",
+                    ));
+
+                }
+            }
+
+            if let MaybePlayer::Player(name) = &raw_event.batter {
+                ingest_logs.info(format!(
+                    "Inferred missing NowBatting event after a mound visit in season 3. \
+                    Inferred batter name is {name}",
+                ));
+                self.state.context = EventContext::ExpectPitch {
+                    batter_name: name,
+                    first_pitch_of_plate_appearance: true,
+                }
+            } else {
+                Err(SimEventError::UnknownBatterNameAfterSeason3BuggedMoundVisit(raw_event.batter.to_owned()))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_season_3_duplicate_now_batting(
+        &mut self,
+        event: &ParsedEventMessage<&'g str>,
+        ingest_logs: &mut IngestLogs,
+    ) -> Result<(), SimEventError> {
+        // Only fix this in the expect-pitch context
+        let EventContext::ExpectPitch { batter_name, first_pitch_of_plate_appearance } = self.state.context else {
+            return Ok(());
+        };
+
+        // Only fix this if we're still expecting the first pitch of the PA
+        if !first_pitch_of_plate_appearance {
+            return Ok(());
+        }
+
+        // Only fix this if the incoming event is a NowBatting
+        let ParsedEventMessage::NowBatting { batter, .. } = event else {
+            return Ok(());
+        };
+
+        // Warn if this happens on a different day
+        if !(self.season == 3 && self.day == Day::Day(5)) {
+            ingest_logs.warn("Saw a duplicate NowBatting event outside the expected day (s3d5)");
+        }
+
+        if *batter == batter_name {
+            ingest_logs.info(format!("Ignoring duplicate NowBatting for {batter}"));
+
+            // Reset the context to expecting the NowBatting event again.
+            self.state.context = EventContext::ExpectNowBatting;
+        } else {
+            ingest_logs.error(format!(
+                "Duplicate NowBatting did not match: Expected {batter_name} but saw {batter}",
+            ));
+        }
+
+        Ok(())
     }
 
     fn batter_after_retirement(&self, batter_name: &'g str, hit_player_name: &str, outcome: FallingStarOutcome<&'g str>, ingest_logs: &mut IngestLogs) -> &'g str {

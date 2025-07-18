@@ -77,6 +77,7 @@ pub mod data {
             home_team_mmolb_id -> Text,
             home_team_final_score -> Nullable<Int4>,
             is_finished -> Bool,
+            stadium_name -> Nullable<Text>,
         }
     }
 

@@ -1,6 +1,29 @@
 Changelog
 =========
 
+2025-07-18
+----------
+
+- Handle stadium names. Stadium name is now available on `data.games`.
+- Handle cheers. Cheers are currently stored as text in `data.events`, but we
+  plan to move to storing them in a child table like Weather.
+- Handle the bug where NowBatting events were skipped after a mound visit at
+  the beginning of Season 3.
+- Handle the bug with duplicate NowBatting events on s3d5
+- Handle prosperity weather messages
+
+Known issues:
+- Home run challenges are not parsed
+- Walkoff balks are being left as an error until the MMOLB bug is confirmed 
+  resolved 
+- Warnings on an incorrect pitcher name parse. The pitcher name we store comes
+  from a different source, so the data is not affected.
+- Cheers from s3d1 (before the emoji was added to the message) cause parse 
+  errors. The entire game may be parsed incorrectly.
+- 3 instances of a bugged fielders' choice that happens when no runners are on
+  base are not handled. The entire rest of these games may be parsed 
+  incorrectly.
+
 2025-07-14
 ----------
 

@@ -55,7 +55,7 @@ pub struct NewGame<'a> {
     pub home_team_mmolb_id: &'a str,
     pub home_team_final_score: Option<i32>,
     pub is_finished: bool,
-    pub stadium: Option<&'a str>,
+    pub stadium_name: Option<&'a str>,
 }
 
 #[derive(Identifiable, Queryable, Selectable, Associations, QueryableByName)]
@@ -76,7 +76,7 @@ pub struct DbGame {
     pub home_team_name: String,
     pub home_team_mmolb_id: String,
     pub is_finished: bool,
-    pub stadium: Option<String>,
+    pub stadium_name: Option<String>,
 }
 
 #[derive(Insertable)]
