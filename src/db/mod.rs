@@ -218,7 +218,7 @@ pub fn games_list() -> SqlQuery {
 
 pub fn games_with_issues_list() -> SqlQuery {
     games_list_base().sql(
-        "where counts.critical_count > 0 or counts.errors_count > 0 or counts.warnings_count > 0",
+        "where (counts.critical_count > 0 or counts.errors_count > 0 or counts.warnings_count > 0)",
     )
 }
 
@@ -516,6 +516,7 @@ pub(crate) struct CompletedGameForDb<'g> {
     pub logs: Vec<Vec<IngestLog>>,
     // This is used for verifying the round trip
     pub parsed_game: Vec<ParsedEventMessage<&'g str>>,
+    pub stadium: Option<&'g str>,
 }
 
 pub(crate) enum GameForDb<'g> {
@@ -675,6 +676,12 @@ fn insert_games_internal<'e>(
                 } else {
                     (None, None)
                 };
+
+            let stadium = match game {
+                GameForDb::Completed(game) => { game.stadium }
+                _ => { None }
+            };
+
             NewGame {
                 ingest: ingest_id,
                 mmolb_game_id: game_id,
@@ -691,6 +698,7 @@ fn insert_games_internal<'e>(
                 home_team_mmolb_id: &raw_game.home_team_id,
                 home_team_final_score,
                 is_finished: game.is_complete(),
+                stadium,
             }
         })
         .collect_vec();

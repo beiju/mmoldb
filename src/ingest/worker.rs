@@ -317,7 +317,7 @@ fn prepare_game_for_db(
     }))
 }
 
-fn prepare_completed_game_for_db(
+fn  prepare_completed_game_for_db(
     entity: &ChronEntity<mmolb_parsing::Game>,
 ) -> Result<CompletedGameForDb, SimStartupError> {
     let parsed_game = mmolb_parsing::process_game(&entity.data, &entity.entity_id);
@@ -333,6 +333,8 @@ fn prepare_completed_game_for_db(
 
         Game::new(&entity.entity_id, &entity.data, &mut parsed_for_game)?
     };
+
+    let stadium = game.stadium;
 
     let detail_events = parsed
         .map(|(game_event_index, (parsed, raw))| {
@@ -382,6 +384,7 @@ fn prepare_completed_game_for_db(
         events,
         logs: all_logs,
         parsed_game,
+        stadium,
     })
 }
 

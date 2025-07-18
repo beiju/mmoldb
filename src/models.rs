@@ -55,6 +55,7 @@ pub struct NewGame<'a> {
     pub home_team_mmolb_id: &'a str,
     pub home_team_final_score: Option<i32>,
     pub is_finished: bool,
+    pub stadium: Option<&'a str>,
 }
 
 #[derive(Identifiable, Queryable, Selectable, Associations, QueryableByName)]
@@ -75,6 +76,7 @@ pub struct DbGame {
     pub home_team_name: String,
     pub home_team_mmolb_id: String,
     pub is_finished: bool,
+    pub stadium: Option<String>,
 }
 
 #[derive(Insertable)]
@@ -109,6 +111,9 @@ pub struct NewEvent<'a> {
     pub batter_name: &'a str,
     pub batter_count: i32,
     pub batter_subcount: i32,
+    // This is an owned string because it's generated at the last minute
+    // TODO Set up a foreign relationship for cheers like weather has
+    pub cheer: Option<String>,
 }
 #[derive(Queryable, Selectable, Identifiable)]
 #[diesel(table_name = crate::data_schema::data::events)]
@@ -143,6 +148,7 @@ pub struct DbEvent {
     pub batter_name: String,
     pub batter_count: i32,
     pub batter_subcount: i32,
+    pub cheer: Option<String>,
 }
 
 #[derive(Insertable)]

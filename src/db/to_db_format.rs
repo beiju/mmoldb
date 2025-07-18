@@ -1,4 +1,5 @@
 use miette::Diagnostic;
+use mmolb_parsing::parsed_event::Cheer;
 use crate::db::taxa::Taxa;
 use crate::ingest::{EventDetail, EventDetailFielder, EventDetailRunner};
 use crate::models::{DbEvent, DbFielder, DbRunner, NewBaserunner, NewEvent, NewFielder};
@@ -42,6 +43,7 @@ pub fn event_to_row<'e>(
         batter_name: event.batter_name,
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
+        cheer: event.cheer.as_ref().map(|c| c.to_string()),
     }
 }
 
@@ -163,5 +165,6 @@ pub fn row_to_event<'e>(
         pitcher_count: event.pitcher_count,
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
+        cheer: event.cheer.as_deref().map(Cheer::new),
     })
 }

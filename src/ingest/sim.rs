@@ -13,7 +13,7 @@ use mmolb_parsing::enums::{
     Place, StrikeType, TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{BaseSteal, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
 use std::fmt::{Debug, Formatter};
@@ -124,6 +124,7 @@ pub struct EventDetail<StrT: Clone> {
     pub pitcher_count: i32,
     pub batter_count: i32,
     pub batter_subcount: i32,
+    pub cheer: Option<Cheer>,
 }
 
 #[derive(Debug)]
@@ -208,12 +209,13 @@ struct Pitch {
     pitch_zone: u8,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct FairBall {
     game_event_index: usize,
     fair_ball_type: FairBallType,
     fair_ball_destination: FairBallDestination,
     pitch: Option<Pitch>,
+    cheer: Option<Cheer>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -233,7 +235,7 @@ impl<'g> Into<EventContext<'g>> for ContextAfterMoundVisitOutcome<'g> {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 enum EventContext<'g> {
     ExpectInningStart,
     ExpectNowBatting,
@@ -314,9 +316,10 @@ struct GameState<'g> {
 #[derive(Debug)]
 pub struct Game<'g> {
     // Does not change
-    game_id: &'g str,
-    season: i64,
-    day: Day,
+    pub game_id: &'g str,
+    pub season: i64,
+    pub day: Day,
+    pub stadium: Option<&'g str>,
 
     // Aggregates
     away: TeamInGame<'g>,
@@ -489,6 +492,7 @@ struct EventDetailBuilder<'g> {
     runner_added: Option<(&'g str, TaxaBase)>,
     runners_out: Vec<RunnerOut<&'g str>>,
     batter_scores: bool,
+    cheer: Option<Cheer>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
@@ -497,6 +501,7 @@ impl<'g> EventDetailBuilder<'g> {
         self.fair_ball_event_index = Some(fair_ball.game_event_index);
         self.fair_ball_type = Some(fair_ball.fair_ball_type.into());
         self.fair_ball_direction = Some(fair_ball.fair_ball_destination.into());
+        self = self.cheer(fair_ball.cheer);
         self
     }
 
@@ -673,6 +678,11 @@ impl<'g> EventDetailBuilder<'g> {
 
     fn pitch(mut self, pitch: Option<Pitch>) -> Self {
         self.pitch = pitch;
+        self
+    }
+
+    fn cheer(mut self, cheer: Option<Cheer>) -> Self {
+        self.cheer = cheer;
         self
     }
 
@@ -918,6 +928,7 @@ impl<'g> EventDetailBuilder<'g> {
             pitcher_count: game.defending_team().pitcher_count,
             batter_count: game.batting_team().batter_count,
             batter_subcount: game.batting_team().batter_subcount,
+            cheer: self.cheer,
         }
     }
 }
@@ -958,17 +969,19 @@ impl<'g> Game<'g> {
 
         // TODO Double check correctness of game_event_index
         let mut game_event_index = 0;
-        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji) = extract_next_game_event!(
+        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji, stadium) = extract_next_game_event!(
             events,
             [ParsedEventMessageDiscriminants::LiveNow]
             ParsedEventMessage::LiveNow {
                 away_team,
                 home_team,
+                stadium,
             } => (
                 away_team.name,
                 away_team.emoji,
                 home_team.name,
                 home_team.emoji,
+                stadium,
             )
         )?;
 
@@ -1098,6 +1111,7 @@ impl<'g> Game<'g> {
                     });
                 }
             },
+            stadium: *stadium,
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
@@ -1327,6 +1341,7 @@ impl<'g> Game<'g> {
             runner_added: None,
             runners_out: Vec::new(),
             batter_scores: false,
+            cheer: None,
         }
     }
 
@@ -1807,7 +1822,7 @@ impl<'g> Game<'g> {
 
         let detail_builder = self.detail_builder(self.state.clone(), game_event_index, raw_event);
 
-        let result = match self.state.context {
+        let result = match self.state.context.clone() {
             EventContext::ExpectInningStart => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::InningStart]
@@ -1942,7 +1957,7 @@ impl<'g> Game<'g> {
                 game_event!(
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
-                    ParsedEventMessage::Ball { count, steals } => {
+                    ParsedEventMessage::Ball { count, steals, cheer } => {
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
                         self.update_runners(RunnerUpdate {
@@ -1952,11 +1967,12 @@ impl<'g> Game<'g> {
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer } => {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
@@ -1964,6 +1980,7 @@ impl<'g> Game<'g> {
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
@@ -1971,7 +1988,7 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::StrikeOut]
-                    ParsedEventMessage::StrikeOut { foul, batter, strike, steals } => {
+                    ParsedEventMessage::StrikeOut { foul, batter, strike, steals, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
                         if self.state.count_strikes < 2 {
                             ingest_logs.warn(format!(
@@ -2004,11 +2021,12 @@ impl<'g> Game<'g> {
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .steals(steals.clone())
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
-                    ParsedEventMessage::Foul { foul, steals, count } => {
+                    ParsedEventMessage::Foul { foul, steals, count, cheer } => {
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
                             self.state.count_strikes += 1;
@@ -2019,6 +2037,7 @@ impl<'g> Game<'g> {
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match foul {
                                 FoulType::Tip => TaxaEventType::FoulTip,
@@ -2026,19 +2045,20 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
-                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination } => {
+                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
                             game_event_index,
                             fair_ball_type: *fair_ball_type,
                             fair_ball_destination: *destination,
-                            pitch
+                            pitch,
+                            cheer: cheer.clone(),
                         });
                         None
                     },
                     [ParsedEventMessageDiscriminants::Walk]
-                    ParsedEventMessage::Walk { batter, advances, scores } => {
+                    ParsedEventMessage::Walk { batter, advances, scores, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(RunnerUpdate {
@@ -2051,12 +2071,13 @@ impl<'g> Game<'g> {
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .build_some(self, batter, ingest_logs, TaxaEventType::Walk)
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]
-                    ParsedEventMessage::HitByPitch { batter, advances, scores } => {
+                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(RunnerUpdate {
@@ -2069,6 +2090,7 @@ impl<'g> Game<'g> {
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)
@@ -3112,12 +3134,14 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             TaxaEventType::Ball => ParsedEventMessage::Ball {
                 steals: self.steals(),
                 count: self.count(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::CalledStrike => {
                 ParsedEventMessage::Strike {
                     strike: StrikeType::Looking,
                     steals: self.steals(),
                     count: self.count(),
+                    cheer: self.cheer.clone(),
                 }
             }
             TaxaEventType::CalledStrikeout => {
@@ -3126,6 +3150,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     batter: self.batter_name.as_ref(),
                     strike: StrikeType::Looking,
                     steals: self.steals(),
+                    cheer: self.cheer.clone(),
                 }
             }
             TaxaEventType::SwingingStrike => {
@@ -3133,6 +3158,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     strike: StrikeType::Swinging,
                     steals: self.steals(),
                     count: self.count(),
+                    cheer: self.cheer.clone(),
                 }
             }
             TaxaEventType::SwingingStrikeout => {
@@ -3141,6 +3167,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     batter: self.batter_name.as_ref(),
                     strike: StrikeType::Swinging,
                     steals: self.steals(),
+                    cheer: self.cheer.clone(),
                 }
             }
             TaxaEventType::FoulTip => {
@@ -3148,6 +3175,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     foul: FoulType::Tip,
                     steals: self.steals(),
                     count: self.count(),
+                    cheer: self.cheer.clone(),
                 }
             }
             TaxaEventType::FoulTipStrikeout => {
@@ -3156,12 +3184,14 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     batter: self.batter_name.as_ref(),
                     strike: StrikeType::Swinging,
                     steals: self.steals(),
+                    cheer: self.cheer.clone(),
                 }
             }
             TaxaEventType::FoulBall => ParsedEventMessage::Foul {
                 foul: FoulType::Ball,
                 steals: self.steals(),
                 count: self.count(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
@@ -3262,6 +3292,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 batter: self.batter_name.as_ref(),
                 scores: self.scores(),
                 advances: self.advances(false),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::HomeRun => {
                 let mut scores = self.scores();
@@ -3308,6 +3339,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 batter: self.batter_name.as_ref(),
                 scores: self.scores(),
                 advances: self.advances(false),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::DoublePlay => {
                 let scores = self.scores();
@@ -3435,6 +3467,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             batter: self.batter_name.as_ref(),
             fair_ball_type: mandatory_fair_ball_type()?,
             destination: mandatory_fair_ball_direction()?,
+            cheer: self.cheer.clone(),
         })
     }
 }

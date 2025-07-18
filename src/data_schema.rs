@@ -55,6 +55,7 @@ pub mod data {
             batter_name -> Text,
             batter_count -> Int4,
             batter_subcount -> Int4,
+            cheer -> Nullable<Text>,
         }
     }
 
