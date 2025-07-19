@@ -226,13 +226,25 @@ enum ContextAfterMoundVisitOutcome<'g> {
     },
 }
 
+fn is_during_now_batting_bug_window(season: i64, day: Day, game_event_index: usize) -> bool {
+    // Only during s3
+    if season != 3 {
+        return false;
+    }
+
+    // Only on regular days
+    let Day::Day(day) = day else {
+        return false;
+    };
+
+    day < 5 || (day == 5 && game_event_index < 461)
+}
+
 impl<'g> ContextAfterMoundVisitOutcome<'g> {
+
     pub fn to_event_context(self, season: i64, day: Day, game_event_index: usize) -> EventContext<'g> {
         match self {
-            ContextAfterMoundVisitOutcome::ExpectNowBatting => if season == 3 && (
-                day == Day::Day(2) || day == Day::Day(3) || day == Day::Day(4) || (
-                    day == Day::Day(5) && game_event_index < 461
-            )) {
+            ContextAfterMoundVisitOutcome::ExpectNowBatting => if is_during_now_batting_bug_window(season, day, game_event_index) {
                 EventContext::ExpectMissingNowBattingBug
             } else {
                 EventContext::ExpectNowBatting
@@ -1019,11 +1031,11 @@ impl<'g> Game<'g> {
                 if game_data.season < 3 {
                     logs.warn(format!("Pre-s3 game was played in a stadium: {stadium_name}"));
                 } else {
-                    logs.info(format!("Set stadium name to {stadium_name}"));
+                    logs.debug(format!("Set stadium name to {stadium_name}"));
                 }
             } else {
                 if game_data.season < 3 {
-                    logs.info("Pre-s3 game was not played in a stadium");
+                    logs.debug("Pre-s3 game was not played in a stadium");
                 } else {
                     logs.warn("Post-s3 game was not played in a stadium");
                 }

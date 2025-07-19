@@ -16,13 +16,6 @@ Known issues:
 - Home run challenges are not parsed
 - Walkoff balks are being left as an error until the MMOLB bug is confirmed 
   resolved 
-- Warnings on an incorrect pitcher name parse. The pitcher name we store comes
-  from a different source, so the data is not affected.
-- Cheers from s3d1 (before the emoji was added to the message) cause parse 
-  errors. The entire game may be parsed incorrectly.
-- 3 instances of a bugged fielders' choice that happens when no runners are on
-  base are not handled. The entire rest of these games may be parsed 
-  incorrectly.
 
 2025-07-14
 ----------
