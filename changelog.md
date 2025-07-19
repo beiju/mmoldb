@@ -1,5 +1,10 @@
 Changelog
 =========
+ 
+Upcoming
+----------
+
+- Track metadata for ERA computation
 
 2025-07-18
 ----------

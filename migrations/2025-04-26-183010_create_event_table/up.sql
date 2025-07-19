@@ -8,6 +8,7 @@ create table taxa.event_type (
     ends_plate_appearance bool not null,
     is_in_play bool not null,
     is_hit bool not null, -- currently Hit and HomeRun
+    is_error bool not null, -- currently FieldingError and ErrorOnFieldersChoice
     is_ball bool not null, -- currently Ball and Walk
 
     -- note: *anything* the batter swung at is a strike, including Hit and fielding outs.
@@ -258,6 +259,8 @@ create table data.events (
     strikes_before int not null,
     outs_before int not null,
     outs_after int not null,
+    errors_before int not null,
+    errors_after int not null,
     -- note: runs scored, outs on play, steal info, etc. are all computed from data.event_baserunners
 
     -- TODO Consider removing and replacing with a member in the (not-currently-extant) events_extended
@@ -336,7 +339,9 @@ create table data.event_baserunners (
     base_after bigint references taxa.base not null, -- `not null` is an experiment, it may have to become nullable
     is_out bool not null,
     base_description_format bigint references taxa.base_description_format, -- null == not applicable because this event didn't name the base in a way that could be formatted
-    steal bool not null -- this records all ATTEMPTED steals. identify failed steals by looking at is_out
+    steal bool not null, -- this records all ATTEMPTED steals. identify failed steals by looking at is_out
+    source_event_index int, -- null for ghost runners
+    is_earned bool not null
 );
 
 -- `on delete cascade` is very slow without the appropriate index

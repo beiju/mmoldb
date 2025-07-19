@@ -82,6 +82,8 @@ pub struct EventDetailRunner<StrT: Clone> {
     pub is_out: bool,
     pub base_description_format: Option<TaxaBaseDescriptionFormat>,
     pub is_steal: bool,
+    pub source_event_index: Option<i32>,
+    pub is_earned: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +102,8 @@ pub struct EventDetail<StrT: Clone> {
     pub strikes_before: u8,
     pub outs_before: i32,
     pub outs_after: i32,
+    pub errors_before: i32,
+    pub errors_after: i32,
     pub away_team_score_before: u8,
     pub away_team_score_after: u8,
     pub home_team_score_before: u8,
@@ -330,6 +334,8 @@ pub struct TeamInGame<'g> {
 struct RunnerOn<'g> {
     runner_name: &'g str,
     base: TaxaBase,
+    source_event_index: Option<i32>,
+    is_earned: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -343,8 +349,19 @@ struct GameState<'g> {
     count_balls: u8,
     count_strikes: u8,
     outs: i32,
+    errors: i32,
     game_finished: bool,
     runners_on: VecDeque<RunnerOn<'g>>,
+}
+
+impl<'g> GameState<'g> {
+    fn runner_on_this_event_is_earned(&self, is_error: bool) -> bool {
+        // A runner is earned if:
+        // 1. They are not a ghost runner (irrelevant here), and
+        // 2. This event is not an error, and
+        // 3. This event is not after 3 events+errors
+        !is_error && (self.outs + self.errors < 3)
+    }
 }
 
 #[derive(Debug)]
@@ -730,6 +747,10 @@ impl<'g> EventDetailBuilder<'g> {
         Some(self.build(game, ingest_logs, type_detail, batter_name))
     }
 
+    fn runner_on_this_event_is_earned(&self, is_error: bool) -> bool {
+        self.prev_game_state.runner_on_this_event_is_earned(is_error)
+    }
+
     pub fn build(
         self,
         game: &Game<'g>,
@@ -740,6 +761,9 @@ impl<'g> EventDetailBuilder<'g> {
         // player Retirement. See game 687464a0336fee7c9e05b0f6 event 70.
         batter_name: &'g str,
     ) -> EventDetail<&'g str> {
+        let is_error = type_detail.as_insertable().is_error;
+        let runner_on_this_event_is_earned = self.runner_on_this_event_is_earned(is_error);
+
         // Note: game.state.runners_on gets cleared if this event is an
         // inning-ending out. As of writing this comment the code below
         // doesn't use game.state.runners_on at all, but if it is used
@@ -765,6 +789,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: steal.caught,
                         base_description_format: None,
                         is_steal: true,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 } else if let Some(_scorer_name) = {
                     // Tapping into the if-else chain so I can do some
@@ -793,6 +819,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: false,
                         base_description_format: None,
                         is_steal: false,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 } else if let Some(advance) =
                     advances_ref.peeking_next(|a| is_matching_advance(&prev_runner, a))
@@ -805,6 +833,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: false,
                         base_description_format: None,
                         is_steal: false,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 } else if let Some(out) =
                     runners_out_ref.peeking_next(|o| is_matching_runner_out(&prev_runner, o))
@@ -817,6 +847,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: true,
                         base_description_format: Some(out.base.into()),
                         is_steal: false,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 } else {
                     // If the runner didn't score, advance, or get out they just stayed on base
@@ -827,6 +859,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: false,
                         base_description_format: None,
                         is_steal: false,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 }
             })
@@ -841,6 +875,10 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: false,
                         base_description_format: None,
                         is_steal: false,
+                        // Since they made it to base this event, their source event
+                        // index is this event's index
+                        source_event_index: Some(self.game_event_index as i32),
+                        is_earned: runner_on_this_event_is_earned,
                     }),
             )
             .collect();
@@ -868,6 +906,8 @@ impl<'g> EventDetailBuilder<'g> {
                     is_out: true,
                     base_description_format: Some(out.base.into()),
                     is_steal: false,
+                    source_event_index: Some(self.game_event_index as i32),
+                    is_earned: runner_on_this_event_is_earned,
                 }
             }),
         );
@@ -890,6 +930,8 @@ impl<'g> EventDetailBuilder<'g> {
                     is_out: false,
                     base_description_format: None,
                     is_steal: false,
+                    source_event_index: Some(self.game_event_index as i32),
+                    is_earned: runner_on_this_event_is_earned,
                 }
             }),
         );
@@ -903,6 +945,8 @@ impl<'g> EventDetailBuilder<'g> {
                 is_out: false,
                 base_description_format: None,
                 is_steal: false,
+                source_event_index: Some(self.game_event_index as i32),
+                is_earned: runner_on_this_event_is_earned,
             })
         }
 
@@ -936,6 +980,8 @@ impl<'g> EventDetailBuilder<'g> {
             strikes_before: self.prev_game_state.count_strikes,
             outs_before: self.prev_game_state.outs,
             outs_after: game.state.outs,
+            errors_before: self.prev_game_state.errors,
+            errors_after: game.state.errors,
             away_team_score_before: self.prev_game_state.away_score,
             away_team_score_after: game.state.away_score,
             home_team_score_before: self.prev_game_state.home_score,
@@ -1204,6 +1250,7 @@ impl<'g> Game<'g> {
                 count_balls: 0,
                 count_strikes: 0,
                 outs: 0,
+                errors: 0,
                 game_finished: false,
                 runners_on: Default::default(),
             },
@@ -1446,6 +1493,14 @@ impl<'g> Game<'g> {
         self.add_outs(1)
     }
 
+    pub fn add_errors(&mut self, num_errors: i32) {
+        self.state.errors += num_errors;
+    }
+
+    pub fn add_error(&mut self) {
+        self.add_errors(1)
+    }
+
     fn add_runs_to_batting_team(&mut self, runs: u8) {
         match self.state.inning_half {
             TopBottom::Top => {
@@ -1536,7 +1591,13 @@ impl<'g> Game<'g> {
         }
     }
 
-    fn update_runners(&mut self, updates: RunnerUpdate<'g, '_>, ingest_logs: &mut IngestLogs) {
+    fn update_runners(
+        &mut self,
+        game_event_index: usize,
+        is_error: bool,
+        updates: RunnerUpdate<'g, '_>,
+        ingest_logs: &mut IngestLogs,
+    ) {
         // For borrow checker reasons, we can't add runs as we go.
         // Instead, accumulate them here and add them at the end.
         let mut runs_to_add = 0;
@@ -1733,6 +1794,8 @@ impl<'g> Game<'g> {
                 self.state.runners_on.push_back(RunnerOn {
                     runner_name: new_runner.runner,
                     base: new_runner.base.into(),
+                    source_event_index: Some(game_event_index as i32),
+                    is_earned: self.state.runner_on_this_event_is_earned(is_error),
                 });
             }
         }
@@ -1807,7 +1870,12 @@ impl<'g> Game<'g> {
 
                 self.state
                     .runners_on
-                    .push_back(RunnerOn { runner_name, base });
+                    .push_back(RunnerOn {
+                        runner_name,
+                        base,
+                        source_event_index: Some(game_event_index as i32),
+                        is_earned: self.state.runner_on_this_event_is_earned(is_error),
+                    });
             }
         }
 
@@ -1817,10 +1885,14 @@ impl<'g> Game<'g> {
 
     fn update_runners_steals_only(
         &mut self,
+        game_event_index: usize,
+        is_error: bool,
         steals: &[BaseSteal<&'g str>],
         ingest_logs: &mut IngestLogs,
     ) {
         self.update_runners(
+            game_event_index,
+            is_error,
             RunnerUpdate {
                 steals,
                 ..Default::default()
@@ -1976,6 +2048,8 @@ impl<'g> Game<'g> {
                         self.state.runners_on.push_back(RunnerOn {
                             runner_name,
                             base: TaxaBase::Second, // Automatic runners are always placed on second
+                            source_event_index: None, // Automatic runners have no source
+                            is_earned: false, // Automatic runners are never earned
                         })
                     }
 
@@ -2017,10 +2091,15 @@ impl<'g> Game<'g> {
                     ParsedEventMessage::Ball { count, steals, cheer } => {
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
-                        self.update_runners(RunnerUpdate {
-                            steals,
-                            ..Default::default()
-                        }, ingest_logs);
+                        self.update_runners(
+                            game_event_index,
+                            false,
+                            RunnerUpdate {
+                                steals,
+                                ..Default::default()
+                            },
+                            ingest_logs,
+                        );
 
                         detail_builder
                             .pitch(pitch)
@@ -2033,7 +2112,7 @@ impl<'g> Game<'g> {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
-                        self.update_runners_steals_only(steals, ingest_logs);
+                        self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
@@ -2055,7 +2134,7 @@ impl<'g> Game<'g> {
                             ));
                         }
 
-                        self.update_runners_steals_only(steals, ingest_logs);
+                        self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
                         self.add_out();
                         self.finish_pa(batter);
 
@@ -2090,7 +2169,7 @@ impl<'g> Game<'g> {
                         }
                         self.check_count(*count, ingest_logs);
 
-                        self.update_runners_steals_only(steals, ingest_logs);
+                        self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
@@ -2118,12 +2197,17 @@ impl<'g> Game<'g> {
                     ParsedEventMessage::Walk { batter, advances, scores, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            runner_added: Some((batter, TaxaBase::First)),
-                            ..Default::default()
-                        }, ingest_logs);
+                        self.update_runners(
+                            game_event_index,
+                            false,
+                            RunnerUpdate {
+                                scores,
+                                advances,
+                                runner_added: Some((batter, TaxaBase::First)),
+                                ..Default::default()
+                            },
+                            ingest_logs,
+                        );
                         self.finish_pa(batter);
 
                         detail_builder
@@ -2137,12 +2221,17 @@ impl<'g> Game<'g> {
                     ParsedEventMessage::HitByPitch { batter, advances, scores, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            runner_added: Some((batter, TaxaBase::First)),
-                            ..Default::default()
-                        }, ingest_logs);
+                        self.update_runners(
+                            game_event_index,
+                            false,
+                            RunnerUpdate {
+                                scores,
+                                advances,
+                                runner_added: Some((batter, TaxaBase::First)),
+                                ..Default::default()
+                            },
+                            ingest_logs,
+                        );
                         self.finish_pa(batter);
 
                         detail_builder
@@ -2169,11 +2258,16 @@ impl<'g> Game<'g> {
                         // A balk has perfectly predictable effects on the runners, but
                         // MMOLB tells us exactly what they were so I don't need to
                         // implement the logic
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            ..Default::default()
-                        }, ingest_logs);
+                        self.update_runners(
+                            game_event_index,
+                            false,
+                            RunnerUpdate {
+                                scores,
+                                advances,
+                                ..Default::default()
+                            },
+                            ingest_logs,
+                        );
 
                         detail_builder
                             .pitch(pitch)
@@ -2241,11 +2335,16 @@ impl<'g> Game<'g> {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.add_out();
                     self.finish_pa(batter_name);
 
@@ -2261,11 +2360,16 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, perfect } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.add_out();
                     self.finish_pa(batter_name);
 
@@ -2281,12 +2385,17 @@ impl<'g> Game<'g> {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runner_added: Some((batter, (*distance).into())),
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runner_added: Some((batter, (*distance).into())),
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.finish_pa(batter_name);
 
                     detail_builder
@@ -2301,12 +2410,18 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::ReachOnFieldingError { batter, fielder, error, scores, advances } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runner_added: Some((batter, TaxaBase::First)),
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        true,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runner_added: Some((batter, TaxaBase::First)),
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
+                    self.add_error();
                     self.finish_pa(batter_name);
 
                     detail_builder
@@ -2335,10 +2450,15 @@ impl<'g> Game<'g> {
                     // This is the one situation where you can have
                     // scores but no advances, because after everyone
                     // scores there's no one left to advance
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     // Also the only situation where you have a score
                     // without an existing runner
                     self.add_runs_to_batting_team(1);
@@ -2356,12 +2476,17 @@ impl<'g> Game<'g> {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runners_out: &[*out_two],
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runners_out: &[*out_two],
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.add_out(); // This is the out for the batter
                     self.finish_pa(batter_name);  // Must be after all outs are added
 
@@ -2376,14 +2501,19 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::DoublePlayGrounded { batter, advances, scores, out_one, out_two, fielders, sacrifice } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runners_out: &[*out_one, *out_two],
-                        runners_out_may_include_batter: Some(batter),
-                        runner_advances_may_include_batter: Some(batter),
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runners_out: &[*out_one, *out_two],
+                            runners_out_may_include_batter: Some(batter),
+                            runner_advances_may_include_batter: Some(batter),
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.finish_pa(batter_name);
 
                     detail_builder
@@ -2400,15 +2530,20 @@ impl<'g> Game<'g> {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runners_out: &[*out],
-                        runner_added: Some((batter, TaxaBase::First)),
-                        runner_added_forces_advances: true,
-                        runner_advances_may_include_batter: Some(batter),
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runners_out: &[*out],
+                            runner_added: Some((batter, TaxaBase::First)),
+                            runner_added_forces_advances: true,
+                            runner_advances_may_include_batter: Some(batter),
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.finish_pa(batter_name);
 
                     let detail_builder = detail_builder
@@ -2434,29 +2569,24 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::ReachOnFieldersChoice { batter, fielders, result, scores, advances } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
-                    if let FieldingAttempt::Out { out } = result {
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            runners_out: &[*out],
-                            runner_added: Some((batter, TaxaBase::First)),
-                            runner_added_forces_advances: true,
-                            ..Default::default()
-                        }, ingest_logs)
-                    } else {
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            runner_added: Some((batter, TaxaBase::First)),
-                            runner_added_forces_advances: true,
-                            ..Default::default()
-                        }, ingest_logs)
-                    };
-
-                    self.finish_pa(batter_name);
-
                     match result {
                         FieldingAttempt::Out { out } => {
+                            self.update_runners(
+                                game_event_index,
+                                false,
+                                RunnerUpdate {
+                                    scores,
+                                    advances,
+                                    runners_out: &[*out],
+                                    runner_added: Some((batter, TaxaBase::First)),
+                                    runner_added_forces_advances: true,
+                                    ..Default::default()
+                                },
+                                ingest_logs,
+                            );
+
+                            self.finish_pa(batter_name);
+
                             detail_builder
                                 .fair_ball(fair_ball)
                                 .runner_changes(advances.clone(), scores.clone())
@@ -2466,6 +2596,22 @@ impl<'g> Game<'g> {
                                 .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
                         }
                         FieldingAttempt::Error { fielder, error } => {
+                            self.update_runners(
+                                game_event_index,
+                                true,
+                                RunnerUpdate {
+                                    scores,
+                                    advances,
+                                    runner_added: Some((batter, TaxaBase::First)),
+                                    runner_added_forces_advances: true,
+                                    ..Default::default()
+                                },
+                                ingest_logs,
+                            );
+
+                            self.add_error();
+                            self.finish_pa(batter_name);
+
                             if let Some((listed_fielder,)) = fielders.iter().collect_tuple() {
                                 if listed_fielder.name != *fielder {
                                     ingest_logs.warn(format!("Fielder who made the error ({}) is not the one listed as fielding the ball ({})", fielder, listed_fielder.name));
@@ -2507,6 +2653,8 @@ impl<'g> Game<'g> {
                             self.state.runners_on.push_back(RunnerOn {
                                 runner_name: batter,
                                 base: TaxaBase::First,
+                                source_event_index: Some(game_event_index as i32),
+                                is_earned: true, // i guess??
                             });
                             self.finish_pa(batter_name);
 

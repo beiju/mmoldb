@@ -568,6 +568,22 @@ unambiguous, unlike `balls_after` or `strikes_after`.
 """
 
 [[table.column]]
+name = "errors_before"
+type = "integer"
+description = """
+The number of errors in the half-inning before this event. This is
+primarily useful for calculating earned runs.
+"""
+
+[[table.column]]
+name = "errors_after"
+type = "integer"
+description = """
+The number of errors in the half-inning after this event. This is
+primarily useful for calculating earned runs.
+"""
+
+[[table.column]]
 name = "away_team_score_before"
 type = "integer"
 description = """
@@ -841,6 +857,28 @@ type = "boolean"
 description = """
 Whether this baserunner *attempted* to steal a base during this event.
 Reference `is_out` to tell whether the attempt was successful.
+"""
+
+[[table.column]]
+name = "source_event_index"
+type = "integer"
+description = """
+The index of the event that put this baserunner on base. Primarily
+useful for calculating earned runs.
+"""
+nullable_explanation = """
+`null` if this baserunner did not reach base as a result of a pitch.
+For example, automatic runners in extra innings don't have a
+source_event_index.
+"""
+
+[[table.column]]
+name = "is_earned"
+type = "boolean"
+description = """
+True if this runner scoring would count as an earned run for the
+pitcher referenced by source_event_index. If false, this runner's score
+will never count as an earned run.
 """
 
 [[table]]
