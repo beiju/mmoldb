@@ -294,6 +294,14 @@ fn diagnostic_to_string(err: miette::Report) -> String {
 fn prepare_game_for_db(
     entity: &ChronEntity<mmolb_parsing::Game>,
 ) -> Option<Result<GameForDb, IngestFatalError>> {
+    // One of the teams in this game had its name changed mid-game for
+    // moderation reasons. This is currently causing parse errors, so
+    // I'm temporarily abusing the bugged game handling to memory hole
+    // it and hopefully avoid the striesand effect.
+    if entity.entity_id == "685b582527479b23374613df" {
+        return None;
+    }
+
     Some(Ok(if !entity.data.is_terminal() {
         GameForDb::Incomplete {
             game_id: &entity.entity_id,
