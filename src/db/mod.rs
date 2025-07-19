@@ -516,7 +516,7 @@ pub(crate) struct CompletedGameForDb<'g> {
     pub logs: Vec<Vec<IngestLog>>,
     // This is used for verifying the round trip
     pub parsed_game: Vec<ParsedEventMessage<&'g str>>,
-    pub stadium: Option<&'g str>,
+    pub stadium_name: Option<&'g str>,
 }
 
 pub(crate) enum GameForDb<'g> {
@@ -678,7 +678,7 @@ fn insert_games_internal<'e>(
                 };
 
             let stadium_name = match game {
-                GameForDb::Completed(game) => { game.stadium }
+                GameForDb::Completed(game) => { game.stadium_name }
                 _ => { None }
             };
 

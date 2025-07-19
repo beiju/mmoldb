@@ -195,6 +195,16 @@ description = """
 Whether this game is over.
 """
 
+[[table.column]]
+name = "stadium_name"
+type = "text"
+description = """
+The name of the stadium this game was played in, if any.
+"""
+nullable_explanation = """
+`null` for games from before stadiums were introduced in season 3.
+"""
+
 [[table]]
 name = "events"
 description = """
@@ -691,6 +701,23 @@ Or, if you only want the plate-appearance-ending events, join
 `taxa.event_type` and filter on `ends_plate_appearance`. As of Season 2
 there should only be one event with `ends_plate_appearance = true` for
 each `(game_id, top_of_inning, batter_count)` combination.
+"""
+
+[[table.column]]
+name = "cheer"
+type = "text"
+description = """
+The crowd's cheer on this event, if any.
+
+Note: Cheers on fair balls are from the event referenced by
+fair_ball_event_index. Cheers on other event types are from the event
+referenced by game_event_index.
+
+WARNING: This column may be turned into a foreign key reference soon, similar
+to weather. Treat it as unstable.
+"""
+nullable_explanation = """
+`null` for events where the crowd did not cheer.
 """
 
 [[table]]

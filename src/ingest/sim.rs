@@ -341,7 +341,7 @@ pub struct Game<'g> {
     pub game_id: &'g str,
     pub season: i64,
     pub day: Day,
-    pub stadium: Option<&'g str>,
+    pub stadium_name: Option<&'g str>,
 
     // Aggregates
     away: TeamInGame<'g>,
@@ -989,9 +989,8 @@ impl<'g> Game<'g> {
         let mut events = ParsedEventMessageIter::new(events);
         let mut ingest_logs = Vec::new();
 
-        // TODO Double check correctness of game_event_index
         let mut game_event_index = 0;
-        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji, stadium) = extract_next_game_event!(
+        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji, stadium_name) = extract_next_game_event!(
             events,
             [ParsedEventMessageDiscriminants::LiveNow]
             ParsedEventMessage::LiveNow {
@@ -1015,6 +1014,21 @@ impl<'g> Game<'g> {
             logs.debug(format!(
                 "Set away team to name: \"{away_team_name}\", emoji: \"{away_team_emoji}\""
             ));
+
+            if let Some(stadium_name) = stadium_name {
+                if game_data.season < 3 {
+                    logs.warn(format!("Pre-s3 game was played in a stadium: {stadium_name}"));
+                } else {
+                    logs.info(format!("Set stadium name to {stadium_name}"));
+                }
+            } else {
+                if game_data.season < 3 {
+                    logs.info("Pre-s3 game was not played in a stadium");
+                } else {
+                    logs.warn("Post-s3 game was not played in a stadium");
+                }
+            }
+
             logs.into_vec()
         });
 
@@ -1133,7 +1147,7 @@ impl<'g> Game<'g> {
                     });
                 }
             },
-            stadium: *stadium,
+            stadium_name: *stadium_name,
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
