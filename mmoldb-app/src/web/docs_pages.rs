@@ -1,12 +1,12 @@
 use super::pages::*;
-use crate::Db;
 use crate::web::error::AppError;
-use include_dir::{Dir, include_dir};
+use crate::Db;
+use include_dir::{include_dir, Dir};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmoldb_db::db;
 use rocket::{get, uri};
-use rocket_dyn_templates::{Template, context};
+use rocket_dyn_templates::{context, Template};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
@@ -214,8 +214,7 @@ pub fn associate<T, S>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{DbColumn, DbTable};
-    use crate::models::DbSchema;
+    use mmoldb_db::db::DbTable;
 
     macro_rules! test_schema_docs {
         ($schema_name:ident) => {

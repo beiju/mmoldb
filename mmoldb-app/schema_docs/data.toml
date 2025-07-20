@@ -189,10 +189,27 @@ nullable_explanation = """
 """
 
 [[table.column]]
-name = "is_finished"
+name = "is_ongoing"
 type = "boolean"
 description = """
-Whether this game is over.
+Whether this game is currently being played. This is slightly different
+from "not finished" because there are some bugged games from season 0
+which will never finish, but they are not "ongoing".
+"""
+
+[[table.column]]
+name = "from_version"
+type = "timestamp without time zone"
+description = """
+Identifies which version of the game object was used to generate this game and
+its events in mmoldb. This is primarily used by MMOLDB itself to update games
+when their data changes. It matches the `valid_from` field of the entity in
+chron and in `data.entities`.
+
+There is *almost* always a matching game in `data.entities`, but not quite.
+When a game is updated, the old raw game is deleted from `data.entities` before
+the new game is processed and added to `data.games`. This mostly happens with
+ongoing games, but it can also happen with finished games.
 """
 
 [[table]]
@@ -896,4 +913,114 @@ The order of this fielder within the play. This is primarily used as a
 sort key. It can also be used along with `mmolb_game_id` and
 `game_event_index` to uniquely and stably identify a row in this table.
 See the documentation of `id` for more.
+"""
+
+[[table]]
+name = "entities"
+description = """
+A mirror of Chron's `entities` endpoint for selected `kind`s. Currently only
+holds `kind == "game"`.
+
+NOTE: Unlike Chron, a given entity `kind` is either in this table or
+`data.versions`, not both. `kind`s for which MMOLDB uses historical data are
+stored in `data.versions`, and those for which MMOLDB doesn't use historical
+data are stored in `data.entities`. Not all Chron `kind`s are ingested.
+"""
+
+[[table.column]]
+name = "kind"
+type = "text"
+description = """
+The kind of the entity, e.g. `"game"`, `"team"`, `"player"`, etc. Matches
+Chron's kind.
+
+The type of this field may be changed in the future.
+"""
+
+[[table.column]]
+name = "entity_id"
+type = "text"
+description = """
+The entity's MMOLB id.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest date that Chron observed this version of the entity. This may not
+(and typically will not) line up perfectly with when this version was created
+because Chron can only poll so often.
+
+Note `entities` doesn't have a `valid_to` column because it only stores the
+latest version of each entity, for which `valid_to` is always `null`.
+"""
+
+[[table.column]]
+name = "data"
+type = "jsonb"
+description = """
+The actual data of the entity. This is the data exactly as returned by the
+MMOLB API with no modification, so structure is subject to change whenever the
+API changes.
+"""
+
+[[table]]
+name = "versions"
+description = """
+A mirror of Chron's `entities` endpoint for selected `kind`s. Currently holds
+every `kind` that MMOLDB uses except for `"game"`.
+
+NOTE: Unlike Chron, a given entity `kind` is either in this table or
+`data.entities`, not both. `kind`s for which MMOLDB uses historical data are
+stored in `data.versions`, and those for which MMOLDB doesn't use historical
+data are stored in `data.entities`. Not all Chron `kind`s are ingested.
+"""
+
+[[table.column]]
+name = "kind"
+type = "text"
+description = """
+The kind of the entity, e.g. `"game"`, `"team"`, `"player"`, etc. Matches
+Chron's kind.
+
+The type of this field may be changed in the future.
+"""
+
+[[table.column]]
+name = "entity_id"
+type = "text"
+description = """
+The entity's MMOLB id.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest date that Chron observed this version of the entity was observed.
+This may not (and typically will not) line up perfectly with when this version
+was created because Chron can only poll so often.
+"""
+
+[[table.column]]
+name = "valid_to"
+type = "timestamp without time zone"
+description = """
+The earliest date after `valid_from` that Chron observed a different version
+of this entity -- that is, the first date where we're sure this entity was no
+longer valid. This may not (and typically will not) line up perfectly with when
+this version was actually invalidated because Chron can only poll so often.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "data"
+type = "jsonb"
+description = """
+The actual data of the entity. This is the data exactly as returned by the
+MMOLB API with no modification, so structure is subject to change whenever the
+API changes.
 """
