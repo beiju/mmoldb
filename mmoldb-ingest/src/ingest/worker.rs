@@ -3,7 +3,7 @@ use crate::ingest::{IngestFatalError, IngestStats, check_round_trip};
 use chron::{ChronEntity};
 use chrono::Utc;
 use itertools::{Itertools, izip};
-use log::{error, info};
+use log::{debug, error, info};
 use miette::Context;
 use mmoldb_db::{db, IngestLog, PgConnection};
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
@@ -38,7 +38,9 @@ pub fn ingest_page_of_games(
     get_batch_to_process_duration: f64,
     all_games_json: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
+    worker_id: usize,
 ) -> Result<IngestStats, IngestFatalError> {
+    debug!("Starting ingest page of {} games on worker {worker_id}", all_games_json.len());
     let save_start = Utc::now();
     let deserialize_games_start = Utc::now();
     // TODO Turn game deserialize failure into a GameForDb::FatalError case
@@ -53,6 +55,7 @@ pub fn ingest_page_of_games(
         }))
         .collect::<Result<Vec<_>, _>>()?;
     let deserialize_games_duration = (Utc::now() - deserialize_games_start).as_seconds_f64();
+    debug!("Deserialized page of {} games on worker {worker_id}", all_games.len());
 
     let filter_finished_games_start = Utc::now();
     let filter_finished_games_duration =
@@ -63,6 +66,7 @@ pub fn ingest_page_of_games(
         .iter()
         .map(prepare_game_for_db)
         .collect::<Result<Vec<_>, _>>()?;
+    debug!("Prepared {} games on worker {worker_id}", games_for_db.len());
 
     assert_eq!(
         games_for_db.len(), all_games.len(),
@@ -88,12 +92,13 @@ pub fn ingest_page_of_games(
     info!(
         "Ingesting {num_games_imported} games, skipping {num_games_with_fatal_errors} games \
         due to fatal errors, ignoring {num_ongoing_games_skipped} games in progress, and skipping \
-        {num_bugged_games_skipped} bugged games.",
+        {num_bugged_games_skipped} bugged games on worker {worker_id}.",
     );
     let parse_and_sim_duration = (Utc::now() - parse_and_sim_start).as_seconds_f64();
 
     let db_insert_start = Utc::now();
     let db_insert_timings = db::insert_games(conn, taxa, ingest_id, &games_for_db)?;
+    debug!("Inserted {} games on worker {worker_id}", games_for_db.len());
     let db_insert_duration = (Utc::now() - db_insert_start).as_seconds_f64();
 
     // Immediately turn around and fetch all the games we just inserted,
@@ -109,10 +114,12 @@ pub fn ingest_page_of_games(
             _ => None,
         })
         .collect_vec();
+    debug!("Checking {} games on worker {worker_id}", mmolb_game_ids.len());
 
     let (ingested_games, events_for_game_timings) =
         db::events_for_games(conn, taxa, &mmolb_game_ids)?;
     assert_eq!(mmolb_game_ids.len(), ingested_games.len());
+    debug!("Fetched {} games on worker {worker_id}", ingested_games.len());
     let db_fetch_for_check_duration = (Utc::now() - db_fetch_for_check_start).as_seconds_f64();
 
     let check_round_trip_start = Utc::now();
@@ -165,11 +172,15 @@ pub fn ingest_page_of_games(
             }
         })
         .collect_vec();
+    debug!("Collected logs for {} games on worker {worker_id}", additional_logs.len());
     let check_round_trip_duration = (Utc::now() - check_round_trip_start).as_seconds_f64();
 
     let insert_extra_logs_start = Utc::now();
     if !additional_logs.is_empty() {
         db::insert_additional_ingest_logs(conn, &additional_logs)?;
+        debug!("Inserted logs for {} games on worker {worker_id}", additional_logs.len());
+    } else {
+        debug!("No need to insert additional logs on worker {worker_id}");
     }
     let insert_extra_logs_duration = (Utc::now() - insert_extra_logs_start).as_seconds_f64();
     let save_duration = (Utc::now() - save_start).as_seconds_f64();
@@ -192,6 +203,7 @@ pub fn ingest_page_of_games(
             save_duration,
         },
     )?;
+    debug!("Saved ingest timings on worker {worker_id}");
 
     Ok::<_, IngestFatalError>(IngestStats {
         num_ongoing_games_skipped,

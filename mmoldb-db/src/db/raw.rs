@@ -72,12 +72,15 @@ struct Entity {
 pub fn get_batch_of_unprocessed_games(
     conn: &mut PgConnection,
     batch_size: usize,
+    after_game_id: Option<&str>,
 ) -> QueryResult<Vec<ChronEntity<serde_json::Value>>> {
     use crate::data_schema::data::entities::dsl as entities_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
 
     entities_dsl::entities
-        .filter(entities_dsl::kind.eq("game"))
+        .filter(entities_dsl::kind.eq("game")
+            // I think "" sorts before all other strings, so everything in the db is > it
+            .and(entities_dsl::entity_id.gt(after_game_id.unwrap_or(""))))
         // Join on data.games to see if we have a game imported _from this game version_...
         .left_join(games_dsl::games.on(
             entities_dsl::entity_id.eq(games_dsl::mmolb_game_id)
@@ -87,6 +90,9 @@ pub fn get_batch_of_unprocessed_games(
         .filter(games_dsl::mmolb_game_id.is_null())
         .limit(batch_size as i64)
         .select(Entity::as_select())
+        // Callers of this function rely on the results being sorted by entity_id
+        // with the highest id last
+        .order_by(entities_dsl::entity_id.asc())
         .get_results(conn)
         .map(|entities| {
             entities

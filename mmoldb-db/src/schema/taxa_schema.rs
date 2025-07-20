@@ -24,6 +24,7 @@ pub mod taxa {
             ends_plate_appearance -> Bool,
             is_in_play -> Bool,
             is_hit -> Bool,
+            is_error -> Bool,
             is_ball -> Bool,
             is_strike -> Bool,
             is_strikeout -> Bool,

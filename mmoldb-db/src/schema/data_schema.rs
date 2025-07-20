@@ -20,6 +20,8 @@ pub mod data {
             is_out -> Bool,
             base_description_format -> Nullable<Int8>,
             steal -> Bool,
+            source_event_index -> Nullable<Int4>,
+            is_earned -> Bool,
         }
     }
 
@@ -55,6 +57,8 @@ pub mod data {
             strikes_before -> Int4,
             outs_before -> Int4,
             outs_after -> Int4,
+            errors_before -> Int4,
+            errors_after -> Int4,
             away_team_score_before -> Int4,
             away_team_score_after -> Int4,
             home_team_score_before -> Int4,
@@ -64,6 +68,7 @@ pub mod data {
             batter_name -> Text,
             batter_count -> Int4,
             batter_subcount -> Int4,
+            cheer -> Nullable<Text>,
         }
     }
 
@@ -84,6 +89,7 @@ pub mod data {
             home_team_name -> Text,
             home_team_mmolb_id -> Text,
             home_team_final_score -> Nullable<Int4>,
+            stadium_name -> Nullable<Text>,
             is_ongoing -> Bool,
             from_version -> Timestamp,
         }
