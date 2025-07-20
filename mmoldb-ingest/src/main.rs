@@ -36,14 +36,28 @@ async fn main() -> miette::Result<()> {
     let ingest_start_time = Utc::now();
     let ingest_id = db::start_ingest(&mut conn, ingest_start_time).into_diagnostic()?;
 
+    let abort = CancellationToken::new();
+    let ingest_task = ingest_games(url.clone(), ingest_id, abort.clone());
+    pin_mut!(ingest_task);
+
     let (is_aborted, result) = tokio::select! {
-        ingest_result = ingest_games(url.clone(), ingest_id) => {
+        ingest_result = &mut ingest_task => {
             (ingest_result.is_err(), ingest_result)
         }
         _ = signal::wait_for_signal() => {
+            debug!("Signaling abort token");
+            abort.cancel();
             (true, Ok(()))
         }
     };
+
+    // Note: use abort.is_cancelled() instead of is_aborted because is_aborted
+    // is also True if the task finished with a Result::Err(). We don't want to
+    // await it in this case.
+    if abort.is_cancelled() {
+        debug!("Waiting for ingest task to shut down after abort");
+        ingest_task.await?;
+    }
 
     let ingest_end_time = Utc::now();
     let duration = HumanTime::from(ingest_end_time - ingest_start_time);
@@ -59,9 +73,11 @@ async fn main() -> miette::Result<()> {
     result
 }
 
-async fn ingest_games(pg_url: String, ingest_id: i64) -> miette::Result<()> {
+async fn ingest_games(pg_url: String, ingest_id: i64, abort: CancellationToken) -> miette::Result<()> {
     let mut conn = PgConnection::establish(&pg_url).into_diagnostic()?;
     let notify = Arc::new(Notify::new());
+    // Finish tells the task "once there are no more games to process, exit", while
+    // abort tells the task "exit immediately, even if there are more games to process"
     let finish = CancellationToken::new();
     let ingest_cursor = Arc::new(Mutex::new(
         db::get_ingest_cursor(&mut conn).into_diagnostic()?
@@ -83,13 +99,14 @@ async fn ingest_games(pg_url: String, ingest_id: i64) -> miette::Result<()> {
         let pg_url = pg_url.clone();
         let notify = notify.clone();
         let finish = finish.clone();
+        let abort = abort.clone();
         let ingest_cursor = ingest_cursor.clone();
         let dupe_tracker = dupe_tracker.clone();
         let handle = tokio::runtime::Handle::current();
         tokio::task::Builder::new()
             .name(format!("Ingest worker {n}").leak())
             .spawn_blocking(move || {
-                process_games(&pg_url, ingest_id, ingest_cursor, dupe_tracker, notify, finish, handle, n)
+                process_games(&pg_url, ingest_id, ingest_cursor, dupe_tracker, abort, notify, finish, handle, n)
             })
             .expect("Could not spawn worker thread")
     })
@@ -100,12 +117,19 @@ async fn ingest_games(pg_url: String, ingest_id: i64) -> miette::Result<()> {
 
     let ingest_conn = PgConnection::establish(&pg_url).into_diagnostic()?;
 
-    ingest_raw_games(ingest_conn, notify).await?;
+    tokio::select! {
+        result = ingest_raw_games(ingest_conn, notify) => {
+            result?;
+            // Tell process games workers to stop waiting and exit
+            finish.cancel();
 
-    // Tell process games workers to stop waiting and exit
-    finish.cancel();
-
-    info!("Raw game ingest finished. Waiting for process games task.");
+            info!("Raw game ingest finished. Waiting for process games task.");
+        }
+        _ = abort.cancelled() => {
+            // No need to set any signals because abort was already set by the caller
+            info!("Raw game ingest aborted. Waiting for process games task.");
+        }
+    };
 
     for process_games_handle in process_games_handles {
         process_games_handle.await.into_diagnostic()??;
@@ -153,12 +177,13 @@ fn process_games(
     ingest_id: i64,
     ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
     dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+    abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
     handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
-    let result = process_games_internal(url, ingest_id, ingest_cursor, dupe_tracker, notify, finish, handle, worker_id);
+    let result = process_games_internal(url, ingest_id, ingest_cursor, dupe_tracker, abort, notify, finish, handle, worker_id);
     if let Err(err) = &result {
         error!("Error in process games: {}. ", err);
     }
@@ -170,6 +195,7 @@ fn process_games_internal(
     ingest_id: i64,
     ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
     dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+    abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
     handle: tokio::runtime::Handle,
@@ -188,7 +214,8 @@ fn process_games_internal(
         debug!("Process games task worker {worker_id} is waiting to be woken up");
         handle.block_on(async {
             tokio::select! {
-                biased; // We always want to try to complete the latest ingest before exiting
+                biased; // We always want to respond to abort, notify, and finish in that order
+                _ = abort.cancelled() => { false }
                 _ = notify.notified() => { true }
                 _ = finish.cancelled() => { false }
             }
@@ -197,7 +224,7 @@ fn process_games_internal(
         debug!("Process games task worker {worker_id} is woken up");
 
         // The inner loop is over batches of games to process
-        loop {
+        while !abort.is_cancelled() {
             debug!("Starting ingest loop on worker {worker_id}");
             let get_batch_to_process_start = Utc::now();
             let this_cursor = {
@@ -240,6 +267,10 @@ fn process_games_internal(
                 }
             }
             let get_batch_to_process_duration = (Utc::now() - get_batch_to_process_start).as_seconds_f64();
+
+            // Make "graceful" shutdown a bit more responsive by checking `abort` in between
+            // long-running operations
+            if abort.is_cancelled() { break; }
 
             info!("Processing batch of {} raw games on worker {worker_id}", raw_games.len());
             let stats = ingest_page_of_games(
