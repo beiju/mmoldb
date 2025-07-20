@@ -1,4 +1,5 @@
 mod ingest;
+mod signal;
 
 use std::collections::HashMap;
 use chron::{Chron, ChronEntity};
@@ -8,6 +9,7 @@ use log::{debug, error, info, warn};
 use miette::{Diagnostic, IntoDiagnostic};
 use mmoldb_db::{Connection, PgConnection, db};
 use std::sync::{Arc, Mutex};
+use chrono_humanize::{Accuracy, HumanTime, Tense};
 use itertools::Itertools;
 use thiserror::Error;
 use tokio::sync::Notify;
@@ -31,8 +33,34 @@ async fn main() -> miette::Result<()> {
     let url = mmoldb_db::postgres_url_from_environment();
 
     let mut conn = PgConnection::establish(&url).into_diagnostic()?;
-    let ingest_id = db::start_ingest(&mut conn, Utc::now()).into_diagnostic()?;
+    let ingest_start_time = Utc::now();
+    let ingest_id = db::start_ingest(&mut conn, ingest_start_time).into_diagnostic()?;
 
+    let (is_aborted, result) = tokio::select! {
+        ingest_result = ingest_games(url.clone(), ingest_id) => {
+            (ingest_result.is_err(), ingest_result)
+        }
+        _ = signal::wait_for_signal() => {
+            (true, Ok(()))
+        }
+    };
+
+    let ingest_end_time = Utc::now();
+    let duration = HumanTime::from(ingest_end_time - ingest_start_time);
+    if is_aborted {
+        db::mark_ingest_aborted(&mut conn, ingest_id, ingest_end_time).into_diagnostic()?;
+        info!("Aborted ingest in {}", duration.to_text_en(Accuracy::Precise, Tense::Present));
+    } else {
+        // TODO Remove the start_next_ingest_at_page column from ingests
+        db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, None).into_diagnostic()?;
+        info!("Finished ingest in {}", duration.to_text_en(Accuracy::Precise, Tense::Present));
+    }
+
+    result
+}
+
+async fn ingest_games(pg_url: String, ingest_id: i64) -> miette::Result<()> {
+    let mut conn = PgConnection::establish(&pg_url).into_diagnostic()?;
     let notify = Arc::new(Notify::new());
     let finish = CancellationToken::new();
     let ingest_cursor = Arc::new(Mutex::new(
@@ -42,16 +70,17 @@ async fn main() -> miette::Result<()> {
     // dupe_tracker is only for debugging
     let dupe_tracker = Arc::new(Mutex::new(HashMap::new()));
 
-    let num_cores = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or_else(|err| {
-            warn!("Couldn't get available cores: {}. Falling back to 1.", err);
-            1
-        });
-    debug!("Ingesting with {} workers", num_cores);
+    // let num_workers = std::thread::available_parallelism()
+    //     .map(|n| n.get())
+    //     .unwrap_or_else(|err| {
+    //         warn!("Couldn't get available cores: {}. Falling back to 1.", err);
+    //         1
+    //     });
+    let num_workers = 4;
+    debug!("Ingesting with {} workers", num_workers);
 
-    let process_games_handles = (1..num_cores).map(|n| {
-        let url = url.clone();
+    let process_games_handles = (1..=num_workers).map(|n| {
+        let pg_url = pg_url.clone();
         let notify = notify.clone();
         let finish = finish.clone();
         let ingest_cursor = ingest_cursor.clone();
@@ -60,7 +89,7 @@ async fn main() -> miette::Result<()> {
         tokio::task::Builder::new()
             .name(format!("Ingest worker {n}").leak())
             .spawn_blocking(move || {
-                process_games(&url, ingest_id, ingest_cursor, dupe_tracker, notify, finish, handle, n)
+                process_games(&pg_url, ingest_id, ingest_cursor, dupe_tracker, notify, finish, handle, n)
             })
             .expect("Could not spawn worker thread")
     })
@@ -69,7 +98,12 @@ async fn main() -> miette::Result<()> {
     info!("Launched process games task");
     info!("Beginning raw game ingest");
 
-    ingest_raw_games(conn, notify).await?;
+    let ingest_conn = PgConnection::establish(&pg_url).into_diagnostic()?;
+
+    ingest_raw_games(ingest_conn, notify).await?;
+
+    // Tell process games workers to stop waiting and exit
+    finish.cancel();
 
     info!("Raw game ingest finished. Waiting for process games task.");
 
@@ -225,6 +259,10 @@ fn process_games_internal(
             );
 
             page_index += 1;
+            // Yield to allow the tokio scheduler to do its thing
+            // (with out this, signal handling effectively doesn't work because it has to wait
+            // for the entire process games task to finish)
+            handle.block_on(tokio::task::yield_now());
         }
     }
 

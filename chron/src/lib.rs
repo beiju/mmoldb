@@ -179,7 +179,7 @@ async fn get_next_page(
     start_at: Option<DateTime<Utc>>,
     page: Option<String>,
 ) -> Result<(reqwest::Client, ChronEntities<serde_json::Value>), ChronStreamError> {
-    debug!("Fetching {kind} page {page:?}");
+    debug!("Fetching {kind} page {page:?} starting at {start_at:?}");
 
     let page_size_string = page_size.to_string();
 
