@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use chron::{Chron, ChronEntity};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use miette::{Diagnostic, IntoDiagnostic};
 use mmoldb_db::{Connection, PgConnection, db};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use itertools::Itertools;
 use thiserror::Error;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use mmoldb_db::taxa::Taxa;
 use crate::ingest::{ingest_page_of_games};
@@ -26,26 +26,43 @@ struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
 #[tokio::main]
 async fn main() -> miette::Result<()> {
     env_logger::init();
+    console_subscriber::init();
 
     let url = mmoldb_db::postgres_url_from_environment();
-    let notify = Arc::new(Notify::new());
-    let finish = CancellationToken::new();
-    let ingest_cursor = Arc::new(Mutex::new(None));
-    // dupe_tracker is only for debugging
-    let dupe_tracker = Arc::new(Mutex::new(HashMap::new()));
 
     let mut conn = PgConnection::establish(&url).into_diagnostic()?;
     let ingest_id = db::start_ingest(&mut conn, Utc::now()).into_diagnostic()?;
 
-    let process_games_handles = (1..8).map(|n| {
-        tokio::spawn({
-            let url = url.clone();
-            let notify = notify.clone();
-            let finish = finish.clone();
-            let ingest_cursor = ingest_cursor.clone();
-            let dupe_tracker = dupe_tracker.clone();
-            async move { process_games(&url, ingest_id, ingest_cursor, dupe_tracker, notify, finish, n).await }
-        })
+    let notify = Arc::new(Notify::new());
+    let finish = CancellationToken::new();
+    let ingest_cursor = Arc::new(Mutex::new(
+        db::get_ingest_cursor(&mut conn).into_diagnostic()?
+            .map(|(dt, id)| (dt.and_utc(), id))
+    ));
+    // dupe_tracker is only for debugging
+    let dupe_tracker = Arc::new(Mutex::new(HashMap::new()));
+
+    let num_cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or_else(|err| {
+            warn!("Couldn't get available cores: {}. Falling back to 1.", err);
+            1
+        });
+    debug!("Ingesting with {} workers", num_cores);
+
+    let process_games_handles = (1..num_cores).map(|n| {
+        let url = url.clone();
+        let notify = notify.clone();
+        let finish = finish.clone();
+        let ingest_cursor = ingest_cursor.clone();
+        let dupe_tracker = dupe_tracker.clone();
+        let handle = tokio::runtime::Handle::current();
+        tokio::task::Builder::new()
+            .name(format!("Ingest worker {n}").leak())
+            .spawn_blocking(move || {
+                process_games(&url, ingest_id, ingest_cursor, dupe_tracker, notify, finish, handle, n)
+            })
+            .expect("Could not spawn worker thread")
     })
         .collect_vec();
 
@@ -69,7 +86,7 @@ async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette
         .as_ref()
         .map(NaiveDateTime::and_utc);
 
-    info!("Fetch will start at {:?}", start_date);
+    info!("Fetch will start from {:?}", start_date);
 
     let chron = Chron::new(CHRON_FETCH_PAGE_SIZE);
 
@@ -97,29 +114,31 @@ async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette
     Ok(())
 }
 
-async fn process_games(
+fn process_games(
     url: &str,
     ingest_id: i64,
-    ingest_cursor: Arc<Mutex<Option<String>>>,
+    ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
     dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
     notify: Arc<Notify>,
     finish: CancellationToken,
+    handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
-    let result = process_games_internal(url, ingest_id, ingest_cursor, dupe_tracker, notify, finish, worker_id).await;
+    let result = process_games_internal(url, ingest_id, ingest_cursor, dupe_tracker, notify, finish, handle, worker_id);
     if let Err(err) = &result {
         error!("Error in process games: {}. ", err);
     }
     result
 }
 
-async fn process_games_internal(
+fn process_games_internal(
     url: &str,
     ingest_id: i64,
-    ingest_cursor: Arc<Mutex<Option<String>>>,
+    ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
     dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
     notify: Arc<Notify>,
     finish: CancellationToken,
+    handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
     let mut conn = PgConnection::establish(url).into_diagnostic()?;
@@ -133,34 +152,51 @@ async fn process_games_internal(
     let mut page_index = 0;
     while {
         debug!("Process games task worker {worker_id} is waiting to be woken up");
-        tokio::select! {
-            biased; // We always want to try to complete the latest ingest before exiting
-            _ = notify.notified() => { true }
-            _ = finish.cancelled() => { false }
-        }
+        handle.block_on(async {
+            tokio::select! {
+                biased; // We always want to try to complete the latest ingest before exiting
+                _ = notify.notified() => { true }
+                _ = finish.cancelled() => { false }
+            }
+        })
     } {
         debug!("Process games task worker {worker_id} is woken up");
 
         // The inner loop is over batches of games to process
         loop {
+            debug!("Starting ingest loop on worker {worker_id}");
             let get_batch_to_process_start = Utc::now();
-            let raw_games = {
-                let mut ingest_cursor = ingest_cursor.lock().await;
+            let this_cursor = {
+                let mut ingest_cursor = ingest_cursor.lock().unwrap();
+                let this_cursor = ingest_cursor.clone();
                 debug!("Worker {worker_id} getting games after {:?}", ingest_cursor);
-                let raw_games = db::get_batch_of_unprocessed_games(&mut conn, PROCESS_GAME_BATCH_SIZE, ingest_cursor.as_deref())
-                    .into_diagnostic()?;
-                if let Some(last_game) = raw_games.last() {
-                    *ingest_cursor = Some(last_game.entity_id.clone());
+                let next_cursor = db::get_next_cursor(
+                    &mut conn,
+                    PROCESS_GAME_BATCH_SIZE,
+                    ingest_cursor.as_ref().map(|(d, i)| (d.naive_utc(), i.as_str())),
+                )
+                    .into_diagnostic()?
+                    .map(|(dt, id)| (dt.and_utc(), id));
+                if let Some(cursor) = next_cursor {
+                    *ingest_cursor = Some(cursor);
                     debug!("Worker {worker_id} set cursor to {:?}", ingest_cursor);
                 } else {
                     debug!("All games have been processed. Worker {worker_id} waiting to be woken up again.");
                     break;
                 }
 
-                raw_games
+                this_cursor
             };
+
+            let raw_games = db::get_batch_of_unprocessed_games(
+                &mut conn,
+                PROCESS_GAME_BATCH_SIZE,
+                this_cursor.as_ref().map(|(d, i)| (d.naive_utc(), i.as_str())),
+            )
+                .into_diagnostic()?;
+
             {
-                let mut dupe_tracker = dupe_tracker.lock().await;
+                let mut dupe_tracker = dupe_tracker.lock().unwrap();
                 for game in &raw_games {
                     if let Some(prev_valid_from) = dupe_tracker.get(&game.entity_id) {
                         error!("get_batch_of_unprocessed_games returned a duplicate game {}. Previous valid_from={}, our valid_from={}", game.entity_id, prev_valid_from, game.valid_from);
