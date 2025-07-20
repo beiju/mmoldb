@@ -3,6 +3,10 @@ name = "mmoldb-app"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "mmoldb-app"
+path = "src/main.rs"
+
 [dependencies]
 mmoldb-db = { path = "../mmoldb-db" }
 rocket = "0.5.1"

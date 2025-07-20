@@ -3,6 +3,10 @@ name = "mmoldb-ingest"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "mmoldb-ingest"
+path = "src/main.rs"
+
 [dependencies]
 chron = { path = "../chron" }
 mmoldb-db = { path = "../mmoldb-db" }

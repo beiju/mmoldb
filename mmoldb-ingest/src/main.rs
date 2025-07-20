@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 #[error(transparent)]
 struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
 
-const START_INGEST_EVERY_LAUNCH: bool = false;
+const START_INGEST_EVERY_LAUNCH: bool = true;
 const INGEST_PERIOD_SEC: i64 = 30 * 60;
 
 #[tokio::main]
@@ -23,8 +23,13 @@ async fn main() -> miette::Result<()> {
     env_logger::init();
     console_subscriber::init();
 
+    info!("Waiting 5 seconds for db to launch (temporary)");
+    // TODO Some more robust solution for handing db launch delay
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
     let url = mmoldb_db::postgres_url_from_environment();
 
+    debug!("START_INGEST_EVERY_LAUNCH={START_INGEST_EVERY_LAUNCH}");
     let mut previous_ingest_start_time = if START_INGEST_EVERY_LAUNCH {
         None
     } else {

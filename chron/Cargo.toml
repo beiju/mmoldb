@@ -3,6 +3,10 @@ name = "chron"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "chron"
+path = "src/lib.rs"
+
 [dependencies]
 chrono = { version = "0.4.41", features = ["serde"] }
 log = "0.4.27"

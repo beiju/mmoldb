@@ -3,6 +3,10 @@ name = "mmoldb-db"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "mmoldb_db"
+path = "src/lib.rs"
+
 [dependencies]
 chron = { path = "../chron" }
 diesel = { version = "~2", features = ["chrono", "postgres", "64-column-tables", "serde_json"] }

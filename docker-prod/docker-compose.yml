@@ -1,5 +1,4 @@
 volumes:
-  http-cache:
   postgres-data:
 
 secrets:
@@ -23,15 +22,26 @@ services:
     build:
       context: ..
       # This path is relative to the root
-      dockerfile: docker-prod/Dockerfile
-    volumes:
-      - http-cache:/etc/mmoldb-http-cache
+      dockerfile: docker-prod/Dockerfile-app
     secrets:
       - db_admin_password
     env_file:
         - .env
     ports:
       - "${MMOLDB_MAP_APP_PORT:-42424}:42424"
+    depends_on:
+      - db
+  ingest:
+    build:
+      context: ..
+      # This path is relative to the root
+      dockerfile: docker-prod/Dockerfile-ingest
+    secrets:
+      - db_admin_password
+    env_file:
+      - .env
+    environment:
+      - RUST_LOG=mmoldb_ingest=debug,chron=debug
     depends_on:
       - db
   db:

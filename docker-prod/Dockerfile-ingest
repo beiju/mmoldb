@@ -1,0 +1,46 @@
+FROM mcr.microsoft.com/devcontainers/rust:1-1-bookworm AS base
+
+# Include lld linker to improve build times either by using environment variable
+# RUSTFLAGS="-C link-arg=-fuse-ld=lld" or with Cargo's configuration file (i.e see .cargo/config.toml).
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+   && apt-get -y install clang lld \
+   && apt-get autoremove -y && apt-get clean -y
+
+# cargo chef + sccache setup copied from
+# https://depot.dev/docs/container-builds/how-to-guides/optimal-dockerfiles/rust-dockerfile
+RUN cargo install --locked cargo-chef sccache
+ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache
+
+FROM base AS planner
+WORKDIR /app
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=planner /app/recipe.json recipe.json
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
+    cargo chef cook --release --recipe-path recipe.json
+COPY . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
+    cargo build --release --bin mmoldb-ingest
+
+FROM debian:bookworm
+
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+   && apt-get -y install libssl3 libpq5 ca-certificates \
+   && apt-get autoremove -y && apt-get clean -y
+
+ENV ROCKET_ADDRESS=0.0.0.0
+
+EXPOSE 42424
+
+COPY --from=builder /app/target/release/mmoldb-ingest /mmoldb-ingest
+
+WORKDIR /app
+
+CMD [ "/mmoldb-ingest" ]
