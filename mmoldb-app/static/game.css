@@ -19,6 +19,11 @@
     margin: 0;
 }
 
+.event-deep-link {
+    text-decoration: none;
+    font-size: 12px;
+}
+
 .no-logs {
     margin-top: 15px;
     background: rgba(255, 255, 255, 0.2);

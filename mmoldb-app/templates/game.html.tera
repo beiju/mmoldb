@@ -44,7 +44,10 @@
         <ul class="events">
             {% for event in game.events %}
             <li class="event" id="event-{{ event.game_event_index }}">
-                <p class="event-text">{{ event.text | safe }}</p>
+                <p class="event-text">
+                    <a class="event-deep-link" href="{{ game.watch_uri }}?event={{ event.game_event_index }}">🔗</a>
+                    {{ event.text | safe }}
+                </p>
                 {{ self::display_logs(logs=event.logs) }}
             </li>
         {% endfor %}
