@@ -1856,7 +1856,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.1.0"
-source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#cfae7571703455fc4c81447cd340005fe0802c8a"
+source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#6442fa5bb7831bc01b4bbf4267f858f58fea6165"
 dependencies = [
  "nom 8.0.0",
  "nom-language",

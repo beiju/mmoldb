@@ -84,6 +84,9 @@ pub enum SimEventError {
 
     #[error("Event following bugged season 3 mound visit had no batter name ({0:?}).")]
     UnknownBatterNameAfterSeason3BuggedMoundVisit(MaybePlayer<String>),
+
+    #[error("Unexpected known bug {} in {} context")]
+    KnownBugInWrongContext(MaybePlayer<String>),
 }
 
 // A utility to more conveniently build a Vec<IngestLog>
@@ -2582,46 +2585,44 @@ impl<'g> Game<'g> {
                         }
                     }
                 },
+                // TODO see if there's a way to make the error message say which bug(s) we
+                //   were looking for
                 [ParsedEventMessageDiscriminants::KnownBug]
-                ParsedEventMessage::KnownBug { bug } => {
-                    match bug {
-                        KnownBug::FirstBasemanChoosesAGhost { batter, first_baseman } => {
-                            self.check_batter(batter_name, batter, ingest_logs);
-                            ingest_logs.debug("Known bug: FirstBasemanChoosesAGhost");
+                ParsedEventMessage::KnownBug { bug: KnownBug::FirstBasemanChoosesAGhost { batter, first_baseman } } => {
+                    self.check_batter(batter_name, batter, ingest_logs);
+                    ingest_logs.debug("Known bug: FirstBasemanChoosesAGhost");
 
 
-                            // This is a Weird Event:tm: that puts the batter on first and
-                            // adds an out, even though no runner actually got out. It's only
-                            // been observed with no runners on base.
-                            if !self.state.runners_on.is_empty() {
-                                ingest_logs.warn(format!(
-                                    "Observed FirstBasemanChoosesAGhost bug with runners {:?}. \
-                                    This bug is only expected when there are no runners.",
-                                    self.state.runners_on,
-                                ));
-                            }
-
-                            self.add_outs(1);
-                            self.state.runners_on.push_back(RunnerOn {
-                                runner_name: batter,
-                                base: TaxaBase::First,
-                                source_event_index: Some(game_event_index as i32),
-                                is_earned: self.state.runner_on_this_event_is_earned(false),
-                            });
-                            self.finish_pa(batter_name);
-
-                            let fielders = vec![PlacedPlayer {
-                                name: *first_baseman,
-                                place: Place::FirstBaseman,
-                            }];
-
-                            detail_builder
-                                .fair_ball(fair_ball)
-                                .add_runner(batter, TaxaBase::First)
-                                .fielders(fielders, ingest_logs)?
-                                .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
-                        }
+                    // This is a Weird Event:tm: that puts the batter on first and
+                    // adds an out, even though no runner actually got out. It's only
+                    // been observed with no runners on base.
+                    if !self.state.runners_on.is_empty() {
+                        ingest_logs.warn(format!(
+                            "Observed FirstBasemanChoosesAGhost bug with runners {:?}. \
+                            This bug is only expected when there are no runners.",
+                            self.state.runners_on,
+                        ));
                     }
+
+                    self.add_outs(1);
+                    self.state.runners_on.push_back(RunnerOn {
+                        runner_name: batter,
+                        base: TaxaBase::First,
+                        source_event_index: Some(game_event_index as i32),
+                        is_earned: self.state.runner_on_this_event_is_earned(false),
+                    });
+                    self.finish_pa(batter_name);
+
+                    let fielders = vec![PlacedPlayer {
+                        name: *first_baseman,
+                        place: Place::FirstBaseman,
+                    }];
+
+                    detail_builder
+                        .fair_ball(fair_ball)
+                        .add_runner(batter, TaxaBase::First)
+                        .fielders(fielders, ingest_logs)?
+                        .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
                 },
             ),
             EventContext::ExpectFallingStarOutcome {
@@ -2860,6 +2861,13 @@ impl<'g> Game<'g> {
                 },
                 [ParsedEventMessageDiscriminants::WeatherProsperity]
                 ParsedEventMessage::WeatherProsperity { .. } => {
+                    // TODO Don't ignore prosperity weather
+                    None
+                },
+                // TODO see if there's a way to make the error message say which bug(s) we
+                //   were looking for
+                [ParsedEventMessageDiscriminants::KnownBug]
+                ParsedEventMessage::KnownBug { bug: KnownBug::NoOneProspers } => {
                     // TODO Don't ignore prosperity weather
                     None
                 }
