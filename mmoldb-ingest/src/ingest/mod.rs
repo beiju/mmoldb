@@ -1,7 +1,7 @@
 mod check_round_trip;
+mod config;
 mod sim;
 mod worker;
-mod config;
 
 pub use config::*;
 pub use worker::*;
@@ -12,7 +12,6 @@ use mmoldb_db::QueryError;
 use thiserror::Error;
 
 use chron::ChronStreamError;
-
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {

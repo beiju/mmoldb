@@ -25,7 +25,7 @@ use crate::models::{
     NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn,
     RawDbTable,
 };
-use crate::taxa::{Taxa};
+use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
@@ -545,11 +545,24 @@ pub enum GameForDb<'g> {
 impl<'g> GameForDb<'g> {
     pub fn raw(&self) -> (&'g str, DateTime<Utc>, &'g mmolb_parsing::Game) {
         match self {
-            GameForDb::Ongoing { game_id, from_version, raw_game } => (*game_id, *from_version, raw_game),
-            GameForDb::ForeverIncomplete { game_id, from_version, raw_game } => (*game_id, *from_version, raw_game),
-            GameForDb::Completed { game, from_version } => (&game.id, *from_version, &game.raw_game),
+            GameForDb::Ongoing {
+                game_id,
+                from_version,
+                raw_game,
+            } => (*game_id, *from_version, raw_game),
+            GameForDb::ForeverIncomplete {
+                game_id,
+                from_version,
+                raw_game,
+            } => (*game_id, *from_version, raw_game),
+            GameForDb::Completed { game, from_version } => {
+                (&game.id, *from_version, &game.raw_game)
+            }
             GameForDb::FatalError {
-                game_id, from_version, raw_game, ..
+                game_id,
+                from_version,
+                raw_game,
+                ..
             } => (*game_id, *from_version, raw_game),
         }
     }
@@ -641,7 +654,7 @@ fn insert_games_internal<'e>(
                     // TODO Convert this to a gamewide ingest log warning
                     warn!("A game happened on an unexpected type of day: {other}.");
                     (None, None)
-                },
+                }
                 Err(error) => {
                     // TODO Convert this to a gamewide ingest log error
                     warn!("Day was not recognized: {error}");
@@ -649,25 +662,28 @@ fn insert_games_internal<'e>(
                 }
             };
 
-            let (away_team_final_score, home_team_final_score) =
-                if let GameForDb::Completed { game: complete_game, .. } = game {
-                    complete_game
-                        .events
-                        .last()
-                        .map(|event| {
-                            (
-                                Some(event.away_team_score_after as i32),
-                                Some(event.home_team_score_after as i32),
-                            )
-                        })
-                        .unwrap_or((None, None))
-                } else {
-                    (None, None)
-                };
+            let (away_team_final_score, home_team_final_score) = if let GameForDb::Completed {
+                game: complete_game,
+                ..
+            } = game
+            {
+                complete_game
+                    .events
+                    .last()
+                    .map(|event| {
+                        (
+                            Some(event.away_team_score_after as i32),
+                            Some(event.home_team_score_after as i32),
+                        )
+                    })
+                    .unwrap_or((None, None))
+            } else {
+                (None, None)
+            };
 
             let stadium_name = match game {
-                GameForDb::Completed { game, .. } => { game.stadium_name }
-                _ => { None }
+                GameForDb::Completed { game, .. } => game.stadium_name,
+                _ => None,
             };
 
             NewGame {
@@ -1208,7 +1224,9 @@ pub fn tables_for_schema(
                                 // Note that I renamed it to column_is_nullable for diesel to avoid a
                                 // name conflict. The sql name for it is just is_nullable.
                                 None => {
-                                    return Err(DbMetaQueryError::ColumnMissingField("is_nullable"));
+                                    return Err(DbMetaQueryError::ColumnMissingField(
+                                        "is_nullable",
+                                    ));
                                 }
                                 Some("YES") => true,
                                 Some("NO") => false,

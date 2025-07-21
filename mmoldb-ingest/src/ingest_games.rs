@@ -1,30 +1,35 @@
+use crate::ingest::ingest_page_of_games;
+use chron::{Chron, ChronEntity};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use futures::{StreamExt, TryStreamExt, pin_mut};
+use itertools::Itertools;
+use log::{debug, error, info};
+use miette::IntoDiagnostic;
+use mmoldb_db::taxa::Taxa;
+use mmoldb_db::{Connection, PgConnection, db};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use chrono::{DateTime, NaiveDateTime, Utc};
-use tokio_util::sync::CancellationToken;
 use tokio::sync::Notify;
-use log::{debug, error, info};
-use chron::{Chron, ChronEntity};
-use futures::{pin_mut, StreamExt, TryStreamExt};
-use miette::IntoDiagnostic;
-use itertools::Itertools;
-use mmoldb_db::{db, Connection, PgConnection};
-use mmoldb_db::taxa::Taxa;
-use crate::ingest::ingest_page_of_games;
+use tokio_util::sync::CancellationToken;
 
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_GAME_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_GAME_BATCH_SIZE: usize = 1000;
 
-pub async fn ingest_games(pg_url: String, ingest_id: i64, abort: CancellationToken) -> miette::Result<()> {
+pub async fn ingest_games(
+    pg_url: String,
+    ingest_id: i64,
+    abort: CancellationToken,
+) -> miette::Result<()> {
     let mut conn = PgConnection::establish(&pg_url).into_diagnostic()?;
     let notify = Arc::new(Notify::new());
     // Finish tells the task "once there are no more games to process, exit", while
     // abort tells the task "exit immediately, even if there are more games to process"
     let finish = CancellationToken::new();
     let ingest_cursor = Arc::new(Mutex::new(
-        db::get_ingest_cursor(&mut conn).into_diagnostic()?
-            .map(|(dt, id)| (dt.and_utc(), id))
+        db::get_ingest_cursor(&mut conn)
+            .into_diagnostic()?
+            .map(|(dt, id)| (dt.and_utc(), id)),
     ));
     // dupe_tracker is only for debugging
     let dupe_tracker = Arc::new(Mutex::new(HashMap::new()));
@@ -38,21 +43,32 @@ pub async fn ingest_games(pg_url: String, ingest_id: i64, abort: CancellationTok
     let num_workers = 4;
     debug!("Ingesting with {} workers", num_workers);
 
-    let process_games_handles = (1..=num_workers).map(|n| {
-        let pg_url = pg_url.clone();
-        let notify = notify.clone();
-        let finish = finish.clone();
-        let abort = abort.clone();
-        let ingest_cursor = ingest_cursor.clone();
-        let dupe_tracker = dupe_tracker.clone();
-        let handle = tokio::runtime::Handle::current();
-        tokio::task::Builder::new()
-            .name(format!("Ingest worker {n}").leak())
-            .spawn_blocking(move || {
-                process_games(&pg_url, ingest_id, ingest_cursor, dupe_tracker, abort, notify, finish, handle, n)
-            })
-            .expect("Could not spawn worker thread")
-    })
+    let process_games_handles = (1..=num_workers)
+        .map(|n| {
+            let pg_url = pg_url.clone();
+            let notify = notify.clone();
+            let finish = finish.clone();
+            let abort = abort.clone();
+            let ingest_cursor = ingest_cursor.clone();
+            let dupe_tracker = dupe_tracker.clone();
+            let handle = tokio::runtime::Handle::current();
+            tokio::task::Builder::new()
+                .name(format!("Ingest worker {n}").leak())
+                .spawn_blocking(move || {
+                    process_games(
+                        &pg_url,
+                        ingest_id,
+                        ingest_cursor,
+                        dupe_tracker,
+                        abort,
+                        notify,
+                        finish,
+                        handle,
+                        n,
+                    )
+                })
+                .expect("Could not spawn worker thread")
+        })
         .collect_vec();
 
     info!("Launched process games task");
@@ -126,7 +142,17 @@ fn process_games(
     handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
-    let result = process_games_internal(url, ingest_id, ingest_cursor, dupe_tracker, abort, notify, finish, handle, worker_id);
+    let result = process_games_internal(
+        url,
+        ingest_id,
+        ingest_cursor,
+        dupe_tracker,
+        abort,
+        notify,
+        finish,
+        handle,
+        worker_id,
+    );
     if let Err(err) = &result {
         error!("Error in process games: {}. ", err);
     }
@@ -177,15 +203,20 @@ fn process_games_internal(
                 let next_cursor = db::get_next_cursor(
                     &mut conn,
                     PROCESS_GAME_BATCH_SIZE,
-                    ingest_cursor.as_ref().map(|(d, i)| (d.naive_utc(), i.as_str())),
+                    ingest_cursor
+                        .as_ref()
+                        .map(|(d, i)| (d.naive_utc(), i.as_str())),
                 )
-                    .into_diagnostic()?
-                    .map(|(dt, id)| (dt.and_utc(), id));
+                .into_diagnostic()?
+                .map(|(dt, id)| (dt.and_utc(), id));
                 if let Some(cursor) = next_cursor {
                     *ingest_cursor = Some(cursor);
                     debug!("Worker {worker_id} set cursor to {:?}", ingest_cursor);
                 } else {
-                    debug!("All games have been processed. Worker {worker_id} waiting to be woken up again.");
+                    debug!(
+                        "All games have been processed. Worker {} waiting to be woken up again.",
+                        worker_id,
+                    );
                     break;
                 }
 
@@ -195,27 +226,39 @@ fn process_games_internal(
             let raw_games = db::get_batch_of_unprocessed_games(
                 &mut conn,
                 PROCESS_GAME_BATCH_SIZE,
-                this_cursor.as_ref().map(|(d, i)| (d.naive_utc(), i.as_str())),
+                this_cursor
+                    .as_ref()
+                    .map(|(d, i)| (d.naive_utc(), i.as_str())),
             )
-                .into_diagnostic()?;
+            .into_diagnostic()?;
 
             {
                 let mut dupe_tracker = dupe_tracker.lock().unwrap();
                 for game in &raw_games {
                     if let Some(prev_valid_from) = dupe_tracker.get(&game.entity_id) {
-                        error!("get_batch_of_unprocessed_games returned a duplicate game {}. Previous valid_from={}, our valid_from={}", game.entity_id, prev_valid_from, game.valid_from);
+                        error!(
+                            "get_batch_of_unprocessed_games returned a duplicate game {}. Previous \
+                            valid_from={}, our valid_from={}",
+                            game.entity_id, prev_valid_from, game.valid_from
+                        );
                     } else {
                         dupe_tracker.insert(game.entity_id.clone(), game.valid_from);
                     }
                 }
             }
-            let get_batch_to_process_duration = (Utc::now() - get_batch_to_process_start).as_seconds_f64();
+            let get_batch_to_process_duration =
+                (Utc::now() - get_batch_to_process_start).as_seconds_f64();
 
             // Make "graceful" shutdown a bit more responsive by checking `abort` in between
             // long-running operations
-            if abort.is_cancelled() { break; }
+            if abort.is_cancelled() {
+                break;
+            }
 
-            info!("Processing batch of {} raw games on worker {worker_id}", raw_games.len());
+            info!(
+                "Processing batch of {} raw games on worker {worker_id}",
+                raw_games.len()
+            );
             let stats = ingest_page_of_games(
                 &taxa,
                 ingest_id,
@@ -223,13 +266,16 @@ fn process_games_internal(
                 get_batch_to_process_duration,
                 raw_games,
                 &mut conn,
-                worker_id
-            ).into_diagnostic()?;
+                worker_id,
+            )
+            .into_diagnostic()?;
             info!(
                 "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
                 progress, and skipped {} bugged games on worker {worker_id}.",
-                stats.num_games_imported, stats.num_games_with_fatal_errors,
-                stats.num_ongoing_games_skipped, stats.num_bugged_games_skipped,
+                stats.num_games_imported,
+                stats.num_games_with_fatal_errors,
+                stats.num_ongoing_games_skipped,
+                stats.num_bugged_games_skipped,
             );
 
             page_index += 1;

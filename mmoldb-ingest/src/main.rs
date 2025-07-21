@@ -1,13 +1,13 @@
 mod ingest;
-mod signal;
 mod ingest_games;
+mod signal;
 
 use chrono::{Duration, Utc};
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::pin_mut;
 use log::{debug, error, info};
 use miette::{Diagnostic, IntoDiagnostic};
-use mmoldb_db::{db, Connection, PgConnection};
+use mmoldb_db::{Connection, PgConnection, db};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
@@ -34,7 +34,8 @@ async fn main() -> miette::Result<()> {
         None
     } else {
         let mut conn = PgConnection::establish(&url).into_diagnostic()?;
-        db::latest_ingest_start_time(&mut conn).into_diagnostic()?
+        db::latest_ingest_start_time(&mut conn)
+            .into_diagnostic()?
             .map(|dt| dt.and_utc())
     };
 
@@ -114,13 +115,18 @@ async fn run_one_ingest(url: String) -> miette::Result<()> {
     let duration = HumanTime::from(ingest_end_time - ingest_start_time);
     if is_aborted {
         db::mark_ingest_aborted(&mut conn, ingest_id, ingest_end_time).into_diagnostic()?;
-        info!("Aborted ingest in {}", duration.to_text_en(Accuracy::Precise, Tense::Present));
+        info!(
+            "Aborted ingest in {}",
+            duration.to_text_en(Accuracy::Precise, Tense::Present)
+        );
     } else {
         // TODO Remove the start_next_ingest_at_page column from ingests
         db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, None).into_diagnostic()?;
-        info!("Finished ingest in {}", duration.to_text_en(Accuracy::Precise, Tense::Present));
+        info!(
+            "Finished ingest in {}",
+            duration.to_text_en(Accuracy::Precise, Tense::Present)
+        );
     }
 
     result
 }
-

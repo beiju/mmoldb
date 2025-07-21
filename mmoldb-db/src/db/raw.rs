@@ -19,14 +19,15 @@ pub fn get_latest_entity_valid_from(
         .optional()
 }
 
-pub fn get_ingest_cursor(
-    conn: &mut PgConnection,
-) -> QueryResult<Option<(NaiveDateTime, String)>> {
+pub fn get_ingest_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
     use crate::data_schema::data::games::dsl as games_dsl;
 
     games_dsl::games
         .select((games_dsl::from_version, games_dsl::mmolb_game_id))
-        .order_by((games_dsl::from_version.desc(), games_dsl::mmolb_game_id.desc()))
+        .order_by((
+            games_dsl::from_version.desc(),
+            games_dsl::mmolb_game_id.desc(),
+        ))
         .limit(1)
         .get_result(conn)
         .optional()
@@ -96,13 +97,18 @@ pub fn get_batch_of_unprocessed_games(
     let cursor_id = cursor.map_or("", |(_, id)| id);
 
     entities_dsl::entities
-        .filter(entities_dsl::kind.eq("game")
-            // Select entities that are after the cursor time, or from the
-            // same time and with higher ids
-            .and(
-                entities_dsl::valid_from.gt(cursor_date)
-                    .or(entities_dsl::valid_from.eq(cursor_date).and(entities_dsl::entity_id.gt(cursor_id))),
-            )
+        .filter(
+            entities_dsl::kind
+                .eq("game")
+                // Select entities that are after the cursor time, or from the
+                // same time and with higher ids
+                .and(
+                    entities_dsl::valid_from
+                        .gt(cursor_date)
+                        .or(entities_dsl::valid_from
+                            .eq(cursor_date)
+                            .and(entities_dsl::entity_id.gt(cursor_id))),
+                ),
         )
         // don't join games any more -- instead, caller is responsible for ensuring that cursor
         // is accurate
@@ -117,7 +123,10 @@ pub fn get_batch_of_unprocessed_games(
         .select(Entity::as_select())
         // Callers of this function rely on the results being sorted by
         // (valid_from, entity_id) with the highest id last
-        .order_by((entities_dsl::valid_from.asc(), entities_dsl::entity_id.asc()))
+        .order_by((
+            entities_dsl::valid_from.asc(),
+            entities_dsl::entity_id.asc(),
+        ))
         .get_results(conn)
         .map(|entities| {
             entities
@@ -147,13 +156,18 @@ pub fn get_next_cursor(
     let cursor_id = cursor.map_or("", |(_, id)| id);
 
     entities_dsl::entities
-        .filter(entities_dsl::kind.eq("game")
-            // Select entities that are after the cursor time, or from the
-            // same time and with higher ids
-            .and(
-                entities_dsl::valid_from.gt(cursor_date)
-                    .or(entities_dsl::valid_from.eq(cursor_date).and(entities_dsl::entity_id.gt(cursor_id))),
-            )
+        .filter(
+            entities_dsl::kind
+                .eq("game")
+                // Select entities that are after the cursor time, or from the
+                // same time and with higher ids
+                .and(
+                    entities_dsl::valid_from
+                        .gt(cursor_date)
+                        .or(entities_dsl::valid_from
+                            .eq(cursor_date)
+                            .and(entities_dsl::entity_id.gt(cursor_id))),
+                ),
         )
         // don't join games any more -- instead, caller is responsible for ensuring that cursor
         // is accurate
@@ -168,7 +182,10 @@ pub fn get_next_cursor(
         .select((entities_dsl::valid_from, entities_dsl::entity_id))
         // Callers of this function rely on the results being sorted by
         // (valid_from, entity_id) with the highest id last
-        .order_by((entities_dsl::valid_from.asc(), entities_dsl::entity_id.asc()))
+        .order_by((
+            entities_dsl::valid_from.asc(),
+            entities_dsl::entity_id.asc(),
+        ))
         .get_results::<(NaiveDateTime, String)>(conn)
         .map(|vec| vec.into_iter().last())
 }

@@ -1,11 +1,19 @@
-use std::fmt::Formatter;
+use crate::taxa::{
+    AsInsertable, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat,
+    TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType,
+    TaxaSlot,
+};
 use itertools::Itertools;
 use miette::Diagnostic;
-use mmolb_parsing::enums::{Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType};
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut};
 use mmolb_parsing::ParsedEventMessage;
+use mmolb_parsing::enums::{
+    Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
+};
+use mmolb_parsing::parsed_event::{
+    BaseSteal, Cheer, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut,
+};
+use std::fmt::Formatter;
 use thiserror::Error;
-use crate::taxa::{AsInsertable, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot};
 
 #[derive(Debug, Clone)]
 pub struct EventDetailRunner<StrT: Clone> {
@@ -348,7 +356,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     event_type: self.detail_type,
                 }
             })?)
-                .into())
+            .into())
         };
 
         let mandatory_fielding_error_type = || -> Result<FieldingErrorType, ToParsedError> {

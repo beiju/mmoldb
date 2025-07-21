@@ -1,12 +1,12 @@
 use super::pages::*;
-use crate::web::error::AppError;
 use crate::Db;
-use include_dir::{include_dir, Dir};
+use crate::web::error::AppError;
+use include_dir::{Dir, include_dir};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmoldb_db::db;
 use rocket::{get, uri};
-use rocket_dyn_templates::{context, Template};
+use rocket_dyn_templates::{Template, context};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;

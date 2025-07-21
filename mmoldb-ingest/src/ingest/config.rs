@@ -1,5 +1,5 @@
-use serde::{Deserialize};
 use log::warn;
+use serde::Deserialize;
 use serde_default::DefaultFromSerde;
 
 fn default_ingest_period() -> u64 {

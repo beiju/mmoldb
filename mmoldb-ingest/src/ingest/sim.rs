@@ -1,9 +1,3 @@
-use mmoldb_db::taxa::AsInsertable;
-use mmoldb_db::taxa::{
-    TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
-    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
-};
-use mmoldb_db::{BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner, IngestLog};
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
 use log::warn;
 use miette::Diagnostic;
@@ -14,7 +8,19 @@ use mmolb_parsing::enums::{
     TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher};
+use mmolb_parsing::parsed_event::{
+    BaseSteal, Cheer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug,
+    ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher,
+};
+use mmoldb_db::taxa::AsInsertable;
+use mmoldb_db::taxa::{
+    TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
+    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
+};
+use mmoldb_db::{
+    BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner,
+    IngestLog,
+};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
 use std::fmt::{Debug, Formatter};
@@ -188,22 +194,27 @@ fn is_during_now_batting_bug_window(season: i64, day: Day, game_event_index: usi
 }
 
 impl<'g> ContextAfterMoundVisitOutcome<'g> {
-    pub fn to_event_context(self, season: i64, day: Day, game_event_index: usize) -> EventContext<'g> {
+    pub fn to_event_context(
+        self,
+        season: i64,
+        day: Day,
+        game_event_index: usize,
+    ) -> EventContext<'g> {
         match self {
-            ContextAfterMoundVisitOutcome::ExpectNowBatting => if is_during_now_batting_bug_window(season, day, game_event_index) {
-                EventContext::ExpectMissingNowBattingBug
-            } else {
-                EventContext::ExpectNowBatting
-            },
+            ContextAfterMoundVisitOutcome::ExpectNowBatting => {
+                if is_during_now_batting_bug_window(season, day, game_event_index) {
+                    EventContext::ExpectMissingNowBattingBug
+                } else {
+                    EventContext::ExpectNowBatting
+                }
+            }
             ContextAfterMoundVisitOutcome::ExpectPitch {
                 batter_name,
                 first_pitch_of_plate_appearance,
-            } => {
-                EventContext::ExpectPitch {
-                    batter_name,
-                    first_pitch_of_plate_appearance,
-                }
-            }
+            } => EventContext::ExpectPitch {
+                batter_name,
+                first_pitch_of_plate_appearance,
+            },
         }
     }
 }
@@ -677,7 +688,8 @@ impl<'g> EventDetailBuilder<'g> {
     }
 
     fn runner_on_this_event_is_earned(&self, is_error: bool) -> bool {
-        self.prev_game_state.runner_on_this_event_is_earned(is_error)
+        self.prev_game_state
+            .runner_on_this_event_is_earned(is_error)
     }
 
     pub fn build_some(
@@ -1014,7 +1026,9 @@ impl<'g> Game<'g> {
 
             if let Some(stadium_name) = stadium_name {
                 if game_data.season < 3 {
-                    logs.warn(format!("Pre-s3 game was played in a stadium: {stadium_name}"));
+                    logs.warn(format!(
+                        "Pre-s3 game was played in a stadium: {stadium_name}"
+                    ));
                 } else {
                     logs.debug(format!("Set stadium name to {stadium_name}"));
                 }
@@ -1803,14 +1817,12 @@ impl<'g> Game<'g> {
                     }
                 }
 
-                self.state
-                    .runners_on
-                    .push_back(RunnerOn {
-                        runner_name,
-                        base,
-                        source_event_index: Some(game_event_index as i32),
-                        is_earned: self.state.runner_on_this_event_is_earned(is_error),
-                    });
+                self.state.runners_on.push_back(RunnerOn {
+                    runner_name,
+                    base,
+                    source_event_index: Some(game_event_index as i32),
+                    is_earned: self.state.runner_on_this_event_is_earned(is_error),
+                });
             }
         }
 
@@ -1998,7 +2010,10 @@ impl<'g> Game<'g> {
                     self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectNowBatting)
                 },
             ),
-            EventContext::ExpectPitch { batter_name, first_pitch_of_plate_appearance } => {
+            EventContext::ExpectPitch {
+                batter_name,
+                first_pitch_of_plate_appearance,
+            } => {
                 // After this pitch it will no longer be the first pitch of the PA
                 self.state.context = EventContext::ExpectPitch {
                     batter_name,
@@ -2873,17 +2888,20 @@ impl<'g> Game<'g> {
         Ok(result)
     }
 
-    fn handle_season_3_missing_now_batting_after_mound_visit(&mut self, raw_event: &'g mmolb_parsing::game::Event, ingest_logs: &mut IngestLogs) -> Result<(), SimEventError> {
+    fn handle_season_3_missing_now_batting_after_mound_visit(
+        &mut self,
+        raw_event: &'g mmolb_parsing::game::Event,
+        ingest_logs: &mut IngestLogs,
+    ) -> Result<(), SimEventError> {
         // Handle a Season 3 bug where NowBatting events weren't sent
         // after a mound visit
         if let EventContext::ExpectMissingNowBattingBug = self.state.context {
             match &raw_event.event {
-                Ok(mmolb_parsing::enums::EventType::Pitch) => {},
+                Ok(mmolb_parsing::enums::EventType::Pitch) => {}
                 other => {
                     ingest_logs.error(format!(
                         "Expected a Pitch after bugged season 3 mound visit, but saw {other:?}",
                     ));
-
                 }
             }
 
@@ -2897,7 +2915,11 @@ impl<'g> Game<'g> {
                     first_pitch_of_plate_appearance: true,
                 }
             } else {
-                Err(SimEventError::UnknownBatterNameAfterSeason3BuggedMoundVisit(raw_event.batter.to_owned()))?;
+                Err(
+                    SimEventError::UnknownBatterNameAfterSeason3BuggedMoundVisit(
+                        raw_event.batter.to_owned(),
+                    ),
+                )?;
             }
         }
         Ok(())
@@ -2909,7 +2931,11 @@ impl<'g> Game<'g> {
         ingest_logs: &mut IngestLogs,
     ) -> Result<(), SimEventError> {
         // Only fix this in the expect-pitch context
-        let EventContext::ExpectPitch { batter_name, first_pitch_of_plate_appearance } = self.state.context else {
+        let EventContext::ExpectPitch {
+            batter_name,
+            first_pitch_of_plate_appearance,
+        } = self.state.context
+        else {
             return Ok(());
         };
 
