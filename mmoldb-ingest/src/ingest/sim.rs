@@ -84,9 +84,6 @@ pub enum SimEventError {
 
     #[error("Event following bugged season 3 mound visit had no batter name ({0:?}).")]
     UnknownBatterNameAfterSeason3BuggedMoundVisit(MaybePlayer<String>),
-
-    #[error("Unexpected known bug {} in {} context")]
-    KnownBugInWrongContext(MaybePlayer<String>),
 }
 
 // A utility to more conveniently build a Vec<IngestLog>
