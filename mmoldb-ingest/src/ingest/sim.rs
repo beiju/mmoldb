@@ -1210,14 +1210,10 @@ impl<'g> Game<'g> {
         // Superstar game does have the automatic runner rule as confirmed by Danny.
         // The other special types of day shouldn't have any games.
         match self.day {
-            Day::SuperstarBreak => true,
-            Day::Holiday => true,
             Day::Day(day) => day <= day_threshold,
             Day::SuperstarDay(_) => true,
             Day::PostseasonRound(_) => false,
-            Day::PostseasonPreview => true,
-            Day::Preseason => true,
-            Day::Election => true,
+            _ => true,
         }
     }
 

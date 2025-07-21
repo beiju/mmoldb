@@ -635,36 +635,11 @@ fn insert_games_internal<'e>(
             };
 
             let (day, superstar_day) = match &raw_game.day {
-                Ok(Day::SuperstarBreak) => {
-                    // TODO Convert this to a gamewide ingest log warning
-                    warn!("A game happened on a non-numbered Superstar Break day.");
-                    (None, None)
-                }
-                Ok(Day::Holiday) => {
-                    // TODO Convert this to a gamewide ingest log warning
-                    warn!("A game happened on a Holiday.");
-                    (None, None)
-                }
                 Ok(Day::Day(day)) => (Some(*day), None),
                 Ok(Day::SuperstarDay(day)) => (None, Some(*day)),
-                Ok(Day::Election) => {
+                Ok(other) => {
                     // TODO Convert this to a gamewide ingest log warning
-                    warn!("A game happened on a Election.");
-                    (None, None)
-                },
-                Ok(Day::PostseasonPreview) => {
-                    // TODO Convert this to a gamewide ingest log warning
-                    warn!("A game happened on Postseason Preview.");
-                    (None, None)
-                },
-                Ok(Day::Preseason) => {
-                    // TODO Convert this to a gamewide ingest log warning
-                    warn!("A game happened on a Preseason.");
-                    (None, None)
-                },
-                Ok(Day::PostseasonRound(_)) => {
-                    // TODO Convert this to a gamewide ingest log warning
-                    warn!("A game happened on a Postseason Round (so far this type of day only shows up on player's birthdays).");
+                    warn!("A game happened on an unexpected type of day: {other}.");
                     (None, None)
                 },
                 Err(error) => {
