@@ -1,6 +1,34 @@
 Changelog
 =========
 
+Upcoming
+--------
+
+- Fix pagination on games-with-issues page
+- Fix some incorrect metadata on taxa.event_type (thanks to Bagyilisk in the 
+  MMOLB discord for pointing them out)
+
+2025-07-18
+----------
+
+- Track runner attribution and earned runs for use in ERA queries
+
+2025-07-18
+----------
+
+- Handle stadium names. Stadium name is now available on `data.games`.
+- Handle cheers. Cheers are currently stored as text in `data.events`, but we
+  plan to move to storing them in a child table like Weather.
+- Handle the bug where NowBatting events were skipped after a mound visit at
+  the beginning of Season 3.
+- Handle the bug with duplicate NowBatting events on s3d5
+- Handle prosperity weather messages
+
+Known issues:
+- Home run challenges are not parsed
+- Walkoff balks are being left as an error until the MMOLB bug is confirmed
+  resolved
+
 2025-07-14
 ----------
 

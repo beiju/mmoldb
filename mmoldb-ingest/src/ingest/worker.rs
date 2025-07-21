@@ -275,6 +275,8 @@ fn prepare_completed_game_for_db(
         Game::new(&entity.entity_id, &entity.data, &mut parsed_for_game)?
     };
 
+    let stadium_name = game.stadium_name;
+
     let detail_events = parsed
         .map(|(game_event_index, (parsed, raw))| {
             // Sim has a different IngestLogs... this made sense at the time
@@ -324,6 +326,7 @@ fn prepare_completed_game_for_db(
         events,
         logs: all_logs,
         parsed_game,
+        stadium_name,
     })
 }
 

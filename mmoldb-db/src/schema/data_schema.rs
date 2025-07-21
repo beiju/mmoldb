@@ -57,8 +57,6 @@ pub mod data {
             strikes_before -> Int4,
             outs_before -> Int4,
             outs_after -> Int4,
-            errors_before -> Int4,
-            errors_after -> Int4,
             away_team_score_before -> Int4,
             away_team_score_after -> Int4,
             home_team_score_before -> Int4,
@@ -68,6 +66,8 @@ pub mod data {
             batter_name -> Text,
             batter_count -> Int4,
             batter_subcount -> Int4,
+            errors_before -> Int4,
+            errors_after -> Int4,
             cheer -> Nullable<Text>,
         }
     }
@@ -89,9 +89,9 @@ pub mod data {
             home_team_name -> Text,
             home_team_mmolb_id -> Text,
             home_team_final_score -> Nullable<Int4>,
-            stadium_name -> Nullable<Text>,
             is_ongoing -> Bool,
             from_version -> Timestamp,
+            stadium_name -> Nullable<Text>,
         }
     }
 

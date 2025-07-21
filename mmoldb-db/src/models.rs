@@ -55,6 +55,7 @@ pub struct NewGame<'a> {
     pub home_team_mmolb_id: &'a str,
     pub home_team_final_score: Option<i32>,
     pub is_ongoing: bool,
+    pub stadium_name: Option<&'a str>,
     pub from_version: NaiveDateTime,
 }
 
@@ -76,6 +77,7 @@ pub struct DbGame {
     pub home_team_name: String,
     pub home_team_mmolb_id: String,
     pub is_ongoing: bool,
+    pub stadium_name: Option<String>,
     pub from_version: NaiveDateTime,
 }
 
@@ -102,6 +104,8 @@ pub struct NewEvent<'a> {
     pub strikes_before: i32,
     pub outs_before: i32,
     pub outs_after: i32,
+    pub errors_before: i32,
+    pub errors_after: i32,
     pub away_team_score_before: i32,
     pub away_team_score_after: i32,
     pub home_team_score_before: i32,
@@ -111,6 +115,9 @@ pub struct NewEvent<'a> {
     pub batter_name: &'a str,
     pub batter_count: i32,
     pub batter_subcount: i32,
+    // This is an owned string because it's generated at the last minute
+    // TODO Set up a foreign relationship for cheers like weather has
+    pub cheer: Option<String>,
 }
 #[derive(Queryable, Selectable, Identifiable)]
 #[diesel(table_name = crate::data_schema::data::events)]
@@ -140,11 +147,14 @@ pub struct DbEvent {
     pub home_team_score_after: i32,
     pub outs_before: i32,
     pub outs_after: i32,
+    pub errors_before: i32,
+    pub errors_after: i32,
     pub pitcher_name: String,
     pub pitcher_count: i32,
     pub batter_name: String,
     pub batter_count: i32,
     pub batter_subcount: i32,
+    pub cheer: Option<String>,
 }
 
 #[derive(Insertable)]
@@ -265,6 +275,8 @@ pub struct NewBaserunner<'a> {
     pub is_out: bool,
     pub base_description_format: Option<i64>,
     pub steal: bool,
+    pub source_event_index: Option<i32>,
+    pub is_earned: bool,
 }
 
 #[derive(Identifiable, Queryable, Selectable, Associations)]
@@ -280,6 +292,8 @@ pub struct DbRunner {
     pub is_out: bool,
     pub base_description_format: Option<i64>,
     pub steal: bool,
+    pub source_event_index: Option<i32>,
+    pub is_earned: bool,
 }
 
 #[derive(Insertable)]

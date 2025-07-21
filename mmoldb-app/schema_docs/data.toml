@@ -198,6 +198,16 @@ which will never finish, but they are not "ongoing".
 """
 
 [[table.column]]
+name = "stadium_name"
+type = "text"
+description = """
+The name of the stadium this game was played in, if any.
+"""
+nullable_explanation = """
+`null` for games from before stadiums were introduced in season 3.
+"""
+
+[[table.column]]
 name = "from_version"
 type = "timestamp without time zone"
 description = """
@@ -575,6 +585,22 @@ unambiguous, unlike `balls_after` or `strikes_after`.
 """
 
 [[table.column]]
+name = "errors_before"
+type = "integer"
+description = """
+The number of errors in the half-inning before this event. This is
+primarily useful for calculating earned runs.
+"""
+
+[[table.column]]
+name = "errors_after"
+type = "integer"
+description = """
+The number of errors in the half-inning after this event. This is
+primarily useful for calculating earned runs.
+"""
+
+[[table.column]]
 name = "away_team_score_before"
 type = "integer"
 description = """
@@ -710,6 +736,23 @@ there should only be one event with `ends_plate_appearance = true` for
 each `(game_id, top_of_inning, batter_count)` combination.
 """
 
+[[table.column]]
+name = "cheer"
+type = "text"
+description = """
+The crowd's cheer on this event, if any.
+
+Note: Cheers on fair balls are from the event referenced by
+fair_ball_event_index. Cheers on other event types are from the event
+referenced by game_event_index.
+
+WARNING: This column may be turned into a foreign key reference soon, similar
+to weather. Treat it as unstable.
+"""
+nullable_explanation = """
+`null` for events where the crowd did not cheer.
+"""
+
 [[table]]
 name = "event_baserunners"
 description = """
@@ -831,6 +874,28 @@ type = "boolean"
 description = """
 Whether this baserunner *attempted* to steal a base during this event.
 Reference `is_out` to tell whether the attempt was successful.
+"""
+
+[[table.column]]
+name = "source_event_index"
+type = "integer"
+description = """
+The index of the event that put this baserunner on base. Primarily
+useful for calculating earned runs.
+"""
+nullable_explanation = """
+`null` if this baserunner did not reach base as a result of a pitch.
+For example, automatic runners in extra innings don't have a
+source_event_index.
+"""
+
+[[table.column]]
+name = "is_earned"
+type = "boolean"
+description = """
+True if this runner scoring would count as an earned run for the
+pitcher referenced by source_event_index. If false, this runner's score
+will never count as an earned run.
 """
 
 [[table]]

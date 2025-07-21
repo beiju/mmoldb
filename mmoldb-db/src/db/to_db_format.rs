@@ -2,6 +2,7 @@ use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
 use crate::models::{DbEvent, DbFielder, DbRunner, NewBaserunner, NewEvent, NewFielder};
 use crate::taxa::Taxa;
 use miette::Diagnostic;
+use mmolb_parsing::parsed_event::Cheer;
 use thiserror::Error;
 
 pub fn event_to_row<'e>(
@@ -33,6 +34,8 @@ pub fn event_to_row<'e>(
         strikes_before: event.strikes_before as i32,
         outs_before: event.outs_before,
         outs_after: event.outs_after,
+        errors_before: event.errors_before,
+        errors_after: event.errors_after,
         away_team_score_before: event.away_team_score_before as i32,
         away_team_score_after: event.away_team_score_after as i32,
         home_team_score_before: event.home_team_score_before as i32,
@@ -42,6 +45,7 @@ pub fn event_to_row<'e>(
         batter_name: event.batter_name,
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
+        cheer: event.cheer.as_ref().map(|c| c.to_string()),
     }
 }
 
@@ -63,6 +67,8 @@ pub fn event_to_baserunners<'e>(
                 .base_description_format
                 .map(|f| taxa.base_description_format_id(f)),
             steal: runner.is_steal,
+            source_event_index: runner.source_event_index.map(|idx| idx as i32),
+            is_earned: runner.is_earned,
         })
         .collect()
 }
@@ -110,6 +116,8 @@ pub fn row_to_event<'e>(
                     .base_description_format
                     .map(|id| taxa.base_description_format_from_id(id)),
                 is_steal: r.steal,
+                source_event_index: r.source_event_index,
+                is_earned: r.is_earned,
             }
         })
         .collect();
@@ -134,6 +142,8 @@ pub fn row_to_event<'e>(
         strikes_before: event.strikes_before as u8,
         outs_before: event.outs_before,
         outs_after: event.outs_after,
+        errors_before: event.errors_before,
+        errors_after: event.errors_after,
         away_team_score_before: event.away_team_score_before as u8,
         away_team_score_after: event.away_team_score_after as u8,
         home_team_score_before: event.home_team_score_before as u8,
@@ -163,5 +173,6 @@ pub fn row_to_event<'e>(
         pitcher_count: event.pitcher_count,
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
+        cheer: event.cheer.as_deref().map(Cheer::new),
     })
 }

@@ -14,10 +14,7 @@ use mmolb_parsing::enums::{
     TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{
-    BaseSteal, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug,
-    ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher,
-};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
 use std::fmt::{Debug, Formatter};
@@ -78,6 +75,9 @@ pub enum SimEventError {
 
     #[error("Expected the automatic runner to be set by inning {inning_num}")]
     MissingAutomaticRunner { inning_num: u8 },
+
+    #[error("Event following bugged season 3 mound visit had no batter name ({0:?}).")]
+    UnknownBatterNameAfterSeason3BuggedMoundVisit(MaybePlayer<String>),
 }
 
 // A utility to more conveniently build a Vec<IngestLog>
@@ -155,40 +155,75 @@ struct Pitch {
     pitch_zone: u8,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct FairBall {
     game_event_index: usize,
     fair_ball_type: FairBallType,
     fair_ball_destination: FairBallDestination,
     pitch: Option<Pitch>,
+    cheer: Option<Cheer>,
 }
 
 #[derive(Debug, Copy, Clone)]
 enum ContextAfterMoundVisitOutcome<'g> {
     ExpectNowBatting,
-    ExpectPitch(&'g str),
+    ExpectPitch {
+        batter_name: &'g str,
+        first_pitch_of_plate_appearance: bool,
+    },
 }
 
-impl<'g> Into<EventContext<'g>> for ContextAfterMoundVisitOutcome<'g> {
-    fn into(self) -> EventContext<'g> {
+fn is_during_now_batting_bug_window(season: i64, day: Day, game_event_index: usize) -> bool {
+    // Only during s3
+    if season != 3 {
+        return false;
+    }
+
+    // Only on regular days
+    let Day::Day(day) = day else {
+        return false;
+    };
+
+    day < 5 || (day == 5 && game_event_index < 461)
+}
+
+impl<'g> ContextAfterMoundVisitOutcome<'g> {
+    pub fn to_event_context(self, season: i64, day: Day, game_event_index: usize) -> EventContext<'g> {
         match self {
-            ContextAfterMoundVisitOutcome::ExpectNowBatting => EventContext::ExpectNowBatting,
-            ContextAfterMoundVisitOutcome::ExpectPitch(batter_name) => {
-                EventContext::ExpectPitch(batter_name)
+            ContextAfterMoundVisitOutcome::ExpectNowBatting => if is_during_now_batting_bug_window(season, day, game_event_index) {
+                EventContext::ExpectMissingNowBattingBug
+            } else {
+                EventContext::ExpectNowBatting
+            },
+            ContextAfterMoundVisitOutcome::ExpectPitch {
+                batter_name,
+                first_pitch_of_plate_appearance,
+            } => {
+                EventContext::ExpectPitch {
+                    batter_name,
+                    first_pitch_of_plate_appearance,
+                }
             }
         }
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 enum EventContext<'g> {
     ExpectInningStart,
     ExpectNowBatting,
-    ExpectPitch(&'g str),
+    // From s3d1 to s3d5, the game didn't publish NowBatting events
+    // after pitcher swaps. We have to resolve those ourselves.
+    ExpectMissingNowBattingBug,
+    ExpectPitch {
+        batter_name: &'g str,
+        first_pitch_of_plate_appearance: bool,
+    },
     ExpectFairBallOutcome(&'g str, FairBall),
     ExpectFallingStarOutcome {
         falling_star_hit_player: &'g str,
         batter_name: &'g str,
+        first_pitch_of_plate_appearance: bool,
     },
     ExpectInningEnd,
     ExpectMoundVisitOutcome(ContextAfterMoundVisitOutcome<'g>),
@@ -241,6 +276,8 @@ pub struct TeamInGame<'g> {
 struct RunnerOn<'g> {
     runner_name: &'g str,
     base: TaxaBase,
+    source_event_index: Option<i32>,
+    is_earned: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -254,16 +291,28 @@ struct GameState<'g> {
     count_balls: u8,
     count_strikes: u8,
     outs: i32,
+    errors: i32,
     game_finished: bool,
     runners_on: VecDeque<RunnerOn<'g>>,
+}
+
+impl<'g> GameState<'g> {
+    fn runner_on_this_event_is_earned(&self, is_error: bool) -> bool {
+        // A runner is earned if:
+        // 1. They are not a ghost runner (irrelevant here), and
+        // 2. This event is not an error, and
+        // 3. This event is not after 3 events+errors
+        !is_error && (self.outs + self.errors < 3)
+    }
 }
 
 #[derive(Debug)]
 pub struct Game<'g> {
     // Does not change
-    game_id: &'g str,
-    season: i64,
-    day: Day,
+    pub game_id: &'g str,
+    pub season: i64,
+    pub day: Day,
+    pub stadium_name: Option<&'g str>,
 
     // Aggregates
     away: TeamInGame<'g>,
@@ -436,6 +485,7 @@ struct EventDetailBuilder<'g> {
     runner_added: Option<(&'g str, TaxaBase)>,
     runners_out: Vec<RunnerOut<&'g str>>,
     batter_scores: bool,
+    cheer: Option<Cheer>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
@@ -444,6 +494,7 @@ impl<'g> EventDetailBuilder<'g> {
         self.fair_ball_event_index = Some(fair_ball.game_event_index);
         self.fair_ball_type = Some(fair_ball.fair_ball_type.into());
         self.fair_ball_direction = Some(fair_ball.fair_ball_destination.into());
+        self = self.cheer(fair_ball.cheer);
         self
     }
 
@@ -620,6 +671,15 @@ impl<'g> EventDetailBuilder<'g> {
         self
     }
 
+    fn cheer(mut self, cheer: Option<Cheer>) -> Self {
+        self.cheer = cheer;
+        self
+    }
+
+    fn runner_on_this_event_is_earned(&self, is_error: bool) -> bool {
+        self.prev_game_state.runner_on_this_event_is_earned(is_error)
+    }
+
     pub fn build_some(
         self,
         game: &Game<'g>,
@@ -640,6 +700,9 @@ impl<'g> EventDetailBuilder<'g> {
         // player Retirement. See game 687464a0336fee7c9e05b0f6 event 70.
         batter_name: &'g str,
     ) -> EventDetail<&'g str> {
+        let is_error = type_detail.as_insertable().is_error;
+        let runner_on_this_event_is_earned = self.runner_on_this_event_is_earned(is_error);
+
         // Note: game.state.runners_on gets cleared if this event is an
         // inning-ending out. As of writing this comment the code below
         // doesn't use game.state.runners_on at all, but if it is used
@@ -665,6 +728,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: steal.caught,
                         base_description_format: None,
                         is_steal: true,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 } else if let Some(_scorer_name) = {
                     // Tapping into the if-else chain so I can do some
@@ -693,6 +758,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: false,
                         base_description_format: None,
                         is_steal: false,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 } else if let Some(advance) =
                     advances_ref.peeking_next(|a| is_matching_advance(&prev_runner, a))
@@ -705,6 +772,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: false,
                         base_description_format: None,
                         is_steal: false,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 } else if let Some(out) =
                     runners_out_ref.peeking_next(|o| is_matching_runner_out(&prev_runner, o))
@@ -717,6 +786,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: true,
                         base_description_format: Some(out.base.into()),
                         is_steal: false,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 } else {
                     // If the runner didn't score, advance, or get out they just stayed on base
@@ -727,6 +798,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: false,
                         base_description_format: None,
                         is_steal: false,
+                        source_event_index: prev_runner.source_event_index,
+                        is_earned: prev_runner.is_earned,
                     }
                 }
             })
@@ -741,6 +814,10 @@ impl<'g> EventDetailBuilder<'g> {
                         is_out: false,
                         base_description_format: None,
                         is_steal: false,
+                        // Since they made it to base this event, their source event
+                        // index is this event's index
+                        source_event_index: Some(self.game_event_index as i32),
+                        is_earned: runner_on_this_event_is_earned,
                     }),
             )
             .collect();
@@ -768,6 +845,8 @@ impl<'g> EventDetailBuilder<'g> {
                     is_out: true,
                     base_description_format: Some(out.base.into()),
                     is_steal: false,
+                    source_event_index: Some(self.game_event_index as i32),
+                    is_earned: runner_on_this_event_is_earned,
                 }
             }),
         );
@@ -790,6 +869,8 @@ impl<'g> EventDetailBuilder<'g> {
                     is_out: false,
                     base_description_format: None,
                     is_steal: false,
+                    source_event_index: Some(self.game_event_index as i32),
+                    is_earned: runner_on_this_event_is_earned,
                 }
             }),
         );
@@ -803,6 +884,8 @@ impl<'g> EventDetailBuilder<'g> {
                 is_out: false,
                 base_description_format: None,
                 is_steal: false,
+                source_event_index: Some(self.game_event_index as i32),
+                is_earned: runner_on_this_event_is_earned,
             })
         }
 
@@ -836,6 +919,8 @@ impl<'g> EventDetailBuilder<'g> {
             strikes_before: self.prev_game_state.count_strikes,
             outs_before: self.prev_game_state.outs,
             outs_after: game.state.outs,
+            errors_before: self.prev_game_state.errors,
+            errors_after: game.state.errors,
             away_team_score_before: self.prev_game_state.away_score,
             away_team_score_after: game.state.away_score,
             home_team_score_before: self.prev_game_state.home_score,
@@ -862,6 +947,7 @@ impl<'g> EventDetailBuilder<'g> {
             pitcher_count: game.defending_team().pitcher_count,
             batter_count: game.batting_team().batter_count,
             batter_subcount: game.batting_team().batter_subcount,
+            cheer: self.cheer,
         }
     }
 }
@@ -900,19 +986,20 @@ impl<'g> Game<'g> {
         let mut events = ParsedEventMessageIter::new(events);
         let mut ingest_logs = Vec::new();
 
-        // TODO Double check correctness of game_event_index
         let mut game_event_index = 0;
-        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji) = extract_next_game_event!(
+        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji, stadium_name) = extract_next_game_event!(
             events,
             [ParsedEventMessageDiscriminants::LiveNow]
             ParsedEventMessage::LiveNow {
                 away_team,
                 home_team,
+                stadium,
             } => (
                 away_team.name,
                 away_team.emoji,
                 home_team.name,
                 home_team.emoji,
+                stadium,
             )
         )?;
 
@@ -924,6 +1011,21 @@ impl<'g> Game<'g> {
             logs.debug(format!(
                 "Set away team to name: \"{away_team_name}\", emoji: \"{away_team_emoji}\""
             ));
+
+            if let Some(stadium_name) = stadium_name {
+                if game_data.season < 3 {
+                    logs.warn(format!("Pre-s3 game was played in a stadium: {stadium_name}"));
+                } else {
+                    logs.debug(format!("Set stadium name to {stadium_name}"));
+                }
+            } else {
+                if game_data.season < 3 {
+                    logs.debug("Pre-s3 game was not played in a stadium");
+                } else {
+                    logs.warn("Post-s3 game was not played in a stadium");
+                }
+            }
+
             logs.into_vec()
         });
 
@@ -1042,6 +1144,7 @@ impl<'g> Game<'g> {
                     });
                 }
             },
+            stadium_name: *stadium_name,
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
@@ -1086,6 +1189,7 @@ impl<'g> Game<'g> {
                 count_balls: 0,
                 count_strikes: 0,
                 outs: 0,
+                errors: 0,
                 game_finished: false,
                 runners_on: Default::default(),
             },
@@ -1271,6 +1375,7 @@ impl<'g> Game<'g> {
             runner_added: None,
             runners_out: Vec::new(),
             batter_scores: false,
+            cheer: None,
         }
     }
 
@@ -1325,6 +1430,14 @@ impl<'g> Game<'g> {
 
     pub fn add_out(&mut self) {
         self.add_outs(1)
+    }
+
+    pub fn add_errors(&mut self, num_errors: i32) {
+        self.state.errors += num_errors;
+    }
+
+    pub fn add_error(&mut self) {
+        self.add_errors(1)
     }
 
     fn add_runs_to_batting_team(&mut self, runs: u8) {
@@ -1417,7 +1530,13 @@ impl<'g> Game<'g> {
         }
     }
 
-    fn update_runners(&mut self, updates: RunnerUpdate<'g, '_>, ingest_logs: &mut IngestLogs) {
+    fn update_runners(
+        &mut self,
+        game_event_index: usize,
+        is_error: bool,
+        updates: RunnerUpdate<'g, '_>,
+        ingest_logs: &mut IngestLogs,
+    ) {
         // For borrow checker reasons, we can't add runs as we go.
         // Instead, accumulate them here and add them at the end.
         let mut runs_to_add = 0;
@@ -1614,6 +1733,8 @@ impl<'g> Game<'g> {
                 self.state.runners_on.push_back(RunnerOn {
                     runner_name: new_runner.runner,
                     base: new_runner.base.into(),
+                    source_event_index: Some(game_event_index as i32),
+                    is_earned: self.state.runner_on_this_event_is_earned(is_error),
                 });
             }
         }
@@ -1688,7 +1809,12 @@ impl<'g> Game<'g> {
 
                 self.state
                     .runners_on
-                    .push_back(RunnerOn { runner_name, base });
+                    .push_back(RunnerOn {
+                        runner_name,
+                        base,
+                        source_event_index: Some(game_event_index as i32),
+                        is_earned: self.state.runner_on_this_event_is_earned(is_error),
+                    });
             }
         }
 
@@ -1698,10 +1824,14 @@ impl<'g> Game<'g> {
 
     fn update_runners_steals_only(
         &mut self,
+        game_event_index: usize,
+        is_error: bool,
         steals: &[BaseSteal<&'g str>],
         ingest_logs: &mut IngestLogs,
     ) {
         self.update_runners(
+            game_event_index,
+            is_error,
             RunnerUpdate {
                 steals,
                 ..Default::default()
@@ -1749,9 +1879,12 @@ impl<'g> Game<'g> {
         let previous_event = self.state.prev_event_type;
         let this_event_discriminant = event.discriminant();
 
+        self.handle_season_3_missing_now_batting_after_mound_visit(raw_event, ingest_logs)?;
+        self.handle_season_3_duplicate_now_batting(event, ingest_logs)?;
+
         let detail_builder = self.detail_builder(self.state.clone(), game_event_index, raw_event);
 
-        let result = match self.state.context {
+        let result = match self.state.context.clone() {
             EventContext::ExpectInningStart => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::InningStart]
@@ -1854,10 +1987,13 @@ impl<'g> Game<'g> {
                         self.state.runners_on.push_back(RunnerOn {
                             runner_name,
                             base: TaxaBase::Second, // Automatic runners are always placed on second
+                            source_event_index: None, // Automatic runners have no source
+                            is_earned: false, // Automatic runners are never earned
                         })
                     }
 
                     self.state.outs = 0;
+                    self.state.errors = 0;
                     self.state.context = EventContext::ExpectNowBatting;
                     None
                 },
@@ -1866,7 +2002,13 @@ impl<'g> Game<'g> {
                     self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectNowBatting)
                 },
             ),
-            EventContext::ExpectPitch(batter_name) => {
+            EventContext::ExpectPitch { batter_name, first_pitch_of_plate_appearance } => {
+                // After this pitch it will no longer be the first pitch of the PA
+                self.state.context = EventContext::ExpectPitch {
+                    batter_name,
+                    first_pitch_of_plate_appearance: false,
+                };
+
                 let pitch = raw_event.pitch.as_ref().and_then(|p| {
                     Some(Pitch {
                         pitch_speed: p.speed,
@@ -1886,28 +2028,35 @@ impl<'g> Game<'g> {
                 game_event!(
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
-                    ParsedEventMessage::Ball { count, steals } => {
+                    ParsedEventMessage::Ball { count, steals, cheer } => {
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
-                        self.update_runners(RunnerUpdate {
-                            steals,
-                            ..Default::default()
-                        }, ingest_logs);
+                        self.update_runners(
+                            game_event_index,
+                            false,
+                                RunnerUpdate {
+                                steals,
+                                ..Default::default()
+                            },
+                            ingest_logs,
+                        );
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer } => {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
-                        self.update_runners_steals_only(steals, ingest_logs);
+                        self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
@@ -1915,7 +2064,7 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::StrikeOut]
-                    ParsedEventMessage::StrikeOut { foul, batter, strike, steals } => {
+                    ParsedEventMessage::StrikeOut { foul, batter, strike, steals, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
                         if self.state.count_strikes < 2 {
                             ingest_logs.warn(format!(
@@ -1925,7 +2074,7 @@ impl<'g> Game<'g> {
                             ));
                         }
 
-                        self.update_runners_steals_only(steals, ingest_logs);
+                        self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
                         self.add_out();
                         self.finish_pa(batter);
 
@@ -1948,21 +2097,23 @@ impl<'g> Game<'g> {
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .steals(steals.clone())
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
-                    ParsedEventMessage::Foul { foul, steals, count } => {
+                    ParsedEventMessage::Foul { foul, steals, count, cheer } => {
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
                             self.state.count_strikes += 1;
                         }
                         self.check_count(*count, ingest_logs);
 
-                        self.update_runners_steals_only(steals, ingest_logs);
+                        self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match foul {
                                 FoulType::Tip => TaxaEventType::FoulTip,
@@ -1970,56 +2121,75 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
-                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination } => {
+                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
                             game_event_index,
                             fair_ball_type: *fair_ball_type,
                             fair_ball_destination: *destination,
-                            pitch
+                            pitch,
+                            cheer: cheer.clone(),
                         });
                         None
                     },
                     [ParsedEventMessageDiscriminants::Walk]
-                    ParsedEventMessage::Walk { batter, advances, scores } => {
+                    ParsedEventMessage::Walk { batter, advances, scores, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            runner_added: Some((batter, TaxaBase::First)),
-                            ..Default::default()
-                        }, ingest_logs);
+                        self.update_runners(
+                            game_event_index,
+                            false,
+                            RunnerUpdate {
+                                scores,
+                                advances,
+                                runner_added: Some((batter, TaxaBase::First)),
+                                ..Default::default()
+                            },
+                            ingest_logs,
+                        );
                         self.finish_pa(batter);
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .build_some(self, batter, ingest_logs, TaxaEventType::Walk)
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]
-                    ParsedEventMessage::HitByPitch { batter, advances, scores } => {
+                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            runner_added: Some((batter, TaxaBase::First)),
-                            ..Default::default()
-                        }, ingest_logs);
+                        self.update_runners(
+                            game_event_index,
+                            false,
+                            RunnerUpdate {
+                                scores,
+                                advances,
+                                runner_added: Some((batter, TaxaBase::First)),
+                                ..Default::default()
+                            },
+                            ingest_logs,
+                        );
                         self.finish_pa(batter);
 
                         detail_builder
                             .pitch(pitch)
+                            .cheer(cheer.clone())
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)
                     },
                     [ParsedEventMessageDiscriminants::MoundVisit]
                     ParsedEventMessage::MoundVisit { team, mound_visit_type: _ } => {
-                        self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectPitch(batter_name))
+                        self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectPitch {
+                            batter_name,
+                            // Mound visit isn't a pitch, so if we're currently expecting
+                            // the first pitch, after the mound visit we will still
+                            // expect the first pitch.
+                            first_pitch_of_plate_appearance,
+                        })
                     },
                     [ParsedEventMessageDiscriminants::Balk]
                     ParsedEventMessage::Balk { advances, pitcher, scores } => {
@@ -2028,11 +2198,16 @@ impl<'g> Game<'g> {
                         // A balk has perfectly predictable effects on the runners, but
                         // MMOLB tells us exactly what they were so I don't need to
                         // implement the logic
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            ..Default::default()
-                        }, ingest_logs);
+                        self.update_runners(
+                            game_event_index,
+                            false,
+                            RunnerUpdate {
+                                scores,
+                                advances,
+                                ..Default::default()
+                            },
+                            ingest_logs,
+                        );
 
                         detail_builder
                             .pitch(pitch)
@@ -2044,10 +2219,17 @@ impl<'g> Game<'g> {
                         self.state.context = EventContext::ExpectFallingStarOutcome {
                             falling_star_hit_player: player_name,
                             batter_name,
+                            first_pitch_of_plate_appearance,
                         };
                         None
                     }
                 )
+            }
+            EventContext::ExpectMissingNowBattingBug => {
+                panic!(
+                    "ExpectMissingNowBattingBug event context must be resolved before processing \
+                    the event.",
+                );
             }
             EventContext::ExpectNowBatting => game_event!(
                 (previous_event, event),
@@ -2075,7 +2257,10 @@ impl<'g> Game<'g> {
 
                     check_now_batting_stats(&stats, self.batter_stats_mut(batter), ingest_logs);
 
-                    self.state.context = EventContext::ExpectPitch(batter);
+                    self.state.context = EventContext::ExpectPitch {
+                        batter_name: batter,
+                        first_pitch_of_plate_appearance: true,
+                    };
                     None
                 },
                 [ParsedEventMessageDiscriminants::MoundVisit]
@@ -2090,11 +2275,16 @@ impl<'g> Game<'g> {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.add_out();
                     self.finish_pa(batter_name);
 
@@ -2110,11 +2300,16 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, perfect } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.add_out();
                     self.finish_pa(batter_name);
 
@@ -2130,12 +2325,18 @@ impl<'g> Game<'g> {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runner_added: Some((batter, (*distance).into())),
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runner_added: Some((batter, (*distance).into())),
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
+
                     self.finish_pa(batter_name);
 
                     detail_builder
@@ -2150,12 +2351,18 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::ReachOnFieldingError { batter, fielder, error, scores, advances } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runner_added: Some((batter, TaxaBase::First)),
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        true,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runner_added: Some((batter, TaxaBase::First)),
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
+                    self.add_error();
                     self.finish_pa(batter_name);
 
                     detail_builder
@@ -2184,10 +2391,15 @@ impl<'g> Game<'g> {
                     // This is the one situation where you can have
                     // scores but no advances, because after everyone
                     // scores there's no one left to advance
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     // Also the only situation where you have a score
                     // without an existing runner
                     self.add_runs_to_batting_team(1);
@@ -2205,12 +2417,17 @@ impl<'g> Game<'g> {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runners_out: &[*out_two],
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runners_out: &[*out_two],
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.add_out(); // This is the out for the batter
                     self.finish_pa(batter_name);  // Must be after all outs are added
 
@@ -2225,14 +2442,19 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::DoublePlayGrounded { batter, advances, scores, out_one, out_two, fielders, sacrifice } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runners_out: &[*out_one, *out_two],
-                        runners_out_may_include_batter: Some(batter),
-                        runner_advances_may_include_batter: Some(batter),
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runners_out: &[*out_one, *out_two],
+                            runners_out_may_include_batter: Some(batter),
+                            runner_advances_may_include_batter: Some(batter),
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.finish_pa(batter_name);
 
                     detail_builder
@@ -2249,15 +2471,20 @@ impl<'g> Game<'g> {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
-                    self.update_runners(RunnerUpdate {
-                        scores,
-                        advances,
-                        runners_out: &[*out],
-                        runner_added: Some((batter, TaxaBase::First)),
-                        runner_added_forces_advances: true,
-                        runner_advances_may_include_batter: Some(batter),
-                        ..Default::default()
-                    }, ingest_logs);
+                    self.update_runners(
+                        game_event_index,
+                        false,
+                        RunnerUpdate {
+                            scores,
+                            advances,
+                            runners_out: &[*out],
+                            runner_added: Some((batter, TaxaBase::First)),
+                            runner_added_forces_advances: true,
+                            runner_advances_may_include_batter: Some(batter),
+                            ..Default::default()
+                        },
+                        ingest_logs,
+                    );
                     self.finish_pa(batter_name);
 
                     let detail_builder = detail_builder
@@ -2283,29 +2510,24 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::ReachOnFieldersChoice { batter, fielders, result, scores, advances } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
-                    if let FieldingAttempt::Out { out } = result {
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            runners_out: &[*out],
-                            runner_added: Some((batter, TaxaBase::First)),
-                            runner_added_forces_advances: true,
-                            ..Default::default()
-                        }, ingest_logs)
-                    } else {
-                        self.update_runners(RunnerUpdate {
-                            scores,
-                            advances,
-                            runner_added: Some((batter, TaxaBase::First)),
-                            runner_added_forces_advances: true,
-                            ..Default::default()
-                        }, ingest_logs)
-                    };
-
-                    self.finish_pa(batter_name);
-
                     match result {
                         FieldingAttempt::Out { out } => {
+                            self.update_runners(
+                                game_event_index,
+                                false,
+                                RunnerUpdate {
+                                    scores,
+                                    advances,
+                                    runners_out: &[*out],
+                                    runner_added: Some((batter, TaxaBase::First)),
+                                    runner_added_forces_advances: true,
+                                    ..Default::default()
+                                },
+                                ingest_logs,
+                            );
+
+                            self.finish_pa(batter_name);
+
                             detail_builder
                                 .fair_ball(fair_ball)
                                 .runner_changes(advances.clone(), scores.clone())
@@ -2315,6 +2537,22 @@ impl<'g> Game<'g> {
                                 .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
                         }
                         FieldingAttempt::Error { fielder, error } => {
+                            self.update_runners(
+                                game_event_index,
+                                true,
+                                RunnerUpdate {
+                                    scores,
+                                    advances,
+                                    runner_added: Some((batter, TaxaBase::First)),
+                                    runner_added_forces_advances: true,
+                                    ..Default::default()
+                                },
+                                ingest_logs,
+                            );
+
+                            self.add_error();
+                            self.finish_pa(batter_name);
+
                             if let Some((listed_fielder,)) = fielders.iter().collect_tuple() {
                                 if listed_fielder.name != *fielder {
                                     ingest_logs.warn(format!("Fielder who made the error ({}) is not the one listed as fielding the ball ({})", fielder, listed_fielder.name));
@@ -2356,6 +2594,8 @@ impl<'g> Game<'g> {
                             self.state.runners_on.push_back(RunnerOn {
                                 runner_name: batter,
                                 base: TaxaBase::First,
+                                source_event_index: Some(game_event_index as i32),
+                                is_earned: self.state.runner_on_this_event_is_earned(false),
                             });
                             self.finish_pa(batter_name);
 
@@ -2376,6 +2616,7 @@ impl<'g> Game<'g> {
             EventContext::ExpectFallingStarOutcome {
                 falling_star_hit_player,
                 batter_name,
+                first_pitch_of_plate_appearance,
             } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::FallingStarOutcome]
@@ -2413,7 +2654,10 @@ impl<'g> Game<'g> {
                         }
                     }
 
-                    self.state.context = EventContext::ExpectPitch(self.batter_after_retirement(batter_name, player_name, outcome, ingest_logs));
+                    self.state.context = EventContext::ExpectPitch {
+                        batter_name: self.batter_after_retirement(batter_name, player_name, outcome, ingest_logs),
+                        first_pitch_of_plate_appearance,
+                    };
 
                     None
                 },
@@ -2491,19 +2735,19 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::PitcherRemains]
                 ParsedEventMessage::PitcherRemains { remaining_pitcher } => {
                     ingest_logs.info(format!("Not incrementing pitcher_count on remaining pitcher {remaining_pitcher}"));
-                    self.state.context = context_after.into();
+                    self.state.context = context_after.to_event_context(self.season, self.day, game_event_index);
                     None
                 },
                 [ParsedEventMessageDiscriminants::PitcherSwap]
-                ParsedEventMessage::PitcherSwap { leaving_pitcher, arriving_pitcher_name, arriving_pitcher_place } => {
-                    ingest_logs.debug(format!("Arriving pitcher {arriving_pitcher_name} with place {arriving_pitcher_place:?}"));
+                ParsedEventMessage::PitcherSwap { leaving_pitcher, leaving_pitcher_emoji, arriving_pitcher_name, arriving_pitcher_emoji, arriving_pitcher_place } => {
+                    ingest_logs.debug(format!("Arriving pitcher {arriving_pitcher_emoji:?} {arriving_pitcher_name} with place {arriving_pitcher_place:?}"));
                     self.defending_team_mut().active_pitcher = BestEffortSlottedPlayer {
                         name: *arriving_pitcher_name,
                         slot: arriving_pitcher_place.map_or(BestEffortSlot::GenericPitcher, Into::into),
                     };
                     self.defending_team_mut().pitcher_count += 1;
-                    ingest_logs.info(format!("Incrementing pitcher_count as {leaving_pitcher} is replaced by {arriving_pitcher_name}."));
-                    self.state.context = context_after.into();
+                    ingest_logs.info(format!("Incrementing pitcher_count as {leaving_pitcher_emoji:?} {leaving_pitcher} is replaced by {arriving_pitcher_name}."));
+                    self.state.context = context_after.to_event_context(self.season, self.day, game_event_index);
                     None
                 },
             ),
@@ -2602,6 +2846,11 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::WeatherSpecialDelivery { .. } => {
                     // TODO Don't ignore weather shipment
                     None
+                },
+                [ParsedEventMessageDiscriminants::WeatherProsperity]
+                ParsedEventMessage::WeatherProsperity { .. } => {
+                    // TODO Don't ignore prosperity weather
+                    None
                 }
             ),
             EventContext::Finished => game_event!((previous_event, event)),
@@ -2626,6 +2875,75 @@ impl<'g> Game<'g> {
         }
 
         Ok(result)
+    }
+
+    fn handle_season_3_missing_now_batting_after_mound_visit(&mut self, raw_event: &'g mmolb_parsing::game::Event, ingest_logs: &mut IngestLogs) -> Result<(), SimEventError> {
+        // Handle a Season 3 bug where NowBatting events weren't sent
+        // after a mound visit
+        if let EventContext::ExpectMissingNowBattingBug = self.state.context {
+            match &raw_event.event {
+                Ok(mmolb_parsing::enums::EventType::Pitch) => {},
+                other => {
+                    ingest_logs.error(format!(
+                        "Expected a Pitch after bugged season 3 mound visit, but saw {other:?}",
+                    ));
+
+                }
+            }
+
+            if let MaybePlayer::Player(name) = &raw_event.batter {
+                ingest_logs.info(format!(
+                    "Inferred missing NowBatting event after a mound visit in season 3. \
+                    Inferred batter name is {name}",
+                ));
+                self.state.context = EventContext::ExpectPitch {
+                    batter_name: name,
+                    first_pitch_of_plate_appearance: true,
+                }
+            } else {
+                Err(SimEventError::UnknownBatterNameAfterSeason3BuggedMoundVisit(raw_event.batter.to_owned()))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_season_3_duplicate_now_batting(
+        &mut self,
+        event: &ParsedEventMessage<&'g str>,
+        ingest_logs: &mut IngestLogs,
+    ) -> Result<(), SimEventError> {
+        // Only fix this in the expect-pitch context
+        let EventContext::ExpectPitch { batter_name, first_pitch_of_plate_appearance } = self.state.context else {
+            return Ok(());
+        };
+
+        // Only fix this if we're still expecting the first pitch of the PA
+        if !first_pitch_of_plate_appearance {
+            return Ok(());
+        }
+
+        // Only fix this if the incoming event is a NowBatting
+        let ParsedEventMessage::NowBatting { batter, .. } = event else {
+            return Ok(());
+        };
+
+        // Warn if this happens on a different day
+        if !(self.season == 3 && self.day == Day::Day(5)) {
+            ingest_logs.warn("Saw a duplicate NowBatting event outside the expected day (s3d5)");
+        }
+
+        if *batter == batter_name {
+            ingest_logs.info(format!("Ignoring duplicate NowBatting for {batter}"));
+
+            // Reset the context to expecting the NowBatting event again.
+            self.state.context = EventContext::ExpectNowBatting;
+        } else {
+            ingest_logs.error(format!(
+                "Duplicate NowBatting did not match: Expected {batter_name} but saw {batter}",
+            ));
+        }
+
+        Ok(())
     }
 
     fn batter_after_retirement(

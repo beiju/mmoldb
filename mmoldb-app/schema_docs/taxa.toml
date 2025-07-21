@@ -67,6 +67,14 @@ statistics?
 """
 
 [[table.column]]
+name = "is_error"
+type = "boolean"
+description = """
+Does an event of this type count as an error, for the purposes of both
+batter and pitcher statistics?
+"""
+
+[[table.column]]
 name = "is_ball"
 type = "boolean"
 description = """

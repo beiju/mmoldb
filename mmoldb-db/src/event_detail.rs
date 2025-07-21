@@ -2,7 +2,7 @@ use std::fmt::Formatter;
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType};
-use mmolb_parsing::parsed_event::{BaseSteal, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut};
 use mmolb_parsing::ParsedEventMessage;
 use thiserror::Error;
 use crate::taxa::{AsInsertable, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot};
@@ -15,6 +15,8 @@ pub struct EventDetailRunner<StrT: Clone> {
     pub is_out: bool,
     pub base_description_format: Option<TaxaBaseDescriptionFormat>,
     pub is_steal: bool,
+    pub source_event_index: Option<i32>,
+    pub is_earned: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +35,8 @@ pub struct EventDetail<StrT: Clone> {
     pub strikes_before: u8,
     pub outs_before: i32,
     pub outs_after: i32,
+    pub errors_before: i32,
+    pub errors_after: i32,
     pub away_team_score_before: u8,
     pub away_team_score_after: u8,
     pub home_team_score_before: u8,
@@ -56,6 +60,7 @@ pub struct EventDetail<StrT: Clone> {
     pub pitcher_count: i32,
     pub batter_count: i32,
     pub batter_subcount: i32,
+    pub cheer: Option<Cheer>,
 }
 
 #[derive(Debug)]
@@ -359,44 +364,52 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             TaxaEventType::Ball => ParsedEventMessage::Ball {
                 steals: self.steals(),
                 count: self.count(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,
                 steals: self.steals(),
                 count: self.count(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
                 batter: self.batter_name.as_ref(),
                 strike: StrikeType::Looking,
                 steals: self.steals(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::SwingingStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Swinging,
                 steals: self.steals(),
                 count: self.count(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
                 batter: self.batter_name.as_ref(),
                 strike: StrikeType::Swinging,
                 steals: self.steals(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::FoulTip => ParsedEventMessage::Foul {
                 foul: FoulType::Tip,
                 steals: self.steals(),
                 count: self.count(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
                 foul: Some(FoulType::Tip),
                 batter: self.batter_name.as_ref(),
                 strike: StrikeType::Swinging,
                 steals: self.steals(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::FoulBall => ParsedEventMessage::Foul {
                 foul: FoulType::Ball,
                 steals: self.steals(),
                 count: self.count(),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
@@ -497,6 +510,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 batter: self.batter_name.as_ref(),
                 scores: self.scores(),
                 advances: self.advances(false),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::HomeRun => {
                 let mut scores = self.scores();
@@ -543,6 +557,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 batter: self.batter_name.as_ref(),
                 scores: self.scores(),
                 advances: self.advances(false),
+                cheer: self.cheer.clone(),
             },
             TaxaEventType::DoublePlay => {
                 let scores = self.scores();
@@ -670,6 +685,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             batter: self.batter_name.as_ref(),
             fair_ball_type: mandatory_fair_ball_type()?,
             destination: mandatory_fair_ball_direction()?,
+            cheer: self.cheer.clone(),
         })
     }
 }
