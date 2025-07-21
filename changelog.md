@@ -1,12 +1,17 @@
 Changelog
 =========
 
-Upcoming
---------
+2025-07-20
+----------
 
 - Fix pagination on games-with-issues page
 - Fix some incorrect metadata on taxa.event_type (thanks to Bagyilisk in the 
   MMOLB discord for pointing them out)
+- Replace ingest. This shouldn't change anything for users of the public 
+  database. The instructions for local copies will be wrong for the time being 
+  though.
+- Update mmolb-parsing to fix some ingest issues. Thanks as always to 
+  WoofyJack.
 
 2025-07-18
 ----------
