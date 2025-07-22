@@ -1,4 +1,3 @@
-use crate::ingest::ingest_page_of_games;
 use chron::{Chron, ChronEntity};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
@@ -13,37 +12,31 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
-const RAW_GAME_INSERT_BATCH_SIZE: usize = 1000;
-const PROCESS_GAME_BATCH_SIZE: usize = 1000;
+const RAW_PLAYER_INSERT_BATCH_SIZE: usize = 1000;
+const PROCESS_PLAYER_BATCH_SIZE: usize = 1000;
 
-pub async fn ingest_games(
+pub async fn ingest_players(
     pg_url: String,
     ingest_id: i64,
     abort: CancellationToken,
 ) -> miette::Result<()> {
     let mut conn = PgConnection::establish(&pg_url).into_diagnostic()?;
     let notify = Arc::new(Notify::new());
-    // Finish tells the task "once there are no more games to process, exit", while
-    // abort tells the task "exit immediately, even if there are more games to process"
+    // Finish tells the task "once there are no more players to process, exit", while
+    // abort tells the task "exit immediately, even if there are more players to process"
     let finish = CancellationToken::new();
     let ingest_cursor = Arc::new(Mutex::new(
-        db::get_game_ingest_start_cursor(&mut conn)
+        db::get_player_ingest_cursor(&mut conn)
             .into_diagnostic()?
             .map(|(dt, id)| (dt.and_utc(), id)),
     ));
     // dupe_tracker is only for debugging
     let dupe_tracker = Arc::new(Mutex::new(HashMap::new()));
 
-    // let num_workers = std::thread::available_parallelism()
-    //     .map(|n| n.get())
-    //     .unwrap_or_else(|err| {
-    //         warn!("Couldn't get available cores: {}. Falling back to 1.", err);
-    //         1
-    //     });
     let num_workers = 4;
     debug!("Ingesting with {} workers", num_workers);
 
-    let process_games_handles = (1..=num_workers)
+    let process_players_handles = (1..=num_workers)
         .map(|n| {
             let pg_url = pg_url.clone();
             let notify = notify.clone();
@@ -55,7 +48,7 @@ pub async fn ingest_games(
             tokio::task::Builder::new()
                 .name(format!("Ingest worker {n}").leak())
                 .spawn_blocking(move || {
-                    process_games(
+                    process_players(
                         &pg_url,
                         ingest_id,
                         ingest_cursor,
@@ -71,45 +64,45 @@ pub async fn ingest_games(
         })
         .collect_vec();
 
-    info!("Launched process games task");
-    info!("Beginning raw game ingest");
+    info!("Launched process players task");
+    info!("Beginning raw player ingest");
 
     let ingest_conn = PgConnection::establish(&pg_url).into_diagnostic()?;
 
     tokio::select! {
-        result = ingest_raw_games(ingest_conn, notify) => {
+        result = ingest_raw_players(ingest_conn, notify) => {
             result?;
-            // Tell process games workers to stop waiting and exit
+            // Tell process players workers to stop waiting and exit
             finish.cancel();
 
-            info!("Raw game ingest finished. Waiting for process games task.");
+            info!("Raw player ingest finished. Waiting for process players task.");
         }
         _ = abort.cancelled() => {
             // No need to set any signals because abort was already set by the caller
-            info!("Raw game ingest aborted. Waiting for process games task.");
+            info!("Raw player ingest aborted. Waiting for process players task.");
         }
     };
 
-    for process_games_handle in process_games_handles {
-        process_games_handle.await.into_diagnostic()??;
+    for process_players_handle in process_players_handles {
+        process_players_handle.await.into_diagnostic()??;
     }
 
     Ok(())
 }
 
-async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
-    let start_date = db::get_latest_entity_valid_from(&mut conn, "game")
+async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
+    let start_date = db::get_latest_version_valid_from(&mut conn, "player")
         .into_diagnostic()?
         .as_ref()
         .map(NaiveDateTime::and_utc);
 
-    info!("Fetch will start from {:?}", start_date);
+    info!("Players fetch will start from {:?}", start_date);
 
     let chron = Chron::new(CHRON_FETCH_PAGE_SIZE);
 
     let stream = chron
-        .entities("game", start_date)
-        .try_chunks(RAW_GAME_INSERT_BATCH_SIZE);
+        .entities("player", start_date)
+        .try_chunks(RAW_PLAYER_INSERT_BATCH_SIZE);
     pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
@@ -117,9 +110,9 @@ async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette
             Ok(chunk) => (chunk, None),
             Err(err) => (err.0, Some(err.1)),
         };
-        info!("Saving {} games", chunk.len());
-        let inserted = db::insert_entities(&mut conn, chunk).into_diagnostic()?;
-        info!("Saved {} games", inserted);
+        info!("Saving {} players", chunk.len());
+        let inserted = db::insert_versions(&mut conn, chunk).into_diagnostic()?;
+        info!("Saved {} players", inserted);
 
         notify.notify_one();
 
@@ -131,7 +124,7 @@ async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette
     Ok(())
 }
 
-fn process_games(
+fn process_players(
     url: &str,
     ingest_id: i64,
     ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
@@ -142,7 +135,7 @@ fn process_games(
     handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
-    let result = process_games_internal(
+    let result = process_players_internal(
         url,
         ingest_id,
         ingest_cursor,
@@ -154,12 +147,12 @@ fn process_games(
         worker_id,
     );
     if let Err(err) = &result {
-        error!("Error in process games: {}. ", err);
+        error!("Error in process players: {}. ", err);
     }
     result
 }
 
-fn process_games_internal(
+fn process_players_internal(
     url: &str,
     ingest_id: i64,
     ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
@@ -174,13 +167,13 @@ fn process_games_internal(
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
     // Permit ourselves to start processing right away, in case there
-    // are unprocessed games left over from a previous ingest. This
+    // are unprocessed players left over from a previous ingest. This
     // will happen after every derived data reset.
     notify.notify_one();
 
     let mut page_index = 0;
     while {
-        debug!("Process games task worker {worker_id} is waiting to be woken up");
+        debug!("Process players task worker {worker_id} is waiting to be woken up");
         handle.block_on(async {
             tokio::select! {
                 biased; // We always want to respond to abort, notify, and finish in that order
@@ -190,23 +183,25 @@ fn process_games_internal(
             }
         })
     } {
-        debug!("Process games task worker {worker_id} is woken up");
+        debug!("Process players task worker {worker_id} is woken up");
 
-        // The inner loop is over batches of games to process
+        // The inner loop is over batches of players to process
         while !abort.is_cancelled() {
             debug!("Starting ingest loop on worker {worker_id}");
             let get_batch_to_process_start = Utc::now();
             let this_cursor = {
                 let mut ingest_cursor = ingest_cursor.lock().unwrap();
                 let this_cursor = ingest_cursor.clone();
-                debug!("Worker {worker_id} getting games after {:?}", ingest_cursor);
-                let next_cursor = db::advance_entity_cursor(
+                debug!(
+                    "Worker {worker_id} getting players after {:?}",
+                    ingest_cursor
+                );
+                let next_cursor = db::get_next_version_cursor(
                     &mut conn,
-                    "game",
+                    PROCESS_PLAYER_BATCH_SIZE,
                     ingest_cursor
                         .as_ref()
                         .map(|(d, i)| (d.naive_utc(), i.as_str())),
-                    PROCESS_GAME_BATCH_SIZE,
                 )
                 .into_diagnostic()?
                 .map(|(dt, id)| (dt.and_utc(), id));
@@ -215,7 +210,7 @@ fn process_games_internal(
                     debug!("Worker {worker_id} set cursor to {:?}", ingest_cursor);
                 } else {
                     debug!(
-                        "All games have been processed. Worker {} waiting to be woken up again.",
+                        "All players have been processed. Worker {} waiting to be woken up again.",
                         worker_id,
                     );
                     break;
@@ -224,9 +219,9 @@ fn process_games_internal(
                 this_cursor
             };
 
-            let raw_games = db::get_batch_of_unprocessed_games(
+            let raw_players = db::get_batch_of_unprocessed_players(
                 &mut conn,
-                PROCESS_GAME_BATCH_SIZE,
+                crate::ingest_players::PROCESS_PLAYER_BATCH_SIZE,
                 this_cursor
                     .as_ref()
                     .map(|(d, i)| (d.naive_utc(), i.as_str())),
@@ -235,15 +230,15 @@ fn process_games_internal(
 
             {
                 let mut dupe_tracker = dupe_tracker.lock().unwrap();
-                for game in &raw_games {
-                    if let Some(prev_valid_from) = dupe_tracker.get(&game.entity_id) {
+                for player in &raw_players {
+                    if let Some(prev_valid_from) = dupe_tracker.get(&player.entity_id) {
                         error!(
-                            "get_batch_of_unprocessed_games returned a duplicate game {}. Previous \
+                            "get_batch_of_unprocessed_players returned a duplicate player {}. Previous \
                             valid_from={}, our valid_from={}",
-                            game.entity_id, prev_valid_from, game.valid_from
+                            player.entity_id, prev_valid_from, player.valid_from
                         );
                     } else {
-                        dupe_tracker.insert(game.entity_id.clone(), game.valid_from);
+                        dupe_tracker.insert(player.entity_id.clone(), player.valid_from);
                     }
                 }
             }
@@ -257,37 +252,37 @@ fn process_games_internal(
             }
 
             info!(
-                "Processing batch of {} raw games on worker {worker_id}",
-                raw_games.len()
+                "Processing batch of {} raw players on worker {worker_id}",
+                raw_players.len()
             );
-            let stats = ingest_page_of_games(
+            let stats = ingest_page_of_players(
                 &taxa,
                 ingest_id,
                 page_index,
                 get_batch_to_process_duration,
-                raw_games,
+                raw_players,
                 &mut conn,
                 worker_id,
             )
             .into_diagnostic()?;
             info!(
-                "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
-                progress, and skipped {} bugged games on worker {worker_id}.",
-                stats.num_games_imported,
-                stats.num_games_with_fatal_errors,
-                stats.num_ongoing_games_skipped,
-                stats.num_bugged_games_skipped,
+                "Ingested {} players, skipped {} players due to fatal errors, ignored {} players in \
+                progress, and skipped {} bugged players on worker {worker_id}.",
+                stats.num_players_imported,
+                stats.num_players_with_fatal_errors,
+                stats.num_ongoing_players_skipped,
+                stats.num_bugged_players_skipped,
             );
 
             page_index += 1;
             // Yield to allow the tokio scheduler to do its thing
             // (with out this, signal handling effectively doesn't work because it has to wait
-            // for the entire process games task to finish)
+            // for the entire process players task to finish)
             handle.block_on(tokio::task::yield_now());
         }
     }
 
-    debug!("Process games worker {worker_id} is exiting");
+    debug!("Process players worker {worker_id} is exiting");
 
     Ok(())
 }

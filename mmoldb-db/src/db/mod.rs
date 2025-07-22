@@ -1,11 +1,13 @@
-mod raw;
+mod entities;
 mod to_db_format;
+mod versions;
 mod weather;
 
 use std::collections::HashMap;
 // Reexports
-pub use raw::*;
+pub use entities::*;
 pub use to_db_format::RowToEventError;
+pub use versions::*;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -147,6 +149,24 @@ pub fn mark_ingest_finished(
         ))
         .execute(conn)
         .map(|_| ())
+}
+
+pub fn get_game_ingest_start_cursor(
+    conn: &mut PgConnection,
+) -> QueryResult<Option<(NaiveDateTime, String)>> {
+    // TODO clean up these references
+    crate::schema::data_schema::data::games::dsl::games
+        .select((
+            crate::schema::data_schema::data::games::dsl::from_version,
+            crate::schema::data_schema::data::games::dsl::mmolb_game_id,
+        ))
+        .order_by((
+            crate::schema::data_schema::data::games::dsl::from_version.desc(),
+            crate::schema::data_schema::data::games::dsl::mmolb_game_id.desc(),
+        ))
+        .limit(1)
+        .get_result(conn)
+        .optional()
 }
 
 // It is assumed that an aborted ingest won't have a later

@@ -1,5 +1,6 @@
 mod ingest;
 mod ingest_games;
+mod ingest_players;
 mod signal;
 
 use chrono::{Duration, Utc};
@@ -89,7 +90,7 @@ async fn run_one_ingest(url: String) -> miette::Result<()> {
     let ingest_id = db::start_ingest(&mut conn, ingest_start_time).into_diagnostic()?;
 
     let abort = CancellationToken::new();
-    let ingest_task = ingest_games::ingest_games(url.clone(), ingest_id, abort.clone());
+    let ingest_task = ingest_everything(url.clone(), ingest_id, abort.clone());
     pin_mut!(ingest_task);
 
     let (is_aborted, result) = tokio::select! {
@@ -129,4 +130,13 @@ async fn run_one_ingest(url: String) -> miette::Result<()> {
     }
 
     result
+}
+
+async fn ingest_everything(
+    pg_url: String,
+    ingest_id: i64,
+    abort: CancellationToken,
+) -> miette::Result<()> {
+    ingest_players::ingest_players(pg_url, ingest_id, abort).await?;
+    ingest_games::ingest_games(pg_url, ingest_id, abort).await
 }
