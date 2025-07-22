@@ -96,6 +96,54 @@ pub mod data {
     }
 
     diesel::table! {
+        data.modifications (id) {
+            id -> Int8,
+            name -> Text,
+            emoji -> Text,
+            description -> Text,
+        }
+    }
+
+    diesel::table! {
+        data.player_modification_versions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            modification_order -> Int4,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            modification_id -> Int8,
+        }
+    }
+
+    diesel::table! {
+        data.player_versions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            first_name -> Text,
+            last_name -> Text,
+            batting_handedness -> Int8,
+            pitching_handedness -> Int8,
+            home -> Text,
+            birthseason -> Int4,
+            birthday_type -> Int8,
+            birthday_day -> Nullable<Int4>,
+            birthday_superstar_day -> Nullable<Int4>,
+            likes -> Text,
+            dislikes -> Text,
+            number -> Int4,
+            mmolb_team_id -> Nullable<Text>,
+            slot -> Int8,
+            durability -> Float8,
+            greater_boon -> Nullable<Int8>,
+            lesser_boon -> Nullable<Int8>,
+        }
+    }
+
+    diesel::table! {
         data.versions (kind, entity_id, valid_from) {
             kind -> Text,
             entity_id -> Text,
@@ -118,6 +166,7 @@ pub mod data {
     diesel::joinable!(event_fielders -> events (event_id));
     diesel::joinable!(events -> games (game_id));
     diesel::joinable!(games -> weather (weather));
+    diesel::joinable!(player_modification_versions -> modifications (modification_id));
 
     diesel::allow_tables_to_appear_in_same_query!(
         entities,
@@ -125,6 +174,9 @@ pub mod data {
         event_fielders,
         events,
         games,
+        modifications,
+        player_modification_versions,
+        player_versions,
         versions,
         weather,
     );

@@ -17,6 +17,14 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.day_type (id) {
+            id -> Int8,
+            name -> Text,
+            display_name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.event_type (id) {
             id -> Int8,
             name -> Text,
@@ -61,6 +69,13 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.handedness (id) {
+            id -> Int8,
+            name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.leagues (id) {
             id -> Int8,
             name -> Text,
@@ -99,10 +114,12 @@ pub mod taxa {
     diesel::allow_tables_to_appear_in_same_query!(
         base,
         base_description_format,
+        day_type,
         event_type,
         fair_ball_type,
         fielder_location,
         fielding_error_type,
+        handedness,
         leagues,
         pitch_type,
         slot,
