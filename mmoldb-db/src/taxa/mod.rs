@@ -248,7 +248,7 @@ taxa! {
         #[
             display_name: &'a str = "error on fielder's choice",
             ends_plate_appearance: bool = true,
-            is_in_play: bool = false, // not sure about this
+            is_in_play: bool = true,
             is_hit: bool = false,
             is_error: bool = true,
             is_ball: bool = false,
