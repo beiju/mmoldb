@@ -40,7 +40,7 @@ pub struct ChronEntity<EntityT> {
     pub kind: String,
     pub entity_id: String,
     pub valid_from: DateTime<Utc>,
-    pub valid_until: Option<DateTime<Utc>>,
+    pub valid_to: Option<DateTime<Utc>>,
     pub data: EntityT,
 }
 

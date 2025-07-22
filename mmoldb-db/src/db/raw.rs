@@ -52,9 +52,9 @@ pub fn insert_entities(
     let new_entities = entities
         .iter()
         .map(|v| {
-            if v.valid_until.is_some() {
+            if v.valid_to.is_some() {
                 warn!(
-                    "Chron returned a {} with a non-null valid_until: {}",
+                    "Chron returned a {} with a non-null valid_to: {}",
                     v.kind, v.entity_id
                 );
             }
@@ -135,7 +135,7 @@ pub fn get_batch_of_unprocessed_games(
                     kind: e.kind,
                     entity_id: e.entity_id,
                     valid_from: e.valid_from.and_utc(),
-                    valid_until: None,
+                    valid_to: None,
                     data: e.data,
                 })
                 .collect_vec()

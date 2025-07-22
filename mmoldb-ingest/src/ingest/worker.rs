@@ -55,7 +55,7 @@ pub fn ingest_page_of_games(
                 kind: game_json.kind,
                 entity_id: game_json.entity_id,
                 valid_from: game_json.valid_from,
-                valid_until: game_json.valid_until,
+                valid_to: game_json.valid_to,
                 data: serde_json::from_value(game_json.data)?,
             })
         })
