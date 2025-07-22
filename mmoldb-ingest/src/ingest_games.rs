@@ -12,6 +12,9 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+// I made this a constant because I'm constant-ly terrified of typoing
+// it and introducing a difficult-to-find bug
+const GAME_KIND: &'static str = "game";
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_GAME_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_GAME_BATCH_SIZE: usize = 1000;
@@ -88,7 +91,7 @@ pub async fn ingest_games(
             // No need to set any signals because abort was already set by the caller
             info!("Raw game ingest aborted. Waiting for process games task.");
         }
-    };
+    }
 
     for process_games_handle in process_games_handles {
         process_games_handle.await.into_diagnostic()??;
@@ -98,7 +101,7 @@ pub async fn ingest_games(
 }
 
 async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
-    let start_date = db::get_latest_entity_valid_from(&mut conn, "game")
+    let start_date = db::get_latest_entity_valid_from(&mut conn, GAME_KIND)
         .into_diagnostic()?
         .as_ref()
         .map(NaiveDateTime::and_utc);
@@ -108,11 +111,15 @@ async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette
     let chron = Chron::new(CHRON_FETCH_PAGE_SIZE);
 
     let stream = chron
-        .entities("game", start_date)
+        .entities(GAME_KIND, start_date)
         .try_chunks(RAW_GAME_INSERT_BATCH_SIZE);
     pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
+        // When a chunked stream encounters an error, it returns the portion
+        // of the chunk that was collected before the error and the error
+        // itself. We want to insert the successful portion of the chunk,
+        // _then_ propagate any error.
         let (chunk, maybe_err): (Vec<ChronEntity<serde_json::Value>>, _) = match chunk {
             Ok(chunk) => (chunk, None),
             Err(err) => (err.0, Some(err.1)),
@@ -202,7 +209,7 @@ fn process_games_internal(
                 debug!("Worker {worker_id} getting games after {:?}", ingest_cursor);
                 let next_cursor = db::advance_entity_cursor(
                     &mut conn,
-                    "game",
+                    GAME_KIND,
                     ingest_cursor
                         .as_ref()
                         .map(|(d, i)| (d.naive_utc(), i.as_str())),
@@ -224,8 +231,9 @@ fn process_games_internal(
                 this_cursor
             };
 
-            let raw_games = db::get_batch_of_unprocessed_games(
+            let raw_games = db::get_entities_at_cursor(
                 &mut conn,
+                GAME_KIND,
                 PROCESS_GAME_BATCH_SIZE,
                 this_cursor
                     .as_ref()
@@ -238,7 +246,7 @@ fn process_games_internal(
                 for game in &raw_games {
                     if let Some(prev_valid_from) = dupe_tracker.get(&game.entity_id) {
                         error!(
-                            "get_batch_of_unprocessed_games returned a duplicate game {}. Previous \
+                            "get_entities_at_cursor returned a duplicate game {}. Previous \
                             valid_from={}, our valid_from={}",
                             game.entity_id, prev_valid_from, game.valid_from
                         );

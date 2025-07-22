@@ -11,6 +11,10 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+
+// I made this a constant because I'm constant-ly terrified of typoing 
+// it and introducing a difficult-to-find bug
+const PLAYER_KIND: &'static str = "player";
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_PLAYER_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_PLAYER_BATCH_SIZE: usize = 1000;
@@ -81,7 +85,7 @@ pub async fn ingest_players(
             // No need to set any signals because abort was already set by the caller
             info!("Raw player ingest aborted. Waiting for process players task.");
         }
-    };
+    }
 
     for process_players_handle in process_players_handles {
         process_players_handle.await.into_diagnostic()??;
@@ -91,7 +95,7 @@ pub async fn ingest_players(
 }
 
 async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
-    let start_date = db::get_latest_version_valid_from(&mut conn, "player")
+    let start_date = db::get_latest_version_valid_from(&mut conn, PLAYER_KIND)
         .into_diagnostic()?
         .as_ref()
         .map(NaiveDateTime::and_utc);
@@ -101,11 +105,15 @@ async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miet
     let chron = Chron::new(CHRON_FETCH_PAGE_SIZE);
 
     let stream = chron
-        .entities("player", start_date)
+        .versions(PLAYER_KIND, start_date)
         .try_chunks(RAW_PLAYER_INSERT_BATCH_SIZE);
     pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
+        // When a chunked stream encounters an error, it returns the portion 
+        // of the chunk that was collected before the error and the error 
+        // itself. We want to insert the successful portion of the chunk,
+        // _then_ propagate any error.
         let (chunk, maybe_err): (Vec<ChronEntity<serde_json::Value>>, _) = match chunk {
             Ok(chunk) => (chunk, None),
             Err(err) => (err.0, Some(err.1)),
@@ -196,12 +204,13 @@ fn process_players_internal(
                     "Worker {worker_id} getting players after {:?}",
                     ingest_cursor
                 );
-                let next_cursor = db::get_next_version_cursor(
+                let next_cursor = db::advance_version_cursor(
                     &mut conn,
-                    PROCESS_PLAYER_BATCH_SIZE,
+                    PLAYER_KIND,
                     ingest_cursor
                         .as_ref()
                         .map(|(d, i)| (d.naive_utc(), i.as_str())),
+                    PROCESS_PLAYER_BATCH_SIZE,
                 )
                 .into_diagnostic()?
                 .map(|(dt, id)| (dt.and_utc(), id));
@@ -219,9 +228,10 @@ fn process_players_internal(
                 this_cursor
             };
 
-            let raw_players = db::get_batch_of_unprocessed_players(
+            let raw_players = db::get_versions_at_cursor(
                 &mut conn,
-                crate::ingest_players::PROCESS_PLAYER_BATCH_SIZE,
+                PLAYER_KIND,
+                PROCESS_PLAYER_BATCH_SIZE,
                 this_cursor
                     .as_ref()
                     .map(|(d, i)| (d.naive_utc(), i.as_str())),
