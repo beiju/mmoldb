@@ -1928,6 +1928,7 @@ dependencies = [
  "console-subscriber",
  "env_logger",
  "futures",
+ "hashbrown 0.15.4",
  "itertools",
  "log",
  "miette",

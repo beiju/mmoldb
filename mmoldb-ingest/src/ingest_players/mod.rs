@@ -1,3 +1,5 @@
+mod logic;
+
 use chron::{Chron, ChronEntity};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
@@ -12,7 +14,7 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 
-// I made this a constant because I'm constant-ly terrified of typoing 
+// I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
 const PLAYER_KIND: &'static str = "player";
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
@@ -30,7 +32,7 @@ pub async fn ingest_players(
     // abort tells the task "exit immediately, even if there are more players to process"
     let finish = CancellationToken::new();
     let ingest_cursor = Arc::new(Mutex::new(
-        db::get_player_ingest_cursor(&mut conn)
+        db::get_player_ingest_start_cursor(&mut conn)
             .into_diagnostic()?
             .map(|(dt, id)| (dt.and_utc(), id)),
     ));
@@ -110,8 +112,8 @@ async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miet
     pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
-        // When a chunked stream encounters an error, it returns the portion 
-        // of the chunk that was collected before the error and the error 
+        // When a chunked stream encounters an error, it returns the portion
+        // of the chunk that was collected before the error and the error
         // itself. We want to insert the successful portion of the chunk,
         // _then_ propagate any error.
         let (chunk, maybe_err): (Vec<ChronEntity<serde_json::Value>>, _) = match chunk {
@@ -265,7 +267,7 @@ fn process_players_internal(
                 "Processing batch of {} raw players on worker {worker_id}",
                 raw_players.len()
             );
-            let stats = ingest_page_of_players(
+            let stats = logic::ingest_page_of_players(
                 &taxa,
                 ingest_id,
                 page_index,

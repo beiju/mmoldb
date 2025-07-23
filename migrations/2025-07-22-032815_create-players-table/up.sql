@@ -135,7 +135,7 @@ begin
                 and pv.dislikes is not distinct from NEW.dislikes
                 and pv.number is not distinct from NEW.number
                 and pv.mmolb_team_id is not distinct from NEW.mmolb_team_id
-                and pv.position is not distinct from NEW.position
+                and pv.slot is not distinct from NEW.slot
                 and pv.durability is not distinct from NEW.durability
                 and pv.greater_boon is not distinct from NEW.greater_boon
                 and pv.lesser_boon is not distinct from NEW.lesser_boon;

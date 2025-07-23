@@ -15,9 +15,6 @@ use chron::ChronStreamError;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
-    #[error("couldn't deserialize game")]
-    DeserializeError(#[from] serde_json::Error),
-
     #[error(transparent)]
     ChronError(#[from] ChronStreamError),
 

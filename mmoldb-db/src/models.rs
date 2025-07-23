@@ -357,3 +357,95 @@ pub struct RawDbColumn {
     pub interval_type: Option<String>,
     pub interval_precision: Option<i32>,
 }
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = crate::data_schema::data::modifications)]
+pub struct NewModification<'a> {
+    pub name: &'a str,
+    pub emoji: &'a str,
+    pub description: &'a str,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::modifications)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbModification {
+    pub id: i64,
+    pub name: String,
+    pub emoji: String,
+    pub description: String,
+}
+
+#[derive(Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_modification_versions)]
+pub struct NewPlayerModificationVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub modification_order: i32,
+    pub modification_id: i64,
+}
+
+#[derive(Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_versions)]
+pub struct NewPlayerVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub first_name: &'a str,
+    pub last_name: &'a str,
+    pub batting_handedness: i64,
+    pub pitching_handedness: i64,
+    pub home: &'a str,
+    pub birthseason: i32,
+    pub birthday_type: i64,
+    pub birthday_day: Option<i32>,
+    pub birthday_superstar_day: Option<i32>,
+    pub likes: &'a str,
+    pub dislikes: &'a str,
+    pub number: i32,
+    pub mmolb_team_id: Option<&'a str>,
+    pub slot: i64,
+    pub durability: f64,
+    pub greater_boon: Option<i64>,
+    pub lesser_boon: Option<i64>,
+}
+
+impl<'a> NewPlayerVersion<'a> {
+    pub fn is_data_equivalent(&self, other: &Self) -> bool {
+        let cmp = Self {
+            valid_from: other.valid_from,
+            valid_until: other.valid_until,
+            ..*self
+        };
+
+        &cmp == other
+    }
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub first_name: String,
+    pub last_name: String,
+    pub batting_handedness: i64,
+    pub pitching_handedness: i64,
+    pub home: String,
+    pub birthseason: i32,
+    pub birthday_type: i64,
+    pub birthday_day: Option<i32>,
+    pub birthday_superstar_day: Option<i32>,
+    pub likes: String,
+    pub dislikes: String,
+    pub number: i32,
+    pub mmolb_team_id: Option<String>,
+    pub slot: i64,
+    pub durability: f64,
+    pub greater_boon: Option<i64>,
+    pub lesser_boon: Option<i64>,
+}

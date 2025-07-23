@@ -958,6 +958,72 @@ impl From<mmolb_parsing::enums::PitchType> for TaxaPitchType {
     }
 }
 
+
+
+taxa! {
+    #[
+        schema = crate::taxa_schema::taxa::handedness,
+        table = crate::taxa_schema::taxa::handedness::dsl::handedness,
+        id_column = crate::taxa_schema::taxa::handedness::dsl::id,
+    ]
+    pub enum TaxaHandedness {
+        Right = 1,
+        Left = 2,
+        Switch = 3,
+    }
+}
+
+impl From<mmolb_parsing::enums::Handedness> for TaxaHandedness {
+    fn from(value: mmolb_parsing::enums::Handedness) -> Self {
+        match value {
+            mmolb_parsing::enums::Handedness::Right => { Self::Right }
+            mmolb_parsing::enums::Handedness::Left => { Self::Left }
+            mmolb_parsing::enums::Handedness::Switch => { Self::Switch }
+        }
+    }
+}
+
+taxa! {
+    #[
+        schema = crate::taxa_schema::taxa::day_type,
+        table = crate::taxa_schema::taxa::day_type::dsl::day_type,
+        id_column = crate::taxa_schema::taxa::day_type::dsl::id,
+    ]
+    // I reserved numbers for every member of the `phase_times` object in the `times` entity type,
+    // in case they ever show up as Days
+    pub enum TaxaDayType {
+        #[display_name: &'a str = "Preseason"]
+        Preseason = 1,
+        #[display_name: &'a str = "Day"]
+        RegularDay = 2,
+        #[display_name: &'a str = "Superstar Break"]
+        SuperstarBreak = 3,
+        // TODO Check to see if this is an outdated synonym for SuperstarDay
+        #[display_name: &'a str = "Superstar Game"]
+        SuperstarGame = 40,
+        #[display_name: &'a str = "Superstar Day"]
+        SuperstarDay = 4,
+        // Reserved 5 for HomeRunChallenge
+        // Reserved 6 for RegularSeasonResume
+        #[display_name: &'a str = "Postseason Preview"]
+        PostseasonPreview = 7,
+        #[display_name: &'a str = "Postseason Round 1"]
+        PostseasonRound1 = 8,
+        #[display_name: &'a str = "Postseason Round 2"]
+        PostseasonRound2 = 9,
+        #[display_name: &'a str = "Postseason Round 3"]
+        PostseasonRound3 = 10,
+        #[display_name: &'a str = "Election"]
+        Election = 11,
+        #[display_name: &'a str = "Holiday"]
+        Holiday = 12,
+        #[display_name: &'a str = "Event"]
+        Event = 13,
+        #[display_name: &'a str = "Special Event"]
+        SpecialEvent = 13,
+    }
+}
+
 taxa! {
     #[
         schema = crate::taxa_schema::taxa::leagues,
@@ -1014,6 +1080,8 @@ pub struct Taxa {
     base_description_format_mapping: EnumMap<TaxaBaseDescriptionFormat, i64>,
     fielding_error_type_mapping: EnumMap<TaxaFieldingErrorType, i64>,
     pitch_type_mapping: EnumMap<TaxaPitchType, i64>,
+    handedness_mapping: EnumMap<TaxaHandedness, i64>,
+    day_type_mapping: EnumMap<TaxaDayType, i64>,
     league_mapping: EnumMap<TaxaLeagues, i64>,
 }
 
@@ -1030,6 +1098,8 @@ impl Taxa {
             base_description_format_mapping: TaxaBaseDescriptionFormat::make_id_mapping(conn)?,
             fielding_error_type_mapping: TaxaFieldingErrorType::make_id_mapping(conn)?,
             pitch_type_mapping: TaxaPitchType::make_id_mapping(conn)?,
+            handedness_mapping: TaxaHandedness::make_id_mapping(conn)?,
+            day_type_mapping: TaxaDayType::make_id_mapping(conn)?,
             league_mapping: TaxaLeagues::make_id_mapping(conn)?,
         })
     }
@@ -1064,6 +1134,14 @@ impl Taxa {
 
     pub fn fielding_error_type_id(&self, ty: TaxaFieldingErrorType) -> i64 {
         self.fielding_error_type_mapping[ty]
+    }
+
+    pub fn handedness_id(&self, ty: TaxaHandedness) -> i64 {
+        self.handedness_mapping[ty]
+    }
+
+    pub fn day_type_id(&self, ty: TaxaDayType) -> i64 {
+        self.day_type_mapping[ty]
     }
 
     pub fn pitch_type_id(&self, ty: TaxaPitchType) -> i64 {
@@ -1130,6 +1208,14 @@ impl Taxa {
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
             .expect("TODO Handle unknown pitch type")
+            .0
+    }
+
+    pub fn handedness_from_id(&self, id: i64) -> TaxaHandedness {
+        self.handedness_mapping
+            .iter()
+            .find(|(_, ty_id)| id == **ty_id)
+            .expect("TODO Handle unknown handedness")
             .0
     }
 

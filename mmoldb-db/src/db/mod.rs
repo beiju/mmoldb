@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub use entities::*;
 pub use to_db_format::RowToEventError;
 pub use versions::*;
+pub use crate::db::weather::NameEmojiTooltip;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -22,11 +23,7 @@ use std::iter;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{
-    DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbRawEvent, DbRunner,
-    NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewRawEvent, RawDbColumn,
-    RawDbTable,
-};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerModificationVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -154,15 +151,16 @@ pub fn mark_ingest_finished(
 pub fn get_game_ingest_start_cursor(
     conn: &mut PgConnection,
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {
-    // TODO clean up these references
-    crate::schema::data_schema::data::games::dsl::games
+    use crate::schema::data_schema::data::games::dsl as games_dsl;
+
+    games_dsl::games
         .select((
-            crate::schema::data_schema::data::games::dsl::from_version,
-            crate::schema::data_schema::data::games::dsl::mmolb_game_id,
+            games_dsl::from_version,
+            games_dsl::mmolb_game_id,
         ))
         .order_by((
-            crate::schema::data_schema::data::games::dsl::from_version.desc(),
-            crate::schema::data_schema::data::games::dsl::mmolb_game_id.desc(),
+            games_dsl::from_version.desc(),
+            games_dsl::mmolb_game_id.desc(),
         ))
         .limit(1)
         .get_result(conn)
@@ -1264,4 +1262,113 @@ pub fn tables_for_schema(
             })
         })
         .collect()
+}
+
+pub fn get_player_ingest_start_cursor(
+    conn: &mut PgConnection,
+) -> QueryResult<Option<(NaiveDateTime, String)>> {
+    use crate::schema::data_schema::data::player_versions::dsl as player_dsl;
+
+    player_dsl::player_versions
+        .select((
+            player_dsl::valid_from,
+            player_dsl::mmolb_player_id,
+        ))
+        .order_by((
+            player_dsl::valid_from.desc(),
+            player_dsl::mmolb_player_id.desc(),
+        ))
+        .limit(1)
+        .get_result(conn)
+        .optional()
+}
+
+pub fn get_modifications_table(conn: &mut PgConnection) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
+    use crate::data_schema::data::modifications::dsl as mod_dsl;
+
+    let table = mod_dsl::modifications
+        .select((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
+        .get_results::<(i64, String, String, String)>(conn)?
+        .into_iter()
+        .map(|(id, name, emoji, tooltip)| (
+            NameEmojiTooltip { name, emoji, tooltip }, id
+        ))
+        .collect();
+
+    Ok(table)
+}
+
+pub fn insert_modifications(conn: &mut PgConnection, new_modifications: &[&ChronPlayerModification]) -> QueryResult<Vec<(NameEmojiTooltip, i64)>> {
+    use crate::data_schema::data::modifications::dsl as mod_dsl;
+
+    let to_insert = new_modifications
+        .iter()
+        .map(|m| NewModification {
+            name: &m.name,
+            emoji: &m.emoji,
+            description: &m.description,
+        })
+        .collect_vec();
+
+    let results = diesel::insert_into(mod_dsl::modifications)
+        .values(to_insert)
+        .returning((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
+        .get_results::<(i64, String, String, String)>(conn)?
+        .into_iter()
+        .map(|(id, name, emoji, tooltip)| (
+            NameEmojiTooltip { name, emoji, tooltip }, id
+        ))
+        .collect();
+
+    Ok(results)
+}
+
+pub fn get_latest_player_valid_from(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
+    use crate::data_schema::data::player_versions::dsl as pv_dsl;
+
+    pv_dsl::player_versions
+        .select(pv_dsl::valid_from)
+        .order(pv_dsl::valid_from.desc())
+        .limit(1)
+        .get_result(conn)
+        .optional()
+}
+
+pub fn latest_player_versions(conn: &mut PgConnection, player_ids: &[String]) -> QueryResult<HashMap<String, DbPlayerVersion>> {
+    use crate::data_schema::data::player_versions::dsl as pv_dsl;
+
+    let map = pv_dsl::player_versions
+        .filter(pv_dsl::mmolb_player_id.eq_any(player_ids))
+        .filter(pv_dsl::valid_until.is_null())
+        .select(DbPlayerVersion::as_select())
+        .order_by(pv_dsl::mmolb_player_id)
+        .get_results::<DbPlayerVersion>(conn)?
+        .into_iter()
+        .map(|v| (v.mmolb_player_id.clone(), v))
+        .collect();
+
+    Ok(map)
+}
+
+pub fn insert_player_versions(
+    conn: &mut PgConnection,
+    new_player_versions: Vec<(NewPlayerVersion, Vec<NewPlayerModificationVersion>)>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_versions::dsl as pv_dsl;
+    use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
+
+    let (new_player_versions, new_player_modification_versions): (Vec<NewPlayerVersion>, Vec<Vec<NewPlayerModificationVersion>>) = new_player_versions.into_iter().unzip();
+    let new_player_modification_versions = new_player_modification_versions.into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::insert_into(pmv_dsl::player_modification_versions)
+        .values(new_player_modification_versions)
+        .execute(conn)?;
+
+    // Insert new records
+    diesel::insert_into(pv_dsl::player_versions)
+        .values(new_player_versions)
+        .execute(conn)
 }
