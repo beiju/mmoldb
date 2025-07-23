@@ -36,8 +36,6 @@ pub async fn ingest_players(
             .into_diagnostic()?
             .map(|(dt, id)| (dt.and_utc(), id)),
     ));
-    // dupe_tracker is only for debugging
-    let dupe_tracker = Arc::new(Mutex::new(HashMap::new()));
 
     let num_workers = 4;
     debug!("Ingesting with {} workers", num_workers);
@@ -49,7 +47,6 @@ pub async fn ingest_players(
             let finish = finish.clone();
             let abort = abort.clone();
             let ingest_cursor = ingest_cursor.clone();
-            let dupe_tracker = dupe_tracker.clone();
             let handle = tokio::runtime::Handle::current();
             tokio::task::Builder::new()
                 .name(format!("Ingest worker {n}").leak())
@@ -58,7 +55,6 @@ pub async fn ingest_players(
                         &pg_url,
                         ingest_id,
                         ingest_cursor,
-                        dupe_tracker,
                         abort,
                         notify,
                         finish,
@@ -138,7 +134,6 @@ fn process_players(
     url: &str,
     ingest_id: i64,
     ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
-    dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
     abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
@@ -149,7 +144,6 @@ fn process_players(
         url,
         ingest_id,
         ingest_cursor,
-        dupe_tracker,
         abort,
         notify,
         finish,
@@ -166,7 +160,6 @@ fn process_players_internal(
     url: &str,
     ingest_id: i64,
     ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
-    dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
     abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
@@ -240,20 +233,6 @@ fn process_players_internal(
             )
             .into_diagnostic()?;
 
-            {
-                let mut dupe_tracker = dupe_tracker.lock().unwrap();
-                for player in &raw_players {
-                    if let Some(prev_valid_from) = dupe_tracker.get(&player.entity_id) {
-                        error!(
-                            "get_batch_of_unprocessed_players returned a duplicate player {}. Previous \
-                            valid_from={}, our valid_from={}",
-                            player.entity_id, prev_valid_from, player.valid_from
-                        );
-                    } else {
-                        dupe_tracker.insert(player.entity_id.clone(), player.valid_from);
-                    }
-                }
-            }
             let get_batch_to_process_duration =
                 (Utc::now() - get_batch_to_process_start).as_seconds_f64();
 

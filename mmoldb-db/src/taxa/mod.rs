@@ -1020,7 +1020,7 @@ taxa! {
         #[display_name: &'a str = "Event"]
         Event = 13,
         #[display_name: &'a str = "Special Event"]
-        SpecialEvent = 13,
+        SpecialEvent = 14,
     }
 }
 
