@@ -93,7 +93,7 @@ create table data.player_versions (
                                       batting_handedness bigint references taxa.handedness, -- null means this handedness was not recognized
                                       pitching_handedness bigint references taxa.handedness, -- null means this handedness was not recognized
                                       home text not null, -- birth location
-                                      birthseason int, -- null for early player versions in season 0
+                                      birthseason int not null,
                                       birthday_type bigint references taxa.day_type, -- null for unrecognized birthday types
                                       birthday_day int, -- null indicates this player was not born on a regular season day
                                       birthday_superstar_day int, -- null indicates this player was not born on a superstar day

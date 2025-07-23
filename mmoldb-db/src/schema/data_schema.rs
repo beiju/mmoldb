@@ -128,7 +128,7 @@ pub mod data {
             batting_handedness -> Nullable<Int8>,
             pitching_handedness -> Nullable<Int8>,
             home -> Text,
-            birthseason -> Nullable<Int4>,
+            birthseason -> Int4,
             birthday_type -> Nullable<Int8>,
             birthday_day -> Nullable<Int4>,
             birthday_superstar_day -> Nullable<Int4>,

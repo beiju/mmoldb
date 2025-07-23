@@ -66,26 +66,15 @@ pub fn ingest_page_of_players(
     // Collect any new modifications that need to be added
     let new_modifications = players.iter()
         .flat_map(|version| {
-            // This exists to detect when the type of greater_boon is changed to,
-            // presumably, Modification. When that happens, uncomment the .chain
-            // below and the one below in the NewPlayerVersion initializer.
-            let _: Option<serde_json::Value> = version.data.greater_boon;
-
             version.data.modifications.iter()
+                .chain(version.data.lesser_boon.as_ref())
+                .chain(version.data.greater_boon.as_ref())
                 .map(|m| {
                     if !m.extra_fields.is_empty() {
                         warn!("Modification had extra fields that were not captured: {:?}", m.extra_fields);
                     }
                     (m.name.as_str(), m.emoji.as_str(), m.description.as_str())
                 })
-                // TODO Make a decision about whether modifications are different from boons
-                .chain(version.data.lesser_boon.as_ref().map(|b| {
-                    if !b.extra_fields.is_empty() {
-                        warn!("Boon had extra fields that were not captured: {:?}", b.extra_fields);
-                    }
-                    (b.name.as_str(), b.emoji.as_str(), b.description.as_str())
-                }))
-                // .chain(&version.data.greater_boon)
                 .filter(|key| !modifications.contains_key(key))
         })
         .unique()
@@ -198,11 +187,6 @@ fn chron_player_as_new<'a>(
         }
     };
 
-    let get_boon_id = |boon: &mmolb_parsing::player::Boon| {
-        *modifications.get(&(boon.name.as_str(), boon.emoji.as_str(), boon.description.as_str()))
-            .expect("All modifications should have been added to the modifications table")
-    };
-
     let get_modification_id = |modification: &mmolb_parsing::player::Modification| {
         *modifications.get(&(modification.name.as_str(), modification.emoji.as_str(), modification.description.as_str()))
             .expect("All modifications should have been added to the modifications table")
@@ -252,10 +236,6 @@ fn chron_player_as_new<'a>(
         }
     };
 
-    // This exists to detect when the type of greater_boon is changed to,
-    // presumably, Modification. When that happens, uncomment the .chain
-    // below and the one inside the `new_modifications` iter chain above.
-    let _: Option<serde_json::Value> = entity.data.greater_boon;
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
         valid_from: entity.valid_from.naive_utc(),
@@ -265,7 +245,7 @@ fn chron_player_as_new<'a>(
         batting_handedness: get_handedness_id(&entity.data.bats),
         pitching_handedness: get_handedness_id(&entity.data.throws),
         home: &entity.data.home,
-        birthseason: entity.data.birthseason.as_ref().ok().map(|s| *s as i32),
+        birthseason: entity.data.birthseason as i32,
         birthday_type,
         birthday_day,
         birthday_superstar_day,
@@ -275,8 +255,8 @@ fn chron_player_as_new<'a>(
         mmolb_team_id: entity.data.team_id.as_deref(),
         slot,
         durability: entity.data.durability,
-        greater_boon: None, // entity.data.greater_boon.as_ref().map(get_boon_id)
-        lesser_boon: entity.data.lesser_boon.as_ref().map(get_boon_id),
+        greater_boon: entity.data.greater_boon.as_ref().map(get_modification_id),
+        lesser_boon: entity.data.lesser_boon.as_ref().map(get_modification_id),
     };
 
     (player, modifications)
