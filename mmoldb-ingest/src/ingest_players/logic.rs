@@ -2,14 +2,26 @@ use hashbrown::{HashMap, hash_map::Entry};
 use chrono::Utc;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
-use mmolb_parsing::enums::{Day, Position};
-use chron::ChronEntity;
-use mmoldb_db::{db, PgConnection, QueryResult};
+use miette::Diagnostic;
+use mmolb_parsing::enums::{Day, Handedness, Position};
+use mmolb_parsing::NotRecognized;
+use thiserror::Error;
+use chron::{ChronEntity, ChronStreamError};
+use mmoldb_db::{db, PgConnection, QueryError, QueryResult};
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerModificationVersion, NewPlayerVersion};
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
 
-pub async fn ingest_page_of_players(
+#[derive(Debug, Error, Diagnostic)]
+pub enum IngestFatalError {
+    #[error(transparent)]
+    DeserializeError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    DbError(#[from] QueryError),
+}
+
+pub fn ingest_page_of_players(
     taxa: &Taxa,
     ingest_id: i64,
     page_index: usize,
@@ -17,7 +29,7 @@ pub async fn ingest_page_of_players(
     raw_players: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
     worker_id: usize,
-) -> QueryResult<()> {
+) -> Result<(), IngestFatalError> {
     debug!(
         "Starting ingest page of {} players on worker {worker_id}",
         raw_players.len()
@@ -60,11 +72,21 @@ pub async fn ingest_page_of_players(
             let _: Option<serde_json::Value> = version.data.greater_boon;
 
             version.data.modifications.iter()
-                .chain(&version.data.lesser_boon)
-                // .chain(&version.data.greater_boon)
-                .filter(|m| {
-                    !modifications.contains_key(&(m.name.as_str(), m.emoji.as_str(), m.description.as_str()))
+                .map(|m| {
+                    if !m.extra_fields.is_empty() {
+                        warn!("Modification had extra fields that were not captured: {:?}", m.extra_fields);
+                    }
+                    (m.name.as_str(), m.emoji.as_str(), m.description.as_str())
                 })
+                // TODO Make a decision about whether modifications are different from boons
+                .chain(version.data.lesser_boon.as_ref().map(|b| {
+                    if !b.extra_fields.is_empty() {
+                        warn!("Boon had extra fields that were not captured: {:?}", b.extra_fields);
+                    }
+                    (b.name.as_str(), b.emoji.as_str(), b.description.as_str())
+                }))
+                // .chain(&version.data.greater_boon)
+                .filter(|key| !modifications.contains_key(key))
         })
         .unique()
         .collect_vec();
@@ -176,14 +198,19 @@ fn chron_player_as_new<'a>(
         }
     };
 
-    let get_boon_id = |boon| {
+    let get_boon_id = |boon: &mmolb_parsing::player::Boon| {
         *modifications.get(&(boon.name.as_str(), boon.emoji.as_str(), boon.description.as_str()))
             .expect("All modifications should have been added to the modifications table")
     };
 
-    let get_handedness_id = |handedness| {
+    let get_modification_id = |modification: &mmolb_parsing::player::Modification| {
+        *modifications.get(&(modification.name.as_str(), modification.emoji.as_str(), modification.description.as_str()))
+            .expect("All modifications should have been added to the modifications table")
+    };
+
+    let get_handedness_id = |handedness: &Result<Handedness, NotRecognized>| {
         match handedness {
-            Ok(handedness) => Some(taxa.handedness_id(handedness.into())),
+            Ok(handedness) => Some(taxa.handedness_id((*handedness).into())),
             Err(err) => {
                 error!("Player had unexpected batting handedness {err}");
                 None
@@ -198,7 +225,7 @@ fn chron_player_as_new<'a>(
             valid_from: entity.valid_from.naive_utc(),
             valid_until: None,
             modification_order: i as i32,
-            modification_id: get_boon_id(m),
+            modification_id: get_modification_id(m),
         })
         .collect_vec();
 
@@ -244,7 +271,7 @@ fn chron_player_as_new<'a>(
         birthday_superstar_day,
         likes: &entity.data.likes,
         dislikes: &entity.data.dislikes,
-        number: entity.data.number,
+        number: entity.data.number as i32,
         mmolb_team_id: entity.data.team_id.as_deref(),
         slot,
         durability: entity.data.durability,

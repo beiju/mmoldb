@@ -3,7 +3,6 @@ mod to_db_format;
 mod versions;
 mod weather;
 
-use std::collections::HashMap;
 // Reexports
 pub use entities::*;
 pub use to_db_format::RowToEventError;
@@ -11,6 +10,7 @@ pub use versions::*;
 pub use crate::db::weather::NameEmojiTooltip;
 
 // Third-party imports
+use hashbrown::HashMap;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
@@ -1298,16 +1298,16 @@ pub fn get_modifications_table(conn: &mut PgConnection) -> QueryResult<HashMap<N
     Ok(table)
 }
 
-pub fn insert_modifications(conn: &mut PgConnection, new_modifications: &[&ChronPlayerModification]) -> QueryResult<Vec<(NameEmojiTooltip, i64)>> {
+pub fn insert_modifications(
+    conn: &mut PgConnection,
+    new_modifications: &[(&str /* name */, &str /* emoji */, &str /* description */)],
+) -> QueryResult<Vec<(NameEmojiTooltip, i64)>> {
     use crate::data_schema::data::modifications::dsl as mod_dsl;
 
     let to_insert = new_modifications
         .iter()
-        .map(|m| NewModification {
-            name: &m.name,
-            emoji: &m.emoji,
-            description: &m.description,
-        })
+        .map(|(name, emoji, description)|
+            NewModification { name, emoji, description, })
         .collect_vec();
 
     let results = diesel::insert_into(mod_dsl::modifications)

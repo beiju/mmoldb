@@ -267,7 +267,7 @@ fn process_players_internal(
                 "Processing batch of {} raw players on worker {worker_id}",
                 raw_players.len()
             );
-            let stats = logic::ingest_page_of_players(
+            logic::ingest_page_of_players(
                 &taxa,
                 ingest_id,
                 page_index,
@@ -277,14 +277,6 @@ fn process_players_internal(
                 worker_id,
             )
             .into_diagnostic()?;
-            info!(
-                "Ingested {} players, skipped {} players due to fatal errors, ignored {} players in \
-                progress, and skipped {} bugged players on worker {worker_id}.",
-                stats.num_players_imported,
-                stats.num_players_with_fatal_errors,
-                stats.num_ongoing_players_skipped,
-                stats.num_bugged_players_skipped,
-            );
 
             page_index += 1;
             // Yield to allow the tokio scheduler to do its thing

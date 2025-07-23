@@ -11,12 +11,10 @@ use miette::Diagnostic;
 use mmoldb_db::QueryError;
 use thiserror::Error;
 
-use chron::ChronStreamError;
-
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
     #[error(transparent)]
-    ChronError(#[from] ChronStreamError),
+    DeserializeError(#[from] serde_json::Error),
 
     #[error(transparent)]
     DbError(#[from] QueryError),
