@@ -54,9 +54,13 @@ pub async fn ingest_page_of_players(
     // Collect any new modifications that need to be added
     let new_modifications = players.iter()
         .flat_map(|version| {
+            // This exists to detect when the type of greater_boon is changed to,
+            // presumably, Modification. When that happens, uncomment the .chain
+            // below and the one below in the NewPlayerVersion initializer.
+            let _: Option<serde_json::Value> = version.data.greater_boon;
+
             version.data.modifications.iter()
                 .chain(&version.data.lesser_boon)
-                // mmolb_parsing's greater_boon is
                 // .chain(&version.data.greater_boon)
                 .filter(|m| {
                     !modifications.contains_key(&(m.name.as_str(), m.emoji.as_str(), m.description.as_str()))
@@ -221,6 +225,10 @@ fn chron_player_as_new<'a>(
         }
     };
 
+    // This exists to detect when the type of greater_boon is changed to,
+    // presumably, Modification. When that happens, uncomment the .chain
+    // below and the one inside the `new_modifications` iter chain above.
+    let _: Option<serde_json::Value> = entity.data.greater_boon;
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
         valid_from: entity.valid_from.naive_utc(),
