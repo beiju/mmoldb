@@ -6,7 +6,7 @@ use miette::Diagnostic;
 use mmolb_parsing::enums::{Day, Handedness, Position};
 use mmolb_parsing::NotRecognized;
 use thiserror::Error;
-use chron::{ChronEntity, ChronStreamError};
+use chron::ChronEntity;
 use mmoldb_db::{db, PgConnection, QueryError, QueryResult};
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerModificationVersion, NewPlayerVersion};
@@ -35,7 +35,6 @@ pub fn ingest_page_of_players(
         raw_players.len()
     );
     let save_start = Utc::now();
-    let mut modifications = db::get_modifications_table(conn)?;
 
     let deserialize_start = Utc::now();
     // TODO Gracefully handle player deserialize failure
@@ -63,8 +62,8 @@ pub fn ingest_page_of_players(
     let time_ago = latest_time.signed_duration_since(Utc::now());
     let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
 
-    // Collect any new modifications that need to be added
-    let new_modifications = players.iter()
+    // Collect all modifications that appear in this batch so we can ensure they're all added
+    let unique_modifications = players.iter()
         .flat_map(|version| {
             version.data.modifications.iter()
                 .chain(version.data.lesser_boon.as_ref())
@@ -75,15 +74,11 @@ pub fn ingest_page_of_players(
                     }
                     (m.name.as_str(), m.emoji.as_str(), m.description.as_str())
                 })
-                .filter(|key| !modifications.contains_key(key))
         })
         .unique()
         .collect_vec();
 
-    let inserted_modifications = db::insert_modifications(conn, &new_modifications)?;
-    assert_eq!(new_modifications.len(), inserted_modifications.len());
-
-    modifications.extend(inserted_modifications);
+    let modifications = get_filled_modifications_map(conn, &unique_modifications)?;
 
     // Convert to Insertable type
     let mut new_players = players.iter()
@@ -117,6 +112,10 @@ pub fn ingest_page_of_players(
             .collect_vec();
 
         let to_insert = players_to_update.len();
+        info!(
+            "Sent {} new player versions out of {} to the database. {} left of this batch.",
+            to_insert, players.len(), remaining_versions.len(),
+        );
         let inserted = db::insert_player_versions(conn, players_to_update)?;
         info!(
             "Sent {} new player versions out of {} to the database. {} left of this batch. \
@@ -130,6 +129,44 @@ pub fn ingest_page_of_players(
     }
 
     Ok(())
+}
+
+pub fn get_filled_modifications_map(
+    conn: &mut PgConnection,
+    modifications_to_ensure: &[(&str, &str, &str)],
+) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
+    // Put everything in a loop to handle insert conflicts with other
+    // ingest threads
+    Ok(loop {
+        let mut modifications = db::get_modifications_table(conn)?;
+
+        let modifications_to_add = modifications_to_ensure.iter()
+            .filter(|key| !modifications.contains_key(*key))
+            .collect_vec();
+
+        if modifications_to_add.is_empty() {
+            break modifications;
+        }
+
+        match db::insert_modifications(conn, modifications_to_add.as_slice())? {
+            None => {
+                // Indicates that we should try again
+                warn!("Conflict inserting modifications; trying again");
+                continue;
+            }
+            Some(new_values) => {
+                modifications.extend(new_values);
+
+                // For debugging only; remove once we're sure it works
+                for m in modifications_to_ensure {
+                    assert!(modifications.contains_key(m));
+                }
+
+                break modifications;
+            }
+        }
+
+    })
 }
 
 fn chron_player_as_new<'a>(

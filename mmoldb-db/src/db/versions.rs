@@ -9,15 +9,16 @@ use itertools::Itertools;
 use log::warn;
 
 use crate::data_schema::data::versions::dsl as versions_dsl;
+use crate::QueryError;
 
-pub fn get_latest_version_valid_from(
+pub fn get_latest_raw_version_cursor(
     conn: &mut PgConnection,
     kind: &str,
-) -> QueryResult<Option<NaiveDateTime>> {
+) -> QueryResult<Option<(NaiveDateTime, String)>> {
     versions_dsl::versions
         .filter(versions_dsl::kind.eq(kind))
-        .select(versions_dsl::valid_from)
-        .order_by(versions_dsl::valid_from.desc())
+        .select((versions_dsl::valid_from, versions_dsl::entity_id))
+        .order_by((versions_dsl::valid_from.desc(), versions_dsl::entity_id.desc()))
         .limit(1)
         .get_result(conn)
         .optional()
@@ -33,9 +34,46 @@ struct NewVersion<'a> {
     pub data: &'a serde_json::Value,
 }
 
+// WARNING: This will insert the values that succeed and leave holes for the 
+// values that fail. Probably not what you want except for debugging.
+pub fn insert_versions_with_recovery<'v>(
+    conn: &mut PgConnection,
+    versions: &'v [ChronEntity<serde_json::Value>],
+) -> Vec<Result<(), (QueryError, &'v ChronEntity<serde_json::Value>)>> {
+    // This is really inefficient with all the intermediate `Vec`s, but it
+    // is useful for debugging
+    let num_versions = versions.len();
+    if num_versions == 0 {
+        return Vec::new();
+    }
+
+    match insert_versions(conn, &versions) {
+        Ok(results) => {
+            assert_eq!(results, num_versions);
+            let vecs = (0..results).map(|_| Ok(())).collect_vec();
+            assert_eq!(vecs.len(), num_versions); // Make sure I did the ranges syntax right
+            vecs
+        },
+        Err(err) => match versions.len() {
+            0 => panic!("This function recursed too far"),
+            1 => {
+                let (version,) = versions.into_iter().collect_tuple().expect("Should have one version");
+                vec![Err((err, version))]
+            },
+            len => {
+                let split = len / 2;
+                assert_eq!(versions.len(), versions[..split].len() + versions[split..].len());
+                let mut vec = insert_versions_with_recovery(conn, &versions[..split]);
+                vec.extend(insert_versions_with_recovery(conn, &versions[split..]));
+                vec
+            }
+        }
+    }
+}
+
 pub fn insert_versions(
     conn: &mut PgConnection,
-    versions: Vec<ChronEntity<serde_json::Value>>,
+    versions: &[ChronEntity<serde_json::Value>],
 ) -> QueryResult<usize> {
     let new_versions = versions
         .iter()

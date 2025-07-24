@@ -1,14 +1,13 @@
 mod logic;
 
 use chron::{Chron, ChronEntity};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
 use itertools::Itertools;
 use log::{debug, error, info};
 use miette::IntoDiagnostic;
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{Connection, PgConnection, db};
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -62,9 +61,9 @@ pub async fn ingest_players(
                         n,
                     )
                 })
-                .expect("Could not spawn worker thread")
         })
-        .collect_vec();
+        .collect::<Result<Vec<_>, _>>()
+        .into_diagnostic()?;
 
     info!("Launched process players task");
     info!("Beginning raw player ingest");
@@ -93,17 +92,46 @@ pub async fn ingest_players(
 }
 
 async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
-    let start_date = db::get_latest_version_valid_from(&mut conn, PLAYER_KIND)
+    let start_cursor = db::get_latest_raw_version_cursor(&mut conn, PLAYER_KIND)
         .into_diagnostic()?
-        .as_ref()
-        .map(NaiveDateTime::and_utc);
+        .map(|(dt, id)| (dt.and_utc(), id));
+    let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
 
     info!("Players fetch will start from {:?}", start_date);
 
     let chron = Chron::new(CHRON_FETCH_PAGE_SIZE);
 
+    // TODO Remove this after debugging
+    let num_skipped_at_start = std::sync::atomic::AtomicUsize::new(0);
     let stream = chron
         .versions(PLAYER_KIND, start_date)
+        // We ask Chron to start at a given valid_from. It will give us
+        // all versions whose valid_from is greater than _or equal to_
+        // that value. That's good, because it means that if we left
+        // off halfway through processing a batch of entities with
+        // identical valid_from, we won't miss the rest of the batch.
+        // However, we will receive the first half of the batch again.
+        // Later steps in the ingest code will error if we attempt to
+        // ingest a value that's already in the database, so we have to
+        // filter them out. That's what this skip_while is doing.
+        // It returns a future just because that's what's dictated by
+        // the stream api.
+        .skip_while(|result| {
+            let skip_this = start_cursor.as_ref().is_some_and(|(start_valid_from, start_entity_id)| {
+                result.as_ref().is_ok_and(|entity| {
+                    (entity.valid_from, &entity.entity_id) <= (*start_valid_from, start_entity_id)
+                })
+            });
+
+            if skip_this {
+                // Probably doesn't need to be as strict as SeqCst but it's debugging
+                // code, so I'm optimizing for confidence that it'll work properly over
+                // performance.
+                num_skipped_at_start.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+
+            futures::future::ready(skip_this)
+        })
         .try_chunks(RAW_PLAYER_INSERT_BATCH_SIZE);
     pin_mut!(stream);
 
@@ -116,8 +144,9 @@ async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miet
             Ok(chunk) => (chunk, None),
             Err(err) => (err.0, Some(err.1)),
         };
-        info!("Saving {} players", chunk.len());
-        let inserted = db::insert_versions(&mut conn, chunk).into_diagnostic()?;
+
+        info!("Saving {} players ({} skipped at start)", chunk.len(), num_skipped_at_start.load(std::sync::atomic::Ordering::SeqCst));
+        let inserted = db::insert_versions(&mut conn, &chunk).into_diagnostic()?;
         info!("Saved {} players", inserted);
 
         notify.notify_one();
@@ -256,6 +285,9 @@ fn process_players_internal(
                 worker_id,
             )
             .into_diagnostic()?;
+
+            // TEMP Try to make my debugger stop hanging
+            handle.block_on(tokio::time::sleep(std::time::Duration::from_secs(1)));
 
             page_index += 1;
             // Yield to allow the tokio scheduler to do its thing

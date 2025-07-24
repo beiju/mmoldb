@@ -1,42 +1,53 @@
 create table taxa.handedness (
-                                 id bigserial primary key not null,
-                                 name text not null,
-                                 unique (name)
+    id bigserial primary key not null,
+    name text not null,
+    unique (name)
 );
 
 create table taxa.day_type (
-                               id bigserial primary key not null,
-                               name text not null,
-                               display_name text not null,
-                               unique (name)
+    id bigserial primary key not null,
+    name text not null,
+    display_name text not null,
+    unique (name)
 );
 
 create table data.modifications (
-                                    id bigserial primary key not null,
-                                    name text not null,
-                                    emoji text not null,
-                                    description text not null,
-                                    unique (name, emoji, description)
+    id bigserial primary key not null,
+    name text not null,
+    emoji text not null,
+    description text not null,
+    unique (name, emoji, description)
 );
 
 create table data.player_modification_versions (
     -- bookkeeping
-                                                   id bigserial primary key not null,
-                                                   mmolb_player_id text not null,
-                                                   modification_order int not null, -- refers to the order it appears in the list
+    id bigserial primary key not null,
+    mmolb_player_id text not null,
+    modification_order int not null, -- refers to the order it appears in the list
     -- using "without time zone" because that's what the datablase did
-                                                   valid_from timestamp without time zone not null,
-                                                   valid_until timestamp without time zone, -- null means that it is currently valid
-                                                   duplicates int not null default 0,
+    valid_from timestamp without time zone not null,
+    valid_until timestamp without time zone, -- null means that it is currently valid
+    duplicates int not null default 0,
 
     -- WARNING: When you add a new value here, also add it to the perform statement in
     -- on_insert_player_version().
-                                                   modification_id bigint references data.modifications not null,
+    modification_id bigint references data.modifications not null,
 
-                                                   unique (mmolb_player_id, modification_order, valid_from),
-                                                   unique nulls not distinct (mmolb_player_id, modification_order, valid_until)
+    unique (mmolb_player_id, modification_order, valid_from),
+    unique nulls not distinct (mmolb_player_id, modification_order, valid_until)
 );
 
+-- TODO This currently doesn't close out any player_modification_versions
+--   properly when the player's list of modifications shrinks. The last N
+--   modifications in the list will remain "valid". This could be solved
+--   by closing out _all_ modifications for a given (valid_from,
+--   mmolb_player_id) when any new version for that player id is inserted.
+--     actually wait, I think that doesn't quite work. if the 3rd mod in
+--     the list changes, it'll close out the 1st and 2nd, but their inserts
+--     will already have happened so nothing will add a new, open version.
+--     this probably needs a separate query from the ingest app: close out
+--     all versions whose modification_order is higher than the new max
+--     modification order
 create function data.on_insert_player_modification_version()
     returns trigger as $$
 begin
@@ -54,20 +65,24 @@ begin
 
     -- if there was an exact match, suppress this insert
     if FOUND then
-update data.player_modification_versions
-set duplicates = duplicates + 1
-where mmolb_player_id = NEW.mmolb_player_id and valid_until is null;
+        update data.player_modification_versions
+        set duplicates = duplicates + 1
+        where mmolb_player_id = NEW.mmolb_player_id
+          and modification_order = NEW.modification_order
+          and valid_until is null;
 
-return null;
-end if;
+        return null;
+    end if;
 
     -- otherwise, close out the currently-valid version...
-update data.player_modification_versions
-set valid_until = NEW.valid_from
-where mmolb_player_id = NEW.mmolb_player_id and valid_until is null;
+    update data.player_modification_versions
+    set valid_until = NEW.valid_from
+    where mmolb_player_id = NEW.mmolb_player_id
+      and modification_order = NEW.modification_order
+      and valid_until is null;
 
--- ...and return the new row so it gets inserted as normal
-return NEW;
+    -- ...and return the new row so it gets inserted as normal
+    return NEW;
 end;
 $$ language plpgsql;
 
@@ -78,36 +93,36 @@ create trigger on_insert_player_modification_version_trigger
 
 create table data.player_versions (
     -- bookkeeping
-                                      id bigserial primary key not null,
-                                      mmolb_player_id text not null,
+    id bigserial primary key not null,
+    mmolb_player_id text not null,
     -- using "without time zone" because that's what the datablase did
-                                      valid_from timestamp without time zone not null,
-                                      valid_until timestamp without time zone, -- null means that it is currently valid
-                                      duplicates int not null default 0,
+    valid_from timestamp without time zone not null,
+    valid_until timestamp without time zone, -- null means that it is currently valid
+    duplicates int not null default 0,
 
     -- data
     -- WARNING: When you add a new value here, also add it to the perform statement in
     -- on_insert_player_version().
-                                      first_name text not null,
-                                      last_name text not null,
-                                      batting_handedness bigint references taxa.handedness, -- null means this handedness was not recognized
-                                      pitching_handedness bigint references taxa.handedness, -- null means this handedness was not recognized
-                                      home text not null, -- birth location
-                                      birthseason int not null,
-                                      birthday_type bigint references taxa.day_type, -- null for unrecognized birthday types
-                                      birthday_day int, -- null indicates this player was not born on a regular season day
-                                      birthday_superstar_day int, -- null indicates this player was not born on a superstar day
-                                      likes text not null, -- flavor
-                                      dislikes text not null, -- flavor
-                                      number int not null, -- AFAWK this does nothing
-                                      mmolb_team_id text, -- null indicates this player is no longer on a team (e.g. relegated)
-                                      slot bigint references taxa.slot, -- null if slot is unrecognized
-                                      durability double precision not null, -- changes often -- may be extracted into its own table
-                                      greater_boon bigint references data.modifications, -- null means this player does not have a greater boon
-                                      lesser_boon bigint references data.modifications, -- null means this player does not have a lesser boon
+    first_name text not null,
+    last_name text not null,
+    batting_handedness bigint references taxa.handedness, -- null means this handedness was not recognized
+    pitching_handedness bigint references taxa.handedness, -- null means this handedness was not recognized
+    home text not null, -- birth location
+    birthseason int not null,
+    birthday_type bigint references taxa.day_type, -- null for unrecognized birthday types
+    birthday_day int, -- null indicates this player was not born on a regular season day
+    birthday_superstar_day int, -- null indicates this player was not born on a superstar day
+    likes text not null, -- flavor
+    dislikes text not null, -- flavor
+    number int not null, -- AFAWK this does nothing
+    mmolb_team_id text, -- null indicates this player is no longer on a team (e.g. relegated)
+    slot bigint references taxa.slot, -- null if slot is unrecognized
+    durability double precision not null, -- changes often -- may be extracted into its own table
+    greater_boon bigint references data.modifications, -- null means this player does not have a greater boon
+    lesser_boon bigint references data.modifications, -- null means this player does not have a lesser boon
 
-                                      unique (mmolb_player_id, valid_from),
-                                      unique nulls not distinct (mmolb_player_id, valid_until)
+    unique (mmolb_player_id, valid_from),
+    unique nulls not distinct (mmolb_player_id, valid_until)
 );
 
 create function data.on_insert_player_version()
@@ -142,20 +157,20 @@ begin
 
         -- if there was an exact match, suppress this insert
         if FOUND then
-update data.player_versions
-set duplicates = duplicates + 1
-where mmolb_player_id = NEW.mmolb_player_id and valid_until is null;
+            update data.player_versions
+            set duplicates = duplicates + 1
+            where mmolb_player_id = NEW.mmolb_player_id and valid_until is null;
 
-return null;
-end if;
+            return null;
+        end if;
 
         -- otherwise, close out the currently-valid version...
-update data.player_versions
-set valid_until = NEW.valid_from
-where mmolb_player_id = NEW.mmolb_player_id and valid_until is null;
+        update data.player_versions
+        set valid_until = NEW.valid_from
+        where mmolb_player_id = NEW.mmolb_player_id and valid_until is null;
 
--- ...and return the new row so it gets inserted as normal
-return NEW;
+        -- ...and return the new row so it gets inserted as normal
+        return NEW;
 end;
     $$ language plpgsql;
 

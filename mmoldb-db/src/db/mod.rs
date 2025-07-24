@@ -20,6 +20,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
+use diesel::upsert::excluded;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
@@ -1300,8 +1301,8 @@ pub fn get_modifications_table(conn: &mut PgConnection) -> QueryResult<HashMap<N
 
 pub fn insert_modifications(
     conn: &mut PgConnection,
-    new_modifications: &[(&str /* name */, &str /* emoji */, &str /* description */)],
-) -> QueryResult<Vec<(NameEmojiTooltip, i64)>> {
+    new_modifications: &[&(&str /* name */, &str /* emoji */, &str /* description */)],
+) -> QueryResult<Option<Vec<(NameEmojiTooltip, i64)>>> {
     use crate::data_schema::data::modifications::dsl as mod_dsl;
 
     let to_insert = new_modifications
@@ -1310,17 +1311,31 @@ pub fn insert_modifications(
             NewModification { name, emoji, description, })
         .collect_vec();
 
+    let to_insert_len = to_insert.len();
     let results = diesel::insert_into(mod_dsl::modifications)
         .values(to_insert)
         .returning((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
-        .get_results::<(i64, String, String, String)>(conn)?
+        .on_conflict((mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
+        .do_nothing()
+        .get_results::<(i64, String, String, String)>(conn)?;
+
+    // TODO investigate on using on_conflict().update().set(some no-op) --
+    //   I think that should allow a get-or-insert
+    if results.len() < to_insert_len {
+        // Returning a None signals that we weren't able to insert all
+        // the modifications due to a conflict and that the caller
+        // should call us again with the same arguments
+        return Ok(None)
+    }
+
+    let results = results
         .into_iter()
         .map(|(id, name, emoji, tooltip)| (
             NameEmojiTooltip { name, emoji, tooltip }, id
         ))
         .collect();
 
-    Ok(results)
+    Ok(Some(results))
 }
 
 pub fn get_latest_player_valid_from(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
