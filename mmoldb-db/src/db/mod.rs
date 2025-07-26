@@ -1372,6 +1372,10 @@ pub fn insert_player_versions(
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
     use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
 
+    let mod_truncations = new_player_versions.iter()
+        .map(|(player, mod_list)| (mod_list.len(), player.mmolb_player_id, player.valid_from))
+        .collect_vec();
+
     let (new_player_versions, new_player_modification_versions): (Vec<NewPlayerVersion>, Vec<Vec<NewPlayerModificationVersion>>) = new_player_versions.into_iter().unzip();
     let new_player_modification_versions = new_player_modification_versions.into_iter()
         .flatten()
@@ -1381,6 +1385,21 @@ pub fn insert_player_versions(
     diesel::insert_into(pmv_dsl::player_modification_versions)
         .values(new_player_modification_versions)
         .execute(conn)?;
+
+    // If the number of modifications on a player decreases, the
+    // database logic is incapable of closing out the last N elements
+    // (where N how many net modifications were removed). We have to
+    // do this in the application layer.
+    // Each one has a different valid_from so I don't see a way to
+    // batch this one. And unfortunately I can't know ahead of time
+    // which ids need to be updated (without making extra db calls).
+    for (truncate_to, id, new_valid_until) in mod_truncations {
+        diesel::update(pmv_dsl::player_modification_versions)
+            .filter(pmv_dsl::mmolb_player_id.eq(id)
+                .and(pmv_dsl::modification_order.ge(truncate_to as i32)))
+            .set(pmv_dsl::valid_until.eq(new_valid_until))
+            .execute(conn)?;
+    }
 
     // Insert new records
     diesel::insert_into(pv_dsl::player_versions)

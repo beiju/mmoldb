@@ -286,9 +286,6 @@ fn process_players_internal(
             )
             .into_diagnostic()?;
 
-            // TEMP Try to make my debugger stop hanging
-            handle.block_on(tokio::time::sleep(std::time::Duration::from_secs(1)));
-
             page_index += 1;
             // Yield to allow the tokio scheduler to do its thing
             // (with out this, signal handling effectively doesn't work because it has to wait

@@ -128,6 +128,10 @@ pub fn ingest_page_of_players(
         this_batch = HashMap::new();
     }
 
+    let save_duration = (Utc::now() - save_start).as_seconds_f64();
+
+    info!("Ingested page of {} players in {save_duration:.3} seconds", players.len());
+
     Ok(())
 }
 
@@ -295,6 +299,20 @@ fn chron_player_as_new<'a>(
         greater_boon: entity.data.greater_boon.as_ref().map(get_modification_id),
         lesser_boon: entity.data.lesser_boon.as_ref().map(get_modification_id),
     };
+
+    // let x = match &entity.data.feed {
+    //     Err(_) => Vec::new(),
+    //     Ok(feed) => feed.iter().map(|event| {
+    //         match event.event_type {
+    //             Err(_) => { None }
+    //             Ok(event_type) => match event_type {
+    //                 FeedEventType::Game => {}
+    //                 FeedEventType::Augment => {}
+    //             }
+    //         }
+    //     })
+    //         .collect_vec()
+    // };
 
     (player, modifications)
 }
