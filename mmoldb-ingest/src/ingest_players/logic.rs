@@ -1,5 +1,6 @@
-use hashbrown::{HashMap, hash_map::Entry};
+use hashbrown::{HashMap, HashSet, hash_map::Entry};
 use chrono::{DateTime, NaiveDateTime, ParseResult, Utc};
+use futures::StreamExt;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use miette::Diagnostic;
@@ -14,6 +15,7 @@ use mmoldb_db::{db, Connection, PgConnection, QueryError, QueryResult};
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion};
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
+use rayon::prelude::*;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -42,7 +44,7 @@ pub fn ingest_page_of_players(
     let deserialize_start = Utc::now();
     // TODO Gracefully handle player deserialize failure
     let players = raw_players
-        .into_iter()
+        .into_par_iter()
         .map(|game_json| {
             Ok::<ChronEntity<mmolb_parsing::player::Player>, serde_json::Error>(ChronEntity {
                 kind: game_json.kind,
@@ -119,9 +121,26 @@ pub fn ingest_page_of_players(
             "Sent {} new player versions out of {} to the database. {} left of this batch.",
             to_insert, players.len(), remaining_versions.len(),
         );
-        let inserted = conn.transaction(|conn| {
-            db::insert_player_versions(conn, players_to_update)
-        })?;
+        // let results = conn.transaction(|conn| {
+        //     Ok::<_, QueryError>(db::insert_player_versions_with_retry(conn, &players_to_update))
+        // })?;
+        let results = db::insert_player_versions_with_retry(conn, &players_to_update);
+
+        for (result, player) in results.iter().zip(&players_to_update) {
+            if let Err(e) = result {
+                let (version, _modification_version, _augment, _paradigm_shift, _recomposition, _report): &(NewPlayerVersion, _, _, _, _, _) = player;
+                for recomp in _recomposition {
+                    println!("Recomp {} {} {}", recomp.mmolb_player_id, recomp.feed_event_index, recomp.time);
+                }
+                error!(
+                    "Error {e} ingesting player {} at {}",
+                    version.mmolb_player_id, version.valid_from,
+                );
+            }
+        }
+
+        let inserted = results.into_iter().collect::<Result<Vec<_>, _>>()?.len();
+
         info!(
             "Sent {} new player versions out of {} to the database. {} left of this batch. \
             {inserted} versions were actually inserted, the rest were duplicates. \
@@ -246,6 +265,31 @@ fn chron_player_as_new<'a>(
     Vec<NewPlayerRecomposition<'a>>,
     Vec<NewPlayerReport<'a>>,
 ) {
+    // TODO make this static, or at least global
+    let impermanent_recomps = {
+        let mut hashes = HashSet::new();
+        hashes.extend(vec![
+            ("68655942f27aa83a88fa64e0", DateTime::parse_from_rfc3339("2025-07-14 11:08:37.858154").unwrap().to_utc()),
+            ("6846cc4d4a488309816674ff", DateTime::parse_from_rfc3339("2025-07-14 13:55:21.025722").unwrap().to_utc()),
+            ("6805db0cac48194de3cd40dd", DateTime::parse_from_rfc3339("2025-07-14 13:55:30.306624").unwrap().to_utc()),
+            ("68505bc5341f7f2421020d05", DateTime::parse_from_rfc3339("2025-07-14 13:55:48.950237").unwrap().to_utc()),
+            ("685b740338c6569da104aa48", DateTime::parse_from_rfc3339("2025-07-14 13:56:10.627155").unwrap().to_utc()),
+            ("68412d1eed58166c1895ae66", DateTime::parse_from_rfc3339("2025-07-14 13:56:15.234710").unwrap().to_utc()),
+            ("684727f5bb00de6f9bb79973", DateTime::parse_from_rfc3339("2025-07-14 13:56:15.643375").unwrap().to_utc()),
+            ("684102aaf7b5d3bf791d67e8", DateTime::parse_from_rfc3339("2025-07-14 13:57:13.766455").unwrap().to_utc()),
+            ("686355f4b254dfbaab3014b0", DateTime::parse_from_rfc3339("2025-07-14 13:57:16.174812").unwrap().to_utc()),
+            ("6841000988056169e0078792", DateTime::parse_from_rfc3339("2025-07-14 14:17:07.673450").unwrap().to_utc()),
+            ("68418c52554d8039701f1c93", DateTime::parse_from_rfc3339("2025-07-14 14:17:10.212312").unwrap().to_utc()),
+            ("6840fa75ed58166c1895a7f3", DateTime::parse_from_rfc3339("2025-07-14 14:17:40.255606").unwrap().to_utc()),
+            ("684102dfec9dc637cfd0cad6", DateTime::parse_from_rfc3339("2025-07-14 14:18:16.797341").unwrap().to_utc()),
+            ("6840fb13e63d9bb8728896d2", DateTime::parse_from_rfc3339("2025-07-14 14:18:39.313986").unwrap().to_utc()),
+            ("6855b350f1d8f657407b231c", DateTime::parse_from_rfc3339("2025-07-14 15:57:59.137034").unwrap().to_utc()),
+            ("6840fe6508b7fc5e21e8a940", DateTime::parse_from_rfc3339("2025-07-14 15:58:02.746560").unwrap().to_utc()),
+            ("68564374acfab5652c3a6c44", DateTime::parse_from_rfc3339("2025-07-15 01:56:55.998455").unwrap().to_utc()),
+        ]);
+        hashes
+    };
+
     let (birthday_type, birthday_day, birthday_superstar_day) = day_to_db(&entity.data.birthday, taxa);
 
     let get_modification_id = |modification: &mmolb_parsing::player::Modification| {
@@ -323,11 +367,13 @@ fn chron_player_as_new<'a>(
     struct PlayerFullName(String);
     impl PlayerFullName {
         pub fn check_name(&self, name: &str) {
-            if name != &self.0 {
+            // Multiple Stanleys Demir were generated during the s2
+            // Falling Stars event and then Danny manually renamed them
+            if name != &self.0 && name != "Stanley Demir" {
                 warn!(
-                "Player name from augment {} doesn't match player name from player object {}",
-                name, self.0,
-            );
+                    "Player name from augment {} doesn't match player name from player object {}",
+                    name, self.0,
+                );
             }
         }
 
@@ -353,8 +399,8 @@ fn chron_player_as_new<'a>(
         // backwards to find the event that changed it.
         // It is important that enumerate() be before rev() so the feed event
         // indices are correct.
-        for (feed_event_index, event) in feed.iter().enumerate().rev() {
-            let feed_event_index = feed_event_index as i32;
+        for (index, event) in feed.iter().enumerate().rev() {
+            let feed_event_index = index as i32;
             // Wow this time stuff sucks
             let ts = match event.timestamp.format(&time::format_description::well_known::Rfc3339) {
                 Ok(val) => val,
@@ -487,20 +533,42 @@ fn chron_player_as_new<'a>(
                 },
                 ParsedFeedEventText::Recomposed { new, original } => {
                     player_full_name.check_name(new);
-                    // Remember we're going backwards, so the player name
-                    // goes from new to old
-                    player_full_name.set_name(original.to_string());
-                    recompositions.push(NewPlayerRecomposition {
-                        mmolb_player_id: &entity.entity_id,
-                        feed_event_index,
-                        time,
-                    });
+                    if impermanent_recomps.contains(&(entity.entity_id.as_str(), entity.valid_from)) {
+                        // Skip
+                    } else {
+                        // Remember we're going backwards, so the player name
+                        // goes from new to old
+                        player_full_name.set_name(original.to_string());
+                        recompositions.push(NewPlayerRecomposition {
+                            mmolb_player_id: &entity.entity_id,
+                            feed_event_index,
+                            time,
+                        });
+                    }
                 },
                 ParsedFeedEventText::Modification { .. } => {
                     // See comment on HitByFallingStar
                 },
-                ParsedFeedEventText::Retirement { .. } => { todo!() }
-                ParsedFeedEventText::Released { .. } => { todo!() }
+                ParsedFeedEventText::Retirement { .. } => {
+                    // This seems to include retirements of other players. Regardless,
+                    // we don't need it because after this the player's ID is no longer
+                    // used.
+                }
+                ParsedFeedEventText::Released { .. } => {
+                    // There shouldn't be anything to do about this. Unlike recomposition,
+                    // this player's ID is retired instead of being repurposed for the
+                    // new player.
+
+                    // There was a bug at the start of s3 where released players weren't actually
+                    // released.
+                    if index + 1 != feed.len() && (event.season, &event.day) != (3, &Ok(Day::Day(1))) {
+                        // TODO Expose player ingest warnings on the site
+                        warn!(
+                            "Released event wasn't the last event in the player's feed. {}/{}",
+                            index + 1, feed.len(),
+                        );
+                    }
+                }
             }
         }
     }

@@ -1465,11 +1465,47 @@ fn insert_player_modifications(
         .execute(conn)
 }
 
+pub fn insert_player_versions_with_retry(
+    conn: &mut PgConnection,
+    new_player_versions: &[NewPlayerVersionExt],
+) -> Vec<QueryResult<()>> {
+    let num_versions = new_player_versions.len();
+    if num_versions == 0 {
+        return Vec::new();
+    }
+
+    let res = conn.transaction(|conn| {
+        insert_player_versions(conn, new_player_versions)
+    });
+
+    match res {
+        Ok(_) => {
+            (0..num_versions).map(|_| Ok(())).collect_vec()
+        }
+        Err(e) => {
+            if num_versions == 1 {
+                vec![Err(e)]
+            } else {
+                let mut result = Vec::with_capacity(num_versions);
+                let pivot = num_versions / 2;
+                let (left, right) = new_player_versions.split_at(pivot);
+                result.extend(insert_player_versions_with_retry(conn, left));
+                result.extend(insert_player_versions_with_retry(conn, right));
+                result
+            }
+        }
+    }
+}
+
 pub fn insert_player_versions(
     conn: &mut PgConnection,
-    new_player_versions: Vec<NewPlayerVersionExt>,
+    new_player_versions: &[NewPlayerVersionExt],
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
+
+    let mut new = Vec::new();
+    new.extend_from_slice(new_player_versions);
+    let new_player_versions = new;
 
     let mod_truncations = new_player_versions.iter()
         .map(|(player, mod_list, _, _, _, _)| (mod_list.len(), player.mmolb_player_id, player.valid_from))

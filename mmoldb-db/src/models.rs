@@ -377,7 +377,7 @@ pub struct DbModification {
     pub description: String,
 }
 
-#[derive(Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_modification_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerModificationVersion<'a> {
@@ -388,7 +388,7 @@ pub struct NewPlayerModificationVersion<'a> {
     pub modification_id: i64,
 }
 
-#[derive(Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerVersion<'a> {
@@ -465,7 +465,7 @@ pub struct DbPlayerAugment {
     pub value: i32,
 }
 
-#[derive(Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_augments)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerAugment<'a> {
@@ -488,7 +488,7 @@ pub struct DbPlayerParadigmShift {
     pub attribute: i64,
 }
 
-#[derive(Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_paradigm_shifts)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerParadigmShift<'a> {
@@ -508,7 +508,7 @@ pub struct DbPlayerRecomposition {
     pub time: NaiveDateTime,
 }
 
-#[derive(Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_recompositions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerRecomposition<'a> {
@@ -532,7 +532,7 @@ pub struct DbPlayerReport {
     pub stars: i32,
 }
 
-#[derive(Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_reports)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerReport<'a> {

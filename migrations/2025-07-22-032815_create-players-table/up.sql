@@ -298,8 +298,10 @@ begin
     where pa.mmolb_player_id = NEW.mmolb_player_id
       -- note: "is not distinct from" is like "=" except for how it treats nulls.
       -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
-      and pa.feed_event_index is not distinct from NEW.feed_event_index
-      and pa.time is not distinct from NEW.time;
+      and pa.feed_event_index is not distinct from NEW.feed_event_index;
+    -- TIME CHECK IS TEMPORARILY DISABLED
+        -- TODO FIX IT ONCE INGEST IS WORKING PROPERLY
+--       and pa.time is not distinct from NEW.time;
 
     -- if there was an exact match, suppress this insert
     if FOUND then
