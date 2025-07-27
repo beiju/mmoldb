@@ -34,7 +34,7 @@ struct NewVersion<'a> {
     pub data: &'a serde_json::Value,
 }
 
-// WARNING: This will insert the values that succeed and leave holes for the 
+// WARNING: This will insert the values that succeed and leave holes for the
 // values that fail. Probably not what you want except for debugging.
 pub fn insert_versions_with_recovery<'v>(
     conn: &mut PgConnection,
@@ -160,9 +160,13 @@ pub fn advance_version_cursor(
     // value even if there are fewer than advance_by values. I don't think
     // offset() does that. And the amount of data transferred is hopefully
     // negligible anyway.
-    version_cursor_query(kind, cursor)
+    let qu = version_cursor_query(kind, cursor)
         .select((versions_dsl::valid_from, versions_dsl::entity_id))
-        .limit(advance_by as i64)
+        .limit(advance_by as i64);
+
+    println!("Versions query: \n{}", diesel::debug_query::<diesel::pg::Pg, _>(&qu));
+
+    qu
         .get_results::<(NaiveDateTime, String)>(conn)
         .map(|vec| vec.into_iter().last())
 }

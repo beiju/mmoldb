@@ -449,3 +449,66 @@ pub struct DbPlayerVersion {
     pub greater_boon: Option<i64>,
     pub lesser_boon: Option<i64>,
 }
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_augments)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerAugment {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub feed_event_index: i32,
+    pub time: NaiveDateTime,
+    pub attribute: i64,
+    pub value: i32,
+}
+
+#[derive(Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_augments)]
+pub struct NewPlayerAugment<'a> {
+    pub mmolb_player_id: &'a str,
+    pub feed_event_index: i32,
+    pub time: NaiveDateTime,
+    pub attribute: i64,
+    pub value: i32,
+}
+
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_paradigm_shifts)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerParadigmShift {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub feed_event_index: i32,
+    pub time: NaiveDateTime,
+    pub attribute: i64,
+}
+
+#[derive(Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_paradigm_shifts)]
+pub struct NewPlayerParadigmShift<'a> {
+    pub mmolb_player_id: &'a str,
+    pub feed_event_index: i32,
+    pub time: NaiveDateTime,
+    pub attribute: i64,
+}
+
+
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_recompositions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerRecomposition {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub feed_event_index: i32,
+    pub time: NaiveDateTime,
+}
+
+#[derive(Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_recompositions)]
+pub struct NewPlayerRecomposition<'a> {
+    pub mmolb_player_id: &'a str,
+    pub feed_event_index: i32,
+    pub time: NaiveDateTime,
+}

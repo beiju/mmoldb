@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Upcoming
+----------
+
+- Player ingest! Thanks to Centride on the MMOLB discord for data entry 
+  assistance, and as usual big thanks to WoofyJack for work on parsing.
+
 2025-07-20
 ----------
 

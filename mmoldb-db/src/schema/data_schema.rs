@@ -105,6 +105,17 @@ pub mod data {
     }
 
     diesel::table! {
+        data.player_augments (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            feed_event_index -> Int4,
+            time -> Timestamp,
+            attribute -> Int8,
+            value -> Int4,
+        }
+    }
+
+    diesel::table! {
         data.player_modification_versions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
@@ -113,6 +124,25 @@ pub mod data {
             valid_until -> Nullable<Timestamp>,
             duplicates -> Int4,
             modification_id -> Int8,
+        }
+    }
+
+    diesel::table! {
+        data.player_paradigm_shifts (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            feed_event_index -> Int4,
+            time -> Timestamp,
+            attribute -> Int8,
+        }
+    }
+
+    diesel::table! {
+        data.player_recompositions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            feed_event_index -> Int4,
+            time -> Timestamp,
         }
     }
 
@@ -175,7 +205,10 @@ pub mod data {
         events,
         games,
         modifications,
+        player_augments,
         player_modification_versions,
+        player_paradigm_shifts,
+        player_recompositions,
         player_versions,
         versions,
         weather,

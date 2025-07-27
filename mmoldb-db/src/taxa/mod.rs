@@ -1070,6 +1070,160 @@ taxa! {
     }
 }
 
+taxa! {
+    #[
+        schema = crate::taxa_schema::taxa::attribute_category,
+        table = crate::taxa_schema::taxa::attribute_category::dsl::attribute_category,
+        id_column = crate::taxa_schema::taxa::attribute_category::dsl::id,
+    ]
+    pub enum TaxaAttributeCategory {
+        Generic = 0,
+        Batting = 1,
+        Pitching = 2,
+        Defense = 3,
+        Baserunning = 4,
+    }
+}
+
+impl From<mmolb_parsing::enums::AttributeCategory> for TaxaAttributeCategory {
+    fn from(value: mmolb_parsing::enums::AttributeCategory) -> Self {
+        match value {
+            mmolb_parsing::enums::AttributeCategory::Batting => { Self::Batting }
+            mmolb_parsing::enums::AttributeCategory::Pitching => { Self::Pitching }
+            mmolb_parsing::enums::AttributeCategory::Defense => { Self::Defense }
+            mmolb_parsing::enums::AttributeCategory::Baserunning => { Self::Baserunning }
+            mmolb_parsing::enums::AttributeCategory::Generic => { Self::Generic }
+        }
+    }
+}
+
+taxa! {
+    #[
+        schema = crate::taxa_schema::taxa::attribute,
+        table = crate::taxa_schema::taxa::attribute::dsl::attribute,
+        id_column = crate::taxa_schema::taxa::attribute::dsl::id,
+    ]
+    pub enum TaxaAttribute {
+        // NOTE: Category numbers reference the assigned values in TaxaAttributeCategory
+        #[category: i64 = 0]
+        Priority = 1,
+        #[category: i64 = 0]
+        Luck = 2,
+        #[category: i64 = 1]
+        Aiming = 3,
+        #[category: i64 = 1]
+        Contact = 4,
+        #[category: i64 = 1]
+        Cunning = 5,
+        #[category: i64 = 1]
+        Discipline = 6,
+        #[category: i64 = 1]
+        Insight = 7,
+        #[category: i64 = 1]
+        Intimidation = 8,
+        #[category: i64 = 1]
+        Lift = 9,
+        #[category: i64 = 1]
+        Vision = 10,
+        #[category: i64 = 1]
+        Determination = 11,
+        #[category: i64 = 1]
+        Wisdom = 12,
+        #[category: i64 = 1]
+        Muscle = 13,
+        #[category: i64 = 1]
+        Selflessness = 14,
+        #[category: i64 = 2]
+        Accuracy = 15,
+        #[category: i64 = 2]
+        Rotation = 16,
+        #[category: i64 = 2]
+        Presence = 17,
+        #[category: i64 = 2]
+        Persuasion = 18,
+        #[category: i64 = 2]
+        Stamina = 19,
+        #[category: i64 = 2]
+        Velocity = 20,
+        #[category: i64 = 2]
+        Control = 21,
+        #[category: i64 = 2]
+        Stuff = 22,
+        #[category: i64 = 2]
+        Defiance = 23,
+        #[category: i64 = 3]
+        Acrobatics = 24,
+        #[category: i64 = 3]
+        Agility = 25,
+        #[category: i64 = 3]
+        Arm = 26,
+        #[category: i64 = 3]
+        Awareness = 27,
+        #[category: i64 = 3]
+        Composure = 28,
+        #[category: i64 = 3]
+        Dexterity = 29,
+        #[category: i64 = 3]
+        Patience = 30,
+        #[category: i64 = 3]
+        Reaction = 31,
+        #[category: i64 = 4]
+        Greed = 32,
+        #[category: i64 = 4]
+        Performance = 33,
+        #[category: i64 = 4]
+        Speed = 34,
+        #[category: i64 = 4]
+        Stealth = 35,
+        #[category: i64 = 2]
+        Guts = 36,
+    }
+}
+
+impl From<mmolb_parsing::enums::Attribute> for TaxaAttribute {
+    fn from(value: mmolb_parsing::enums::Attribute) -> Self {
+        match value {
+            mmolb_parsing::enums::Attribute::Priority => { Self:: Priority}
+            mmolb_parsing::enums::Attribute::Luck => { Self:: Luck}
+            mmolb_parsing::enums::Attribute::Aiming => { Self:: Aiming}
+            mmolb_parsing::enums::Attribute::Contact => { Self:: Contact}
+            mmolb_parsing::enums::Attribute::Cunning => { Self:: Cunning}
+            mmolb_parsing::enums::Attribute::Discipline => { Self:: Discipline}
+            mmolb_parsing::enums::Attribute::Insight => { Self:: Insight}
+            mmolb_parsing::enums::Attribute::Intimidation => { Self:: Intimidation}
+            mmolb_parsing::enums::Attribute::Lift => { Self:: Lift}
+            mmolb_parsing::enums::Attribute::Vision => { Self:: Vision}
+            mmolb_parsing::enums::Attribute::Determination => { Self:: Determination}
+            mmolb_parsing::enums::Attribute::Wisdom => { Self:: Wisdom}
+            mmolb_parsing::enums::Attribute::Muscle => { Self:: Muscle}
+            mmolb_parsing::enums::Attribute::Selflessness => { Self:: Selflessness}
+            mmolb_parsing::enums::Attribute::Accuracy => { Self:: Accuracy}
+            mmolb_parsing::enums::Attribute::Rotation => { Self:: Rotation}
+            mmolb_parsing::enums::Attribute::Presence => { Self:: Presence}
+            mmolb_parsing::enums::Attribute::Persuasion => { Self:: Persuasion}
+            mmolb_parsing::enums::Attribute::Stamina => { Self:: Stamina}
+            mmolb_parsing::enums::Attribute::Velocity => { Self:: Velocity}
+            mmolb_parsing::enums::Attribute::Control => { Self:: Control}
+            mmolb_parsing::enums::Attribute::Stuff => { Self:: Stuff}
+            mmolb_parsing::enums::Attribute::Defiance => { Self:: Defiance}
+            mmolb_parsing::enums::Attribute::Acrobatics => { Self:: Acrobatics}
+            mmolb_parsing::enums::Attribute::Agility => { Self:: Agility}
+            mmolb_parsing::enums::Attribute::Arm => { Self:: Arm}
+            mmolb_parsing::enums::Attribute::Awareness => { Self:: Awareness}
+            mmolb_parsing::enums::Attribute::Composure => { Self:: Composure}
+            mmolb_parsing::enums::Attribute::Dexterity => { Self:: Dexterity}
+            mmolb_parsing::enums::Attribute::Patience => { Self:: Patience}
+            mmolb_parsing::enums::Attribute::Reaction => { Self:: Reaction}
+            mmolb_parsing::enums::Attribute::Greed => { Self:: Greed}
+            mmolb_parsing::enums::Attribute::Performance => { Self:: Performance}
+            mmolb_parsing::enums::Attribute::Speed => { Self:: Speed}
+            mmolb_parsing::enums::Attribute::Stealth => { Self:: Stealth}
+            mmolb_parsing::enums::Attribute::Guts => { Self:: Guts}
+        }
+    }
+}
+
+// This _entire_ thing and its impl could be generated by macro
 #[derive(Debug, Clone)]
 pub struct Taxa {
     event_type_mapping: EnumMap<TaxaEventType, i64>,
@@ -1082,7 +1236,11 @@ pub struct Taxa {
     pitch_type_mapping: EnumMap<TaxaPitchType, i64>,
     handedness_mapping: EnumMap<TaxaHandedness, i64>,
     day_type_mapping: EnumMap<TaxaDayType, i64>,
+    #[allow(dead_code)]
     league_mapping: EnumMap<TaxaLeagues, i64>,
+    #[allow(dead_code)]
+    attribute_category_mapping: EnumMap<TaxaAttributeCategory, i64>,
+    attribute_mapping: EnumMap<TaxaAttribute, i64>,
 }
 
 impl Taxa {
@@ -1101,6 +1259,8 @@ impl Taxa {
             handedness_mapping: TaxaHandedness::make_id_mapping(conn)?,
             day_type_mapping: TaxaDayType::make_id_mapping(conn)?,
             league_mapping: TaxaLeagues::make_id_mapping(conn)?,
+            attribute_category_mapping: TaxaAttributeCategory::make_id_mapping(conn)?,
+            attribute_mapping: TaxaAttribute::make_id_mapping(conn)?,
         })
     }
 
@@ -1146,6 +1306,10 @@ impl Taxa {
 
     pub fn pitch_type_id(&self, ty: TaxaPitchType) -> i64 {
         self.pitch_type_mapping[ty]
+    }
+
+    pub fn attribute_id(&self, ty: TaxaAttribute) -> i64 {
+        self.attribute_mapping[ty]
     }
 
     pub fn event_type_from_id(&self, id: i64) -> Option<TaxaEventType> {
@@ -1219,11 +1383,11 @@ impl Taxa {
             .0
     }
 
-    pub fn league_from_id(&self, id: i64) -> TaxaLeagues {
-        self.league_mapping
+    pub fn attribute_from_id(&self, id: i64) -> TaxaAttribute {
+        self.attribute_mapping
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
-            .expect("TODO Handle unknown league")
+            .expect("TODO Handle unknown attribute")
             .0
     }
 }

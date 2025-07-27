@@ -1,15 +1,16 @@
 use hashbrown::{HashMap, hash_map::Entry};
-use chrono::Utc;
+use chrono::{DateTime, ParseResult, Utc};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use miette::Diagnostic;
-use mmolb_parsing::enums::{Day, Handedness, Position};
+use mmolb_parsing::enums::{Attribute, Day, FeedEventType, Handedness, Position};
+use mmolb_parsing::feed_event::ParsedFeedEventText;
 use mmolb_parsing::NotRecognized;
 use thiserror::Error;
 use chron::ChronEntity;
 use mmoldb_db::{db, PgConnection, QueryError, QueryResult};
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerModificationVersion, NewPlayerVersion};
+use mmoldb_db::models::{NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerVersion};
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
 
 #[derive(Debug, Error, Diagnostic)]
@@ -130,7 +131,11 @@ pub fn ingest_page_of_players(
 
     let save_duration = (Utc::now() - save_start).as_seconds_f64();
 
-    info!("Ingested page of {} players in {save_duration:.3} seconds", players.len());
+    info!(
+        "Ingested page of {} players in {save_duration:.3} seconds. \
+        Fetching them took {get_batch_to_process_duration:.3} seconds.",
+        players.len(),
+    );
 
     Ok(())
 }
@@ -177,7 +182,13 @@ fn chron_player_as_new<'a>(
     entity: &'a ChronEntity<mmolb_parsing::player::Player>, 
     taxa: &Taxa, 
     modifications: &HashMap<NameEmojiTooltip, i64>,
-) -> (NewPlayerVersion<'a>, Vec<NewPlayerModificationVersion<'a>>) {
+) -> (
+    NewPlayerVersion<'a>,
+    Vec<NewPlayerModificationVersion<'a>>,
+    Vec<NewPlayerAugment<'a>>,
+    Vec<NewPlayerParadigmShift<'a>>,
+    Vec<NewPlayerRecomposition<'a>>,
+) {
     let (birthday_type, birthday_day, birthday_superstar_day) = match &entity.data.birthday {
         Ok(Day::Preseason) => {
             (Some(taxa.day_type_id(TaxaDayType::Preseason)), None, None)
@@ -300,19 +311,160 @@ fn chron_player_as_new<'a>(
         lesser_boon: entity.data.lesser_boon.as_ref().map(get_modification_id),
     };
 
-    // let x = match &entity.data.feed {
-    //     Err(_) => Vec::new(),
-    //     Ok(feed) => feed.iter().map(|event| {
-    //         match event.event_type {
-    //             Err(_) => { None }
-    //             Ok(event_type) => match event_type {
-    //                 FeedEventType::Game => {}
-    //                 FeedEventType::Augment => {}
-    //             }
-    //         }
-    //     })
-    //         .collect_vec()
-    // };
+    struct PlayerFullName(String);
+    impl PlayerFullName {
+        pub fn check_name(&self, name: &str) {
+            if name != &self.0 {
+                warn!(
+                "Player name from augment {} doesn't match player name from player object {}",
+                name, self.0,
+            );
+            }
+        }
 
-    (player, modifications)
+        pub fn set_name(&mut self, new_name: String) {
+            self.0 = new_name;
+        }
+    }
+
+    let mut player_full_name = PlayerFullName(format!("{} {}", player.first_name, player.last_name));
+
+    // Current plan is to regenerate all feed-dependent tables every
+    // time a player is ingested, and use a database function to handle
+    // the many duplicates that will create.
+    let mut augments = Vec::new();
+    let mut paradigm_shifts = Vec::new();
+    let mut recompositions = Vec::new();
+
+    if let Ok(feed) = &entity.data.feed {
+        // We process feed events in reverse so that we can keep the player's
+        // expected name updated. Since we're starting at the player's current
+        // state, we only know that the player's name has changed if we scan
+        // backwards to find the event that changed it.
+        // It is important that enumerate() be before rev() so the feed event
+        // indices are correct.
+        for (feed_event_index, event) in feed.iter().enumerate().rev() {
+            let feed_event_index = feed_event_index as i32;
+            let time = match DateTime::parse_from_rfc3339(&event.ts) {
+                Ok(time_with_offset) => time_with_offset.naive_utc(),
+                Err(err) => {
+                    // TODO Expose player ingest errors on the site
+                    error!(
+                        "Player {}'s {}th feed event `ts` failed to parse as a date: {}",
+                        entity.entity_id, feed_event_index, err,
+                    );
+                    // The behavior I've decided on for errors in feed event parsing is
+                    // to skip the feed event
+                    continue;
+                }
+            };
+
+            match mmolb_parsing::feed_event::parse_feed_event(event) {
+                ParsedFeedEventText::ParseError { error, text } => {
+                    // TODO Expose player ingest errors on the site
+                    error!(
+                        "Error {error} parsing {text} from {} {} ({})'s feed",
+                        entity.data.first_name, entity.data.last_name, entity.entity_id,
+                    );
+                }
+                ParsedFeedEventText::GameResult { .. } => {
+                    // We don't (yet) have a use for this event
+                },
+                ParsedFeedEventText::Delivery { .. } => {
+                    // We don't (yet) use this event, but feed events have a timestamp so it
+                    // could be used to backdate when players got their item. Although it
+                    // doesn't really matter because player items can't (yet) change during
+                    // a game, so we can backdate any player items to the beginning of any
+                    // game they were observed doing. Also this doesn't apply to item changes
+                    // that team owners make using the inventory, so there's not much point.
+                },
+                ParsedFeedEventText::Shipment { .. } => {
+                    // See comment on Delivery
+                },
+                ParsedFeedEventText::SpecialDelivery { .. } => {
+                    // See comment on Delivery
+                },
+                ParsedFeedEventText::AttributeChanges { changes } => {
+                    for change in changes {
+                        player_full_name.check_name(&change.player_name);
+                        augments.push(NewPlayerAugment {
+                            mmolb_player_id: &entity.entity_id,
+                            feed_event_index,
+                            time,
+                            attribute: taxa.attribute_id(change.attribute.into()),
+                            value: change.amount as i32,
+                        })
+                    }
+                },
+                ParsedFeedEventText::SingleAttributeEquals { player_name, changing_attribute, value_attribute } => {
+                    player_full_name.check_name(&player_name);
+                    // The handling of a non-priority SingleAttributeEquals will have to
+                    // be so different that it's not worth trying to implement before it
+                    // actually appears
+                    if changing_attribute == Attribute::Priority {
+                        paradigm_shifts.push(NewPlayerParadigmShift {
+                            mmolb_player_id: &entity.entity_id,
+                            feed_event_index,
+                            time,
+                            attribute: taxa.attribute_id(value_attribute.into()),
+                        })
+                    } else {
+                        // TODO Expose player ingest errors on the site
+                        error!(
+                            "Encountered a SingleAttributeEquals feed event that changes an \
+                            attribute other than priority. Player {} feed event {} changes {}",
+                            entity.entity_id, feed_event_index, changing_attribute,
+                        );
+                    }
+                },
+                ParsedFeedEventText::MassAttributeEquals { .. } => {
+                    // TODO Expose player ingest warnings on the site
+                    warn!("MassAttributeEquals shouldn't appear on players");
+                },
+                ParsedFeedEventText::S1Enchantment { .. } => {
+                    // This only affects items. Rationale is the same as Delivery.
+                },
+                ParsedFeedEventText::S2Enchantment { .. } => {
+                    // This only affects items. Rationale is the same as Delivery.
+                },
+                ParsedFeedEventText::TakeTheMound { .. } => {
+                    // We can use this to backdate certain position changes, but
+                    // the utility of doing that is limited for the same reason
+                    // as the utility of processing Delivery is limited.
+                },
+                ParsedFeedEventText::TakeThePlate { .. } => {
+                    // See comment on TakeTheMound
+                },
+                ParsedFeedEventText::SwapPlaces { .. } => {
+                    // See comment on TakeTheMound
+                },
+                ParsedFeedEventText::HitByFallingStar { .. } => {
+                    // We can use this to backdate certain mod changes, but
+                    // the utility of doing that is limited for the same reason
+                    // as the utility of processing Delivery is limited.
+                },
+                ParsedFeedEventText::Prosperous { .. } => {
+                    // This is entirely redundant with the information available
+                    // when parsing games. I suppose it might be used for
+                    // synchronization, but we have no need of that yet.
+                },
+                ParsedFeedEventText::Recomposed { new, original } => {
+                    player_full_name.check_name(new);
+                    // Remember we're going backwards, so the player name
+                    // goes from new to old
+                    player_full_name.set_name(original.to_string());
+                    recompositions.push(NewPlayerRecomposition {
+                        mmolb_player_id: &entity.entity_id,
+                        feed_event_index,
+                        time,
+                    });
+                },
+                ParsedFeedEventText::Modification { .. } => {
+                    // See comment on HitByFallingStar
+                },
+            }
+        }
+    }
+
+    (player, modifications, augments, paradigm_shifts, recompositions)
 }

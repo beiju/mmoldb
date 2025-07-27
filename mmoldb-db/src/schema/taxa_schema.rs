@@ -2,6 +2,21 @@
 
 pub mod taxa {
     diesel::table! {
+        taxa.attribute (id) {
+            id -> Int8,
+            name -> Text,
+            category -> Nullable<Int8>,
+        }
+    }
+
+    diesel::table! {
+        taxa.attribute_category (id) {
+            id -> Int8,
+            name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.base (id) {
             id -> Int8,
             name -> Text,
@@ -109,9 +124,12 @@ pub mod taxa {
         }
     }
 
+    diesel::joinable!(attribute -> attribute_category (category));
     diesel::joinable!(slot -> fielder_location (location));
 
     diesel::allow_tables_to_appear_in_same_query!(
+        attribute,
+        attribute_category,
         base,
         base_description_format,
         day_type,

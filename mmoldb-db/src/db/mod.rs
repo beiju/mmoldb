@@ -20,11 +20,10 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
-use diesel::upsert::excluded;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerModificationVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -1365,26 +1364,68 @@ pub fn latest_player_versions(conn: &mut PgConnection, player_ids: &[String]) ->
     Ok(map)
 }
 
-pub fn insert_player_versions(
+type NewPlayerVersionExt<'a> = (
+    NewPlayerVersion<'a>,
+    Vec<NewPlayerModificationVersion<'a>>,
+    Vec<NewPlayerAugment<'a>>,
+    Vec<NewPlayerParadigmShift<'a>>,
+    Vec<NewPlayerRecomposition<'a>>,
+);
+
+fn insert_player_recompositions(
     conn: &mut PgConnection,
-    new_player_versions: Vec<(NewPlayerVersion, Vec<NewPlayerModificationVersion>)>,
+    new_player_recompositions: Vec<Vec<NewPlayerRecomposition>>,
 ) -> QueryResult<usize> {
-    use crate::data_schema::data::player_versions::dsl as pv_dsl;
-    use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
-
-    let mod_truncations = new_player_versions.iter()
-        .map(|(player, mod_list)| (mod_list.len(), player.mmolb_player_id, player.valid_from))
-        .collect_vec();
-
-    let (new_player_versions, new_player_modification_versions): (Vec<NewPlayerVersion>, Vec<Vec<NewPlayerModificationVersion>>) = new_player_versions.into_iter().unzip();
-    let new_player_modification_versions = new_player_modification_versions.into_iter()
+    use crate::data_schema::data::player_recompositions::dsl as pr_dsl;
+    let player_recompositions = new_player_recompositions.into_iter()
         .flatten()
         .collect_vec();
 
     // Insert new records
-    diesel::insert_into(pmv_dsl::player_modification_versions)
-        .values(new_player_modification_versions)
-        .execute(conn)?;
+    diesel::insert_into(pr_dsl::player_recompositions)
+        .values(player_recompositions)
+        .execute(conn)
+}
+
+fn insert_player_paradigm_shifts(
+    conn: &mut PgConnection,
+    new_player_paradigm_shifts: Vec<Vec<NewPlayerParadigmShift>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_paradigm_shifts::dsl as pps_dsl;
+    let player_augments = new_player_paradigm_shifts.into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::insert_into(pps_dsl::player_paradigm_shifts)
+        .values(player_augments)
+        .execute(conn)
+}
+
+fn insert_player_augments(
+    conn: &mut PgConnection,
+    new_player_augments: Vec<Vec<NewPlayerAugment>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_augments::dsl as pa_dsl;
+    let player_augments = new_player_augments.into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::insert_into(pa_dsl::player_augments)
+        .values(player_augments)
+        .execute(conn)
+}
+
+fn insert_player_modifications(
+    conn: &mut PgConnection,
+    new_player_modification_versions: Vec<Vec<NewPlayerModificationVersion>>,
+    mod_truncations: Vec<(usize, &str, NaiveDateTime)>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
+    let new_player_modification_versions = new_player_modification_versions.into_iter()
+        .flatten()
+        .collect_vec();
 
     // If the number of modifications on a player decreases, the
     // database logic is incapable of closing out the last N elements
@@ -1400,6 +1441,42 @@ pub fn insert_player_versions(
             .set(pmv_dsl::valid_until.eq(new_valid_until))
             .execute(conn)?;
     }
+
+
+    // Insert new records
+    diesel::insert_into(pmv_dsl::player_modification_versions)
+        .values(new_player_modification_versions)
+        .execute(conn)
+}
+
+pub fn insert_player_versions(
+    conn: &mut PgConnection,
+    new_player_versions: Vec<NewPlayerVersionExt>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_versions::dsl as pv_dsl;
+
+    let mod_truncations = new_player_versions.iter()
+        .map(|(player, mod_list, _, _, _)| (mod_list.len(), player.mmolb_player_id, player.valid_from))
+        .collect_vec();
+
+    let (
+        new_player_versions,
+        new_player_modification_versions,
+        new_player_augments,
+        new_player_paradigm_shifts,
+        new_player_recompositions,
+    ): (
+        Vec<NewPlayerVersion>,
+        Vec<Vec<NewPlayerModificationVersion>>,
+        Vec<Vec<NewPlayerAugment>>,
+        Vec<Vec<NewPlayerParadigmShift>>,
+        Vec<Vec<NewPlayerRecomposition>>,
+    ) = itertools::multiunzip(new_player_versions);
+
+    insert_player_recompositions(conn, new_player_recompositions)?;
+    insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
+    insert_player_augments(conn, new_player_augments)?;
+    insert_player_modifications(conn, new_player_modification_versions, mod_truncations)?;
 
     // Insert new records
     diesel::insert_into(pv_dsl::player_versions)

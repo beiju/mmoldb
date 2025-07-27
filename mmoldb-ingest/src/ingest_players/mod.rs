@@ -36,7 +36,7 @@ pub async fn ingest_players(
             .map(|(dt, id)| (dt.and_utc(), id)),
     ));
 
-    let num_workers = 4;
+    let num_workers = 1; // Don't increase this past 1 until player.augments/priority_shifts/recompositions is fixed to handle it
     debug!("Ingesting with {} workers", num_workers);
 
     let process_players_handles = (1..=num_workers)
@@ -251,6 +251,9 @@ fn process_players_internal(
 
                 this_cursor
             };
+
+            let advance_cursor_duration = (Utc::now() - get_batch_to_process_start).as_seconds_f64();
+            info!("Advancing players cursor took {advance_cursor_duration:.3} seconds");
 
             let raw_players = db::get_versions_at_cursor(
                 &mut conn,

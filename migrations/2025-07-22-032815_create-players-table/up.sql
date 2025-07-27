@@ -174,8 +174,141 @@ begin
 end;
     $$ language plpgsql;
 
-
 create trigger on_insert_player_version_trigger
     before insert on data.player_versions
     for each row
     execute function data.on_insert_player_version();
+
+-- this is "Batting", "Pitching", "Defense", and "Baserunning"
+create table taxa.attribute_category (
+    id bigserial primary key not null,
+    name text not null,
+    unique (name)
+);
+
+-- this is things like "Contact", "Selflessness", "Greed", etc.
+create table taxa.attribute (
+    id bigserial primary key not null,
+    name text not null,
+    category bigint references taxa.attribute_category, -- null for Luck and Priority (sometimes also called "Misc" attributes)
+    -- might add adjectives eventually"
+    unique (name)
+);
+
+create table data.player_augments (
+    -- bookkeeping
+    id bigserial primary key not null,
+    mmolb_player_id text not null,
+    feed_event_index int not null,
+    unique (id, mmolb_player_id, feed_event_index),
+
+    -- data
+    time timestamp without time zone not null,
+    attribute bigint references taxa.attribute not null,
+    value int not null -- stored exactly as MMOLB gives it. common values are 5, 10, 15, 30, and 50
+);
+
+create function data.on_insert_player_augment()
+    returns trigger as $$
+begin
+    perform 1
+    from data.player_augments pa
+    where pa.mmolb_player_id = NEW.mmolb_player_id
+      -- note: "is not distinct from" is like "=" except for how it treats nulls.
+      -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
+      and pa.feed_event_index is not distinct from NEW.feed_event_index
+      and pa.time is not distinct from NEW.time
+      and pa.attribute is not distinct from NEW.attribute
+      and pa.value is not distinct from NEW.value;
+
+    -- if there was an exact match, suppress this insert
+    if FOUND then
+        return null;
+    end if;
+
+    -- otherwise, return the new row so it gets inserted as normal
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger on_insert_player_augment_trigger
+    before insert on data.player_augments
+    for each row
+execute function data.on_insert_player_augment();
+
+create table data.player_paradigm_shifts (
+    -- bookkeeping
+    id bigserial primary key not null,
+    mmolb_player_id text not null,
+    feed_event_index int not null,
+    unique (id, mmolb_player_id, feed_event_index),
+
+    -- data
+    time timestamp without time zone not null,
+    attribute bigint references taxa.attribute not null
+);
+
+create function data.on_insert_player_paradigm_shift()
+    returns trigger as $$
+begin
+    perform 1
+    from data.player_paradigm_shifts pa
+    where pa.mmolb_player_id = NEW.mmolb_player_id
+      -- note: "is not distinct from" is like "=" except for how it treats nulls.
+      -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
+      and pa.feed_event_index is not distinct from NEW.feed_event_index
+      and pa.time is not distinct from NEW.time
+      and pa.attribute is not distinct from NEW.attribute;
+
+    -- if there was an exact match, suppress this insert
+    if FOUND then
+        return null;
+    end if;
+
+    -- otherwise, return the new row so it gets inserted as normal
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger on_insert_player_paradigm_shift_trigger
+    before insert on data.player_paradigm_shifts
+    for each row
+execute function data.on_insert_player_paradigm_shift();
+
+
+create table data.player_recompositions (
+    -- bookkeeping
+    id bigserial primary key not null,
+    mmolb_player_id text not null,
+    feed_event_index int not null,
+    unique (id, mmolb_player_id, feed_event_index),
+
+    -- data
+    time timestamp without time zone not null
+);
+
+create function data.on_insert_player_recomposition()
+    returns trigger as $$
+begin
+    perform 1
+    from data.player_recompositions pa
+    where pa.mmolb_player_id = NEW.mmolb_player_id
+      -- note: "is not distinct from" is like "=" except for how it treats nulls.
+      -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
+      and pa.feed_event_index is not distinct from NEW.feed_event_index
+      and pa.time is not distinct from NEW.time;
+
+    -- if there was an exact match, suppress this insert
+    if FOUND then
+        return null;
+    end if;
+
+    -- otherwise, return the new row so it gets inserted as normal
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger on_insert_player_recomposition_trigger
+    before insert on data.player_recompositions
+    for each row
+execute function data.on_insert_player_recomposition();
