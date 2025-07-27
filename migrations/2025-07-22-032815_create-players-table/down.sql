@@ -1,3 +1,7 @@
+drop trigger on_insert_player_report_trigger on data.player_reports;
+drop function data.on_insert_player_report;
+drop table data.player_reports;
+
 drop trigger on_insert_player_recomposition_trigger on data.player_recompositions;
 drop function data.on_insert_player_recomposition;
 drop table data.player_recompositions;
@@ -25,3 +29,5 @@ drop table data.modifications;
 
 drop table taxa.day_type;
 drop table taxa.handedness;
+
+drop index versions_cursor_index;

@@ -1855,8 +1855,8 @@ dependencies = [
 
 [[package]]
 name = "mmolb_parsing"
-version = "0.32.0"
-source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#dee667d8a15fa9df48047e1a49879291d3f8537b"
+version = "0.33.0"
+source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#0a8cf985ea3ce064c7dec097cf2224ec3b396d3f"
 dependencies = [
  "nom 8.0.0",
  "nom-language",
@@ -1868,6 +1868,7 @@ dependencies = [
  "serde_with",
  "strum",
  "thiserror",
+ "time",
  "tracing",
 ]
 
@@ -1939,6 +1940,7 @@ dependencies = [
  "serde_json",
  "strum",
  "thiserror",
+ "time",
  "tokio",
  "tokio-util",
 ]

@@ -360,6 +360,7 @@ pub struct RawDbColumn {
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = crate::data_schema::data::modifications)]
+#[diesel(treat_none_as_default_value = false)]
 pub struct NewModification<'a> {
     pub name: &'a str,
     pub emoji: &'a str,
@@ -378,6 +379,7 @@ pub struct DbModification {
 
 #[derive(Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_modification_versions)]
+#[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerModificationVersion<'a> {
     pub mmolb_player_id: &'a str,
     pub valid_from: NaiveDateTime,
@@ -388,6 +390,7 @@ pub struct NewPlayerModificationVersion<'a> {
 
 #[derive(Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_versions)]
+#[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerVersion<'a> {
     pub mmolb_player_id: &'a str,
     pub valid_from: NaiveDateTime,
@@ -464,6 +467,7 @@ pub struct DbPlayerAugment {
 
 #[derive(Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_augments)]
+#[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerAugment<'a> {
     pub mmolb_player_id: &'a str,
     pub feed_event_index: i32,
@@ -486,14 +490,13 @@ pub struct DbPlayerParadigmShift {
 
 #[derive(Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_paradigm_shifts)]
+#[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerParadigmShift<'a> {
     pub mmolb_player_id: &'a str,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
     pub attribute: i64,
 }
-
-
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::player_recompositions)]
@@ -507,8 +510,39 @@ pub struct DbPlayerRecomposition {
 
 #[derive(Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_recompositions)]
+#[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerRecomposition<'a> {
     pub mmolb_player_id: &'a str,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_reports)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerReport {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
+    pub observed: NaiveDateTime,
+    pub attribute: i64,
+    pub stars: i32,
+}
+
+#[derive(Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_reports)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPlayerReport<'a> {
+    pub mmolb_player_id: &'a str,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
+    pub observed: NaiveDateTime,
+    pub attribute: i64,
+    pub stars: i32,
+
 }

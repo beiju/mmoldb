@@ -1,3 +1,4 @@
+use miette::WrapErr;
 mod logic;
 
 use chron::{Chron, ChronEntity};
@@ -18,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 const PLAYER_KIND: &'static str = "player";
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_PLAYER_INSERT_BATCH_SIZE: usize = 1000;
-const PROCESS_PLAYER_BATCH_SIZE: usize = 1000;
+const PROCESS_PLAYER_BATCH_SIZE: usize = 100_000;
 
 pub async fn ingest_players(
     pg_url: String,
@@ -236,7 +237,8 @@ fn process_players_internal(
                         .map(|(d, i)| (d.naive_utc(), i.as_str())),
                     PROCESS_PLAYER_BATCH_SIZE,
                 )
-                .into_diagnostic()?
+                .into_diagnostic()
+                .context("Advancing version cursor")?
                 .map(|(dt, id)| (dt.and_utc(), id));
                 if let Some(cursor) = next_cursor {
                     *ingest_cursor = Some(cursor);
@@ -263,7 +265,8 @@ fn process_players_internal(
                     .as_ref()
                     .map(|(d, i)| (d.naive_utc(), i.as_str())),
             )
-            .into_diagnostic()?;
+            .into_diagnostic()
+            .context("Getting versions at cursor")?;
 
             let get_batch_to_process_duration =
                 (Utc::now() - get_batch_to_process_start).as_seconds_f64();
@@ -286,8 +289,7 @@ fn process_players_internal(
                 raw_players,
                 &mut conn,
                 worker_id,
-            )
-            .into_diagnostic()?;
+            )?;
 
             page_index += 1;
             // Yield to allow the tokio scheduler to do its thing

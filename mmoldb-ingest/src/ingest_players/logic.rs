@@ -1,16 +1,18 @@
 use hashbrown::{HashMap, hash_map::Entry};
-use chrono::{DateTime, ParseResult, Utc};
+use chrono::{DateTime, NaiveDateTime, ParseResult, Utc};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use miette::Diagnostic;
 use mmolb_parsing::enums::{Attribute, Day, FeedEventType, Handedness, Position};
 use mmolb_parsing::feed_event::ParsedFeedEventText;
 use mmolb_parsing::NotRecognized;
+use mmolb_parsing::player::TalkCategory;
 use thiserror::Error;
+use time::error::Format;
 use chron::ChronEntity;
-use mmoldb_db::{db, PgConnection, QueryError, QueryResult};
+use mmoldb_db::{db, Connection, PgConnection, QueryError, QueryResult};
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerVersion};
+use mmoldb_db::models::{NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion};
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
 
 #[derive(Debug, Error, Diagnostic)]
@@ -117,7 +119,9 @@ pub fn ingest_page_of_players(
             "Sent {} new player versions out of {} to the database. {} left of this batch.",
             to_insert, players.len(), remaining_versions.len(),
         );
-        let inserted = db::insert_player_versions(conn, players_to_update)?;
+        let inserted = conn.transaction(|conn| {
+            db::insert_player_versions(conn, players_to_update)
+        })?;
         info!(
             "Sent {} new player versions out of {} to the database. {} left of this batch. \
             {inserted} versions were actually inserted, the rest were duplicates. \
@@ -178,18 +182,9 @@ pub fn get_filled_modifications_map(
     })
 }
 
-fn chron_player_as_new<'a>(
-    entity: &'a ChronEntity<mmolb_parsing::player::Player>, 
-    taxa: &Taxa, 
-    modifications: &HashMap<NameEmojiTooltip, i64>,
-) -> (
-    NewPlayerVersion<'a>,
-    Vec<NewPlayerModificationVersion<'a>>,
-    Vec<NewPlayerAugment<'a>>,
-    Vec<NewPlayerParadigmShift<'a>>,
-    Vec<NewPlayerRecomposition<'a>>,
-) {
-    let (birthday_type, birthday_day, birthday_superstar_day) = match &entity.data.birthday {
+
+fn day_to_db(day: &Result<Day, NotRecognized>, taxa: &Taxa) -> (Option<i64>, Option<i32>, Option<i32>) {
+    match day {
         Ok(Day::Preseason) => {
             (Some(taxa.day_type_id(TaxaDayType::Preseason)), None, None)
         }
@@ -209,7 +204,7 @@ fn chron_player_as_new<'a>(
             (Some(taxa.day_type_id(TaxaDayType::PostseasonRound3)), None, None)
         }
         Ok(Day::PostseasonRound(other)) => {
-            error!("Player was born on a unexpected postseason day {other} (expected 1-3)");
+            error!("Unexpected postseason day {other} (expected 1-3)");
             (None, None, None)
         }
         Ok(Day::Election) => {
@@ -234,10 +229,24 @@ fn chron_player_as_new<'a>(
             (Some(taxa.day_type_id(TaxaDayType::SpecialEvent)), None, None)
         }
         Err(err) => {
-            error!("Player was born on an unrecognized day {err}");
+            error!("Unrecognized day {err}");
             (None, None, None)
         }
-    };
+    }
+}
+fn chron_player_as_new<'a>(
+    entity: &'a ChronEntity<mmolb_parsing::player::Player>, 
+    taxa: &Taxa, 
+    modifications: &HashMap<NameEmojiTooltip, i64>,
+) -> (
+    NewPlayerVersion<'a>,
+    Vec<NewPlayerModificationVersion<'a>>,
+    Vec<NewPlayerAugment<'a>>,
+    Vec<NewPlayerParadigmShift<'a>>,
+    Vec<NewPlayerRecomposition<'a>>,
+    Vec<NewPlayerReport<'a>>,
+) {
+    let (birthday_type, birthday_day, birthday_superstar_day) = day_to_db(&entity.data.birthday, taxa);
 
     let get_modification_id = |modification: &mmolb_parsing::player::Modification| {
         *modifications.get(&(modification.name.as_str(), modification.emoji.as_str(), modification.description.as_str()))
@@ -335,6 +344,7 @@ fn chron_player_as_new<'a>(
     let mut augments = Vec::new();
     let mut paradigm_shifts = Vec::new();
     let mut recompositions = Vec::new();
+    let mut reports = Vec::new();
 
     if let Ok(feed) = &entity.data.feed {
         // We process feed events in reverse so that we can keep the player's
@@ -345,7 +355,21 @@ fn chron_player_as_new<'a>(
         // indices are correct.
         for (feed_event_index, event) in feed.iter().enumerate().rev() {
             let feed_event_index = feed_event_index as i32;
-            let time = match DateTime::parse_from_rfc3339(&event.ts) {
+            // Wow this time stuff sucks
+            let ts = match event.timestamp.format(&time::format_description::well_known::Rfc3339) {
+                Ok(val) => val,
+                Err(err) => {
+                    // TODO Expose player ingest errors on the site
+                    error!(
+                        "Player {}'s {}th feed event `ts` failed to format as a date: {}",
+                        entity.entity_id, feed_event_index, err,
+                    );
+                    // The behavior I've decided on for errors in feed event parsing is
+                    // to skip the feed event
+                    continue;
+                }
+            };
+            let time = match DateTime::parse_from_rfc3339(&ts) {
                 Ok(time_with_offset) => time_with_offset.naive_utc(),
                 Err(err) => {
                     // TODO Expose player ingest errors on the site
@@ -401,25 +425,35 @@ fn chron_player_as_new<'a>(
                     // The handling of a non-priority SingleAttributeEquals will have to
                     // be so different that it's not worth trying to implement before it
                     // actually appears
-                    if changing_attribute == Attribute::Priority {
-                        paradigm_shifts.push(NewPlayerParadigmShift {
-                            mmolb_player_id: &entity.entity_id,
+                    process_paradigm_shift(
+                        changing_attribute,
+                        value_attribute,
+                        &mut paradigm_shifts,
+                        feed_event_index,
+                        time,
+                        entity,
+                        taxa,
+                    )
+                },
+                ParsedFeedEventText::MassAttributeEquals { value_attribute, changing_attribute, players } => {
+                    if players.is_empty() {
+                        // TODO Expose player ingest warnings on the site
+                        warn!("MassAttributeEquals had 0 players");
+                    } else if let Some(((_, player_name),)) = players.iter().collect_tuple() {
+                        player_full_name.check_name(player_name);
+                        process_paradigm_shift(
+                            changing_attribute,
+                            value_attribute,
+                            &mut paradigm_shifts,
                             feed_event_index,
                             time,
-                            attribute: taxa.attribute_id(value_attribute.into()),
-                        })
-                    } else {
-                        // TODO Expose player ingest errors on the site
-                        error!(
-                            "Encountered a SingleAttributeEquals feed event that changes an \
-                            attribute other than priority. Player {} feed event {} changes {}",
-                            entity.entity_id, feed_event_index, changing_attribute,
+                            entity,
+                            taxa,
                         );
+                    } else {
+                        // TODO Expose player ingest warnings on the site
+                        warn!("MassAttributeEquals on players shouldn't have more than one player");
                     }
-                },
-                ParsedFeedEventText::MassAttributeEquals { .. } => {
-                    // TODO Expose player ingest warnings on the site
-                    warn!("MassAttributeEquals shouldn't appear on players");
                 },
                 ParsedFeedEventText::S1Enchantment { .. } => {
                     // This only affects items. Rationale is the same as Delivery.
@@ -438,10 +472,13 @@ fn chron_player_as_new<'a>(
                 ParsedFeedEventText::SwapPlaces { .. } => {
                     // See comment on TakeTheMound
                 },
-                ParsedFeedEventText::HitByFallingStar { .. } => {
+                ParsedFeedEventText::InfusedByFallingStar { .. } => {
                     // We can use this to backdate certain mod changes, but
                     // the utility of doing that is limited for the same reason
                     // as the utility of processing Delivery is limited.
+                },
+                ParsedFeedEventText::InjuredByFallingStar { .. } => {
+                    // We don't (yet) have a use for this event
                 },
                 ParsedFeedEventText::Prosperous { .. } => {
                     // This is entirely redundant with the information available
@@ -462,9 +499,86 @@ fn chron_player_as_new<'a>(
                 ParsedFeedEventText::Modification { .. } => {
                     // See comment on HitByFallingStar
                 },
+                ParsedFeedEventText::Retirement { .. } => { todo!() }
+                ParsedFeedEventText::Released { .. } => { todo!() }
             }
         }
     }
 
-    (player, modifications, augments, paradigm_shifts, recompositions)
+    if let Some(talk) = &entity.data.talk {
+        if let Some(category) = &talk.batting {
+            process_talk_category(category, entity, &mut reports, taxa);
+        }
+        if let Some(category) = &talk.pitching {
+            process_talk_category(category, entity, &mut reports, taxa);
+        }
+        if let Some(category) = &talk.defense {
+            process_talk_category(category, entity, &mut reports, taxa);
+        }
+        if let Some(category) = &talk.baserunning {
+            process_talk_category(category, entity, &mut reports, taxa);
+        }
+    }
+
+    (player, modifications, augments, paradigm_shifts, recompositions, reports)
+}
+
+fn process_paradigm_shift<'e>(
+    changing_attribute: Attribute,
+    value_attribute: Attribute,
+    paradigm_shifts: &mut Vec<NewPlayerParadigmShift<'e>>,
+    feed_event_index: i32,
+    time: NaiveDateTime,
+    entity: &'e ChronEntity<mmolb_parsing::player::Player>,
+    taxa: &Taxa,
+) {
+    if changing_attribute == Attribute::Priority {
+        paradigm_shifts.push(NewPlayerParadigmShift {
+            mmolb_player_id: &entity.entity_id,
+            feed_event_index,
+            time,
+            attribute: taxa.attribute_id(value_attribute.into()),
+        })
+    } else {
+        // TODO Expose player ingest errors on the site
+        error!(
+            "Encountered a SingleAttributeEquals feed event that changes an \
+            attribute other than priority. Player {} feed event {} changes {}",
+            entity.entity_id, feed_event_index, changing_attribute,
+        );
+    }
+}
+
+fn process_talk_category<'e>(
+    category: &TalkCategory,
+    entity: &'e ChronEntity<mmolb_parsing::player::Player>,
+    reports: &mut Vec<NewPlayerReport<'e>>,
+    taxa: &Taxa,
+) {
+    let Ok(season) = category.season else {
+        // TODO See if I can figure out a fallback for reports generated
+        //   before `season` was added
+        return;
+    };
+
+    let Ok(day) = &category.day else {
+        // TODO See if I can figure out a fallback for reports generated
+        //   before `day` was added
+        return;
+    };
+
+    let (day_type, day, superstar_day) = day_to_db(day, taxa);
+
+    for (attribute, stars) in &category.stars {
+        reports.push(NewPlayerReport {
+            mmolb_player_id: &entity.entity_id,
+            season: season as i32,
+            day_type,
+            day,
+            superstar_day,
+            observed: entity.valid_from.naive_utc(),
+            attribute: taxa.attribute_id((*attribute).into()),
+            stars: *stars as i32,
+        });
+    }
 }

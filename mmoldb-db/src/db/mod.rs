@@ -23,7 +23,7 @@ use std::iter;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -1370,7 +1370,23 @@ type NewPlayerVersionExt<'a> = (
     Vec<NewPlayerAugment<'a>>,
     Vec<NewPlayerParadigmShift<'a>>,
     Vec<NewPlayerRecomposition<'a>>,
+    Vec<NewPlayerReport<'a>>,
 );
+
+fn insert_player_reports(
+    conn: &mut PgConnection,
+    new_player_reports: Vec<Vec<NewPlayerReport>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_reports::dsl as pr_dsl;
+    let player_recompositions = new_player_reports.into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(pr_dsl::player_reports)
+        .from_insertable(player_recompositions)
+        .execute(conn)
+}
 
 fn insert_player_recompositions(
     conn: &mut PgConnection,
@@ -1382,8 +1398,8 @@ fn insert_player_recompositions(
         .collect_vec();
 
     // Insert new records
-    diesel::insert_into(pr_dsl::player_recompositions)
-        .values(player_recompositions)
+    diesel::copy_from(pr_dsl::player_recompositions)
+        .from_insertable(player_recompositions)
         .execute(conn)
 }
 
@@ -1397,8 +1413,8 @@ fn insert_player_paradigm_shifts(
         .collect_vec();
 
     // Insert new records
-    diesel::insert_into(pps_dsl::player_paradigm_shifts)
-        .values(player_augments)
+    diesel::copy_from(pps_dsl::player_paradigm_shifts)
+        .from_insertable(player_augments)
         .execute(conn)
 }
 
@@ -1412,8 +1428,8 @@ fn insert_player_augments(
         .collect_vec();
 
     // Insert new records
-    diesel::insert_into(pa_dsl::player_augments)
-        .values(player_augments)
+    diesel::copy_from(pa_dsl::player_augments)
+        .from_insertable(player_augments)
         .execute(conn)
 }
 
@@ -1444,8 +1460,8 @@ fn insert_player_modifications(
 
 
     // Insert new records
-    diesel::insert_into(pmv_dsl::player_modification_versions)
-        .values(new_player_modification_versions)
+    diesel::copy_from(pmv_dsl::player_modification_versions)
+        .from_insertable(new_player_modification_versions)
         .execute(conn)
 }
 
@@ -1456,7 +1472,7 @@ pub fn insert_player_versions(
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
     let mod_truncations = new_player_versions.iter()
-        .map(|(player, mod_list, _, _, _)| (mod_list.len(), player.mmolb_player_id, player.valid_from))
+        .map(|(player, mod_list, _, _, _, _)| (mod_list.len(), player.mmolb_player_id, player.valid_from))
         .collect_vec();
 
     let (
@@ -1465,21 +1481,24 @@ pub fn insert_player_versions(
         new_player_augments,
         new_player_paradigm_shifts,
         new_player_recompositions,
+        new_player_reports,
     ): (
         Vec<NewPlayerVersion>,
         Vec<Vec<NewPlayerModificationVersion>>,
         Vec<Vec<NewPlayerAugment>>,
         Vec<Vec<NewPlayerParadigmShift>>,
         Vec<Vec<NewPlayerRecomposition>>,
+        Vec<Vec<NewPlayerReport>>,
     ) = itertools::multiunzip(new_player_versions);
 
+    insert_player_reports(conn, new_player_reports)?;
     insert_player_recompositions(conn, new_player_recompositions)?;
     insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
     insert_player_augments(conn, new_player_augments)?;
     insert_player_modifications(conn, new_player_modification_versions, mod_truncations)?;
 
     // Insert new records
-    diesel::insert_into(pv_dsl::player_versions)
-        .values(new_player_versions)
+    diesel::copy_from(pv_dsl::player_versions)
+        .from_insertable(new_player_versions)
         .execute(conn)
 }

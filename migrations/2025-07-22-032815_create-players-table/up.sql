@@ -1,3 +1,6 @@
+-- speeds up player ingest enormously
+create index versions_cursor_index on data.versions (kind, valid_from, entity_id);
+
 create table taxa.handedness (
     id bigserial primary key not null,
     name text not null,
@@ -200,7 +203,7 @@ create table data.player_augments (
     id bigserial primary key not null,
     mmolb_player_id text not null,
     feed_event_index int not null,
-    unique (id, mmolb_player_id, feed_event_index),
+    unique (mmolb_player_id, feed_event_index),
 
     -- data
     time timestamp without time zone not null,
@@ -241,7 +244,7 @@ create table data.player_paradigm_shifts (
     id bigserial primary key not null,
     mmolb_player_id text not null,
     feed_event_index int not null,
-    unique (id, mmolb_player_id, feed_event_index),
+    unique (mmolb_player_id, feed_event_index),
 
     -- data
     time timestamp without time zone not null,
@@ -281,7 +284,7 @@ create table data.player_recompositions (
     id bigserial primary key not null,
     mmolb_player_id text not null,
     feed_event_index int not null,
-    unique (id, mmolb_player_id, feed_event_index),
+    unique (mmolb_player_id, feed_event_index),
 
     -- data
     time timestamp without time zone not null
@@ -312,3 +315,54 @@ create trigger on_insert_player_recomposition_trigger
     before insert on data.player_recompositions
     for each row
 execute function data.on_insert_player_recomposition();
+
+
+create table data.player_reports (
+    -- bookkeeping
+    id bigserial primary key not null,
+    mmolb_player_id text not null,
+    season int not null,
+    day_type bigint references taxa.day_type, -- null for unrecognized day types
+    day int, -- null indicates this report is not from a regular season day
+    superstar_day int, -- null indicates this report is not from a superstar day
+    unique (mmolb_player_id, season, day_type, day, superstar_day, attribute),
+
+    -- data
+    observed timestamp with time zone not null, -- the valid_from of the first entity with this report
+    attribute bigint references taxa.attribute not null,
+    stars int not null
+);
+
+create function data.on_insert_player_report()
+    returns trigger as $$
+begin
+    perform 1
+    from data.player_reports pr
+    where pr.mmolb_player_id = NEW.mmolb_player_id
+      -- note: "is not distinct from" is like "=" except for how it treats nulls.
+      -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
+      and pr.day_type is not distinct from NEW.day_type
+      and pr.day is not distinct from NEW.day
+      and pr.superstar_day is not distinct from NEW.superstar_day
+      -- NOTE: `observed` should NOT be in the conditions. Each attempted insert
+      -- will have a new `observed`, but we only want to keep the first one.
+
+      -- attribute and stars are not necessary for correctness. i'm keeping them for
+      -- now to help me catch bugs
+      and pr.attribute is not distinct from NEW.attribute
+      and pr.stars is not distinct from NEW.stars;
+
+    -- if there was an exact match, suppress this insert
+    if FOUND then
+        return null;
+    end if;
+
+    -- otherwise, return the new row so it gets inserted as normal
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger on_insert_player_report_trigger
+    before insert on data.player_reports
+    for each row
+execute function data.on_insert_player_report();
