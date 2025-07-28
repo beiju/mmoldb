@@ -8,8 +8,9 @@ use itertools::Itertools;
 use log::{debug, error, info};
 use miette::IntoDiagnostic;
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{Connection, PgConnection, db};
+use mmoldb_db::{Connection, PgConnection, db, AsyncPgConnection, AsyncConnection, async_db};
 use std::sync::{Arc, Mutex};
+use serde_json::Value;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
@@ -26,16 +27,10 @@ pub async fn ingest_players(
     ingest_id: i64,
     abort: CancellationToken,
 ) -> miette::Result<()> {
-    let mut conn = PgConnection::establish(&pg_url).into_diagnostic()?;
     let notify = Arc::new(Notify::new());
     // Finish tells the task "once there are no more players to process, exit", while
     // abort tells the task "exit immediately, even if there are more players to process"
     let finish = CancellationToken::new();
-    let ingest_cursor = Arc::new(Mutex::new(
-        db::get_player_ingest_start_cursor(&mut conn)
-            .into_diagnostic()?
-            .map(|(dt, id)| (dt.and_utc(), id)),
-    ));
 
     let num_workers = 1; // Don't increase this past 1 until player.augments/priority_shifts/recompositions is fixed to handle it
     debug!("Ingesting with {} workers", num_workers);
@@ -46,22 +41,18 @@ pub async fn ingest_players(
             let notify = notify.clone();
             let finish = finish.clone();
             let abort = abort.clone();
-            let ingest_cursor = ingest_cursor.clone();
             let handle = tokio::runtime::Handle::current();
             tokio::task::Builder::new()
                 .name(format!("Ingest worker {n}").leak())
-                .spawn_blocking(move || {
-                    process_players(
-                        &pg_url,
-                        ingest_id,
-                        ingest_cursor,
-                        abort,
-                        notify,
-                        finish,
-                        handle,
-                        n,
-                    )
-                })
+                .spawn(process_players(
+                    pg_url,
+                    ingest_id,
+                    abort,
+                    notify,
+                    finish,
+                    handle,
+                    n,
+                ))
         })
         .collect::<Result<Vec<_>, _>>()
         .into_diagnostic()?;
@@ -160,10 +151,9 @@ async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miet
     Ok(())
 }
 
-fn process_players(
-    url: &str,
+async fn process_players(
+    url: String,
     ingest_id: i64,
-    ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
     abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
@@ -171,31 +161,30 @@ fn process_players(
     worker_id: usize,
 ) -> miette::Result<()> {
     let result = process_players_internal(
-        url,
+        &url,
         ingest_id,
-        ingest_cursor,
         abort,
         notify,
         finish,
         handle,
         worker_id,
-    );
+    ).await;
     if let Err(err) = &result {
         error!("Error in process players: {}. ", err);
     }
     result
 }
 
-fn process_players_internal(
+async fn process_players_internal(
     url: &str,
     ingest_id: i64,
-    ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
     abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
     handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
+    let mut async_conn = AsyncPgConnection::establish(url).await.into_diagnostic()?;
     let mut conn = PgConnection::establish(url).into_diagnostic()?;
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
@@ -204,98 +193,69 @@ fn process_players_internal(
     // will happen after every derived data reset.
     notify.notify_one();
 
-    let mut page_index = 0;
-    while {
-        debug!("Process players task worker {worker_id} is waiting to be woken up");
-        handle.block_on(async {
-            tokio::select! {
-                biased; // We always want to respond to abort, notify, and finish in that order
-                _ = abort.cancelled() => { false }
-                _ = notify.notified() => { true }
-                _ = finish.cancelled() => { false }
-            }
-        })
+    'outer: while {
+        debug!("Process players task worker {worker_id} is waiting to be woken up (notify: {:?})", notify);
+        tokio::select! {
+            biased; // We always want to respond to abort, notify, and finish in that order
+            _ = abort.cancelled() => { info!("abort"); false }
+            _ = notify.notified() => { info!("notify"); true }
+            _ = finish.cancelled() => { info!("finish"); false }
+        }
     } {
         debug!("Process players task worker {worker_id} is woken up");
 
-        // The inner loop is over batches of players to process
-        while !abort.is_cancelled() {
-            debug!("Starting ingest loop on worker {worker_id}");
-            let get_batch_to_process_start = Utc::now();
-            let this_cursor = {
-                let mut ingest_cursor = ingest_cursor.lock().unwrap();
-                let this_cursor = ingest_cursor.clone();
-                debug!(
-                    "Worker {worker_id} getting players after {:?}",
-                    ingest_cursor
-                );
-                let next_cursor = db::advance_version_cursor(
-                    &mut conn,
-                    PLAYER_KIND,
-                    ingest_cursor
-                        .as_ref()
-                        .map(|(d, i)| (d.naive_utc(), i.as_str())),
-                    PROCESS_PLAYER_BATCH_SIZE,
-                )
-                .into_diagnostic()
-                .context("Advancing version cursor")?
-                .map(|(dt, id)| (dt.and_utc(), id));
-                if let Some(cursor) = next_cursor {
-                    *ingest_cursor = Some(cursor);
-                    debug!("Worker {worker_id} set cursor to {:?}", ingest_cursor);
-                } else {
-                    debug!(
-                        "All players have been processed. Worker {} waiting to be woken up again.",
-                        worker_id,
-                    );
-                    break;
-                }
+        // This can be cached, but as it now only runs once per wakeup it probably doesn't
+        // need to be
+        let ingest_start_cursor = db::get_player_ingest_start_cursor(&mut conn)
+            .into_diagnostic()?;
 
-                this_cursor
-            };
+        info!("Player derived data ingest starting at {ingest_start_cursor:?}");
 
-            let advance_cursor_duration = (Utc::now() - get_batch_to_process_start).as_seconds_f64();
-            info!("Advancing players cursor took {advance_cursor_duration:.3} seconds");
-
-            let raw_players = db::get_versions_at_cursor(
-                &mut conn,
-                PLAYER_KIND,
-                PROCESS_PLAYER_BATCH_SIZE,
-                this_cursor
-                    .as_ref()
-                    .map(|(d, i)| (d.naive_utc(), i.as_str())),
-            )
+        let players_stream = async_db::stream_versions_at_cursor(
+            &mut async_conn,
+            PLAYER_KIND,
+            ingest_start_cursor.as_ref().map(|(dt, id)| (*dt, id.as_str())),
+        )
+            .await
             .into_diagnostic()
-            .context("Getting versions at cursor")?;
+            .context("Getting versions at cursor")?
+            .try_chunks(PROCESS_PLAYER_BATCH_SIZE)
+            .enumerate()
+            .map(|(page_index, raw_players)| {
+                // when an error occurs, try_chunks gives us the successful portion of the chunk
+                // and then the error. we could ingest the successful part, but we don't (yet).
+                let raw_players = raw_players.map_err(|err| err.1)?;
 
-            let get_batch_to_process_duration =
-                (Utc::now() - get_batch_to_process_start).as_seconds_f64();
+                info!(
+                    "Processing batch of {} raw players on worker {worker_id}",
+                    raw_players.len()
+                );
+                logic::ingest_page_of_players(
+                    &taxa,
+                    ingest_id,
+                    page_index,
+                    0.0, // TODO
+                    raw_players,
+                    &mut conn,
+                    worker_id,
+                )
+            });
+        pin_mut!(players_stream);
 
-            // Make "graceful" shutdown a bit more responsive by checking `abort` in between
-            // long-running operations
-            if abort.is_cancelled() {
-                break;
+        // Consume the stream and abort on error while handling abort
+        while let Some(result) = {
+            debug!("Process players task worker {worker_id} is waiting for the next batch");
+            tokio::select! {
+                biased; // We always want to respond to abort, then the stream in that order
+                _ = abort.cancelled() => {
+                    // Note this is in the loop condition, so it breaks the outer loop
+                    break 'outer;
+                }
+                p = players_stream.next() => p,
             }
-
-            info!(
-                "Processing batch of {} raw players on worker {worker_id}",
-                raw_players.len()
-            );
-            logic::ingest_page_of_players(
-                &taxa,
-                ingest_id,
-                page_index,
-                get_batch_to_process_duration,
-                raw_players,
-                &mut conn,
-                worker_id,
-            )?;
-
-            page_index += 1;
-            // Yield to allow the tokio scheduler to do its thing
-            // (with out this, signal handling effectively doesn't work because it has to wait
-            // for the entire process players task to finish)
-            handle.block_on(tokio::task::yield_now());
+        } {
+            // Bind to () so if this ever becomes a meaningful value I don't forget to use it
+            let () = result?;
         }
     }
 

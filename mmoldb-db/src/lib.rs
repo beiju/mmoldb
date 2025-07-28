@@ -6,6 +6,7 @@ pub mod taxa;
 mod url;
 
 mod event_detail;
+pub mod async_db;
 
 pub(crate) use schema::*;
 
@@ -15,3 +16,4 @@ pub use parsing_extensions::*;
 pub use url::*;
 
 pub use diesel::{Connection, PgConnection, QueryResult, result::Error as QueryError};
+pub use diesel_async::{AsyncConnection, AsyncPgConnection};
