@@ -30,4 +30,4 @@ drop table data.modifications;
 drop table taxa.day_type;
 drop table taxa.handedness;
 
-drop index versions_cursor_index;
+drop index data.versions_cursor_index;

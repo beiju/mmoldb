@@ -40,17 +40,6 @@ create table data.player_modification_versions (
     unique nulls not distinct (mmolb_player_id, modification_order, valid_until)
 );
 
--- TODO This currently doesn't close out any player_modification_versions
---   properly when the player's list of modifications shrinks. The last N
---   modifications in the list will remain "valid". This could be solved
---   by closing out _all_ modifications for a given (valid_from,
---   mmolb_player_id) when any new version for that player id is inserted.
---     actually wait, I think that doesn't quite work. if the 3rd mod in
---     the list changes, it'll close out the 1st and 2nd, but their inserts
---     will already have happened so nothing will add a new, open version.
---     this probably needs a separate query from the ingest app: close out
---     all versions whose modification_order is higher than the new max
---     modification order
 create function data.on_insert_player_modification_version()
     returns trigger as $$
 begin
@@ -298,10 +287,8 @@ begin
     where pa.mmolb_player_id = NEW.mmolb_player_id
       -- note: "is not distinct from" is like "=" except for how it treats nulls.
       -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
-      and pa.feed_event_index is not distinct from NEW.feed_event_index;
-    -- TIME CHECK IS TEMPORARILY DISABLED
-        -- TODO FIX IT ONCE INGEST IS WORKING PROPERLY
---       and pa.time is not distinct from NEW.time;
+      and pa.feed_event_index is not distinct from NEW.feed_event_index
+      and pa.time is not distinct from NEW.time;
 
     -- if there was an exact match, suppress this insert
     if FOUND then

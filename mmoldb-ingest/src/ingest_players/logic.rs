@@ -266,26 +266,28 @@ fn chron_player_as_new<'a>(
     Vec<NewPlayerReport<'a>>,
 ) {
     // TODO make this static, or at least global
-    let impermanent_recomps = {
+    // Some feed events were accidentally reverted (by caching issues I think), and we want to
+    // pretend they never happened
+    let impermanent_feed_events = {
         let mut hashes = HashSet::new();
         hashes.extend(vec![
-            ("68655942f27aa83a88fa64e0", DateTime::parse_from_rfc3339("2025-07-14T11:08:37.858154Z").unwrap().to_utc()),
-            ("6846cc4d4a488309816674ff", DateTime::parse_from_rfc3339("2025-07-14T13:55:21.025722Z").unwrap().to_utc()),
-            ("6805db0cac48194de3cd40dd", DateTime::parse_from_rfc3339("2025-07-14T13:55:30.306624Z").unwrap().to_utc()),
-            ("68505bc5341f7f2421020d05", DateTime::parse_from_rfc3339("2025-07-14T13:55:48.950237Z").unwrap().to_utc()),
-            ("685b740338c6569da104aa48", DateTime::parse_from_rfc3339("2025-07-14T13:56:10.627155Z").unwrap().to_utc()),
-            ("68412d1eed58166c1895ae66", DateTime::parse_from_rfc3339("2025-07-14T13:56:15.234710Z").unwrap().to_utc()),
-            ("684727f5bb00de6f9bb79973", DateTime::parse_from_rfc3339("2025-07-14T13:56:15.643375Z").unwrap().to_utc()),
-            ("684102aaf7b5d3bf791d67e8", DateTime::parse_from_rfc3339("2025-07-14T13:57:13.766455Z").unwrap().to_utc()),
-            ("686355f4b254dfbaab3014b0", DateTime::parse_from_rfc3339("2025-07-14T13:57:16.174812Z").unwrap().to_utc()),
-            ("6841000988056169e0078792", DateTime::parse_from_rfc3339("2025-07-14T14:17:07.673450Z").unwrap().to_utc()),
-            ("68418c52554d8039701f1c93", DateTime::parse_from_rfc3339("2025-07-14T14:17:10.212312Z").unwrap().to_utc()),
-            ("6840fa75ed58166c1895a7f3", DateTime::parse_from_rfc3339("2025-07-14T14:17:40.255606Z").unwrap().to_utc()),
-            ("684102dfec9dc637cfd0cad6", DateTime::parse_from_rfc3339("2025-07-14T14:18:16.797341Z").unwrap().to_utc()),
-            ("6840fb13e63d9bb8728896d2", DateTime::parse_from_rfc3339("2025-07-14T14:18:39.313986Z").unwrap().to_utc()),
-            ("6855b350f1d8f657407b231c", DateTime::parse_from_rfc3339("2025-07-14T15:57:59.137034Z").unwrap().to_utc()),
-            ("6840fe6508b7fc5e21e8a940", DateTime::parse_from_rfc3339("2025-07-14T15:58:02.746560Z").unwrap().to_utc()),
-            ("68564374acfab5652c3a6c44", DateTime::parse_from_rfc3339("2025-07-15T01:56:55.998455Z").unwrap().to_utc()),
+            ("6805db0cac48194de3cd40dd", DateTime::parse_from_rfc3339("2025-07-14T12:32:16.183651+00:00").unwrap().naive_utc()),
+            ("6840fa75ed58166c1895a7f3", DateTime::parse_from_rfc3339("2025-07-14T12:58:25.172157+00:00").unwrap().naive_utc()),
+            ("6840fb13e63d9bb8728896d2", DateTime::parse_from_rfc3339("2025-07-14T11:56:08.156319+00:00").unwrap().naive_utc()),
+            ("6840fe6508b7fc5e21e8a940", DateTime::parse_from_rfc3339("2025-07-14T15:04:09.335705+00:00").unwrap().naive_utc()),
+            ("6841000988056169e0078792", DateTime::parse_from_rfc3339("2025-07-14T11:58:34.656639+00:00").unwrap().naive_utc()),
+            ("684102aaf7b5d3bf791d67e8", DateTime::parse_from_rfc3339("2025-07-14T12:54:23.274555+00:00").unwrap().naive_utc()),
+            ("684102dfec9dc637cfd0cad6", DateTime::parse_from_rfc3339("2025-07-14T12:01:51.299731+00:00").unwrap().naive_utc()),
+            ("68412d1eed58166c1895ae66", DateTime::parse_from_rfc3339("2025-07-14T12:20:36.597014+00:00").unwrap().naive_utc()),
+            ("68418c52554d8039701f1c93", DateTime::parse_from_rfc3339("2025-07-14T12:09:42.764129+00:00").unwrap().naive_utc()),
+            ("6846cc4d4a488309816674ff", DateTime::parse_from_rfc3339("2025-07-14T12:10:19.571083+00:00").unwrap().naive_utc()),
+            ("684727f5bb00de6f9bb79973", DateTime::parse_from_rfc3339("2025-07-14T12:14:14.710296+00:00").unwrap().naive_utc()),
+            ("68505bc5341f7f2421020d05", DateTime::parse_from_rfc3339("2025-07-14T12:13:58.129103+00:00").unwrap().naive_utc()),
+            ("6855b350f1d8f657407b231c", DateTime::parse_from_rfc3339("2025-07-14T15:02:55.607448+00:00").unwrap().naive_utc()),
+            ("68564374acfab5652c3a6c44", DateTime::parse_from_rfc3339("2025-07-15T01:02:41.992667+00:00").unwrap().naive_utc()),
+            ("685b740338c6569da104aa48", DateTime::parse_from_rfc3339("2025-07-14T12:47:59.895679+00:00").unwrap().naive_utc()),
+            ("686355f4b254dfbaab3014b0", DateTime::parse_from_rfc3339("2025-07-14T11:51:34.711389+00:00").unwrap().naive_utc()),
+            ("68655942f27aa83a88fa64e0", DateTime::parse_from_rfc3339("2025-07-14T10:36:47.308576+00:00").unwrap().naive_utc()),
         ]);
         hashes
     };
@@ -429,6 +431,20 @@ fn chron_player_as_new<'a>(
                 }
             };
 
+            if impermanent_feed_events.contains(&(entity.entity_id.as_str(), time)) {
+                info!(
+                    "Skipping feed event \"{}\" because it was reverted later",
+                    event.text,
+                );
+                if index + 1 != feed.len() {
+                    warn!(
+                        "This non-permanent event is not the last event in the feed ({} of {}).",
+                        index + 1, feed.len(),
+                    );
+                }
+                continue;
+            }
+
             match mmolb_parsing::feed_event::parse_feed_event(event) {
                 ParsedFeedEventText::ParseError { error, text } => {
                     // TODO Expose player ingest errors on the site
@@ -533,18 +549,14 @@ fn chron_player_as_new<'a>(
                 },
                 ParsedFeedEventText::Recomposed { new, original } => {
                     player_full_name.check_name(new);
-                    if impermanent_recomps.contains(&(entity.entity_id.as_str(), entity.valid_from)) {
-                        // Skip
-                    } else {
-                        // Remember we're going backwards, so the player name
-                        // goes from new to old
-                        player_full_name.set_name(original.to_string());
-                        recompositions.push(NewPlayerRecomposition {
-                            mmolb_player_id: &entity.entity_id,
-                            feed_event_index,
-                            time,
-                        });
-                    }
+                    // Remember we're going backwards, so the player name
+                    // goes from new to old
+                    player_full_name.set_name(original.to_string());
+                    recompositions.push(NewPlayerRecomposition {
+                        mmolb_player_id: &entity.entity_id,
+                        feed_event_index,
+                        time,
+                    });
                 },
                 ParsedFeedEventText::Modification { .. } => {
                     // See comment on HitByFallingStar
