@@ -24,6 +24,7 @@ use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::QueryError;
 use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -1468,10 +1469,10 @@ fn insert_player_modifications(
 pub fn insert_player_versions_with_retry(
     conn: &mut PgConnection,
     new_player_versions: &[NewPlayerVersionExt],
-) -> Vec<QueryResult<()>> {
+) -> (usize, Vec<QueryError>) {
     let num_versions = new_player_versions.len();
     if num_versions == 0 {
-        return Vec::new();
+        return (0, Vec::new());
     }
 
     let res = conn.transaction(|conn| {
@@ -1479,19 +1480,19 @@ pub fn insert_player_versions_with_retry(
     });
 
     match res {
-        Ok(_) => {
-            (0..num_versions).map(|_| Ok(())).collect_vec()
+        Ok(inserted) => {
+            (inserted, Vec::new())
         }
         Err(e) => {
             if num_versions == 1 {
-                vec![Err(e)]
+                (0, vec![e])
             } else {
-                let mut result = Vec::with_capacity(num_versions);
                 let pivot = num_versions / 2;
                 let (left, right) = new_player_versions.split_at(pivot);
-                result.extend(insert_player_versions_with_retry(conn, left));
-                result.extend(insert_player_versions_with_retry(conn, right));
-                result
+                let (inserted_a, mut errs_a) = insert_player_versions_with_retry(conn, left);
+                let (inserted_b, errs_b) = insert_player_versions_with_retry(conn, right);
+                errs_a.extend(errs_b);
+                (inserted_a + inserted_b, errs_a)
             }
         }
     }
