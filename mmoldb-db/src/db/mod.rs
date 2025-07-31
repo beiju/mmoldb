@@ -1466,10 +1466,10 @@ fn insert_player_modifications(
         .execute(conn)
 }
 
-pub fn insert_player_versions_with_retry(
+pub fn insert_player_versions_with_retry<'v, 'g>(
     conn: &mut PgConnection,
-    new_player_versions: &[NewPlayerVersionExt],
-) -> (usize, Vec<QueryError>) {
+    new_player_versions: &'v [NewPlayerVersionExt<'g>],
+) -> (usize, Vec<(&'v NewPlayerVersionExt<'g>, QueryError)>) {
     let num_versions = new_player_versions.len();
     if num_versions == 0 {
         return (0, Vec::new());
@@ -1485,7 +1485,7 @@ pub fn insert_player_versions_with_retry(
         }
         Err(e) => {
             if num_versions == 1 {
-                (0, vec![e])
+                (0, vec![(&new_player_versions[0], e)])
             } else {
                 let pivot = num_versions / 2;
                 let (left, right) = new_player_versions.split_at(pivot);

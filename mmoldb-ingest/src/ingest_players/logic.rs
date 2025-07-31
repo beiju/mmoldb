@@ -9,7 +9,6 @@ use mmolb_parsing::feed_event::ParsedFeedEventText;
 use mmolb_parsing::NotRecognized;
 use mmolb_parsing::player::TalkCategory;
 use thiserror::Error;
-use time::error::Format;
 use chron::ChronEntity;
 use mmoldb_db::{db, Connection, PgConnection, QueryError, QueryResult};
 use mmoldb_db::db::NameEmojiTooltip;
@@ -121,25 +120,16 @@ pub fn ingest_page_of_players(
             "Sent {} new player versions out of {} to the database. {} left of this batch.",
             to_insert, players.len(), remaining_versions.len(),
         );
-        // let results = conn.transaction(|conn| {
-        //     Ok::<_, QueryError>(db::insert_player_versions_with_retry(conn, &players_to_update))
-        // })?;
-        let results = db::insert_player_versions_with_retry(conn, &players_to_update);
 
-        for (result, player) in results.iter().zip(&players_to_update) {
-            if let Err(e) = result {
-                let (version, _modification_version, _augment, _paradigm_shift, _recomposition, _report): &(NewPlayerVersion, _, _, _, _, _) = player;
-                for recomp in _recomposition {
-                    println!("Recomp {} {} {}", recomp.mmolb_player_id, recomp.feed_event_index, recomp.time);
-                }
-                error!(
-                    "Error {e} ingesting player {} at {}",
-                    version.mmolb_player_id, version.valid_from,
-                );
-            }
+        let (inserted, errs) = db::insert_player_versions_with_retry(conn, &players_to_update);
+
+        for (player, err) in errs {
+            let (version, _modification_version, _augment, _paradigm_shift, _recomposition, _report): &(NewPlayerVersion, _, _, _, _, _) = player;
+            error!(
+                "Error {err} ingesting player {} at {}",
+                version.mmolb_player_id, version.valid_from,
+            );
         }
-
-        let inserted = results.into_iter().collect::<Result<Vec<_>, _>>()?.len();
 
         info!(
             "Sent {} new player versions out of {} to the database. {} left of this batch. \
@@ -403,33 +393,7 @@ fn chron_player_as_new<'a>(
         // indices are correct.
         for (index, event) in feed.iter().enumerate().rev() {
             let feed_event_index = index as i32;
-            // Wow this time stuff sucks
-            let ts = match event.timestamp.format(&time::format_description::well_known::Rfc3339) {
-                Ok(val) => val,
-                Err(err) => {
-                    // TODO Expose player ingest errors on the site
-                    error!(
-                        "Player {}'s {}th feed event `ts` failed to format as a date: {}",
-                        entity.entity_id, feed_event_index, err,
-                    );
-                    // The behavior I've decided on for errors in feed event parsing is
-                    // to skip the feed event
-                    continue;
-                }
-            };
-            let time = match DateTime::parse_from_rfc3339(&ts) {
-                Ok(time_with_offset) => time_with_offset.naive_utc(),
-                Err(err) => {
-                    // TODO Expose player ingest errors on the site
-                    error!(
-                        "Player {}'s {}th feed event `ts` failed to parse as a date: {}",
-                        entity.entity_id, feed_event_index, err,
-                    );
-                    // The behavior I've decided on for errors in feed event parsing is
-                    // to skip the feed event
-                    continue;
-                }
-            };
+            let time = event.timestamp.naive_utc();
 
             if impermanent_feed_events.contains(&(entity.entity_id.as_str(), time)) {
                 info!(
@@ -547,11 +511,11 @@ fn chron_player_as_new<'a>(
                     // when parsing games. I suppose it might be used for
                     // synchronization, but we have no need of that yet.
                 },
-                ParsedFeedEventText::Recomposed { new, original } => {
+                ParsedFeedEventText::Recomposed { new, previous } => {
                     player_full_name.check_name(new);
                     // Remember we're going backwards, so the player name
                     // goes from new to old
-                    player_full_name.set_name(original.to_string());
+                    player_full_name.set_name(previous.to_string());
                     recompositions.push(NewPlayerRecomposition {
                         mmolb_player_id: &entity.entity_id,
                         feed_event_index,
