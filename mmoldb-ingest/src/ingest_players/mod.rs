@@ -2,15 +2,12 @@ use miette::WrapErr;
 mod logic;
 
 use chron::{Chron, ChronEntity};
-use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
-use itertools::Itertools;
 use log::{debug, error, info};
 use miette::IntoDiagnostic;
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{Connection, PgConnection, db, AsyncPgConnection, AsyncConnection, async_db};
-use std::sync::{Arc, Mutex};
-use serde_json::Value;
+use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
@@ -24,7 +21,6 @@ const PROCESS_PLAYER_BATCH_SIZE: usize = 100000;
 
 pub async fn ingest_players(
     pg_url: String,
-    ingest_id: i64,
     abort: CancellationToken,
 ) -> miette::Result<()> {
     let notify = Arc::new(Notify::new());
@@ -41,16 +37,13 @@ pub async fn ingest_players(
             let notify = notify.clone();
             let finish = finish.clone();
             let abort = abort.clone();
-            let handle = tokio::runtime::Handle::current();
             tokio::task::Builder::new()
                 .name(format!("Ingest worker {n}").leak())
                 .spawn(process_players(
                     pg_url,
-                    ingest_id,
                     abort,
                     notify,
                     finish,
-                    handle,
                     n,
                 ))
         })
@@ -153,20 +146,16 @@ async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miet
 
 async fn process_players(
     url: String,
-    ingest_id: i64,
     abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
-    handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
     let result = process_players_internal(
         &url,
-        ingest_id,
         abort,
         notify,
         finish,
-        handle,
         worker_id,
     ).await;
     if let Err(err) = &result {
@@ -177,11 +166,9 @@ async fn process_players(
 
 async fn process_players_internal(
     url: &str,
-    ingest_id: i64,
     abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
-    handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
     let mut async_conn = AsyncPgConnection::establish(url).await.into_diagnostic()?;
@@ -220,8 +207,7 @@ async fn process_players_internal(
             .into_diagnostic()
             .context("Getting versions at cursor")?
             .try_chunks(PROCESS_PLAYER_BATCH_SIZE)
-            .enumerate()
-            .map(|(page_index, raw_players)| {
+            .map(|raw_players| {
                 // when an error occurs, try_chunks gives us the successful portion of the chunk
                 // and then the error. we could ingest the successful part, but we don't (yet).
                 let raw_players = raw_players.map_err(|err| err.1)?;
@@ -232,8 +218,6 @@ async fn process_players_internal(
                 );
                 logic::ingest_page_of_players(
                     &taxa,
-                    ingest_id,
-                    page_index,
                     0.0, // TODO
                     raw_players,
                     &mut conn,

@@ -2,8 +2,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use chron::ChronEntity;
-use futures::{Stream, StreamExt, TryStreamExt};
-use itertools::Itertools;
+use futures::{Stream, TryStreamExt};
 
 use crate::schema::data_schema::data::versions::dsl as versions_dsl;
 

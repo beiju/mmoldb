@@ -137,6 +137,6 @@ async fn ingest_everything(
     ingest_id: i64,
     abort: CancellationToken,
 ) -> miette::Result<()> {
-    ingest_players::ingest_players(pg_url.clone(), ingest_id, abort.clone()).await?;
+    ingest_players::ingest_players(pg_url.clone(), abort.clone()).await?;
     ingest_games::ingest_games(pg_url, ingest_id, abort).await
 }

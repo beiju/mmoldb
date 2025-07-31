@@ -3,7 +3,6 @@ mod config;
 mod sim;
 mod worker;
 
-pub use config::*;
 pub use worker::*;
 
 use log::error;
@@ -28,22 +27,4 @@ pub struct IngestStats {
     pub num_bugged_games_skipped: usize,
     pub num_games_with_fatal_errors: usize,
     pub num_games_imported: usize,
-}
-
-impl IngestStats {
-    pub fn new() -> Self {
-        Self {
-            num_ongoing_games_skipped: 0,
-            num_bugged_games_skipped: 0,
-            num_games_with_fatal_errors: 0,
-            num_games_imported: 0,
-        }
-    }
-
-    pub fn add(&mut self, other: &IngestStats) {
-        self.num_ongoing_games_skipped += other.num_ongoing_games_skipped;
-        self.num_bugged_games_skipped += other.num_bugged_games_skipped;
-        self.num_games_with_fatal_errors += other.num_games_with_fatal_errors;
-        self.num_games_imported += other.num_games_imported;
-    }
 }

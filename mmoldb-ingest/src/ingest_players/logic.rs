@@ -1,16 +1,15 @@
 use hashbrown::{HashMap, HashSet, hash_map::Entry};
-use chrono::{DateTime, NaiveDateTime, ParseResult, Utc};
-use futures::StreamExt;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use miette::Diagnostic;
-use mmolb_parsing::enums::{Attribute, Day, FeedEventType, Handedness, Position};
+use mmolb_parsing::enums::{Attribute, Day, Handedness, Position};
 use mmolb_parsing::feed_event::ParsedFeedEventText;
 use mmolb_parsing::NotRecognized;
 use mmolb_parsing::player::TalkCategory;
 use thiserror::Error;
 use chron::ChronEntity;
-use mmoldb_db::{db, Connection, PgConnection, QueryError, QueryResult};
+use mmoldb_db::{db, PgConnection, QueryError, QueryResult};
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion};
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
@@ -27,8 +26,6 @@ pub enum IngestFatalError {
 
 pub fn ingest_page_of_players(
     taxa: &Taxa,
-    ingest_id: i64,
-    page_index: usize,
     get_batch_to_process_duration: f64,
     raw_players: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,

@@ -3,8 +3,8 @@ use log::warn;
 use miette::Diagnostic;
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
-    Base, BaseNameVariant, BatterStat, Day, Distance, FairBallDestination, FairBallType,
-    FieldingErrorType, FoulType, GameOverMessage, HomeAway, NowBattingStats, Place, StrikeType,
+    Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType,
+    FoulType, GameOverMessage, HomeAway, NowBattingStats, Place, StrikeType,
     TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
@@ -14,8 +14,8 @@ use mmolb_parsing::parsed_event::{
 };
 use mmoldb_db::taxa::AsInsertable;
 use mmoldb_db::taxa::{
-    TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType,
-    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaSlot,
+    TaxaBase, TaxaEventType,
+    TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
 };
 use mmoldb_db::{
     BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner,
@@ -23,7 +23,7 @@ use mmoldb_db::{
 };
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use strum::IntoDiscriminant;
 use thiserror::Error;
 
@@ -1139,7 +1139,8 @@ impl<'g> Game<'g> {
             .map(|player| (player.name, BatterStats::new()))
             .collect();
 
-        game_event_index += 1;
+        #[allow(unused)] // I want this to still be correct if I have to add more startup events
+        { game_event_index += 1; }
         extract_next_game_event!(
             events,
             [ParsedEventMessageDiscriminants::PlayBall]
