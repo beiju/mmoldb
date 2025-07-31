@@ -1,7 +1,7 @@
 use diesel::Connection;
 use mmoldb_db::db;
 use mmoldb_db::models::DbEventIngestLog;
-use rocket::{State, get, uri};
+use rocket::{get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 

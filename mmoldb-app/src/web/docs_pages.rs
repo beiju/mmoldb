@@ -119,11 +119,6 @@ pub async fn docs_page() -> Result<Template, AppError> {
 
 #[get("/docs/<schema_name>")]
 pub async fn docs_schema_page(schema_name: &str) -> Result<Template, AppError> {
-    #[derive(Debug, Serialize)]
-    struct Schema {
-        description: String,
-    }
-
     let schema_file = SCHEMA_DOCS_DIR
         .get_file(schema_name)
         .ok_or(DocsError::DocsFileMissing(schema_name.into()))?;
@@ -187,34 +182,34 @@ pub struct SchemaDocs {
     pub allow_undocumented: bool,
 }
 
-// TODO Put this in some utils file somewhere
-pub fn associate<T, S>(
-    a: Vec<T>,
-    mut b: Vec<S>,
-    is_associated: impl Fn(&T, &S) -> bool,
-) -> (Vec<T>, Vec<(T, S)>, Vec<S>) {
-    let mut orphans_a = Vec::new();
-    let mut pairs = Vec::new();
-
-    for item_a in a {
-        if let Some(item_b_position) = b.iter().position(|item_b| is_associated(&item_a, item_b)) {
-            let item_b = b.remove(item_b_position);
-            pairs.push((item_a, item_b));
-        } else {
-            orphans_a.push(item_a);
-        }
-    }
-
-    // b is now orphans_b
-    b.shrink_to_fit();
-
-    (orphans_a, pairs, b)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use mmoldb_db::db::DbTable;
+
+    // TODO Put this in some utils file somewhere
+    pub fn associate<T, S>(
+        a: Vec<T>,
+        mut b: Vec<S>,
+        is_associated: impl Fn(&T, &S) -> bool,
+    ) -> (Vec<T>, Vec<(T, S)>, Vec<S>) {
+        let mut orphans_a = Vec::new();
+        let mut pairs = Vec::new();
+
+        for item_a in a {
+            if let Some(item_b_position) = b.iter().position(|item_b| is_associated(&item_a, item_b)) {
+                let item_b = b.remove(item_b_position);
+                pairs.push((item_a, item_b));
+            } else {
+                orphans_a.push(item_a);
+            }
+        }
+
+        // b is now orphans_b
+        b.shrink_to_fit();
+
+        (orphans_a, pairs, b)
+    }
 
     macro_rules! test_schema_docs {
         ($schema_name:ident) => {
