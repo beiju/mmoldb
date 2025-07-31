@@ -4,16 +4,16 @@ mod versions;
 mod weather;
 
 // Reexports
+pub use crate::db::weather::NameEmojiTooltip;
 pub use entities::*;
 pub use to_db_format::RowToEventError;
 pub use versions::*;
-pub use crate::db::weather::NameEmojiTooltip;
 
 // Third-party imports
-use hashbrown::HashMap;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
+use hashbrown::HashMap;
 use itertools::{Either, Itertools};
 use log::warn;
 use mmolb_parsing::ParsedEventMessage;
@@ -22,9 +22,14 @@ use serde::Serialize;
 use std::iter;
 use thiserror::Error;
 // First-party imports
-use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::QueryError;
+use crate::event_detail::{EventDetail, IngestLog};
+use crate::models::{
+    DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner,
+    NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment,
+    NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport,
+    NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable,
+};
 use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -155,10 +160,7 @@ pub fn get_game_ingest_start_cursor(
     use crate::schema::data_schema::data::games::dsl as games_dsl;
 
     games_dsl::games
-        .select((
-            games_dsl::from_version,
-            games_dsl::mmolb_game_id,
-        ))
+        .select((games_dsl::from_version, games_dsl::mmolb_game_id))
         .order_by((
             games_dsl::from_version.desc(),
             games_dsl::mmolb_game_id.desc(),
@@ -1271,10 +1273,7 @@ pub fn get_player_ingest_start_cursor(
     use crate::schema::data_schema::data::player_versions::dsl as player_dsl;
 
     player_dsl::player_versions
-        .select((
-            player_dsl::valid_from,
-            player_dsl::mmolb_player_id,
-        ))
+        .select((player_dsl::valid_from, player_dsl::mmolb_player_id))
         .order_by((
             player_dsl::valid_from.desc(),
             player_dsl::mmolb_player_id.desc(),
@@ -1284,16 +1283,30 @@ pub fn get_player_ingest_start_cursor(
         .optional()
 }
 
-pub fn get_modifications_table(conn: &mut PgConnection) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
+pub fn get_modifications_table(
+    conn: &mut PgConnection,
+) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
     use crate::data_schema::data::modifications::dsl as mod_dsl;
 
     let table = mod_dsl::modifications
-        .select((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
+        .select((
+            mod_dsl::id,
+            mod_dsl::name,
+            mod_dsl::emoji,
+            mod_dsl::description,
+        ))
         .get_results::<(i64, String, String, String)>(conn)?
         .into_iter()
-        .map(|(id, name, emoji, tooltip)| (
-            NameEmojiTooltip { name, emoji, tooltip }, id
-        ))
+        .map(|(id, name, emoji, tooltip)| {
+            (
+                NameEmojiTooltip {
+                    name,
+                    emoji,
+                    tooltip,
+                },
+                id,
+            )
+        })
         .collect();
 
     Ok(table)
@@ -1301,20 +1314,32 @@ pub fn get_modifications_table(conn: &mut PgConnection) -> QueryResult<HashMap<N
 
 pub fn insert_modifications(
     conn: &mut PgConnection,
-    new_modifications: &[&(&str /* name */, &str /* emoji */, &str /* description */)],
+    new_modifications: &[&(
+        &str, /* name */
+        &str, /* emoji */
+        &str, /* description */
+    )],
 ) -> QueryResult<Option<Vec<(NameEmojiTooltip, i64)>>> {
     use crate::data_schema::data::modifications::dsl as mod_dsl;
 
     let to_insert = new_modifications
         .iter()
-        .map(|(name, emoji, description)|
-            NewModification { name, emoji, description, })
+        .map(|(name, emoji, description)| NewModification {
+            name,
+            emoji,
+            description,
+        })
         .collect_vec();
 
     let to_insert_len = to_insert.len();
     let results = diesel::insert_into(mod_dsl::modifications)
         .values(to_insert)
-        .returning((mod_dsl::id, mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
+        .returning((
+            mod_dsl::id,
+            mod_dsl::name,
+            mod_dsl::emoji,
+            mod_dsl::description,
+        ))
         .on_conflict((mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
         .do_nothing()
         .get_results::<(i64, String, String, String)>(conn)?;
@@ -1325,14 +1350,21 @@ pub fn insert_modifications(
         // Returning a None signals that we weren't able to insert all
         // the modifications due to a conflict and that the caller
         // should call us again with the same arguments
-        return Ok(None)
+        return Ok(None);
     }
 
     let results = results
         .into_iter()
-        .map(|(id, name, emoji, tooltip)| (
-            NameEmojiTooltip { name, emoji, tooltip }, id
-        ))
+        .map(|(id, name, emoji, tooltip)| {
+            (
+                NameEmojiTooltip {
+                    name,
+                    emoji,
+                    tooltip,
+                },
+                id,
+            )
+        })
         .collect();
 
     Ok(Some(results))
@@ -1349,7 +1381,10 @@ pub fn get_latest_player_valid_from(conn: &mut PgConnection) -> QueryResult<Opti
         .optional()
 }
 
-pub fn latest_player_versions(conn: &mut PgConnection, player_ids: &[String]) -> QueryResult<HashMap<String, DbPlayerVersion>> {
+pub fn latest_player_versions(
+    conn: &mut PgConnection,
+    player_ids: &[String],
+) -> QueryResult<HashMap<String, DbPlayerVersion>> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
     let map = pv_dsl::player_versions
@@ -1379,9 +1414,7 @@ fn insert_player_reports(
     new_player_reports: Vec<Vec<NewPlayerReport>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_reports::dsl as pr_dsl;
-    let player_recompositions = new_player_reports.into_iter()
-        .flatten()
-        .collect_vec();
+    let player_recompositions = new_player_reports.into_iter().flatten().collect_vec();
 
     // Insert new records
     diesel::copy_from(pr_dsl::player_reports)
@@ -1394,7 +1427,8 @@ fn insert_player_recompositions(
     new_player_recompositions: Vec<Vec<NewPlayerRecomposition>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_recompositions::dsl as pr_dsl;
-    let player_recompositions = new_player_recompositions.into_iter()
+    let player_recompositions = new_player_recompositions
+        .into_iter()
         .flatten()
         .collect_vec();
 
@@ -1409,7 +1443,8 @@ fn insert_player_paradigm_shifts(
     new_player_paradigm_shifts: Vec<Vec<NewPlayerParadigmShift>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_paradigm_shifts::dsl as pps_dsl;
-    let player_augments = new_player_paradigm_shifts.into_iter()
+    let player_augments = new_player_paradigm_shifts
+        .into_iter()
         .flatten()
         .collect_vec();
 
@@ -1424,9 +1459,7 @@ fn insert_player_augments(
     new_player_augments: Vec<Vec<NewPlayerAugment>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_augments::dsl as pa_dsl;
-    let player_augments = new_player_augments.into_iter()
-        .flatten()
-        .collect_vec();
+    let player_augments = new_player_augments.into_iter().flatten().collect_vec();
 
     // Insert new records
     diesel::copy_from(pa_dsl::player_augments)
@@ -1440,7 +1473,8 @@ fn insert_player_modifications(
     mod_truncations: Vec<(usize, &str, NaiveDateTime)>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
-    let new_player_modification_versions = new_player_modification_versions.into_iter()
+    let new_player_modification_versions = new_player_modification_versions
+        .into_iter()
         .flatten()
         .collect_vec();
 
@@ -1453,12 +1487,14 @@ fn insert_player_modifications(
     // which ids need to be updated (without making extra db calls).
     for (truncate_to, id, new_valid_until) in mod_truncations {
         diesel::update(pmv_dsl::player_modification_versions)
-            .filter(pmv_dsl::mmolb_player_id.eq(id)
-                .and(pmv_dsl::modification_order.ge(truncate_to as i32)))
+            .filter(
+                pmv_dsl::mmolb_player_id
+                    .eq(id)
+                    .and(pmv_dsl::modification_order.ge(truncate_to as i32)),
+            )
             .set(pmv_dsl::valid_until.eq(new_valid_until))
             .execute(conn)?;
     }
-
 
     // Insert new records
     diesel::copy_from(pmv_dsl::player_modification_versions)
@@ -1475,14 +1511,10 @@ pub fn insert_player_versions_with_retry<'v, 'g>(
         return (0, Vec::new());
     }
 
-    let res = conn.transaction(|conn| {
-        insert_player_versions(conn, new_player_versions)
-    });
+    let res = conn.transaction(|conn| insert_player_versions(conn, new_player_versions));
 
     match res {
-        Ok(inserted) => {
-            (inserted, Vec::new())
-        }
+        Ok(inserted) => (inserted, Vec::new()),
         Err(e) => {
             if num_versions == 1 {
                 (0, vec![(&new_player_versions[0], e)])
@@ -1508,8 +1540,11 @@ pub fn insert_player_versions(
     new.extend_from_slice(new_player_versions);
     let new_player_versions = new;
 
-    let mod_truncations = new_player_versions.iter()
-        .map(|(player, mod_list, _, _, _, _)| (mod_list.len(), player.mmolb_player_id, player.valid_from))
+    let mod_truncations = new_player_versions
+        .iter()
+        .map(|(player, mod_list, _, _, _, _)| {
+            (mod_list.len(), player.mmolb_player_id, player.valid_from)
+        })
         .collect_vec();
 
     let (

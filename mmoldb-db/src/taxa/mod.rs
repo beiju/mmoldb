@@ -958,8 +958,6 @@ impl From<mmolb_parsing::enums::PitchType> for TaxaPitchType {
     }
 }
 
-
-
 taxa! {
     #[
         schema = crate::taxa_schema::taxa::handedness,
@@ -976,9 +974,9 @@ taxa! {
 impl From<mmolb_parsing::enums::Handedness> for TaxaHandedness {
     fn from(value: mmolb_parsing::enums::Handedness) -> Self {
         match value {
-            mmolb_parsing::enums::Handedness::Right => { Self::Right }
-            mmolb_parsing::enums::Handedness::Left => { Self::Left }
-            mmolb_parsing::enums::Handedness::Switch => { Self::Switch }
+            mmolb_parsing::enums::Handedness::Right => Self::Right,
+            mmolb_parsing::enums::Handedness::Left => Self::Left,
+            mmolb_parsing::enums::Handedness::Switch => Self::Switch,
         }
     }
 }
@@ -1088,11 +1086,11 @@ taxa! {
 impl From<mmolb_parsing::enums::AttributeCategory> for TaxaAttributeCategory {
     fn from(value: mmolb_parsing::enums::AttributeCategory) -> Self {
         match value {
-            mmolb_parsing::enums::AttributeCategory::Batting => { Self::Batting }
-            mmolb_parsing::enums::AttributeCategory::Pitching => { Self::Pitching }
-            mmolb_parsing::enums::AttributeCategory::Defense => { Self::Defense }
-            mmolb_parsing::enums::AttributeCategory::Baserunning => { Self::Baserunning }
-            mmolb_parsing::enums::AttributeCategory::Generic => { Self::Generic }
+            mmolb_parsing::enums::AttributeCategory::Batting => Self::Batting,
+            mmolb_parsing::enums::AttributeCategory::Pitching => Self::Pitching,
+            mmolb_parsing::enums::AttributeCategory::Defense => Self::Defense,
+            mmolb_parsing::enums::AttributeCategory::Baserunning => Self::Baserunning,
+            mmolb_parsing::enums::AttributeCategory::Generic => Self::Generic,
         }
     }
 }
@@ -1183,42 +1181,42 @@ taxa! {
 impl From<mmolb_parsing::enums::Attribute> for TaxaAttribute {
     fn from(value: mmolb_parsing::enums::Attribute) -> Self {
         match value {
-            mmolb_parsing::enums::Attribute::Priority => { Self:: Priority}
-            mmolb_parsing::enums::Attribute::Luck => { Self:: Luck}
-            mmolb_parsing::enums::Attribute::Aiming => { Self:: Aiming}
-            mmolb_parsing::enums::Attribute::Contact => { Self:: Contact}
-            mmolb_parsing::enums::Attribute::Cunning => { Self:: Cunning}
-            mmolb_parsing::enums::Attribute::Discipline => { Self:: Discipline}
-            mmolb_parsing::enums::Attribute::Insight => { Self:: Insight}
-            mmolb_parsing::enums::Attribute::Intimidation => { Self:: Intimidation}
-            mmolb_parsing::enums::Attribute::Lift => { Self:: Lift}
-            mmolb_parsing::enums::Attribute::Vision => { Self:: Vision}
-            mmolb_parsing::enums::Attribute::Determination => { Self:: Determination}
-            mmolb_parsing::enums::Attribute::Wisdom => { Self:: Wisdom}
-            mmolb_parsing::enums::Attribute::Muscle => { Self:: Muscle}
-            mmolb_parsing::enums::Attribute::Selflessness => { Self:: Selflessness}
-            mmolb_parsing::enums::Attribute::Accuracy => { Self:: Accuracy}
-            mmolb_parsing::enums::Attribute::Rotation => { Self:: Rotation}
-            mmolb_parsing::enums::Attribute::Presence => { Self:: Presence}
-            mmolb_parsing::enums::Attribute::Persuasion => { Self:: Persuasion}
-            mmolb_parsing::enums::Attribute::Stamina => { Self:: Stamina}
-            mmolb_parsing::enums::Attribute::Velocity => { Self:: Velocity}
-            mmolb_parsing::enums::Attribute::Control => { Self:: Control}
-            mmolb_parsing::enums::Attribute::Stuff => { Self:: Stuff}
-            mmolb_parsing::enums::Attribute::Defiance => { Self:: Defiance}
-            mmolb_parsing::enums::Attribute::Acrobatics => { Self:: Acrobatics}
-            mmolb_parsing::enums::Attribute::Agility => { Self:: Agility}
-            mmolb_parsing::enums::Attribute::Arm => { Self:: Arm}
-            mmolb_parsing::enums::Attribute::Awareness => { Self:: Awareness}
-            mmolb_parsing::enums::Attribute::Composure => { Self:: Composure}
-            mmolb_parsing::enums::Attribute::Dexterity => { Self:: Dexterity}
-            mmolb_parsing::enums::Attribute::Patience => { Self:: Patience}
-            mmolb_parsing::enums::Attribute::Reaction => { Self:: Reaction}
-            mmolb_parsing::enums::Attribute::Greed => { Self:: Greed}
-            mmolb_parsing::enums::Attribute::Performance => { Self:: Performance}
-            mmolb_parsing::enums::Attribute::Speed => { Self:: Speed}
-            mmolb_parsing::enums::Attribute::Stealth => { Self:: Stealth}
-            mmolb_parsing::enums::Attribute::Guts => { Self:: Guts}
+            mmolb_parsing::enums::Attribute::Priority => Self::Priority,
+            mmolb_parsing::enums::Attribute::Luck => Self::Luck,
+            mmolb_parsing::enums::Attribute::Aiming => Self::Aiming,
+            mmolb_parsing::enums::Attribute::Contact => Self::Contact,
+            mmolb_parsing::enums::Attribute::Cunning => Self::Cunning,
+            mmolb_parsing::enums::Attribute::Discipline => Self::Discipline,
+            mmolb_parsing::enums::Attribute::Insight => Self::Insight,
+            mmolb_parsing::enums::Attribute::Intimidation => Self::Intimidation,
+            mmolb_parsing::enums::Attribute::Lift => Self::Lift,
+            mmolb_parsing::enums::Attribute::Vision => Self::Vision,
+            mmolb_parsing::enums::Attribute::Determination => Self::Determination,
+            mmolb_parsing::enums::Attribute::Wisdom => Self::Wisdom,
+            mmolb_parsing::enums::Attribute::Muscle => Self::Muscle,
+            mmolb_parsing::enums::Attribute::Selflessness => Self::Selflessness,
+            mmolb_parsing::enums::Attribute::Accuracy => Self::Accuracy,
+            mmolb_parsing::enums::Attribute::Rotation => Self::Rotation,
+            mmolb_parsing::enums::Attribute::Presence => Self::Presence,
+            mmolb_parsing::enums::Attribute::Persuasion => Self::Persuasion,
+            mmolb_parsing::enums::Attribute::Stamina => Self::Stamina,
+            mmolb_parsing::enums::Attribute::Velocity => Self::Velocity,
+            mmolb_parsing::enums::Attribute::Control => Self::Control,
+            mmolb_parsing::enums::Attribute::Stuff => Self::Stuff,
+            mmolb_parsing::enums::Attribute::Defiance => Self::Defiance,
+            mmolb_parsing::enums::Attribute::Acrobatics => Self::Acrobatics,
+            mmolb_parsing::enums::Attribute::Agility => Self::Agility,
+            mmolb_parsing::enums::Attribute::Arm => Self::Arm,
+            mmolb_parsing::enums::Attribute::Awareness => Self::Awareness,
+            mmolb_parsing::enums::Attribute::Composure => Self::Composure,
+            mmolb_parsing::enums::Attribute::Dexterity => Self::Dexterity,
+            mmolb_parsing::enums::Attribute::Patience => Self::Patience,
+            mmolb_parsing::enums::Attribute::Reaction => Self::Reaction,
+            mmolb_parsing::enums::Attribute::Greed => Self::Greed,
+            mmolb_parsing::enums::Attribute::Performance => Self::Performance,
+            mmolb_parsing::enums::Attribute::Speed => Self::Speed,
+            mmolb_parsing::enums::Attribute::Stealth => Self::Stealth,
+            mmolb_parsing::enums::Attribute::Guts => Self::Guts,
         }
     }
 }

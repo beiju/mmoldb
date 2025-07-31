@@ -6,11 +6,10 @@ use futures::{StreamExt, TryStreamExt, pin_mut};
 use log::{debug, error, info};
 use miette::IntoDiagnostic;
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{Connection, PgConnection, db, AsyncPgConnection, AsyncConnection, async_db};
+use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, async_db, db};
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
-
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
@@ -19,10 +18,7 @@ const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_PLAYER_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_PLAYER_BATCH_SIZE: usize = 100000;
 
-pub async fn ingest_players(
-    pg_url: String,
-    abort: CancellationToken,
-) -> miette::Result<()> {
+pub async fn ingest_players(pg_url: String, abort: CancellationToken) -> miette::Result<()> {
     let notify = Arc::new(Notify::new());
     // Finish tells the task "once there are no more players to process, exit", while
     // abort tells the task "exit immediately, even if there are more players to process"
@@ -39,13 +35,7 @@ pub async fn ingest_players(
             let abort = abort.clone();
             tokio::task::Builder::new()
                 .name(format!("Ingest worker {n}").leak())
-                .spawn(process_players(
-                    pg_url,
-                    abort,
-                    notify,
-                    finish,
-                    n,
-                ))
+                .spawn(process_players(pg_url, abort, notify, finish, n))
         })
         .collect::<Result<Vec<_>, _>>()
         .into_diagnostic()?;
@@ -102,11 +92,15 @@ async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miet
         // It returns a future just because that's what's dictated by
         // the stream api.
         .skip_while(|result| {
-            let skip_this = start_cursor.as_ref().is_some_and(|(start_valid_from, start_entity_id)| {
-                result.as_ref().is_ok_and(|entity| {
-                    (entity.valid_from, &entity.entity_id) <= (*start_valid_from, start_entity_id)
-                })
-            });
+            let skip_this =
+                start_cursor
+                    .as_ref()
+                    .is_some_and(|(start_valid_from, start_entity_id)| {
+                        result.as_ref().is_ok_and(|entity| {
+                            (entity.valid_from, &entity.entity_id)
+                                <= (*start_valid_from, start_entity_id)
+                        })
+                    });
 
             if skip_this {
                 // Probably doesn't need to be as strict as SeqCst but it's debugging
@@ -130,7 +124,11 @@ async fn ingest_raw_players(mut conn: PgConnection, notify: Arc<Notify>) -> miet
             Err(err) => (err.0, Some(err.1)),
         };
 
-        info!("Saving {} players ({} skipped at start)", chunk.len(), num_skipped_at_start.load(std::sync::atomic::Ordering::SeqCst));
+        info!(
+            "Saving {} players ({} skipped at start)",
+            chunk.len(),
+            num_skipped_at_start.load(std::sync::atomic::Ordering::SeqCst)
+        );
         let inserted = db::insert_versions(&mut conn, &chunk).into_diagnostic()?;
         info!("Saved {} players", inserted);
 
@@ -151,13 +149,7 @@ async fn process_players(
     finish: CancellationToken,
     worker_id: usize,
 ) -> miette::Result<()> {
-    let result = process_players_internal(
-        &url,
-        abort,
-        notify,
-        finish,
-        worker_id,
-    ).await;
+    let result = process_players_internal(&url, abort, notify, finish, worker_id).await;
     if let Err(err) = &result {
         error!("Error in process players: {}. ", err);
     }
@@ -181,7 +173,10 @@ async fn process_players_internal(
     notify.notify_one();
 
     'outer: while {
-        debug!("Process players task worker {worker_id} is waiting to be woken up (notify: {:?})", notify);
+        debug!(
+            "Process players task worker {worker_id} is waiting to be woken up (notify: {:?})",
+            notify
+        );
         tokio::select! {
             biased; // We always want to respond to abort, notify, and finish in that order
             _ = abort.cancelled() => { info!("abort"); false }
@@ -193,37 +188,39 @@ async fn process_players_internal(
 
         // This can be cached, but as it now only runs once per wakeup it probably doesn't
         // need to be
-        let ingest_start_cursor = db::get_player_ingest_start_cursor(&mut conn)
-            .into_diagnostic()?;
+        let ingest_start_cursor =
+            db::get_player_ingest_start_cursor(&mut conn).into_diagnostic()?;
 
         info!("Player derived data ingest starting at {ingest_start_cursor:?}");
 
         let players_stream = async_db::stream_versions_at_cursor(
             &mut async_conn,
             PLAYER_KIND,
-            ingest_start_cursor.as_ref().map(|(dt, id)| (*dt, id.as_str())),
+            ingest_start_cursor
+                .as_ref()
+                .map(|(dt, id)| (*dt, id.as_str())),
         )
-            .await
-            .into_diagnostic()
-            .context("Getting versions at cursor")?
-            .try_chunks(PROCESS_PLAYER_BATCH_SIZE)
-            .map(|raw_players| {
-                // when an error occurs, try_chunks gives us the successful portion of the chunk
-                // and then the error. we could ingest the successful part, but we don't (yet).
-                let raw_players = raw_players.map_err(|err| err.1)?;
+        .await
+        .into_diagnostic()
+        .context("Getting versions at cursor")?
+        .try_chunks(PROCESS_PLAYER_BATCH_SIZE)
+        .map(|raw_players| {
+            // when an error occurs, try_chunks gives us the successful portion of the chunk
+            // and then the error. we could ingest the successful part, but we don't (yet).
+            let raw_players = raw_players.map_err(|err| err.1)?;
 
-                info!(
-                    "Processing batch of {} raw players on worker {worker_id}",
-                    raw_players.len()
-                );
-                logic::ingest_page_of_players(
-                    &taxa,
-                    0.0, // TODO
-                    raw_players,
-                    &mut conn,
-                    worker_id,
-                )
-            });
+            info!(
+                "Processing batch of {} raw players on worker {worker_id}",
+                raw_players.len()
+            );
+            logic::ingest_page_of_players(
+                &taxa,
+                0.0, // TODO
+                raw_players,
+                &mut conn,
+                worker_id,
+            )
+        });
         pin_mut!(players_stream);
 
         // Consume the stream and abort on error while handling abort

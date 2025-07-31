@@ -197,7 +197,9 @@ mod tests {
         let mut pairs = Vec::new();
 
         for item_a in a {
-            if let Some(item_b_position) = b.iter().position(|item_b| is_associated(&item_a, item_b)) {
+            if let Some(item_b_position) =
+                b.iter().position(|item_b| is_associated(&item_a, item_b))
+            {
                 let item_b = b.remove(item_b_position);
                 pairs.push((item_a, item_b));
             } else {

@@ -8,8 +8,8 @@ use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
 use log::warn;
 
-use crate::data_schema::data::versions::dsl as versions_dsl;
 use crate::QueryError;
+use crate::data_schema::data::versions::dsl as versions_dsl;
 
 pub fn get_latest_raw_version_cursor(
     conn: &mut PgConnection,
@@ -18,7 +18,10 @@ pub fn get_latest_raw_version_cursor(
     versions_dsl::versions
         .filter(versions_dsl::kind.eq(kind))
         .select((versions_dsl::valid_from, versions_dsl::entity_id))
-        .order_by((versions_dsl::valid_from.desc(), versions_dsl::entity_id.desc()))
+        .order_by((
+            versions_dsl::valid_from.desc(),
+            versions_dsl::entity_id.desc(),
+        ))
         .limit(1)
         .get_result(conn)
         .optional()
@@ -53,21 +56,27 @@ pub fn insert_versions_with_recovery<'v>(
             let vecs = (0..results).map(|_| Ok(())).collect_vec();
             assert_eq!(vecs.len(), num_versions); // Make sure I did the ranges syntax right
             vecs
-        },
+        }
         Err(err) => match versions.len() {
             0 => panic!("This function recursed too far"),
             1 => {
-                let (version,) = versions.into_iter().collect_tuple().expect("Should have one version");
+                let (version,) = versions
+                    .into_iter()
+                    .collect_tuple()
+                    .expect("Should have one version");
                 vec![Err((err, version))]
-            },
+            }
             len => {
                 let split = len / 2;
-                assert_eq!(versions.len(), versions[..split].len() + versions[split..].len());
+                assert_eq!(
+                    versions.len(),
+                    versions[..split].len() + versions[split..].len()
+                );
                 let mut vec = insert_versions_with_recovery(conn, &versions[..split]);
                 vec.extend(insert_versions_with_recovery(conn, &versions[split..]));
                 vec
             }
-        }
+        },
     }
 }
 

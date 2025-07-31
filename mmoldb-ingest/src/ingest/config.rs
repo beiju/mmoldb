@@ -24,7 +24,7 @@ fn default_ingest_parallelism() -> usize {
 }
 
 // TODO Use this again, probably with tweaked fields
-#[allow(unused)]  // Until addressing the above TODO
+#[allow(unused)] // Until addressing the above TODO
 #[derive(Clone, Deserialize, DefaultFromSerde)]
 pub struct IngestConfig {
     #[serde(default = "default_ingest_period")]

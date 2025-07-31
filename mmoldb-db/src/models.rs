@@ -476,7 +476,6 @@ pub struct NewPlayerAugment<'a> {
     pub value: i32,
 }
 
-
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::player_paradigm_shifts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -544,5 +543,4 @@ pub struct NewPlayerReport<'a> {
     pub observed: NaiveDateTime,
     pub attribute: i64,
     pub stars: i32,
-
 }

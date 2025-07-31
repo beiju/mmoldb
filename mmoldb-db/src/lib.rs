@@ -5,8 +5,8 @@ mod schema;
 pub mod taxa;
 mod url;
 
-mod event_detail;
 pub mod async_db;
+mod event_detail;
 
 pub(crate) use schema::*;
 
