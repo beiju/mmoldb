@@ -24,7 +24,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -1423,6 +1423,7 @@ type NewPlayerVersionExt<'a> = (
     Vec<NewPlayerModificationVersion<'a>>,
     Option<NewPlayerFeedVersionExt<'a>>,
     Vec<NewPlayerReport<'a>>,
+    NewPlayerEquipmentVersion<'a>,
 );
 
 fn insert_player_reports(
@@ -1435,6 +1436,18 @@ fn insert_player_reports(
     // Insert new records
     diesel::copy_from(pr_dsl::player_reports)
         .from_insertable(player_recompositions)
+        .execute(conn)
+}
+
+fn insert_player_equipment(
+    conn: &mut PgConnection,
+    new_player_equipment: Vec<NewPlayerEquipmentVersion>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_equipment_versions::dsl as pev_dsl;
+
+    // Insert new records
+    diesel::copy_from(pev_dsl::player_equipment_versions)
+        .from_insertable(new_player_equipment)
         .execute(conn)
 }
 
@@ -1586,7 +1599,7 @@ pub fn insert_player_versions(
 
     let mod_truncations = new_player_versions
         .iter()
-        .map(|(player, mod_list, _, _)| {
+        .map(|(player, mod_list, _, _, _)| {
             (mod_list.len(), player.mmolb_player_id, player.valid_from)
         })
         .collect_vec();
@@ -1596,13 +1609,16 @@ pub fn insert_player_versions(
         new_player_modification_versions,
         new_player_feed_versions,
         new_player_reports,
+        new_player_equipment,
     ): (
         Vec<NewPlayerVersion>,
         Vec<Vec<NewPlayerModificationVersion>>,
         Vec<Option<NewPlayerFeedVersionExt>>,
         Vec<Vec<NewPlayerReport>>,
+        Vec<NewPlayerEquipmentVersion>,
     ) = itertools::multiunzip(new_player_versions);
 
+    insert_player_equipment(conn, new_player_equipment)?;
     insert_player_reports(conn, new_player_reports)?;
     insert_player_feed_versions(conn, new_player_feed_versions.into_iter().flatten())?;
     insert_player_modifications(conn, new_player_modification_versions, mod_truncations)?;

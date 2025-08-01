@@ -545,13 +545,14 @@ pub struct NewPlayerReport<'a> {
     pub stars: i32,
 }
 
-
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::player_feed_versions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbPlayerFeedVersion {
     pub id: i64,
     pub mmolb_player_id: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
     pub num_entries: i32,
 }
 
@@ -560,5 +561,75 @@ pub struct DbPlayerFeedVersion {
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerFeedVersion<'a> {
     pub mmolb_player_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
     pub num_entries: i32,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_equipment_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerEquipmentVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub equipment_slot: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub emoji: String,
+    pub name: String,
+    pub special_type: Option<String>,
+    pub description: Option<String>,
+    pub rare_name: Option<String>,
+    pub cost: Option<i32>,
+    pub prefixes: Vec<Option<String>>,
+    pub suffixes: Vec<Option<String>>,
+    pub rarity: String,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_equipment_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPlayerEquipmentVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub equipment_slot: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub emoji: &'a str,
+    pub name: String,
+    pub special_type: Option<String>,
+    pub description: Option<&'a str>,
+    pub rare_name: Option<&'a str>,
+    pub cost: Option<i32>,
+    pub prefixes: Vec<&'a str>,
+    pub suffixes: Vec<&'a str>,
+    pub rarity: &'a str,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_equipment_effect_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerEquipmentEffectVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub equipment_slot: String,
+    pub effect_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub attribute: i64,
+    pub modifier_type: i64,
+    pub value: f64,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_equipment_effect_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPlayerEquipmentEffectVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub equipment_slot: &'a str,
+    pub effect_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub attribute: i64,
+    pub modifier_type: i64,
+    pub value: f64,
 }

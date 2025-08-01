@@ -1,3 +1,13 @@
+drop trigger on_insert_player_equipment_effect_versions_trigger on data.player_equipment_effect_versions;
+drop function data.on_insert_player_equipment_effect_versions;
+drop table data.player_equipment_effect_versions;
+
+drop trigger on_insert_player_equipment_versions_trigger on data.player_equipment_versions;
+drop function data.on_insert_player_equipment_versions;
+drop table data.player_equipment_versions;
+
+drop table taxa.attribute_effect_type;
+
 drop trigger on_insert_player_feed_version_trigger on data.player_feed_versions;
 drop function data.on_insert_player_feed_version;
 drop table data.player_feed_versions;

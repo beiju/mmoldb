@@ -1,13 +1,14 @@
+use std::fmt::Display;
 use chron::ChronEntity;
 use chrono::Utc;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
-use mmolb_parsing::NotRecognized;
-use mmolb_parsing::enums::{Day, Handedness, Position};
-use mmolb_parsing::player::TalkCategory;
+use mmolb_parsing::{AddedLater, NotRecognized};
+use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
+use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerAugment, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion};
+use mmoldb_db::models::{NewPlayerAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion};
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
 use mmoldb_db::{PgConnection, QueryResult, db};
 use rayon::prelude::*;
@@ -103,7 +104,8 @@ pub fn ingest_page_of_players(
                 _modification_version,
                 _feed_version,
                 _report,
-            ): &(NewPlayerVersion, _, _, _) = player;
+                _equipment
+            ): &(NewPlayerVersion, _, _, _, _) = player;
             error!(
                 "Error {err} ingesting player {} at {}",
                 version.mmolb_player_id, version.valid_from,
@@ -118,7 +120,7 @@ pub fn ingest_page_of_players(
             players.len(),
         );
     }
-    
+
     let save_duration = (Utc::now() - save_start).as_seconds_f64();
 
     info!(
@@ -231,6 +233,19 @@ fn day_to_db(
         }
     }
 }
+
+fn maybe_recognized_str<T: Display>(val: Result<T, NotRecognized>) -> Result<String, serde_json::Value> {
+    match val {
+        Ok(v) => {
+            Ok(v.to_string())
+        }
+        Err(NotRecognized(value)) => match value.as_str() {
+            None => Err(value),
+            Some(str) => Ok(str.to_string()),
+        }
+    }
+}
+
 fn chron_player_as_new<'a>(
     entity: &'a ChronEntity<mmolb_parsing::player::Player>,
     taxa: &Taxa,
@@ -245,6 +260,7 @@ fn chron_player_as_new<'a>(
         Vec<NewPlayerRecomposition<'a>>,
     )>,
     Vec<NewPlayerReport<'a>>,
+    NewPlayerEquipmentVersion<'a>,
 ) {
     let (birthday_type, birthday_day, birthday_superstar_day) =
         day_to_db(&entity.data.birthday, taxa);
@@ -347,11 +363,120 @@ fn chron_player_as_new<'a>(
         }
     }
 
+    let equipment = match &entity.data.equipment {
+        Ok(equipment) => {
+            // TODO I've requested a way to do this without clone(). Switch to
+            //   that once it's implemented in mmolb_parsing
+            let map: std::collections::HashMap<Result<EquipmentSlot, NotRecognized>, Option<PlayerEquipment>> = equipment.clone().into();
+            map.into_iter()
+                .filter_map(|(slot, equipment)| equipment.and_then(|equipment| {
+                    let equipment_slot = match maybe_recognized_str(slot) {
+                        Ok(equipment_slot) => equipment_slot,
+                        Err(non_string_value) => {
+                            // TODO Expose this error on the web interface
+                            error!("Ignoring equipment with non-string slot {non_string_value:?}");
+                            return None;
+                        }
+                    };
+
+                    let name = match maybe_recognized_str(equipment.name) {
+                        Ok(name) => name,
+                        Err(non_string_value) => {
+                            // TODO Expose this error on the web interface
+                            error!("Ignoring equipment with non-string name {non_string_value:?}");
+                            return None;
+                        }
+                    };
+
+                    let new_equipment = NewPlayerEquipmentVersion {
+                        mmolb_player_id: &entity.entity_id,
+                        equipment_slot,
+                        valid_from: entity.valid_from.naive_utc(),
+                        valid_until: None,
+                        emoji: &equipment.emoji,
+                        name,
+                        special_type: equipment.special_type.map(|t| t.to_string()),
+                        description: equipment.description.as_deref(),
+                        rare_name: equipment.rare_name.as_deref(),
+                        cost: equipment.cost.map(|v| v as i32),
+                        prefixes: match (equipment.prefix, equipment.prefixes) {
+                            (Err(RemovedLater))
+                        },
+                        suffixes: match (equipment.suffix, equipment.suffixes) {
+
+                        },
+                        rarity: equipment.rarity,
+                    };
+
+                    let effects = match equipment.effects {
+                        None => {
+                            warn!("Got equipment with no effects. What does this mean?");
+                            Vec::new()
+                        }
+                        Some(effects) => effects
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, effect)| {
+                                let effect = match effect {
+                                    Ok(effect) => effect,
+                                    Err(NotRecognized(value)) => {
+                                        // TODO Expose this error to the web interface
+                                        error!("Skipping unrecognized equipment effect {value:?}");
+                                        return None;
+                                    }
+                                };
+
+                                let attribute = match effect.attribute {
+                                    Ok(attribute) => attribute,
+                                    Err(NotRecognized(value)) => {
+                                        // TODO Expose this error to the web interface
+                                        error!(
+                                            "Skipping unrecognized equipment effect attribute {:?}",
+                                            value,
+                                        );
+                                        return None;
+                                    }
+                                };
+
+                                let effect_type = match effect.effect_type {
+                                    Ok(effect_type) => effect_type,
+                                    Err(NotRecognized(value)) => {
+                                        // TODO Expose this error to the web interface
+                                        error!(
+                                            "Skipping unrecognized equipment effect type {:?}",
+                                            value,
+                                        );
+                                        return None;
+                                    }
+                                };
+
+                                Some(NewPlayerEquipmentEffectVersion {
+                                    mmolb_player_id: &entity.entity_id,
+                                    equipment_slot,
+                                    effect_index: index as i32,
+                                    valid_from: entity.valid_from.naive_utc(),
+                                    valid_until: None,
+                                    attribute: taxa.attribute_id(attribute.into()),
+                                    modifier_type: taxa.effect_type,
+                                    value: 0.0,
+                                })
+                            })
+                            .collect_vec()
+                    };
+
+                    (new_equipment, effects)
+                }))
+                .collect_vec()
+        }
+        Err(AddedLater) => Vec::new(), // No equipment
+    };
+
     (
         player,
         modifications,
         feed_as_new,
         reports,
+        equipment,
     )
 }
 

@@ -116,6 +116,41 @@ pub mod data {
     }
 
     diesel::table! {
+        data.player_equipment_effect_versions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            equipment_slot -> Text,
+            effect_index -> Int4,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            attribute -> Int8,
+            modifier_type -> Int8,
+            value -> Float8,
+        }
+    }
+
+    diesel::table! {
+        data.player_equipment_versions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            equipment_slot -> Text,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            emoji -> Text,
+            name -> Text,
+            special_type -> Nullable<Text>,
+            description -> Nullable<Text>,
+            rare_name -> Nullable<Text>,
+            cost -> Nullable<Int4>,
+            prefixes -> Array<Nullable<Text>>,
+            suffixes -> Array<Nullable<Text>>,
+            rarity -> Text,
+        }
+    }
+
+    diesel::table! {
         data.player_feed_versions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
@@ -231,6 +266,8 @@ pub mod data {
         games,
         modifications,
         player_augments,
+        player_equipment_effect_versions,
+        player_equipment_versions,
         player_feed_versions,
         player_modification_versions,
         player_paradigm_shifts,
