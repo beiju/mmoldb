@@ -1,6 +1,7 @@
 mod ingest;
 mod ingest_games;
 mod ingest_players;
+mod ingest_feed;
 mod signal;
 
 use chrono::{Duration, Utc};
@@ -50,7 +51,7 @@ async fn main() -> miette::Result<()> {
             // performs the negativity check we would be doing anyway.
             match wait_duration_chrono.to_std() {
                 Ok(wait_duration) => {
-                    info!("Next ingest {}", HumanTime::from(wait_duration_chrono));
+                    info!("Next ingest_games {}", HumanTime::from(wait_duration_chrono));
                     tokio::select! {
                         _ = tokio::time::sleep(wait_duration) => {},
                         _ = signal::wait_for_signal() => { break; }
@@ -62,20 +63,20 @@ async fn main() -> miette::Result<()> {
                 Err(_) => {
                     // Indicates the wait duration was negative
                     let why = format!(
-                        "immediately (next scheduled ingest was {})",
+                        "immediately (next scheduled ingest_games was {})",
                         HumanTime::from(next_start)
                     );
                     (why, Utc::now())
                 }
             }
         } else {
-            let why = "immediately (this is the first ingest)".to_string();
+            let why = "immediately (this is the first ingest_games)".to_string();
             (why, Utc::now())
         };
 
         // I put this outside the `if` cluster intentionally, so the
         // compiler will error if I miss a code path
-        info!("Starting ingest {why}");
+        info!("Starting ingest_games {why}");
         previous_ingest_start_time = Some(ingest_start);
 
         run_one_ingest(url.clone()).await?;
@@ -108,7 +109,7 @@ async fn run_one_ingest(url: String) -> miette::Result<()> {
     // is also True if the task finished with a Result::Err(). We don't want to
     // await it in this case.
     if abort.is_cancelled() {
-        debug!("Waiting for ingest task to shut down after abort");
+        debug!("Waiting for ingest_games task to shut down after abort");
         ingest_task.await?;
     }
 
@@ -117,14 +118,14 @@ async fn run_one_ingest(url: String) -> miette::Result<()> {
     if is_aborted {
         db::mark_ingest_aborted(&mut conn, ingest_id, ingest_end_time).into_diagnostic()?;
         info!(
-            "Aborted ingest in {}",
+            "Aborted ingest_games in {}",
             duration.to_text_en(Accuracy::Precise, Tense::Present)
         );
     } else {
         // TODO Remove the start_next_ingest_at_page column from ingests
         db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, None).into_diagnostic()?;
         info!(
-            "Finished ingest in {}",
+            "Finished ingest_games in {}",
             duration.to_text_en(Accuracy::Precise, Tense::Present)
         );
     }
@@ -138,5 +139,7 @@ async fn ingest_everything(
     abort: CancellationToken,
 ) -> miette::Result<()> {
     ingest_players::ingest_players(pg_url.clone(), abort.clone()).await?;
+    // Player feed ingest has to start after all players with inbuilt feeds are processed
+    ingest_feed::ingest_player_feeds(pg_url.clone(), abort.clone()).await?;
     ingest_games::ingest_games(pg_url, ingest_id, abort).await
 }

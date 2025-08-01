@@ -1,0 +1,3 @@
+drop trigger on_insert_player_feed_version_trigger on data.player_feed_versions;
+drop function data.on_insert_player_feed_version;
+drop table data.player_feed_versions;

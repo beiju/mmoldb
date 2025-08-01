@@ -1,4 +1,10 @@
-use crate::ingest::ingest_page_of_games;
+mod check_round_trip;
+mod config;
+mod sim;
+mod worker;
+
+use worker::*;
+
 use chron::{Chron, ChronEntity};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
@@ -75,7 +81,7 @@ pub async fn ingest_games(
         .collect_vec();
 
     info!("Launched process games task");
-    info!("Beginning raw game ingest");
+    info!("Beginning raw game ingest_games");
 
     let ingest_conn = PgConnection::establish(&pg_url).into_diagnostic()?;
 
@@ -85,11 +91,11 @@ pub async fn ingest_games(
             // Tell process games workers to stop waiting and exit
             finish.cancel();
 
-            info!("Raw game ingest finished. Waiting for process games task.");
+            info!("Raw game ingest_games finished. Waiting for process games task.");
         }
         _ = abort.cancelled() => {
             // No need to set any signals because abort was already set by the caller
-            info!("Raw game ingest aborted. Waiting for process games task.");
+            info!("Raw game ingest_games aborted. Waiting for process games task.");
         }
     }
 
@@ -181,7 +187,7 @@ fn process_games_internal(
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
     // Permit ourselves to start processing right away, in case there
-    // are unprocessed games left over from a previous ingest. This
+    // are unprocessed games left over from a previous ingest_games. This
     // will happen after every derived data reset.
     notify.notify_one();
 
@@ -201,7 +207,7 @@ fn process_games_internal(
 
         // The inner loop is over batches of games to process
         while !abort.is_cancelled() {
-            debug!("Starting ingest loop on worker {worker_id}");
+            debug!("Starting ingest_games loop on worker {worker_id}");
             let get_batch_to_process_start = Utc::now();
             let this_cursor = {
                 let mut ingest_cursor = ingest_cursor.lock().unwrap();
@@ -215,8 +221,8 @@ fn process_games_internal(
                         .map(|(d, i)| (d.naive_utc(), i.as_str())),
                     PROCESS_GAME_BATCH_SIZE,
                 )
-                .into_diagnostic()?
-                .map(|(dt, id)| (dt.and_utc(), id));
+                    .into_diagnostic()?
+                    .map(|(dt, id)| (dt.and_utc(), id));
                 if let Some(cursor) = next_cursor {
                     *ingest_cursor = Some(cursor);
                     debug!("Worker {worker_id} set cursor to {:?}", ingest_cursor);
@@ -239,7 +245,7 @@ fn process_games_internal(
                     .as_ref()
                     .map(|(d, i)| (d.naive_utc(), i.as_str())),
             )
-            .into_diagnostic()?;
+                .into_diagnostic()?;
 
             {
                 let mut dupe_tracker = dupe_tracker.lock().unwrap();
@@ -277,7 +283,7 @@ fn process_games_internal(
                 &mut conn,
                 worker_id,
             )
-            .into_diagnostic()?;
+                .into_diagnostic()?;
             info!(
                 "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
                 progress, and skipped {} bugged games on worker {worker_id}.",

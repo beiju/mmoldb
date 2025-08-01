@@ -1,13 +1,26 @@
-use crate::ingest::sim::{self, Game, SimStartupError};
-use crate::ingest::{IngestFatalError, IngestStats, check_round_trip};
 use chron::ChronEntity;
 use chrono::Utc;
 use itertools::{Itertools, izip};
 use log::{debug, error, info};
-use miette::Context;
+use miette::{Context, Diagnostic};
+use thiserror::Error;
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{IngestLog, PgConnection, db};
+use mmoldb_db::{IngestLog, PgConnection, db, QueryError};
+use crate::ingest_games::{check_round_trip, sim};
+use crate::ingest_games::sim::{Game, SimStartupError};
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum IngestFatalError {
+    #[error(transparent)]
+    DeserializeError(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    DbError(#[from] QueryError),
+
+    #[error(transparent)]
+    JoinError(#[from] tokio::task::JoinError),
+}
 
 pub trait GameExt {
     /// Returns true for any game which will never be updated. This includes all
@@ -31,6 +44,13 @@ impl GameExt for mmolb_parsing::Game {
     }
 }
 
+pub struct IngestStats {
+    pub num_ongoing_games_skipped: usize,
+    pub num_bugged_games_skipped: usize,
+    pub num_games_with_fatal_errors: usize,
+    pub num_games_imported: usize,
+}
+
 pub fn ingest_page_of_games(
     taxa: &Taxa,
     ingest_id: i64,
@@ -41,7 +61,7 @@ pub fn ingest_page_of_games(
     worker_id: usize,
 ) -> Result<IngestStats, IngestFatalError> {
     debug!(
-        "Starting ingest page of {} games on worker {worker_id}",
+        "Starting ingest_games page of {} games on worker {worker_id}",
         all_games_json.len()
     );
     let save_start = Utc::now();
@@ -245,7 +265,7 @@ pub fn ingest_page_of_games(
             save_duration,
         },
     )?;
-    debug!("Saved ingest timings on worker {worker_id}");
+    debug!("Saved ingest_games timings on worker {worker_id}");
 
     Ok::<_, IngestFatalError>(IngestStats {
         num_ongoing_games_skipped,

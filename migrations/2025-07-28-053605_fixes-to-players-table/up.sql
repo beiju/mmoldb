@@ -1,6 +1,6 @@
 -- This migration exists to (1) recover from me mistakenly editing a trigger in
 -- the previous migration after it was deployed and (2) drop all derived player
--- data after fixes to player ingest
+-- data after fixes to player ingest_games
 
 truncate table
     data.player_versions,

@@ -544,3 +544,21 @@ pub struct NewPlayerReport<'a> {
     pub attribute: i64,
     pub stars: i32,
 }
+
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_feed_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerFeedVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub num_entries: i32,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_feed_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPlayerFeedVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub num_entries: i32,
+}

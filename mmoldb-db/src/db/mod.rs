@@ -24,12 +24,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{
-    DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner,
-    NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment,
-    NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport,
-    NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable,
-};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -117,7 +112,7 @@ pub fn latest_ingests(conn: &mut PgConnection) -> QueryResult<Vec<IngestWithGame
         "
         select i.id, i.started_at, i.finished_at, i.aborted_at, count(g.mmolb_game_id) as num_games
         from info.ingests i
-             left join data.games g on g.ingest = i.id
+             left join data.games g on g.ingest_games = i.id
         group by i.id, i.started_at
         order by i.started_at desc
         limit 25
@@ -170,8 +165,8 @@ pub fn get_game_ingest_start_cursor(
         .optional()
 }
 
-// It is assumed that an aborted ingest won't have a later
-// latest_completed_season than the previous ingest. That is not
+// It is assumed that an aborted ingest_games won't have a later
+// latest_completed_season than the previous ingest_games. That is not
 // necessarily true, but it's inconvenient to refactor the code to
 // support it.
 pub fn mark_ingest_aborted(
@@ -248,7 +243,7 @@ pub fn games_from_ingest_list(ingest_id: i64) -> SqlQuery {
     //   prepared query I can't bind a value and then keep appending
     //   more sql. The TODO here is to figure out how to get rid of
     //   this format! without making the code way more complicated.
-    games_list_base().sql(format!("where g.ingest = {ingest_id}"))
+    games_list_base().sql(format!("where g.ingest_games = {ingest_id}"))
 }
 
 pub fn ingest_with_games(
@@ -672,12 +667,12 @@ fn insert_games_internal<'e>(
                 Ok(Day::Day(day)) => (Some(*day), None),
                 Ok(Day::SuperstarDay(day)) => (None, Some(*day)),
                 Ok(other) => {
-                    // TODO Convert this to a gamewide ingest log warning
+                    // TODO Convert this to a gamewide ingest_games log warning
                     warn!("A game happened on an unexpected type of day: {other}.");
                     (None, None)
                 }
                 Err(error) => {
-                    // TODO Convert this to a gamewide ingest log error
+                    // TODO Convert this to a gamewide ingest_games log error
                     warn!("Day was not recognized: {error}");
                     (None, None)
                 }
@@ -829,7 +824,7 @@ fn insert_games_internal<'e>(
 
     log_only_assert!(
         n_logs_to_insert == n_logs_inserted,
-        "Event ingest logs insert should have inserted {} rows, but it inserted {}",
+        "Event ingest_games logs insert should have inserted {} rows, but it inserted {}",
         n_logs_to_insert,
         n_logs_inserted,
     );
@@ -1283,6 +1278,22 @@ pub fn get_player_ingest_start_cursor(
         .optional()
 }
 
+pub fn get_player_feed_ingest_start_cursor(
+    conn: &mut PgConnection,
+) -> QueryResult<Option<(NaiveDateTime, String)>> {
+    use crate::schema::data_schema::data::player_feed_versions::dsl as player_feed_dsl;
+
+    player_feed_dsl::player_feed_versions
+        .select((player_feed_dsl::valid_from, player_feed_dsl::mmolb_player_id))
+        .order_by((
+            player_feed_dsl::valid_from.desc(),
+            player_feed_dsl::mmolb_player_id.desc(),
+        ))
+        .limit(1)
+        .get_result(conn)
+        .optional()
+}
+
 pub fn get_modifications_table(
     conn: &mut PgConnection,
 ) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
@@ -1400,12 +1411,17 @@ pub fn latest_player_versions(
     Ok(map)
 }
 
-type NewPlayerVersionExt<'a> = (
-    NewPlayerVersion<'a>,
-    Vec<NewPlayerModificationVersion<'a>>,
+type NewPlayerFeedVersionExt<'a> = (
+    NewPlayerFeedVersion<'a>,
     Vec<NewPlayerAugment<'a>>,
     Vec<NewPlayerParadigmShift<'a>>,
     Vec<NewPlayerRecomposition<'a>>,
+);
+
+type NewPlayerVersionExt<'a> = (
+    NewPlayerVersion<'a>,
+    Vec<NewPlayerModificationVersion<'a>>,
+    Option<NewPlayerFeedVersionExt<'a>>,
     Vec<NewPlayerReport<'a>>,
 );
 
@@ -1419,6 +1435,34 @@ fn insert_player_reports(
     // Insert new records
     diesel::copy_from(pr_dsl::player_reports)
         .from_insertable(player_recompositions)
+        .execute(conn)
+}
+
+pub fn insert_player_feed_versions<'a>(
+    conn: &mut PgConnection,
+    new_player_feed_versions: impl IntoIterator<Item = NewPlayerFeedVersionExt<'a>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_feed_versions::dsl as pfv_dsl;
+
+    let (
+        new_player_feed_versions,
+        new_player_augments,
+        new_player_paradigm_shifts,
+        new_player_recompositions,
+    ): (
+        Vec<NewPlayerFeedVersion>,
+        Vec<Vec<NewPlayerAugment>,>,
+        Vec<Vec<NewPlayerParadigmShift>,>,
+        Vec<Vec<NewPlayerRecomposition>,>,
+    ) = itertools::multiunzip(new_player_feed_versions.into_iter());
+
+    insert_player_recompositions(conn, new_player_recompositions)?;
+    insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
+    insert_player_augments(conn, new_player_augments)?;
+
+    // Insert new records
+    diesel::copy_from(pfv_dsl::player_feed_versions)
+        .from_insertable(new_player_feed_versions)
         .execute(conn)
 }
 
@@ -1542,7 +1586,7 @@ pub fn insert_player_versions(
 
     let mod_truncations = new_player_versions
         .iter()
-        .map(|(player, mod_list, _, _, _, _)| {
+        .map(|(player, mod_list, _, _)| {
             (mod_list.len(), player.mmolb_player_id, player.valid_from)
         })
         .collect_vec();
@@ -1550,23 +1594,17 @@ pub fn insert_player_versions(
     let (
         new_player_versions,
         new_player_modification_versions,
-        new_player_augments,
-        new_player_paradigm_shifts,
-        new_player_recompositions,
+        new_player_feed_versions,
         new_player_reports,
     ): (
         Vec<NewPlayerVersion>,
         Vec<Vec<NewPlayerModificationVersion>>,
-        Vec<Vec<NewPlayerAugment>>,
-        Vec<Vec<NewPlayerParadigmShift>>,
-        Vec<Vec<NewPlayerRecomposition>>,
+        Vec<Option<NewPlayerFeedVersionExt>>,
         Vec<Vec<NewPlayerReport>>,
     ) = itertools::multiunzip(new_player_versions);
 
     insert_player_reports(conn, new_player_reports)?;
-    insert_player_recompositions(conn, new_player_recompositions)?;
-    insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
-    insert_player_augments(conn, new_player_augments)?;
+    insert_player_feed_versions(conn, new_player_feed_versions.into_iter().flatten())?;
     insert_player_modifications(conn, new_player_modification_versions, mod_truncations)?;
 
     // Insert new records

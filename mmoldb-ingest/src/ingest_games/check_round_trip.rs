@@ -1,5 +1,5 @@
 use crate::db::RowToEventError;
-use crate::ingest::worker::IngestLogs;
+use crate::ingest_games::worker::IngestLogs;
 use itertools::{EitherOrBoth, Itertools};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Place;

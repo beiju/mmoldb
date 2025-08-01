@@ -116,6 +116,17 @@ pub mod data {
     }
 
     diesel::table! {
+        data.player_feed_versions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            num_entries -> Int4,
+        }
+    }
+
+    diesel::table! {
         data.player_modification_versions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
@@ -220,6 +231,7 @@ pub mod data {
         games,
         modifications,
         player_augments,
+        player_feed_versions,
         player_modification_versions,
         player_paradigm_shifts,
         player_recompositions,

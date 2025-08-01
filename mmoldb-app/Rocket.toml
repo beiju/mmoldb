@@ -1,5 +1,5 @@
 # This configuration file is for Rocket, the web framework that powers the 
-# mmoldb website and ingest. It also contains several mmoldb-specific
+# mmoldb website and ingest_games. It also contains several mmoldb-specific
 # configuration parameters.
 #
 # This config file has a [default] section and a [debug] section. The [default]
@@ -25,8 +25,8 @@ log_level = "normal"
 # Time between ingests, in seconds
 # ingest_period_sec = 1800
 
-# Start an ingest every time the app launches, even if it's been less than
-# ingest_period_sec seconds since the last ingest. 
+# Start an ingest_games every time the app launches, even if it's been less than
+# ingest_period_sec seconds since the last ingest_games. 
 # start_ingest_every_launch = false
 
 # Delete and recreate the records for every game. The default behavior is
@@ -34,7 +34,7 @@ log_level = "normal"
 # reimport_all_games = false
 
 # Change the number of games to request from chron at a time. Max supported
-# value is 1000. Decreasing this value can improve memory usage during ingest
+# value is 1000. Decreasing this value can improve memory usage during ingest_games
 # at the cost of speed.
 # Note: If you change this, and you have http response caching enabled, you
 # will get a duplicate copy of every event in your cache. There is currently
@@ -42,9 +42,9 @@ log_level = "normal"
 # entire cache you can do that by deleting the mmoldb_http-cache volume.
 # game_list_page_size = 1000
 
-# The number of pages of games to ingest simultaneously. By default this
+# The number of pages of games to ingest_games simultaneously. By default this
 # is set to the thread count of your cpu. Decreasing the value can improve
-# memory and cpu usage during ingest at the cost of speed.
+# memory and cpu usage during ingest_games at the cost of speed.
 # Note: This value must be lower than pool_size, otherwise your ingests
 # will fail because they try to use more connections than are available.
 # See the note on pool_size.
@@ -59,8 +59,8 @@ log_level = "normal"
 [default.databases.mmoldb]
 url = "NOTE: This URL will be overridden by one computed from postgres' environment variables"
 # Number of postgres connections that will be shared between the web app and
-# the ingest. If this is lower than ingest_parallelism, ingest may fail due
-# to not being able to get a connection. If it is exactly equal to ingest
+# the ingest_games. If this is lower than ingest_parallelism, ingest_games may fail due
+# to not being able to get a connection. If it is exactly equal to ingest_games
 # parallelism it may still fail because it's competing with the web app for
 # connections. This must be lower than max_connections in your postgresql.conf 
 # or the app will fail to launch because it tries to open more connections 
