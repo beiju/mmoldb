@@ -61,7 +61,7 @@ pub fn ingest_page_of_games(
     worker_id: usize,
 ) -> Result<IngestStats, IngestFatalError> {
     debug!(
-        "Starting ingest_games page of {} games on worker {worker_id}",
+        "Starting ingest page of {} games on worker {worker_id}",
         all_games_json.len()
     );
     let save_start = Utc::now();
@@ -265,7 +265,7 @@ pub fn ingest_page_of_games(
             save_duration,
         },
     )?;
-    debug!("Saved ingest_games timings on worker {worker_id}");
+    debug!("Saved ingest timings on worker {worker_id}");
 
     Ok::<_, IngestFatalError>(IngestStats {
         num_ongoing_games_skipped,

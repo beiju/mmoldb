@@ -146,7 +146,7 @@ fn process_paradigm_shift<'e>(
             attribute: taxa.attribute_id(value_attribute.into()),
         })
     } else {
-        // TODO Expose player ingest_games errors on the site
+        // TODO Expose player ingest errors on the site
         error!(
             "Encountered a SingleAttributeEquals feed event that changes an \
             attribute other than priority. Player {} feed event {} changes {}",
@@ -268,7 +268,7 @@ pub fn chron_player_feed_as_new<'a>(
 
         match mmolb_parsing::feed_event::parse_feed_event(event) {
             ParsedFeedEventText::ParseError { error, text } => {
-                // TODO Expose player ingest_games errors on the site
+                // TODO Expose player ingest errors on the site
                 error!(
                     "Error {error} parsing {text} from {} ({})'s feed",
                     player_full_name, player_id,
@@ -335,7 +335,7 @@ pub fn chron_player_feed_as_new<'a>(
                 players,
             } => {
                 if players.is_empty() {
-                    // TODO Expose player ingest_games warnings on the site
+                    // TODO Expose player ingest warnings on the site
                     warn!("MassAttributeEquals had 0 players");
                 } else if let Some(((_, player_name),)) = players.iter().collect_tuple() {
                     player_full_name.check_or_set_name(player_name);
@@ -350,7 +350,7 @@ pub fn chron_player_feed_as_new<'a>(
                         taxa,
                     );
                 } else {
-                    // TODO Expose player ingest_games warnings on the site
+                    // TODO Expose player ingest warnings on the site
                     warn!("MassAttributeEquals on players shouldn't have more than one player");
                 }
             }
@@ -419,7 +419,7 @@ pub fn chron_player_feed_as_new<'a>(
                 if index + 1 != feed_items.len()
                     && (event.season, &event.day) != (3, &Ok(Day::Day(1)))
                 {
-                    // TODO Expose player ingest_games warnings on the site
+                    // TODO Expose player ingest warnings on the site
                     warn!(
                         "Released event wasn't the last event in the player's feed. {}/{}",
                         index + 1,

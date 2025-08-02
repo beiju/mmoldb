@@ -112,7 +112,7 @@ pub fn latest_ingests(conn: &mut PgConnection) -> QueryResult<Vec<IngestWithGame
         "
         select i.id, i.started_at, i.finished_at, i.aborted_at, count(g.mmolb_game_id) as num_games
         from info.ingests i
-             left join data.games g on g.ingest_games = i.id
+             left join data.games g on g.ingest = i.id
         group by i.id, i.started_at
         order by i.started_at desc
         limit 25
@@ -165,8 +165,8 @@ pub fn get_game_ingest_start_cursor(
         .optional()
 }
 
-// It is assumed that an aborted ingest_games won't have a later
-// latest_completed_season than the previous ingest_games. That is not
+// It is assumed that an aborted ingest won't have a later
+// latest_completed_season than the previous ingest. That is not
 // necessarily true, but it's inconvenient to refactor the code to
 // support it.
 pub fn mark_ingest_aborted(
@@ -243,7 +243,7 @@ pub fn games_from_ingest_list(ingest_id: i64) -> SqlQuery {
     //   prepared query I can't bind a value and then keep appending
     //   more sql. The TODO here is to figure out how to get rid of
     //   this format! without making the code way more complicated.
-    games_list_base().sql(format!("where g.ingest_games = {ingest_id}"))
+    games_list_base().sql(format!("where g.ingest = {ingest_id}"))
 }
 
 pub fn ingest_with_games(
@@ -667,12 +667,12 @@ fn insert_games_internal<'e>(
                 Ok(Day::Day(day)) => (Some(*day), None),
                 Ok(Day::SuperstarDay(day)) => (None, Some(*day)),
                 Ok(other) => {
-                    // TODO Convert this to a gamewide ingest_games log warning
+                    // TODO Convert this to a gamewide ingest log warning
                     warn!("A game happened on an unexpected type of day: {other}.");
                     (None, None)
                 }
                 Err(error) => {
-                    // TODO Convert this to a gamewide ingest_games log error
+                    // TODO Convert this to a gamewide ingest log error
                     warn!("Day was not recognized: {error}");
                     (None, None)
                 }
@@ -824,7 +824,7 @@ fn insert_games_internal<'e>(
 
     log_only_assert!(
         n_logs_to_insert == n_logs_inserted,
-        "Event ingest_games logs insert should have inserted {} rows, but it inserted {}",
+        "Event ingest logs insert should have inserted {} rows, but it inserted {}",
         n_logs_to_insert,
         n_logs_inserted,
     );

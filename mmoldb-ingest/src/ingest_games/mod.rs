@@ -81,7 +81,7 @@ pub async fn ingest_games(
         .collect_vec();
 
     info!("Launched process games task");
-    info!("Beginning raw game ingest_games");
+    info!("Beginning raw game ingest");
 
     let ingest_conn = PgConnection::establish(&pg_url).into_diagnostic()?;
 
@@ -91,11 +91,11 @@ pub async fn ingest_games(
             // Tell process games workers to stop waiting and exit
             finish.cancel();
 
-            info!("Raw game ingest_games finished. Waiting for process games task.");
+            info!("Raw game ingest finished. Waiting for process games task.");
         }
         _ = abort.cancelled() => {
             // No need to set any signals because abort was already set by the caller
-            info!("Raw game ingest_games aborted. Waiting for process games task.");
+            info!("Raw game ingest aborted. Waiting for process games task.");
         }
     }
 
@@ -187,7 +187,7 @@ fn process_games_internal(
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
     // Permit ourselves to start processing right away, in case there
-    // are unprocessed games left over from a previous ingest_games. This
+    // are unprocessed games left over from a previous ingest. This
     // will happen after every derived data reset.
     notify.notify_one();
 

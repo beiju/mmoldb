@@ -83,11 +83,11 @@ pub async fn ingest(
             // Tell process {kind} workers to stop waiting and exit
             finish.cancel();
 
-            info!("Raw player ingest_games finished. Waiting for process players task.");
+            info!("Raw player ingest finished. Waiting for process players task.");
         }
         _ = abort.cancelled() => {
             // No need to set any signals because abort was already set by the caller
-            info!("Raw player ingest_games aborted. Waiting for process players task.");
+            info!("Raw player ingest aborted. Waiting for process players task.");
         }
     }
 
@@ -124,8 +124,8 @@ async fn ingest_stage_1(
         // off halfway through processing a batch of entities with
         // identical valid_from, we won't miss the rest of the batch.
         // However, we will receive the first half of the batch again.
-        // Later steps in the ingest_games code will error if we attempt to
-        // ingest_games a value that's already in the database, so we have to
+        // Later steps in the ingest code will error if we attempt to
+        // ingest a value that's already in the database, so we have to
         // filter them out. That's what this skip_while is doing.
         // It returns a future just because that's what's dictated by
         // the stream api.
@@ -216,7 +216,7 @@ async fn ingest_stage_2_internal(
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
     // Permit ourselves to start processing right away, in case there
-    // are unprocessed players left over from a previous ingest_games. This
+    // are unprocessed players left over from a previous ingest. This
     // will happen after every derived data reset.
     notify.notify_one();
 
@@ -253,7 +253,7 @@ async fn ingest_stage_2_internal(
             .try_chunks(stage_2_chunks_page_size)
             .map(|raw_versions| {
                 // when an error occurs, try_chunks gives us the successful portion of the chunk
-                // and then the error. we could ingest_games the successful part, but we don't (yet).
+                // and then the error. we could ingest the successful part, but we don't (yet).
                 let raw_versions = raw_versions.map_err(|err| err.1)?;
 
                 info!(

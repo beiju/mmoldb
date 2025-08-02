@@ -22,7 +22,7 @@ pub fn ingest_page_of_players(
     worker_id: usize,
 ) -> Result<(), IngestFatalError> {
     debug!(
-        "Starting ingest_games page of {} players on worker {worker_id}",
+        "Starting ingest page of {} players on worker {worker_id}",
         raw_players.len()
     );
     let save_start = Utc::now();
@@ -136,7 +136,7 @@ pub fn get_filled_modifications_map(
     modifications_to_ensure: &[(&str, &str, &str)],
 ) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
     // Put everything in a loop to handle insert conflicts with other
-    // ingest_games threads
+    // ingest threads
     Ok(loop {
         let mut modifications = db::get_modifications_table(conn)?;
 

@@ -106,12 +106,12 @@ pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppErr
     ))
 }
 
-#[get("/ingest_games/<ingest_id>")]
+#[get("/ingest/<ingest_id>")]
 pub async fn ingest_page(ingest_id: i64, db: Db) -> Result<Template, AppError> {
     paginated_ingest(ingest_id, None, db).await
 }
 
-#[get("/ingest_games/<ingest_id>/page/<after_game_id>")]
+#[get("/ingest/<ingest_id>/page/<after_game_id>")]
 pub async fn paginated_ingest_page(
     ingest_id: i64,
     after_game_id: String,
@@ -160,7 +160,7 @@ async fn paginated_ingest(
     };
 
     Ok(Template::render(
-        "ingest_games",
+        "ingest",
         context! {
             index_url: uri!(index_page()),
             ingest: ingest,
@@ -285,7 +285,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         error: Option<String>,
     }
 
-    // TODO Restore status report for ingest_games task
+    // TODO Restore status report for ingest task
     let ingest_task_status = IngestTaskContext::default();
 
     #[derive(Serialize)]

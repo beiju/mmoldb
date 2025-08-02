@@ -27,7 +27,7 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo build --release --bin mmoldb-ingest_games
+    cargo build --release --bin mmoldb-ingest
 
 FROM debian:bookworm
 

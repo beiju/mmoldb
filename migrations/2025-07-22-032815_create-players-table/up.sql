@@ -1,4 +1,4 @@
--- speeds up player ingest_games enormously
+-- speeds up player ingest enormously
 create index versions_cursor_index on data.versions (kind, valid_from, entity_id);
 
 create table taxa.handedness (
