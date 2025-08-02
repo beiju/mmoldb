@@ -6,7 +6,6 @@ use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
-use log::warn;
 
 use crate::QueryError;
 use crate::data_schema::data::versions::dsl as versions_dsl;
@@ -87,13 +86,6 @@ pub fn insert_versions(
     let new_versions = versions
         .iter()
         .map(|v| {
-            if v.valid_to.is_some() {
-                warn!(
-                    "Chron returned a {} with a non-null valid_to: {}",
-                    v.kind, v.entity_id
-                );
-            }
-
             NewVersion {
                 kind: &v.kind,
                 entity_id: &v.entity_id,

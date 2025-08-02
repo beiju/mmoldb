@@ -412,6 +412,7 @@ pub struct NewPlayerVersion<'a> {
     pub durability: f64,
     pub greater_boon: Option<i64>,
     pub lesser_boon: Option<i64>,
+    pub num_modifications: i32,
 }
 
 impl<'a> NewPlayerVersion<'a> {
@@ -451,6 +452,7 @@ pub struct DbPlayerVersion {
     pub durability: f64,
     pub greater_boon: Option<i64>,
     pub lesser_boon: Option<i64>,
+    pub num_modifications: i32,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -612,6 +614,7 @@ pub struct DbPlayerEquipmentVersion {
     pub prefixes: Vec<Option<String>>,
     pub suffixes: Vec<Option<String>>,
     pub rarity: Option<String>,
+    pub num_effects: i32,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -631,6 +634,7 @@ pub struct NewPlayerEquipmentVersion<'a> {
     pub prefixes: Vec<String>,
     pub suffixes: Vec<String>,
     pub rarity: Option<String>,
+    pub num_effects: i32,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]

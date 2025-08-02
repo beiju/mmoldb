@@ -12,7 +12,10 @@ create table data.player_feed_versions (
     -- we need a dedup key for when the feed was inside the player/team objects.
     -- the number of entries in it should be enough -- afaik no feed entries were
     -- ever edited retroactively
-    num_entries int not null
+    num_entries int not null,
+
+    unique (mmolb_player_id, valid_from),
+    unique nulls not distinct (mmolb_player_id, valid_until)
 );
 
 create function data.on_insert_player_feed_version()
@@ -81,7 +84,11 @@ create table data.player_equipment_versions (
     cost int,
     prefixes text[] not null,
     suffixes text[] not null,
-    rarity text -- null for reasons i dont understand
+    rarity text, -- null for reasons i dont understand"
+    num_effects int not null, -- used in ingest
+
+    unique (mmolb_player_id, equipment_slot, valid_from),
+    unique nulls not distinct (mmolb_player_id, equipment_slot, valid_until)
 );
 
 create function data.on_insert_player_equipment_versions()
@@ -105,7 +112,8 @@ begin
       and pev.cost is not distinct from NEW.cost
       and pev.prefixes is not distinct from NEW.prefixes
       and pev.suffixes is not distinct from NEW.suffixes
-      and pev.rarity is not distinct from NEW.rarity;
+      and pev.rarity is not distinct from NEW.rarity
+      and pev.num_effects is not distinct from NEW.num_effects;
 
     -- if there was an exact match, suppress this insert
     if FOUND then
@@ -141,7 +149,7 @@ create table data.player_equipment_effect_versions (
     id bigserial primary key not null,
     mmolb_player_id text not null,
     equipment_slot text not null,
-    effect_index int not null,  -- TODO Ensure these are truncated the same as player modifications
+    effect_index int not null,
     -- using "without time zone" because that's what the datablase did
     valid_from timestamp without time zone not null,
     valid_until timestamp without time zone, -- null means that it is currently valid
@@ -150,7 +158,10 @@ create table data.player_equipment_effect_versions (
     -- data
     attribute bigint references taxa.attribute not null,
     effect_type bigint references taxa.attribute_effect_type not null,
-    value float8 not null
+    value float8 not null,
+
+    unique (mmolb_player_id, equipment_slot, effect_index, valid_from),
+    unique nulls not distinct (mmolb_player_id, equipment_slot, effect_index, valid_until)
 );
 
 create function data.on_insert_player_equipment_effect_versions()
@@ -204,7 +215,8 @@ execute function data.on_insert_player_equipment_effect_versions();
 truncate table
     data.player_augments,
     data.player_paradigm_shifts,
-    data.player_recompositions;
+    data.player_recompositions,
+    data.player_versions;
 
 alter table data.player_augments
     add column season int not null,
@@ -225,3 +237,71 @@ alter table data.player_recompositions
     add column superstar_day int, -- null indicates this player was not born on a superstar day
     add column player_name_before text not null,
     add column player_name_after text not null;
+
+alter table data.player_versions
+    add column num_modifications int not null;
+
+-- because we added a new column to player_versions, we have to update its trigger
+drop trigger on_insert_player_version_trigger on data.player_versions;
+drop function data.on_insert_player_version;
+create function data.on_insert_player_version()
+    returns trigger as $$
+begin
+    -- check if the currently-valid version is exactly identical to the new version
+    -- the list of columns must exactly match the ones in data.player_versions or
+    -- we'll miss changes
+    perform 1
+    from data.player_versions pv
+    where pv.mmolb_player_id = NEW.mmolb_player_id
+      and pv.valid_until is null
+      -- note: "is not distinct from" is like "=" except for how it treats nulls.
+      -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
+      and pv.first_name is not distinct from NEW.first_name
+      and pv.last_name is not distinct from NEW.last_name
+      and pv.batting_handedness is not distinct from NEW.batting_handedness
+      and pv.pitching_handedness is not distinct from NEW.pitching_handedness
+      and pv.home is not distinct from NEW.home
+      and pv.birthseason is not distinct from NEW.birthseason
+      and pv.birthday_type is not distinct from NEW.birthday_type
+      and pv.birthday_day is not distinct from NEW.birthday_day
+      and pv.birthday_superstar_day is not distinct from NEW.birthday_superstar_day
+      and pv.likes is not distinct from NEW.likes
+      and pv.dislikes is not distinct from NEW.dislikes
+      and pv.number is not distinct from NEW.number
+      and pv.mmolb_team_id is not distinct from NEW.mmolb_team_id
+      and pv.slot is not distinct from NEW.slot
+      and pv.durability is not distinct from NEW.durability
+      and pv.greater_boon is not distinct from NEW.greater_boon
+      and pv.lesser_boon is not distinct from NEW.lesser_boon
+      and pv.num_modifications is not distinct from NEW.num_modifications;
+
+    -- if there was an exact match, suppress this insert
+    if FOUND then
+        update data.player_versions
+        set duplicates = duplicates + 1
+        where mmolb_player_id = NEW.mmolb_player_id and valid_until is null;
+
+        return null;
+    end if;
+
+    -- otherwise, close out the currently-valid version...
+    update data.player_versions
+    set valid_until = NEW.valid_from
+    where mmolb_player_id = NEW.mmolb_player_id and valid_until is null;
+
+    -- ...and return the new row so it gets inserted as normal
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger on_insert_player_version_trigger
+    before insert on data.player_versions
+    for each row
+execute function data.on_insert_player_version();
+
+
+create index close_extra_equipment_effect_versions on data.player_equipment_effect_versions (mmolb_player_id, equipment_slot, effect_index)
+    where valid_until is null;
+
+create index close_extra_modification_versions on data.player_modification_versions (mmolb_player_id, modification_order)
+    where valid_until is null;

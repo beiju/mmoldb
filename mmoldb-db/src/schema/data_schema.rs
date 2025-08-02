@@ -151,6 +151,7 @@ pub mod data {
             prefixes -> Array<Nullable<Text>>,
             suffixes -> Array<Nullable<Text>>,
             rarity -> Nullable<Text>,
+            num_effects -> Int4,
         }
     }
 
@@ -244,6 +245,7 @@ pub mod data {
             durability -> Float8,
             greater_boon -> Nullable<Int8>,
             lesser_boon -> Nullable<Int8>,
+            num_modifications -> Int4,
         }
     }
 

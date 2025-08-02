@@ -389,6 +389,7 @@ fn chron_player_as_new<'a>(
         durability: entity.data.durability,
         greater_boon: entity.data.greater_boon.as_ref().map(get_modification_id),
         lesser_boon: entity.data.lesser_boon.as_ref().map(get_modification_id),
+        num_modifications: entity.data.modifications.len() as i32,
     };
 
     let player_full_name = format!("{} {}", player.first_name, player.last_name);
@@ -466,6 +467,7 @@ fn chron_player_as_new<'a>(
                         prefixes: equipment_affix_plural_or_singular(equipment.prefix, equipment.prefixes, "prefix", "prefixes"),
                         suffixes: equipment_affix_plural_or_singular(equipment.suffix, equipment.suffixes, "suffix", "suffixes"),
                         rarity,
+                        num_effects: equipment.effects.as_ref().map_or(0, |e| e.len() as i32),
                     };
 
                     let effects = match equipment.effects {

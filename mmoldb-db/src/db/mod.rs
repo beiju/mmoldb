@@ -15,7 +15,7 @@ use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use log::warn;
+use log::{info, warn};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
@@ -1445,7 +1445,6 @@ fn insert_player_reports(
 fn insert_player_equipment_effects(
     conn: &mut PgConnection,
     new_player_equipment_effects: Vec<Vec<NewPlayerEquipmentEffectVersion>>,
-    effect_truncations: Vec<(usize, &str, &str, NaiveDateTime)>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_equipment_effect_versions::dsl as peev_dsl;
 
@@ -1453,25 +1452,6 @@ fn insert_player_equipment_effects(
         .into_iter()
         .flatten()
         .collect_vec();
-
-    // If the number of modifications on a player decreases, the
-    // database logic is incapable of closing out the last N elements
-    // (where N how many net modifications were removed). We have to
-    // do this in the application layer.
-    // Each one has a different valid_from so I don't see a way to
-    // batch this one. And unfortunately I can't know ahead of time
-    // which ids need to be updated (without making extra db calls).
-    for (truncate_to, id, equipment_slot, new_valid_until) in effect_truncations {
-        diesel::update(peev_dsl::player_equipment_effect_versions)
-            .filter(
-                peev_dsl::mmolb_player_id
-                    .eq(id)
-                    .and(peev_dsl::equipment_slot.eq(equipment_slot))
-                    .and(peev_dsl::effect_index.ge(truncate_to as i32)),
-            )
-            .set(peev_dsl::valid_until.eq(new_valid_until))
-            .execute(conn)?;
-    }
 
     // Insert new records
     diesel::copy_from(peev_dsl::player_equipment_effect_versions)
@@ -1496,18 +1476,30 @@ fn insert_player_equipment(
         Vec<Vec<NewPlayerEquipmentEffectVersion>>,
     ) = itertools::multiunzip(new_player_equipment.into_iter().flatten());
 
-    let effect_truncations = iter::zip(&new_player_equipment_versions, &new_player_equipment_effect_versions)
-        .map(|(equipment, effect_list)| {
-            (effect_list.len(), equipment.mmolb_player_id, equipment.equipment_slot.as_str(), equipment.valid_from)
-        })
-        .collect_vec();
-
-    insert_player_equipment_effects(conn, new_player_equipment_effect_versions, effect_truncations)?;
-
     // Insert new records
-    diesel::copy_from(pev_dsl::player_equipment_versions)
+    let num_inserted = diesel::copy_from(pev_dsl::player_equipment_versions)
         .from_insertable(new_player_equipment_versions)
-        .execute(conn)
+        .execute(conn)?;
+
+    insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
+
+    // Close out any valid equipment effect versions whose modification_order is
+    // greater than the number of mods stored in the currently active player version
+    sql_query("
+        update data.player_equipment_effect_versions as peev
+        -- this equipment version does *not* have this effect version,
+        -- meaning the effect version should be closed out as of the
+        -- start of the equipment version
+        set valid_until=pev.valid_from
+        from data.player_equipment_versions AS pev -- this is like a join i think?
+        where pev.mmolb_player_id=peev.mmolb_player_id
+            and pev.equipment_slot=peev.equipment_slot
+            and pev.valid_until is null
+            and peev.valid_until is null
+            and peev.effect_index >= pev.num_effects
+    ").execute(conn)?;
+
+    Ok(num_inserted)
 }
 
 pub fn insert_player_feed_versions<'a>(
@@ -1528,14 +1520,16 @@ pub fn insert_player_feed_versions<'a>(
         Vec<Vec<NewPlayerRecomposition>,>,
     ) = itertools::multiunzip(new_player_feed_versions.into_iter());
 
-    insert_player_recompositions(conn, new_player_recompositions)?;
-    insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
-    insert_player_augments(conn, new_player_augments)?;
-
     // Insert new records
-    diesel::copy_from(pfv_dsl::player_feed_versions)
+    let num_inserted = diesel::copy_from(pfv_dsl::player_feed_versions)
         .from_insertable(new_player_feed_versions)
-        .execute(conn)
+        .execute(conn)?;
+
+    insert_player_augments(conn, new_player_augments)?;
+    insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
+    insert_player_recompositions(conn, new_player_recompositions)?;
+
+    Ok(num_inserted)
 }
 
 fn insert_player_recompositions(
@@ -1586,31 +1580,13 @@ fn insert_player_augments(
 fn insert_player_modifications(
     conn: &mut PgConnection,
     new_player_modification_versions: Vec<Vec<NewPlayerModificationVersion>>,
-    mod_truncations: Vec<(usize, &str, NaiveDateTime)>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
+
     let new_player_modification_versions = new_player_modification_versions
         .into_iter()
         .flatten()
         .collect_vec();
-
-    // If the number of modifications on a player decreases, the
-    // database logic is incapable of closing out the last N elements
-    // (where N how many net modifications were removed). We have to
-    // do this in the application layer.
-    // Each one has a different valid_from so I don't see a way to
-    // batch this one. And unfortunately I can't know ahead of time
-    // which ids need to be updated (without making extra db calls).
-    for (truncate_to, id, new_valid_until) in mod_truncations {
-        diesel::update(pmv_dsl::player_modification_versions)
-            .filter(
-                pmv_dsl::mmolb_player_id
-                    .eq(id)
-                    .and(pmv_dsl::modification_order.ge(truncate_to as i32)),
-            )
-            .set(pmv_dsl::valid_until.eq(new_valid_until))
-            .execute(conn)?;
-    }
 
     // Insert new records
     diesel::copy_from(pmv_dsl::player_modification_versions)
@@ -1652,16 +1628,10 @@ pub fn insert_player_versions(
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
+    let preprocess_start = Utc::now();
     let mut new = Vec::new();
     new.extend_from_slice(new_player_versions);
     let new_player_versions = new;
-
-    let mod_truncations = new_player_versions
-        .iter()
-        .map(|(player, mod_list, _, _, _)| {
-            (mod_list.len(), player.mmolb_player_id, player.valid_from)
-        })
-        .collect_vec();
 
     let (
         new_player_versions,
@@ -1679,14 +1649,57 @@ pub fn insert_player_versions(
             Vec<NewPlayerEquipmentEffectVersion>,
         )>>
     ) = itertools::multiunzip(new_player_versions);
-
-    insert_player_equipment(conn, new_player_equipment)?;
-    insert_player_reports(conn, new_player_reports)?;
-    insert_player_feed_versions(conn, new_player_feed_versions.into_iter().flatten())?;
-    insert_player_modifications(conn, new_player_modification_versions, mod_truncations)?;
+    let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
 
     // Insert new records
-    diesel::copy_from(pv_dsl::player_versions)
+    let insert_player_version_start = Utc::now();
+    let num_player_insertions = diesel::copy_from(pv_dsl::player_versions)
         .from_insertable(new_player_versions)
-        .execute(conn)
+        .execute(conn)?;
+    let insert_player_version_duration = (Utc::now() - insert_player_version_start).as_seconds_f64();
+
+    let insert_player_modifications_start = Utc::now();
+    insert_player_modifications(conn, new_player_modification_versions)?;
+    let insert_player_modifications_duration = (Utc::now() - insert_player_modifications_start).as_seconds_f64();
+
+    let insert_player_feed_versions_start = Utc::now();
+    insert_player_feed_versions(conn, new_player_feed_versions.into_iter().flatten())?;
+    let insert_player_feed_versions_duration = (Utc::now() - insert_player_feed_versions_start).as_seconds_f64();
+
+    let insert_player_reports_start = Utc::now();
+    insert_player_reports(conn, new_player_reports)?;
+    let insert_player_reports_duration = (Utc::now() - insert_player_reports_start).as_seconds_f64();
+
+    let insert_player_equipment_start = Utc::now();
+    insert_player_equipment(conn, new_player_equipment)?;
+    let insert_player_equipment_duration = (Utc::now() - insert_player_equipment_start).as_seconds_f64();
+
+    let trim_mod_versions_start = Utc::now();
+    // Close out any valid equipment effect versions whose modification_order is
+    // greater than the number of mods stored in the currently active player version
+    sql_query("
+        update data.player_modification_versions as pmv
+        -- this player version does *not* have this modification version,
+        -- meaning the modification version should be closed out as of the
+        -- start of the player version
+        set valid_until=pv.valid_from
+        from data.player_versions AS pv -- this is like a join i think?
+        where pv.mmolb_player_id=pmv.mmolb_player_id
+            and pv.valid_until is null
+            and pmv.valid_until is null
+            and pmv.modification_order >= pv.num_modifications
+    ").execute(conn)?;
+    let trim_mod_versions_duration = (Utc::now() - trim_mod_versions_start).as_seconds_f64();
+
+    info!(
+        "preprocess_duration: {preprocess_duration:.2}, \
+        insert_player_equipment_duration: {insert_player_equipment_duration:.2}, \
+        insert_player_reports_duration: {insert_player_reports_duration:.2}, \
+        insert_player_feed_versions_duration: {insert_player_feed_versions_duration:.2}, \
+        insert_player_modifications_duration: {insert_player_modifications_duration:.2}, \
+        insert_player_version_duration: {insert_player_version_duration:.2}, \
+        trim_mod_versions_duration: {trim_mod_versions_duration:.2}"
+    );
+
+    Ok(num_player_insertions)
 }
