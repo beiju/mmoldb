@@ -168,7 +168,7 @@ begin
       -- note: "is not distinct from" is like "=" except for how it treats nulls.
       -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
       and peev.attribute is not distinct from NEW.attribute
-      and peev.modifier_type is not distinct from NEW.modifier_type
+      and peev.effect_type is not distinct from NEW.effect_type
       and peev.value is not distinct from NEW.value;
 
     -- if there was an exact match, suppress this insert
@@ -200,3 +200,28 @@ create trigger on_insert_player_equipment_effect_versions_trigger
     before insert on data.player_equipment_effect_versions
     for each row
 execute function data.on_insert_player_equipment_effect_versions();
+
+truncate table
+    data.player_augments,
+    data.player_paradigm_shifts,
+    data.player_recompositions;
+
+alter table data.player_augments
+    add column season int not null,
+    add column day_type bigint references taxa.day_type, -- null for unrecognized day types
+    add column day int, -- null indicates this is not a regular season day
+    add column superstar_day int; -- null indicates this player was not born on a superstar day
+
+alter table data.player_paradigm_shifts
+    add column season int not null,
+    add column day_type bigint references taxa.day_type, -- null for unrecognized day types
+    add column day int, -- null indicates this is not a regular season day
+    add column superstar_day int; -- null indicates this player was not born on a superstar day
+
+alter table data.player_recompositions
+    add column season int not null,
+    add column day_type bigint references taxa.day_type, -- null for unrecognized day types
+    add column day int, -- null indicates this is not a regular season day
+    add column superstar_day int, -- null indicates this player was not born on a superstar day
+    add column player_name_before text not null,
+    add column player_name_after text not null;

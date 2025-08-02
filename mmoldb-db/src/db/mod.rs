@@ -1445,6 +1445,7 @@ fn insert_player_reports(
 fn insert_player_equipment_effects(
     conn: &mut PgConnection,
     new_player_equipment_effects: Vec<Vec<NewPlayerEquipmentEffectVersion>>,
+    effect_truncations: Vec<(usize, &str, &str, NaiveDateTime)>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_equipment_effect_versions::dsl as peev_dsl;
 
@@ -1452,6 +1453,25 @@ fn insert_player_equipment_effects(
         .into_iter()
         .flatten()
         .collect_vec();
+
+    // If the number of modifications on a player decreases, the
+    // database logic is incapable of closing out the last N elements
+    // (where N how many net modifications were removed). We have to
+    // do this in the application layer.
+    // Each one has a different valid_from so I don't see a way to
+    // batch this one. And unfortunately I can't know ahead of time
+    // which ids need to be updated (without making extra db calls).
+    for (truncate_to, id, equipment_slot, new_valid_until) in effect_truncations {
+        diesel::update(peev_dsl::player_equipment_effect_versions)
+            .filter(
+                peev_dsl::mmolb_player_id
+                    .eq(id)
+                    .and(peev_dsl::equipment_slot.eq(equipment_slot))
+                    .and(peev_dsl::effect_index.ge(truncate_to as i32)),
+            )
+            .set(peev_dsl::valid_until.eq(new_valid_until))
+            .execute(conn)?;
+    }
 
     // Insert new records
     diesel::copy_from(peev_dsl::player_equipment_effect_versions)
@@ -1476,7 +1496,13 @@ fn insert_player_equipment(
         Vec<Vec<NewPlayerEquipmentEffectVersion>>,
     ) = itertools::multiunzip(new_player_equipment.into_iter().flatten());
 
-    insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
+    let effect_truncations = iter::zip(&new_player_equipment_versions, &new_player_equipment_effect_versions)
+        .map(|(equipment, effect_list)| {
+            (effect_list.len(), equipment.mmolb_player_id, equipment.equipment_slot.as_str(), equipment.valid_from)
+        })
+        .collect_vec();
+
+    insert_player_equipment_effects(conn, new_player_equipment_effect_versions, effect_truncations)?;
 
     // Insert new records
     diesel::copy_from(pev_dsl::player_equipment_versions)

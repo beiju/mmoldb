@@ -112,6 +112,10 @@ pub mod data {
             time -> Timestamp,
             attribute -> Int8,
             value -> Int4,
+            season -> Int4,
+            day_type -> Nullable<Int8>,
+            day -> Nullable<Int4>,
+            superstar_day -> Nullable<Int4>,
         }
     }
 
@@ -180,6 +184,10 @@ pub mod data {
             feed_event_index -> Int4,
             time -> Timestamp,
             attribute -> Int8,
+            season -> Int4,
+            day_type -> Nullable<Int8>,
+            day -> Nullable<Int4>,
+            superstar_day -> Nullable<Int4>,
         }
     }
 
@@ -189,6 +197,12 @@ pub mod data {
             mmolb_player_id -> Text,
             feed_event_index -> Int4,
             time -> Timestamp,
+            season -> Int4,
+            day_type -> Nullable<Int8>,
+            day -> Nullable<Int4>,
+            superstar_day -> Nullable<Int4>,
+            player_name_before -> Text,
+            player_name_after -> Text,
         }
     }
 

@@ -461,6 +461,10 @@ pub struct DbPlayerAugment {
     pub mmolb_player_id: String,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
     pub attribute: i64,
     pub value: i32,
 }
@@ -472,6 +476,10 @@ pub struct NewPlayerAugment<'a> {
     pub mmolb_player_id: &'a str,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
     pub attribute: i64,
     pub value: i32,
 }
@@ -484,6 +492,10 @@ pub struct DbPlayerParadigmShift {
     pub mmolb_player_id: String,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
     pub attribute: i64,
 }
 
@@ -494,6 +506,10 @@ pub struct NewPlayerParadigmShift<'a> {
     pub mmolb_player_id: &'a str,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
     pub attribute: i64,
 }
 
@@ -505,6 +521,12 @@ pub struct DbPlayerRecomposition {
     pub mmolb_player_id: String,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
+    pub player_name_before: String,
+    pub player_name_after: String,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -514,6 +536,12 @@ pub struct NewPlayerRecomposition<'a> {
     pub mmolb_player_id: &'a str,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
+    pub player_name_before: &'a str,
+    pub player_name_after: &'a str,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]

@@ -1,5 +1,7 @@
 mod logic;
 
+pub use logic::day_to_db;
+
 use mmoldb_db::db;
 use tokio_util::sync::CancellationToken;
 

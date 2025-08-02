@@ -16,6 +16,7 @@ use chron::ChronEntity;
 use mmoldb_db::models::{NewPlayerAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition};
 use mmoldb_db::taxa::Taxa;
 use crate::ingest::{batch_by_entity, IngestFatalError};
+use crate::ingest_players::day_to_db;
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
@@ -126,15 +127,22 @@ fn process_paradigm_shift<'e>(
     value_attribute: Attribute,
     paradigm_shifts: &mut Vec<NewPlayerParadigmShift<'e>>,
     feed_event_index: i32,
+    event: &FeedEvent,
     time: NaiveDateTime,
     player_id: &'e str,
     taxa: &Taxa,
 ) {
     if changing_attribute == Attribute::Priority {
+        let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
+
         paradigm_shifts.push(NewPlayerParadigmShift {
             mmolb_player_id: player_id,
             feed_event_index,
             time,
+            season: event.season as i32,
+            day_type,
+            day,
+            superstar_day,
             attribute: taxa.attribute_id(value_attribute.into()),
         })
     } else {
@@ -284,12 +292,18 @@ pub fn chron_player_feed_as_new<'a>(
                 // See comment on Delivery
             }
             ParsedFeedEventText::AttributeChanges { changes } => {
+                let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
+
                 for change in changes {
                     player_full_name.check_or_set_name(&change.player_name);
                     augments.push(NewPlayerAugment {
                         mmolb_player_id: player_id,
                         feed_event_index,
                         time,
+                        season: event.season as i32,
+                        day_type,
+                        day,
+                        superstar_day,
                         attribute: taxa.attribute_id(change.attribute.into()),
                         value: change.amount as i32,
                     })
@@ -309,6 +323,7 @@ pub fn chron_player_feed_as_new<'a>(
                     value_attribute,
                     &mut paradigm_shifts,
                     feed_event_index,
+                    event,
                     time,
                     player_id,
                     taxa,
@@ -329,6 +344,7 @@ pub fn chron_player_feed_as_new<'a>(
                         value_attribute,
                         &mut paradigm_shifts,
                         feed_event_index,
+                        event,
                         time,
                         player_id,
                         taxa,
@@ -369,12 +385,20 @@ pub fn chron_player_feed_as_new<'a>(
                 // synchronization, but we have no need of that yet.
             }
             ParsedFeedEventText::Recomposed { new, previous } => {
+                let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
+
                 player_full_name.check_or_set_name(previous);
                 player_full_name.set_name(new);
                 recompositions.push(NewPlayerRecomposition {
                     mmolb_player_id: player_id,
                     feed_event_index,
                     time,
+                    season: event.season as i32,
+                    day_type,
+                    day,
+                    superstar_day,
+                    player_name_before: previous,
+                    player_name_after: new,
                 });
             }
             ParsedFeedEventText::Modification { .. } => {

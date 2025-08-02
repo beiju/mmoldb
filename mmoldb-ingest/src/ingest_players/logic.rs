@@ -169,7 +169,7 @@ pub fn get_filled_modifications_map(
     })
 }
 
-fn day_to_db(
+pub fn day_to_db(
     day: &Result<Day, NotRecognized>,
     taxa: &Taxa,
 ) -> (Option<i64>, Option<i32>, Option<i32>) {
@@ -272,10 +272,8 @@ fn equipment_affix_plural_or_singular<T: Display>(
 ) -> Vec<String> {
     match (affix_singular, affix_plural) {
         (Err(RemovedLater), Err(AddedLater)) => {
-            // TODO Expose this warning on the web interface
-            warn!(
-                "Equipment was both after `{affix_type_singular}` and before `{affix_type_plural}`",
-            );
+            // This occurs with (at least some) modifierless items, so I can't
+            // issue a warning for it
             Vec::new()
         }
         (Err(RemovedLater), Ok(affixes)) => {
@@ -442,17 +440,15 @@ fn chron_player_as_new<'a>(
 
                     let rarity = match equipment.rarity {
                         Ok(rarity) => match maybe_recognized_str(rarity) {
-                            Ok(rarity) => rarity,
+                            Ok(rarity) => Some(rarity),
                             Err(non_string_value) => {
                                 // TODO Expose this error on the web interface
-                                error!("Ignoring equipment with non-string rarity {non_string_value:?}");
-                                return None;
+                                error!("Ignoring non-string equipment rarity {non_string_value:?}");
+                                None
                             }
                         }
-                        Err(non_string_value) => {
-                            // TODO Expose this error on the web interface
-                            error!("Ignoring equipment with non-string rarity {non_string_value:?}");
-                            return None;
+                        Err(AddedLater) => {
+                            None
                         }
                     };
 
@@ -469,8 +465,7 @@ fn chron_player_as_new<'a>(
                         cost: equipment.cost.map(|v| v as i32),
                         prefixes: equipment_affix_plural_or_singular(equipment.prefix, equipment.prefixes, "prefix", "prefixes"),
                         suffixes: equipment_affix_plural_or_singular(equipment.suffix, equipment.suffixes, "suffix", "suffixes"),
-                        // This is definitely going to cause an error
-                        rarity: Some(rarity),
+                        rarity,
                     };
 
                     let effects = match equipment.effects {
