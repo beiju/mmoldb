@@ -4,7 +4,7 @@ use chrono::Utc;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
-use mmolb_parsing::{AddedLater, NotRecognized};
+use mmolb_parsing::{AddedLater, RemovedLater, NotRecognized, MaybeRecognizedResult, RemovedLaterResult, AddedLaterResult};
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
 use mmoldb_db::db::NameEmojiTooltip;
@@ -246,6 +246,55 @@ fn maybe_recognized_str<T: Display>(val: Result<T, NotRecognized>) -> Result<Str
     }
 }
 
+fn equipment_affixes<T: Display>(affixes: impl IntoIterator<Item=Result<T, NotRecognized>>, affix_type: &str) -> Vec<String> {
+    affixes
+        .into_iter()
+        .flat_map(|p| match maybe_recognized_str(p) {
+            Ok(val) => Some(val),
+            Err(non_string_value) => {
+                // TODO Expose this error on the web interface
+                error!(
+                    "Ignoring equipment with non-string inside {affix_type} {:?}",
+                    non_string_value,
+                );
+                None
+            }
+        })
+        .collect_vec()
+}
+
+
+fn equipment_affix_plural_or_singular<T: Display>(
+    affix_singular: RemovedLaterResult<Option<MaybeRecognizedResult<T>>>,
+    affix_plural: AddedLaterResult<Vec<MaybeRecognizedResult<T>>>, 
+    affix_type_singular: &str,
+    affix_type_plural: &str,
+) -> Vec<String> {
+    match (affix_singular, affix_plural) {
+        (Err(RemovedLater), Err(AddedLater)) => {
+            // TODO Expose this warning on the web interface
+            warn!(
+                "Equipment was both after `{affix_type_singular}` and before `{affix_type_plural}`",
+            );
+            Vec::new()
+        }
+        (Err(RemovedLater), Ok(affixes)) => {
+            equipment_affixes(affixes, affix_type_plural)
+        }
+        (Ok(prefix), Err(AddedLater)) => {
+            equipment_affixes(prefix, affix_type_singular)
+        }
+        (Ok(_), Ok(prefixes)) => {
+            // TODO Expose this warning on the web interface
+            warn!(
+                "Equipment was both before `{affix_type_singular}` and after `{affix_type_plural}`.\
+                Using `{affix_type_plural}` and ignoring `{affix_type_singular}`.",
+            );
+            equipment_affixes(prefixes, affix_type_plural)
+        }
+    }
+}
+
 fn chron_player_as_new<'a>(
     entity: &'a ChronEntity<mmolb_parsing::player::Player>,
     taxa: &Taxa,
@@ -260,7 +309,10 @@ fn chron_player_as_new<'a>(
         Vec<NewPlayerRecomposition<'a>>,
     )>,
     Vec<NewPlayerReport<'a>>,
-    NewPlayerEquipmentVersion<'a>,
+    Vec<(
+        NewPlayerEquipmentVersion<'a>,
+        Vec<NewPlayerEquipmentEffectVersion<'a>>,
+    )>
 ) {
     let (birthday_type, birthday_day, birthday_superstar_day) =
         day_to_db(&entity.data.birthday, taxa);
@@ -343,7 +395,7 @@ fn chron_player_as_new<'a>(
 
     let player_full_name = format!("{} {}", player.first_name, player.last_name);
     let feed_as_new = match &entity.data.feed {
-        Ok(entries) => Some(chron_player_feed_as_new(taxa, &entity.entity_id, entries, Some(&player_full_name))),
+        Ok(entries) => Some(chron_player_feed_as_new(taxa, &entity.entity_id, entity.valid_from, entries, Some(&player_full_name))),
         Err(_) => None,
     } ;
 
@@ -388,24 +440,37 @@ fn chron_player_as_new<'a>(
                         }
                     };
 
+                    let rarity = match equipment.rarity {
+                        Ok(rarity) => match maybe_recognized_str(rarity) {
+                            Ok(rarity) => rarity,
+                            Err(non_string_value) => {
+                                // TODO Expose this error on the web interface
+                                error!("Ignoring equipment with non-string rarity {non_string_value:?}");
+                                return None;
+                            }
+                        }
+                        Err(non_string_value) => {
+                            // TODO Expose this error on the web interface
+                            error!("Ignoring equipment with non-string rarity {non_string_value:?}");
+                            return None;
+                        }
+                    };
+
                     let new_equipment = NewPlayerEquipmentVersion {
                         mmolb_player_id: &entity.entity_id,
-                        equipment_slot,
+                        equipment_slot: equipment_slot.clone(),
                         valid_from: entity.valid_from.naive_utc(),
                         valid_until: None,
-                        emoji: &equipment.emoji,
+                        emoji: equipment.emoji.clone(),
                         name,
                         special_type: equipment.special_type.map(|t| t.to_string()),
-                        description: equipment.description.as_deref(),
-                        rare_name: equipment.rare_name.as_deref(),
+                        description: equipment.description.clone(),
+                        rare_name: equipment.rare_name.clone(),
                         cost: equipment.cost.map(|v| v as i32),
-                        prefixes: match (equipment.prefix, equipment.prefixes) {
-                            (Err(RemovedLater))
-                        },
-                        suffixes: match (equipment.suffix, equipment.suffixes) {
-
-                        },
-                        rarity: equipment.rarity,
+                        prefixes: equipment_affix_plural_or_singular(equipment.prefix, equipment.prefixes, "prefix", "prefixes"),
+                        suffixes: equipment_affix_plural_or_singular(equipment.suffix, equipment.suffixes, "suffix", "suffixes"),
+                        // This is definitely going to cause an error
+                        rarity: Some(rarity),
                     };
 
                     let effects = match equipment.effects {
@@ -416,7 +481,7 @@ fn chron_player_as_new<'a>(
                         Some(effects) => effects
                             .into_iter()
                             .enumerate()
-                            .map(|(index, effect)| {
+                            .filter_map(move |(index, effect)| {
                                 let effect = match effect {
                                     Ok(effect) => effect,
                                     Err(NotRecognized(value)) => {
@@ -452,19 +517,19 @@ fn chron_player_as_new<'a>(
 
                                 Some(NewPlayerEquipmentEffectVersion {
                                     mmolb_player_id: &entity.entity_id,
-                                    equipment_slot,
+                                    equipment_slot: equipment_slot.clone(),
                                     effect_index: index as i32,
                                     valid_from: entity.valid_from.naive_utc(),
                                     valid_until: None,
                                     attribute: taxa.attribute_id(attribute.into()),
-                                    modifier_type: taxa.effect_type,
+                                    effect_type: taxa.effect_type_id(effect_type.into()),
                                     value: 0.0,
                                 })
                             })
                             .collect_vec()
                     };
 
-                    (new_equipment, effects)
+                    Some((new_equipment, effects))
                 }))
                 .collect_vec()
         }

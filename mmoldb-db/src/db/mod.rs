@@ -24,7 +24,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -1423,7 +1423,10 @@ type NewPlayerVersionExt<'a> = (
     Vec<NewPlayerModificationVersion<'a>>,
     Option<NewPlayerFeedVersionExt<'a>>,
     Vec<NewPlayerReport<'a>>,
-    NewPlayerEquipmentVersion<'a>,
+    Vec<(
+        NewPlayerEquipmentVersion<'a>,
+        Vec<NewPlayerEquipmentEffectVersion<'a>>,
+    )>
 );
 
 fn insert_player_reports(
@@ -1439,15 +1442,45 @@ fn insert_player_reports(
         .execute(conn)
 }
 
+fn insert_player_equipment_effects(
+    conn: &mut PgConnection,
+    new_player_equipment_effects: Vec<Vec<NewPlayerEquipmentEffectVersion>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_equipment_effect_versions::dsl as peev_dsl;
+
+    let new_player_equipment_effects = new_player_equipment_effects
+        .into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(peev_dsl::player_equipment_effect_versions)
+        .from_insertable(new_player_equipment_effects)
+        .execute(conn)
+}
+
 fn insert_player_equipment(
     conn: &mut PgConnection,
-    new_player_equipment: Vec<NewPlayerEquipmentVersion>,
+    new_player_equipment: Vec<Vec<(
+        NewPlayerEquipmentVersion,
+        Vec<NewPlayerEquipmentEffectVersion>,
+    )>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_equipment_versions::dsl as pev_dsl;
 
+    let (
+        new_player_equipment_versions,
+        new_player_equipment_effect_versions,
+    ): (
+        Vec<NewPlayerEquipmentVersion>,
+        Vec<Vec<NewPlayerEquipmentEffectVersion>>,
+    ) = itertools::multiunzip(new_player_equipment.into_iter().flatten());
+
+    insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
+
     // Insert new records
     diesel::copy_from(pev_dsl::player_equipment_versions)
-        .from_insertable(new_player_equipment)
+        .from_insertable(new_player_equipment_versions)
         .execute(conn)
 }
 
@@ -1615,7 +1648,10 @@ pub fn insert_player_versions(
         Vec<Vec<NewPlayerModificationVersion>>,
         Vec<Option<NewPlayerFeedVersionExt>>,
         Vec<Vec<NewPlayerReport>>,
-        Vec<NewPlayerEquipmentVersion>,
+        Vec<Vec<(
+            NewPlayerEquipmentVersion,
+            Vec<NewPlayerEquipmentEffectVersion>,
+        )>>
     ) = itertools::multiunzip(new_player_versions);
 
     insert_player_equipment(conn, new_player_equipment)?;

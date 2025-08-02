@@ -125,7 +125,7 @@ pub mod data {
             valid_until -> Nullable<Timestamp>,
             duplicates -> Int4,
             attribute -> Int8,
-            modifier_type -> Int8,
+            effect_type -> Int8,
             value -> Float8,
         }
     }
@@ -146,7 +146,7 @@ pub mod data {
             cost -> Nullable<Int4>,
             prefixes -> Array<Nullable<Text>>,
             suffixes -> Array<Nullable<Text>>,
-            rarity -> Text,
+            rarity -> Nullable<Text>,
         }
     }
 

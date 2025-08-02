@@ -81,7 +81,7 @@ create table data.player_equipment_versions (
     cost int,
     prefixes text[] not null,
     suffixes text[] not null,
-    rarity text not null
+    rarity text -- null for reasons i dont understand
 );
 
 create function data.on_insert_player_equipment_versions()
@@ -149,7 +149,7 @@ create table data.player_equipment_effect_versions (
 
     -- data
     attribute bigint references taxa.attribute not null,
-    modifier_type bigint references taxa.attribute_effect_type not null,
+    effect_type bigint references taxa.attribute_effect_type not null,
     value float8 not null
 );
 

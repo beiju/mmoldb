@@ -84,7 +84,7 @@ pub fn ingest_page_of_player_feeds(
     // Convert to Insertable type
     let new_player_feeds = player_feeds
         .iter()
-        .map(|v| chron_player_feed_as_new(&taxa, &v.entity_id, &v.data.feed, None))
+        .map(|v| chron_player_feed_as_new(&taxa, &v.entity_id, v.valid_from, &v.data.feed, None))
         .collect_vec();
 
     // The handling of valid_until is entirely in the database layer, but its logic
@@ -150,6 +150,7 @@ fn process_paradigm_shift<'e>(
 pub fn chron_player_feed_as_new<'a>(
     taxa: &Taxa,
     player_id: &'a str,
+    valid_from: DateTime<Utc>,
     feed_items: &'a [FeedEvent],
     final_player_name: Option<&str>,
 ) -> (
@@ -226,6 +227,8 @@ pub fn chron_player_feed_as_new<'a>(
 
     let player_feed_version = NewPlayerFeedVersion {
         mmolb_player_id: player_id,
+        valid_from: valid_from.naive_utc(),
+        valid_until: None,
         num_entries: feed_items.len() as i32,
     };
 

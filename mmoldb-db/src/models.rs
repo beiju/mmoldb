@@ -583,7 +583,7 @@ pub struct DbPlayerEquipmentVersion {
     pub cost: Option<i32>,
     pub prefixes: Vec<Option<String>>,
     pub suffixes: Vec<Option<String>>,
-    pub rarity: String,
+    pub rarity: Option<String>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -594,15 +594,15 @@ pub struct NewPlayerEquipmentVersion<'a> {
     pub equipment_slot: String,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
-    pub emoji: &'a str,
+    pub emoji: String,
     pub name: String,
     pub special_type: Option<String>,
-    pub description: Option<&'a str>,
-    pub rare_name: Option<&'a str>,
+    pub description: Option<String>,
+    pub rare_name: Option<String>,
     pub cost: Option<i32>,
-    pub prefixes: Vec<&'a str>,
-    pub suffixes: Vec<&'a str>,
-    pub rarity: &'a str,
+    pub prefixes: Vec<String>,
+    pub suffixes: Vec<String>,
+    pub rarity: Option<String>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -616,7 +616,7 @@ pub struct DbPlayerEquipmentEffectVersion {
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
     pub attribute: i64,
-    pub modifier_type: i64,
+    pub effect_type: i64,
     pub value: f64,
 }
 
@@ -625,11 +625,11 @@ pub struct DbPlayerEquipmentEffectVersion {
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerEquipmentEffectVersion<'a> {
     pub mmolb_player_id: &'a str,
-    pub equipment_slot: &'a str,
+    pub equipment_slot: String,
     pub effect_index: i32,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
     pub attribute: i64,
-    pub modifier_type: i64,
+    pub effect_type: i64,
     pub value: f64,
 }

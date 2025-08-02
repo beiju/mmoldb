@@ -43,7 +43,7 @@ pub async fn ingest(
     debug!("Ingesting {kind} with {num_workers} workers");
 
     // Names have to outlast tasks, so they're lifted out
-    let task_names_and_numbers = (1..num_workers)
+    let task_names_and_numbers = (1..=num_workers)
         .map(|n| (format!("{kind} ingest worker {n}"), n))
         .collect_vec();
 
@@ -54,6 +54,7 @@ pub async fn ingest(
             let notify = notify.clone();
             let finish = finish.clone();
             let abort = abort.clone();
+            info!("Spawning stage 2 worker {n} named '{task_name}'");
             tokio::task::Builder::new()
                 .name(task_name)
                 .spawn(ingest_stage_2(
@@ -143,7 +144,8 @@ async fn ingest_stage_1(
                 // Probably doesn't need to be as strict as SeqCst but it's debugging
                 // code, so I'm optimizing for confidence that it'll work properly over
                 // performance.
-                num_skipped_at_start.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let prev = num_skipped_at_start.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                info!("Skipping {} and counting", prev + 1);
             }
 
             futures::future::ready(skip_this)
@@ -162,12 +164,12 @@ async fn ingest_stage_1(
         };
 
         info!(
-            "Saving {} {kind} ({} skipped at start)",
+            "Stage 1 ingest saving {} {kind} ({} skipped at start)",
             chunk.len(),
             num_skipped_at_start.load(std::sync::atomic::Ordering::SeqCst)
         );
         let inserted = db::insert_versions(&mut conn, &chunk).into_diagnostic()?;
-        info!("Saved {} {kind}", inserted);
+        info!("Stage 1 ingest saving {} {kind}", inserted);
 
         notify.notify_one();
 
@@ -208,6 +210,7 @@ async fn ingest_stage_2_internal(
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>,
     ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> Result<(), IngestFatalError>,
 ) -> miette::Result<()> {
+    info!("{kind} stage 2 ingest worker launched");
     let mut async_conn = AsyncPgConnection::establish(url).await.into_diagnostic()?;
     let mut conn = PgConnection::establish(url).into_diagnostic()?;
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
