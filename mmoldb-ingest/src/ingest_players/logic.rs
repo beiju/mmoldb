@@ -1,6 +1,6 @@
 use std::fmt::Display;
 use chron::ChronEntity;
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
@@ -88,7 +88,20 @@ pub fn ingest_page_of_players(
     // The handling of valid_until is entirely in the database layer, but its logic
     // requires that a given batch of players does not have the same player twice. We
     // provide that guarantee here.
+    let mut stored_batch: Option<HashMap<&str, NaiveDateTime>> = None;
     for batch in batch_by_entity(new_players, |v| v.0.mmolb_player_id) {
+        let prev_batch = stored_batch.take();
+        let new_stored_batch = stored_batch.insert(HashMap::new());
+        for (player, _, _, _, _) in &batch {
+            if let Some(prev_batch) = &prev_batch {
+                if let Some(prev_valid_from) = prev_batch.get(player.mmolb_player_id) {
+                    assert!(&player.valid_from >= prev_valid_from);
+                }
+            }
+            let prev = new_stored_batch.insert(player.mmolb_player_id, player.valid_from);
+            assert!(prev.is_none());
+        }
+
         let to_insert = batch.len();
         info!(
             "Sent {} new player versions out of {} to the database.",
@@ -472,7 +485,7 @@ fn chron_player_as_new<'a>(
 
                     let effects = match equipment.effects {
                         None => {
-                            warn!("Got equipment with no effects. What does this mean?");
+                            // Presumably None effects is the same as empty list of effects
                             Vec::new()
                         }
                         Some(effects) => effects

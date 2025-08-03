@@ -1262,20 +1262,48 @@ pub fn tables_for_schema(
         .collect()
 }
 
+macro_rules! cursor_from_table {
+    ($conn:expr, $($namespace:ident)::*, $table_name:ident) => {
+        $($namespace)::*::$table_name::dsl::$table_name
+            .select(($($namespace)::*::$table_name::dsl::valid_from, $($namespace)::*::$table_name::dsl::mmolb_player_id))
+            .order_by((
+                $($namespace)::*::$table_name::dsl::valid_from.desc(),
+                $($namespace)::*::$table_name::dsl::mmolb_player_id.desc(),
+            ))
+            .limit(1)
+            .get_result::<(NaiveDateTime, String)>($conn)
+            .optional()
+    };
+}
+
 pub fn get_player_ingest_start_cursor(
     conn: &mut PgConnection,
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {
-    use crate::schema::data_schema::data::player_versions::dsl as player_dsl;
+    use crate::schema::data_schema::data as schema;
 
-    player_dsl::player_versions
-        .select((player_dsl::valid_from, player_dsl::mmolb_player_id))
-        .order_by((
-            player_dsl::valid_from.desc(),
-            player_dsl::mmolb_player_id.desc(),
-        ))
-        .limit(1)
-        .get_result(conn)
-        .optional()
+    let player_version_with_embedded_feed_cutoff = DateTime::parse_from_rfc3339("2025-07-28 12:00:00.000000Z").unwrap().naive_utc();
+
+    // This must list all tables that have a valid_from derived from the `player` kind.
+    let cursor: Option<(NaiveDateTime, String)> = [
+        cursor_from_table!(conn, schema, player_versions)?,
+        cursor_from_table!(conn, schema, player_feed_versions)?
+            .map(|(dt, id)| (
+                std::cmp::min(player_version_with_embedded_feed_cutoff, dt),
+                id,
+            )),
+        cursor_from_table!(conn, schema, player_modification_versions)?,
+        cursor_from_table!(conn, schema, player_equipment_versions)?,
+        cursor_from_table!(conn, schema, player_equipment_effect_versions)?,
+    ].into_iter()
+        // Compute the latest of all cursors
+        .fold(None, |accum, value| match (accum, value) {
+            (None, None) => None,
+            (Some(accum), None) => Some(accum),
+            (None, Some(value)) => Some(value),
+            (Some(accum), Some(value)) => Some(std::cmp::max(accum, value)),
+        });
+
+    Ok(cursor)
 }
 
 pub fn get_player_feed_ingest_start_cursor(
