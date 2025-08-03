@@ -58,6 +58,8 @@ services:
         - .env
     ports:
       - "${MMOLDB_MAP_DB_PORT:-42416}:5432"
+    # docker default is very low
+    shm_size: 1gb
     # Usage limits to prevent DOS on prod
     cpus: 4
     mem_limit: 4g
