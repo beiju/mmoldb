@@ -12,6 +12,7 @@ use mmoldb_db::models::{NewPlayerAugment, NewPlayerEquipmentEffectVersion, NewPl
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
 use mmoldb_db::{PgConnection, QueryResult, db};
 use rayon::prelude::*;
+use thiserror::Error;
 use crate::ingest::{batch_by_entity, IngestFatalError};
 use crate::ingest_feed::chron_player_feed_as_new;
 
@@ -306,6 +307,22 @@ fn equipment_affix_plural_or_singular<T: Display>(
     }
 }
 
+#[derive(Debug, Error)]
+#[error("Expected a string but got {0}")]
+struct NonStringTypeError(serde_json::Value);
+
+fn equipment_slot_to_str(slot: &Result<EquipmentSlot, NotRecognized>) -> Result<&str, NonStringTypeError> {
+    Ok(match slot {
+        Ok(EquipmentSlot::Accessory) => { "Accessory" }
+        Ok(EquipmentSlot::Head) => { "Head" }
+        Ok(EquipmentSlot::Feet) => { "Feet" }
+        Ok(EquipmentSlot::Hands) => { "Hands" }
+        Ok(EquipmentSlot::Body) => { "Body" }
+        Err(NotRecognized(value)) => value.as_str()
+            .ok_or(NonStringTypeError(value.clone()))?
+    })
+}
+
 fn chron_player_as_new<'a>(
     entity: &'a ChronEntity<mmolb_parsing::player::Player>,
     taxa: &Taxa,
@@ -376,10 +393,23 @@ fn chron_player_as_new<'a>(
             Position::Closer => TaxaSlot::Closer,
         })),
         Err(err) => {
+            // TODO Expose player ingest errors on the web interface
             error!("Player position not recognized: {err}");
             None
         }
     };
+
+    let occupied_equipment_slots = entity.data.equipment.as_ref().ok().map(|e| {
+        e.inner.keys().map(equipment_slot_to_str).filter_map(|s| match s {
+            Ok(s) => Some(s),
+            Err(err) => {
+                // TODO Expose player ingest errors on the web interface
+                error!("Error processing player equipment slot: {err}. This slot will be ignored.");
+                None
+            }
+        })
+            .collect_vec()
+    }).unwrap_or_default();
 
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
@@ -403,6 +433,7 @@ fn chron_player_as_new<'a>(
         greater_boon: entity.data.greater_boon.as_ref().map(get_modification_id),
         lesser_boon: entity.data.lesser_boon.as_ref().map(get_modification_id),
         num_modifications: entity.data.modifications.len() as i32,
+        occupied_equipment_slots,
     };
 
     let player_full_name = format!("{} {}", player.first_name, player.last_name);

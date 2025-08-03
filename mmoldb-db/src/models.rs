@@ -413,18 +413,7 @@ pub struct NewPlayerVersion<'a> {
     pub greater_boon: Option<i64>,
     pub lesser_boon: Option<i64>,
     pub num_modifications: i32,
-}
-
-impl<'a> NewPlayerVersion<'a> {
-    pub fn is_data_equivalent(&self, other: &Self) -> bool {
-        let cmp = Self {
-            valid_from: other.valid_from,
-            valid_until: other.valid_until,
-            ..*self
-        };
-
-        &cmp == other
-    }
+    pub occupied_equipment_slots: Vec<&'a str>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -453,6 +442,7 @@ pub struct DbPlayerVersion {
     pub greater_boon: Option<i64>,
     pub lesser_boon: Option<i64>,
     pub num_modifications: i32,
+    pub occupied_equipment_slots: Vec<Option<String>>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]

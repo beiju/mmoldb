@@ -246,6 +246,7 @@ pub mod data {
             greater_boon -> Nullable<Int8>,
             lesser_boon -> Nullable<Int8>,
             num_modifications -> Int4,
+            occupied_equipment_slots -> Array<Nullable<Text>>,
         }
     }
 

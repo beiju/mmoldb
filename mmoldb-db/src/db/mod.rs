@@ -1527,6 +1527,37 @@ fn insert_player_equipment(
             and peev.effect_index >= pev.num_effects
     ").execute(conn)?;
 
+    // Close out any valid equipment effect versions for equipment slots that are not
+    // occupied on the currently active player version
+    sql_query("
+        update data.player_equipment_effect_versions as peev
+        -- this player version does not have this slot occupied,
+        -- meaning the effect version should be closed out as of the
+        -- start of the player version
+        set valid_until=pv.valid_from
+        from data.player_versions AS pv -- this is like a join i think?
+        where pv.mmolb_player_id=peev.mmolb_player_id
+          and pv.valid_until is null
+          and peev.valid_until is null
+          and not (peev.equipment_slot=any(pv.occupied_equipment_slots))
+    ").execute(conn)?;
+
+    // Close out any valid equipment versions for equipment slots that are not
+    // occupied on the currently active player version
+    // (same as the above but for equipment instead of effects)
+    sql_query("
+        update data.player_equipment_versions as pev
+        -- this player version does not have this slot occupied,
+        -- meaning the effect version should be closed out as of the
+        -- start of the player version
+        set valid_until=pv.valid_from
+        from data.player_versions AS pv -- this is like a join i think?
+        where pv.mmolb_player_id=pev.mmolb_player_id
+          and pv.valid_until is null
+          and pev.valid_until is null
+          and not (pev.equipment_slot=any(pv.occupied_equipment_slots))
+    ").execute(conn)?;
+
     Ok(num_inserted)
 }
 
@@ -1703,7 +1734,7 @@ pub fn insert_player_versions(
     let insert_player_equipment_duration = (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
     let trim_mod_versions_start = Utc::now();
-    // Close out any valid equipment effect versions whose modification_order is
+    // Close out any valid mod versions whose modification_order is
     // greater than the number of mods stored in the currently active player version
     sql_query("
         update data.player_modification_versions as pmv

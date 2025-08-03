@@ -305,3 +305,26 @@ create index close_extra_equipment_effect_versions on data.player_equipment_effe
 
 create index close_extra_modification_versions on data.player_modification_versions (mmolb_player_id, modification_order)
     where valid_until is null;
+
+
+-- i know i truncated most of these tables already but i want to make super sure this is a full reset
+truncate table
+    info.event_ingest_log,
+    info.raw_events,
+    data.event_fielders,
+    data.event_baserunners,
+    data.events,
+    data.weather,
+    data.games,
+    data.player_versions,
+    data.player_modification_versions,
+    data.modifications,
+    data.player_augments,
+    data.player_recompositions,
+    data.player_reports,
+    data.player_paradigm_shifts,
+    data.player_feed_versions,
+    data.player_equipment_versions,
+    data.player_equipment_effect_versions,
+    info.ingest_timings,
+    info.ingests;
