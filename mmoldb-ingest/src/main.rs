@@ -19,7 +19,7 @@ struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
 
 const START_INGEST_EVERY_LAUNCH: bool = true;
 const INGEST_PERIOD_SEC: i64 = 30 * 60;
-const STATEMENT_TIMEOUT_SEC: i64 = 900;
+const STATEMENT_TIMEOUT_SEC: i64 = 0;
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
@@ -90,11 +90,18 @@ async fn run_one_ingest(url: String) -> miette::Result<()> {
     let ingest_start_time = Utc::now();
     let mut conn = PgConnection::establish(&url).into_diagnostic()?;
 
-    info!(
-        "Setting our account's statement timeout to {STATEMENT_TIMEOUT_SEC} ({})",
-        chrono_humanize::HumanTime::from(chrono::Duration::seconds(STATEMENT_TIMEOUT_SEC))
-            .to_text_en(Accuracy::Precise, Tense::Present),
-    );
+    if STATEMENT_TIMEOUT_SEC < 0 {
+        panic!("Negative STATEMENT_TIMEOUT_SEC not allowed ({STATEMENT_TIMEOUT_SEC})");
+    } else if STATEMENT_TIMEOUT_SEC > 0 {
+        info!(
+            "Setting our account's statement timeout to {STATEMENT_TIMEOUT_SEC} ({})",
+            chrono_humanize::HumanTime::from(chrono::Duration::seconds(STATEMENT_TIMEOUT_SEC))
+                .to_text_en(Accuracy::Precise, Tense::Present),
+        );
+    } else {
+        // Postgres interprets 0 as no timeout
+        info!("Setting our account's statement timeout to no timeout");
+    }
     db::set_current_user_statement_timeout(&mut conn, STATEMENT_TIMEOUT_SEC).into_diagnostic()?;
 
     let ingest_id = db::start_ingest(&mut conn, ingest_start_time).into_diagnostic()?;
