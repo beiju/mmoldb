@@ -27,6 +27,15 @@ use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
+pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
+    // Note that `alter role` cannot use a prepared query. The only way to
+    // parameterize it is to build it from a string. `timeout_seconds` is
+    // an i64 and thus its format cannot have a `'` character, so this should
+    // be safe.
+    sql_query(format!("alter role CURRENT_USER set statement_timeout='{}s'", timeout_seconds))
+        .execute(conn)
+}
+
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::info_schema::info::ingests::dsl;
 

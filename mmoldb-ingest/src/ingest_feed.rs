@@ -160,7 +160,7 @@ pub fn chron_player_feed_as_new<'a>(
     player_id: &'a str,
     valid_from: DateTime<Utc>,
     feed_items: &'a [FeedEvent],
-    final_player_name: Option<&str>,
+    mut final_player_name: Option<&str>,
 ) -> (
     NewPlayerFeedVersion<'a>,
     Vec<NewPlayerAugment<'a>>,
@@ -174,6 +174,7 @@ pub fn chron_player_feed_as_new<'a>(
         let mut hashes = HashSet::new();
         #[rustfmt::skip]
         hashes.extend(vec![
+            // format: (player id, timestamp of feed event). Not timestamp of player update.
             ("6805db0cac48194de3cd40dd", DateTime::parse_from_rfc3339("2025-07-14T12:32:16.183651+00:00").unwrap().naive_utc()),
             ("6840fa75ed58166c1895a7f3", DateTime::parse_from_rfc3339("2025-07-14T12:58:25.172157+00:00").unwrap().naive_utc()),
             ("6840fb13e63d9bb8728896d2", DateTime::parse_from_rfc3339("2025-07-14T11:56:08.156319+00:00").unwrap().naive_utc()),
@@ -191,6 +192,7 @@ pub fn chron_player_feed_as_new<'a>(
             ("685b740338c6569da104aa48", DateTime::parse_from_rfc3339("2025-07-14T12:47:59.895679+00:00").unwrap().naive_utc()),
             ("686355f4b254dfbaab3014b0", DateTime::parse_from_rfc3339("2025-07-14T11:51:34.711389+00:00").unwrap().naive_utc()),
             ("68655942f27aa83a88fa64e0", DateTime::parse_from_rfc3339("2025-07-14T10:36:47.308576+00:00").unwrap().naive_utc()),
+            ("6840fb13e63d9bb8728896d2", DateTime::parse_from_rfc3339("2025-07-14T11:56:08.156319+00:00").unwrap().naive_utc()),
         ]);
         hashes
     };
@@ -200,13 +202,12 @@ pub fn chron_player_feed_as_new<'a>(
         pub fn check_or_set_name(&mut self, name: &'a str) {
             match &self.0 {
                 None => {
-                    info!("Setting previously-unknown player name to {name}");
                     self.0 = Some(name);
                 }
                 Some(known_name) => {
                     // Multiple Stanleys Demir were generated during the s2
                     // Falling Stars event and then Danny manually renamed them
-                    if name != *known_name && name != "Stanley Demir" {
+                    if !(name == *known_name || (name.starts_with("Stanley Demir") && known_name.starts_with("Stanley Demir"))) {
                         warn!(
                             "Player name from augment '{}' doesn't match this feed's known player \
                             name '{}'",
@@ -231,7 +232,8 @@ pub fn chron_player_feed_as_new<'a>(
         }
     }
 
-    let mut player_full_name = PlayerFullName(final_player_name);
+    // Note that the name at the start of the feed is not (necessarily) final_player_name
+    let mut player_full_name = PlayerFullName(None);
 
     let player_feed_version = NewPlayerFeedVersion {
         mmolb_player_id: player_id,
@@ -263,6 +265,12 @@ pub fn chron_player_feed_as_new<'a>(
                     feed_items.len(),
                 );
             }
+
+            // Impermanent feed events still change the player name, but since we
+            // skip them we don't catch the change and the check at the end of
+            // the feed processing will fail. Pretend the name is unknown to
+            // skip the check.
+            final_player_name = None;
             continue;
         }
 

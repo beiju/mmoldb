@@ -4,10 +4,10 @@ mod ingest_players;
 mod ingest_feed;
 mod signal;
 
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::pin_mut;
-use log::{debug, error, info};
+use log::{debug, info};
 use miette::{Diagnostic, IntoDiagnostic};
 use mmoldb_db::{Connection, PgConnection, db};
 use thiserror::Error;
@@ -19,6 +19,7 @@ struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
 
 const START_INGEST_EVERY_LAUNCH: bool = true;
 const INGEST_PERIOD_SEC: i64 = 30 * 60;
+const STATEMENT_TIMEOUT_SEC: i64 = 900;
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
@@ -43,7 +44,7 @@ async fn main() -> miette::Result<()> {
 
     loop {
         let (why, ingest_start) = if let Some(prev_start) = previous_ingest_start_time {
-            let next_start = prev_start + Duration::seconds(INGEST_PERIOD_SEC);
+            let next_start = prev_start + chrono::Duration::seconds(INGEST_PERIOD_SEC);
             let wait_duration_chrono = next_start - Utc::now();
 
             // std::time::Duration can't represent negative durations.
@@ -88,6 +89,14 @@ async fn main() -> miette::Result<()> {
 async fn run_one_ingest(url: String) -> miette::Result<()> {
     let ingest_start_time = Utc::now();
     let mut conn = PgConnection::establish(&url).into_diagnostic()?;
+
+    info!(
+        "Setting our account's statement timeout to {STATEMENT_TIMEOUT_SEC} ({})",
+        chrono_humanize::HumanTime::from(chrono::Duration::seconds(STATEMENT_TIMEOUT_SEC))
+            .to_text_en(Accuracy::Precise, Tense::Present),
+    );
+    db::set_current_user_statement_timeout(&mut conn, STATEMENT_TIMEOUT_SEC).into_diagnostic()?;
+
     let ingest_id = db::start_ingest(&mut conn, ingest_start_time).into_diagnostic()?;
 
     let abort = CancellationToken::new();
