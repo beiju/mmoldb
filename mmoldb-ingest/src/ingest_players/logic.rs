@@ -66,6 +66,7 @@ pub fn ingest_page_of_players(
                 .chain(version.data.lesser_boon.as_ref())
                 .chain(version.data.greater_boon.as_ref())
                 .map(|m| {
+                    // TODO Do this for extra_fields in other types
                     if !m.extra_fields.is_empty() {
                         warn!(
                             "Modification had extra fields that were not captured: {:?}",

@@ -23,7 +23,7 @@ use crate::ingest_players::day_to_db;
 const PLAYER_FEED_KIND: &'static str = "player_feed";
 const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_PLAYER_FEED_INSERT_BATCH_SIZE: usize = 1000;
-const PROCESS_PLAYER_FEED_BATCH_SIZE: usize = 10000;
+const PROCESS_PLAYER_FEED_BATCH_SIZE: usize = 1000;
 
 pub async fn ingest_player_feeds(pg_url: String, abort: CancellationToken) -> miette::Result<()> {
     crate::ingest::ingest(
