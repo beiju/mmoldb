@@ -3,7 +3,7 @@
 use rayon::iter::ParallelIterator;
 use std::fmt::{Display, Formatter};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use hashbrown::{HashSet};
+use hashbrown::{HashSet, HashMap};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use mmolb_parsing::enums::{Attribute, Day};
@@ -173,27 +173,252 @@ pub fn chron_player_feed_as_new<'a>(
     let impermanent_feed_events = {
         let mut hashes = HashSet::new();
         #[rustfmt::skip]
-        hashes.extend(vec![
-            // format: (player id, timestamp of feed event). Not timestamp of player update.
-            ("6805db0cac48194de3cd40dd", DateTime::parse_from_rfc3339("2025-07-14T12:32:16.183651+00:00").unwrap().naive_utc()),
-            ("6840fa75ed58166c1895a7f3", DateTime::parse_from_rfc3339("2025-07-14T12:58:25.172157+00:00").unwrap().naive_utc()),
-            ("6840fb13e63d9bb8728896d2", DateTime::parse_from_rfc3339("2025-07-14T11:56:08.156319+00:00").unwrap().naive_utc()),
-            ("6840fe6508b7fc5e21e8a940", DateTime::parse_from_rfc3339("2025-07-14T15:04:09.335705+00:00").unwrap().naive_utc()),
-            ("6841000988056169e0078792", DateTime::parse_from_rfc3339("2025-07-14T11:58:34.656639+00:00").unwrap().naive_utc()),
-            ("684102aaf7b5d3bf791d67e8", DateTime::parse_from_rfc3339("2025-07-14T12:54:23.274555+00:00").unwrap().naive_utc()),
-            ("684102dfec9dc637cfd0cad6", DateTime::parse_from_rfc3339("2025-07-14T12:01:51.299731+00:00").unwrap().naive_utc()),
-            ("68412d1eed58166c1895ae66", DateTime::parse_from_rfc3339("2025-07-14T12:20:36.597014+00:00").unwrap().naive_utc()),
-            ("68418c52554d8039701f1c93", DateTime::parse_from_rfc3339("2025-07-14T12:09:42.764129+00:00").unwrap().naive_utc()),
-            ("6846cc4d4a488309816674ff", DateTime::parse_from_rfc3339("2025-07-14T12:10:19.571083+00:00").unwrap().naive_utc()),
-            ("684727f5bb00de6f9bb79973", DateTime::parse_from_rfc3339("2025-07-14T12:14:14.710296+00:00").unwrap().naive_utc()),
-            ("68505bc5341f7f2421020d05", DateTime::parse_from_rfc3339("2025-07-14T12:13:58.129103+00:00").unwrap().naive_utc()),
-            ("6855b350f1d8f657407b231c", DateTime::parse_from_rfc3339("2025-07-14T15:02:55.607448+00:00").unwrap().naive_utc()),
-            ("68564374acfab5652c3a6c44", DateTime::parse_from_rfc3339("2025-07-15T01:02:41.992667+00:00").unwrap().naive_utc()),
-            ("685b740338c6569da104aa48", DateTime::parse_from_rfc3339("2025-07-14T12:47:59.895679+00:00").unwrap().naive_utc()),
-            ("686355f4b254dfbaab3014b0", DateTime::parse_from_rfc3339("2025-07-14T11:51:34.711389+00:00").unwrap().naive_utc()),
-            ("68655942f27aa83a88fa64e0", DateTime::parse_from_rfc3339("2025-07-14T10:36:47.308576+00:00").unwrap().naive_utc()),
-            ("6840fb13e63d9bb8728896d2", DateTime::parse_from_rfc3339("2025-07-14T11:56:08.156319+00:00").unwrap().naive_utc()),
-        ]);
+        hashes.extend(
+            [
+                // format: (player id, timestamp of feed event). Not timestamp of player update.
+                ("6805db0cac48194de3cd40dd", "2025-07-14T12:32:16.183651+00:00"),
+                ("6840fa75ed58166c1895a7f3", "2025-07-14T12:58:25.172157+00:00"),
+                ("6840fb13e63d9bb8728896d2", "2025-07-14T11:56:08.156319+00:00"),
+                ("6840fe6508b7fc5e21e8a940", "2025-07-14T15:04:09.335705+00:00"),
+                ("6841000988056169e0078792", "2025-07-14T11:58:34.656639+00:00"),
+                ("684102aaf7b5d3bf791d67e8", "2025-07-14T12:54:23.274555+00:00"),
+                ("684102dfec9dc637cfd0cad6", "2025-07-14T12:01:51.299731+00:00"),
+                ("68412d1eed58166c1895ae66", "2025-07-14T12:20:36.597014+00:00"),
+                ("68418c52554d8039701f1c93", "2025-07-14T12:09:42.764129+00:00"),
+                ("6846cc4d4a488309816674ff", "2025-07-14T12:10:19.571083+00:00"),
+                ("684727f5bb00de6f9bb79973", "2025-07-14T12:14:14.710296+00:00"),
+                ("68505bc5341f7f2421020d05", "2025-07-14T12:13:58.129103+00:00"),
+                ("6855b350f1d8f657407b231c", "2025-07-14T15:02:55.607448+00:00"),
+                ("68564374acfab5652c3a6c44", "2025-07-15T01:02:41.992667+00:00"),
+                ("685b740338c6569da104aa48", "2025-07-14T12:47:59.895679+00:00"),
+                ("686355f4b254dfbaab3014b0", "2025-07-14T11:51:34.711389+00:00"),
+                ("68655942f27aa83a88fa64e0", "2025-07-14T10:36:47.308576+00:00"),
+                ("6840fb13e63d9bb8728896d2", "2025-07-14T11:56:08.156319+00:00"),
+            ]
+            .into_iter()
+            .map(|(id, dt)| (id, DateTime::parse_from_rfc3339(dt).unwrap().naive_utc()))
+        );
+        hashes
+    };
+
+    // TODO make this static, or at least global
+    // Some apparent recompositions happened without a feed event
+    let mut inferred_recompositions = {
+        let mut hashes = HashMap::new();
+        #[rustfmt::skip]
+        hashes.extend(
+            [
+                // format: (player id, [list of (earliest timestamp associated with new name, (season, day, old name, new name, ))])
+                ("68464b8e144e874e6deb8d31", [
+                    ("2025-07-15T04:50:01.666353Z", (3, Day::Day(19), "Avery Quiñones", "Ingrid Fontana"))
+                ]),
+                ("68421fe0f415a392f7340229", [
+                    ("2025-07-15T05:01:10.638951Z", (3, Day::Day(19), "December Brown", "Hector Strawberry"))
+                ]),
+                ("6841b52de63d9bb87288a03f", [
+                    ("2025-07-15T05:41:04.705262Z", (3, Day::Day(20), "Colton Kılıç", "Ahmed Yamauchi"))
+                ]),
+                ("6840fe6508b7fc5e21e8a940", [
+                    ("2025-07-15T05:49:14.117891Z", (3, Day::Day(20), "Lauren Werleman", "Melanie Sasaki"))
+                ]),
+                ("68410547295b2368c0ac7617", [
+                    ("2025-07-15T05:51:28.998923Z", (3, Day::Day(20), "Maybelline Correia", "Natasha Mortensen"))
+                ]),
+                ("6844d4e3925dd4f9d72ac6f8", [
+                    ("2025-07-15T05:51:52.377638Z", (3, Day::Day(20), "Lifen Davies", "Test Berglund"))
+                ]),
+                ("684114238ba62cf2ce8d9138", [
+                    ("2025-07-15T05:52:52.675357Z", (3, Day::Day(20), "Gabriela Gentry", "Leo Minto"))
+                ]),
+                ("6845e23cf7b5d3bf791d6fb3", [
+                    ("2025-07-15T05:56:56.821444Z", (3, Day::Day(20), "Sienna McIntosh", "Finn Anderson"))
+                ]),
+                ("6840ff3b88056169e0078756", [
+                    ("2025-07-15T05:57:27.079243Z", (3, Day::Day(20), "Tina Jamal", "Tina Suleiman"))
+                ]),
+                ("6840fb6a183c892d88a0fa6c", [
+                    ("2025-07-15T05:57:47.284153Z", (3, Day::Day(20), "Qingyu Figueredo", "Frances Radcliffe"))
+                ]),
+                ("684308b088056169e0078efc", [
+                    ("2025-07-15T05:59:51.822743Z", (3, Day::Day(20), "Arya Garcia", "Katherine Cortes"))
+                ]),
+                ("684df75227a5c3fdfbb7c316", [
+                    ("2025-07-15T05:59:52.045565Z", (3, Day::Day(20), "Randy Quiros", "Sherry Huff"))
+                ]),
+                ("684324d3f415a392f734030d", [
+                    ("2025-07-15T06:06:41.942801Z", (3, Day::Day(21), "Randall McDaniel", "Geo Dale"))
+                ]),
+                ("6840ff75554d8039701f16bb", [
+                    ("2025-07-15T06:06:44.704504Z", (3, Day::Day(21), "Ray O'Keeffe", "Piper Norman"))
+                ]),
+                ("684104ba144e874e6deb8486", [
+                    ("2025-07-15T06:06:45.091796Z", (3, Day::Day(21), "McBaseball Korhonen", "Mattie Quesada"))
+                ]),
+                ("6840faf3554d8039701f1403", [
+                    ("2025-07-15T06:06:59.526678Z", (3, Day::Day(21), "Elmer Pinheiro", "Nellie Smith"))
+                ]),
+                ("68410083ed58166c1895ab31", [
+                    ("2025-07-15T06:08:04.527243Z", (3, Day::Day(21), "Terri de Araujo", "Faith Ellington"))
+                ]),
+                ("68411461ed58166c1895ad86", [
+                    ("2025-07-15T06:08:19.11844Z", (3, Day::Day(21), "Kristen Stephenson", "Clayton MCIntyre"))
+                ]),
+                ("68410538ec9dc637cfd0cb65", [
+                    ("2025-07-15T06:08:22.463221Z", (3, Day::Day(21), "Tracey Lajoie", "Harper Buckley"))
+                ]),
+                ("6843a73a554d8039701f1fcd", [
+                    ("2025-07-15T06:08:40.965006Z", (3, Day::Day(21), "Aurora Wakefield", "Martin Bertrand"))
+                ]),
+                ("6840ff81144e874e6deb8366", [
+                    ("2025-07-15T06:08:42.251327Z", (3, Day::Day(21), "Margaret Van", "Luther McCarthy"))
+                ]),
+                ("6840ff26925dd4f9d72abd89", [
+                    ("2025-07-15T06:08:44.979727Z", (3, Day::Day(21), "Roberta Johnston", "Test O'Grady"))
+                ]),
+                ("684101fded58166c1895ab91", [
+                    ("2025-07-15T06:17:02.400941Z", (3, Day::Day(21), "Claude Morozova", "Kilroy Belanger"))
+                ]),
+                ("68410658144e874e6deb84e9", [
+                    ("2025-07-15T06:17:10.624954Z", (3, Day::Day(21), "D. Umaru", "Travis Bashir"))
+                ]),
+                ("684102dfec9dc637cfd0cad6", [
+                    ("2025-07-15T06:17:28.508744Z", (3, Day::Day(21), "Jeff Stojanovska", "Fizzbuzz Grigoryan"))
+                ]),
+                ("684149eb8d67c531e89fe3b0", [
+                    ("2025-07-15T06:17:54.144151Z", (3, Day::Day(21), "Sophia Caldwell", "Wendy Akhtar"))
+                ]),
+                ("684107b054a7fbd4133871ed", [
+                    ("2025-07-15T06:18:24.926365Z", (3, Day::Day(21), "Bessie Jovanović", "Verônica Olyinyk"))
+                ]),
+                ("6841d38d925dd4f9d72ac46a", [
+                    ("2025-07-15T06:18:28.014537Z", (3, Day::Day(21), "Jason Rakotomalala", "Andrea Colon"))
+                ]),
+                ("6840fcb5f415a392f733f93e", [
+                    ("2025-07-15T06:18:59.011472Z", (3, Day::Day(21), "Diego Wright", "Novak Hunt"))
+                ]),
+                ("6842876af7b5d3bf791d6db9", [
+                    ("2025-07-15T06:18:59.011472Z", (3, Day::Day(21), "Zerobbabel Perera", "Bear Lindberg"))
+                ]),
+                ("684cd753b828819cba964640", [
+                    ("2025-07-15T06:19:09.501165Z", (3, Day::Day(21), "Todd Becker", "Miles Mooketsi"))
+                ]),
+                ("68411e11183c892d88a0ff7b", [
+                    ("2025-07-15T06:19:10.135468Z", (3, Day::Day(21), "Addie Frederiksen", "Jane Werner"))
+                ]),
+                ("684108f8e2d7557e153cc5c0", [
+                    ("2025-07-15T06:27:14.671061Z", (3, Day::Day(21), "Freddie Acevedo", "Ketlen Crowley"))
+                ]),
+                ("68475f9cbb00de6f9bb799ee", [
+                    ("2025-07-15T06:29:36.052261Z", (3, Day::Day(21), "Darryl Segura", "Nataniela Tejada"))
+                ]),
+                ("6866b2b402f61969e2ced8b5", [
+                    ("2025-07-15T06:30:03.321192Z", (3, Day::Day(21), "Tanya Morita", "Paul Abreu"))
+                ]),
+                ("68418ac7144e874e6deb8860", [
+                    ("2025-07-15T06:38:48.788294Z", (3, Day::Day(21), "Rex Köse", "Dora Wiggins"))
+                ]),
+                ("684148178ba62cf2ce8d92f6", [
+                    ("2025-07-15T06:39:09.516311Z", (3, Day::Day(21), "Sophia Chavarria", "Marcelle Thornton"))
+                ]),
+                ("6841372354a7fbd41338748e", [
+                    ("2025-07-18T02:11:20.277059Z", (3, Day::Day(89), "Yolo Clemente", "Tim Brito"))
+                ]),
+                ("68655d8277149281c81ea917", [
+                    ("2025-07-18T05:04:14.432935Z", (3, Day::Day(92), "Lucy Haque", "Yara Sin"))
+                ]),
+                ("6841004288056169e00787af", [
+                    ("2025-07-20T04:59:15.816116Z", (3, Day::Day(121), "Eizabeth Lindberg", "Susie Ellsworth"))
+                ]),
+                ("684cec93523adf827ba420e4", [
+                    ("2025-07-22T05:08:47.992513Z", (3, Day::Day(170), "Algernon Larsson", "Dustin Randybass"))
+                ]),
+                ("684102af295b2368c0ac759d", [
+                    ("2025-07-22T05:09:34.679498Z", (3, Day::Day(170), "Cathy Schröder", "Sandra Sakamoto"))
+                ]),
+                ("684128b38ba62cf2ce8d91f8", [
+                    ("2025-07-23T05:09:54.563711Z", (3, Day::Day(194), "Harmon Matsui", "Myra Tomlinson"))
+                ]),
+                ("6840fea6f415a392f733fa2e", [
+                    ("2025-07-26T03:42:55.386382Z", (3, Day::PostseasonPreview, "Aria Petrov", "Franklin Channing"))
+                ]),
+                ("6875c6ddf6f381c8cf035cfb", [
+                    ("2025-07-26T05:19:40.249936Z", (3, Day::PostseasonPreview, "Yongjun Mitra", "Bat Gül"))
+                ]),
+                ("68427bbaf415a392f73402b3", [
+                    ("2025-07-26T02:15:32.098589Z", (3, Day::PostseasonPreview, "Atem Masson", "Pogo-Stick Granados"))
+                ]),
+                ("6879d391762fe1c1e4769883", [
+                    ("2025-07-26T00:42:41.224451Z", (3, Day::PostseasonPreview, "Han-Soo van der Meer", "Tommy van den Berg"))
+                ]),
+                ("6840feff8ba62cf2ce8d8e41", [
+                    ("2025-07-25T18:14:08.672137Z", (3, Day::PostseasonPreview, "Asher Boyd", "Algernon Welch"))
+                ]),
+                ("684339118ba62cf2ce8d9620", [
+                    ("2025-07-26T09:50:09.471896Z", (3, Day::PostseasonPreview, "Dilly-Dally Sarkar", "July Shah"))
+                ]),
+                ("687e44b6a18a39dc5d280cb8", [
+                    ("2025-07-26T06:06:08.474301Z", (3, Day::PostseasonPreview, "Hobble Schulz", "Chorby Schneider"))
+                ]),
+                ("687c4009af79e504eb851455", [
+                    ("2025-07-25T21:24:49.851079Z", (3, Day::PostseasonPreview, "Neptune Grgić", "Boyfriend Otsuka"))
+                ]),
+                ("68412307896f631e9d6892c8", [
+                    ("2025-07-26T01:33:02.907220Z", (3, Day::PostseasonPreview, "Ahmed Nunes", "Francisco Langston"))
+                ]),
+                ("6847d0c44a488309816676d6", [
+                    ("2025-07-25T22:21:19.095142Z", (3, Day::PostseasonPreview, "Dawn Injury", "Georgia Dracula"))
+                ]),
+                ("684102fa183c892d88a0fd3a", [
+                    ("2025-07-25T20:05:23.830022Z", (3, Day::PostseasonPreview, "Esther Carlington", "Ally Mashaba"))
+                ]),
+                ("68751f7fc1f9dc22d3a8f267", [
+                    ("2025-07-26T00:44:53.626041Z", (3, Day::PostseasonPreview, "Hitchcock Whitaker", "Mamie Ling"))
+                ]),
+                ("6875b958fa3eb3ff9c319ec4", [
+                    ("2025-07-25T19:43:36.410787Z", (3, Day::PostseasonPreview, "Pogo-Stick Curran", "Maybelline Lehtinen"))
+                ]),
+                ("68410cb088056169e0078998", [
+                    ("2025-07-26T05:03:28.822305Z", (3, Day::PostseasonPreview, "Chloe Alfonso", "Fannie Oconnor"))
+                ]),
+            ]
+                .into_iter()
+                .map(|(id, recompositions)| {
+                    (
+                        id, recompositions.map(|(dt, names)| {
+                            (DateTime::parse_from_rfc3339(dt).unwrap().naive_utc(), names)
+                        })
+                    )
+                })
+        );
+        hashes
+    };
+    // TODO make this static, or at least global
+    // Some recompositions were overwritten by a subsequent augment:
+    // https://discord.com/channels/1136709081319604324/1401504610732216470
+    let mut overwritten_recompositions = {
+        let mut hashes = HashMap::new();
+        #[rustfmt::skip]
+        hashes.extend(
+            [
+                // format: ((id, feed event index), (old name, new name, recompose time, season, day)
+                // TODO Update seasons and days when the query finishes running
+                (("68414353f7b5d3bf791d6af7", 15 - 1), ("Fernando MacDonald", "Drummer Powell", "2025-07-24T04:05:51.465692+00:00", 3, Day::Day(217))),
+                (("6850da687db123b15516c542", 13 - 1), ("Josie Frandsen", "Sophia Wisp", "2025-07-21T04:10:59.130028+00:00", 3, Day::Day(145))),
+                (("684104c708b7fc5e21e8ab83", 16 - 1), ("K. Miyazaki", "Will Thome", "2025-07-22T04:07:16.339620+00:00", 3, Day::Day(169))),
+                (("68413fd1183c892d88a10074", 23 - 1), ("King Sapphire", "Ian Fisher", "2025-07-19T04:47:47.912546+00:00", 3, Day::Day(170))),
+                (("6845d8ba88056169e0079081", 15 - 1), ("Lucy O'Toole", "Darren Prasad", "2025-07-19T04:41:04.044671+00:00", 3, Day::Day(170))),
+                (("68751e24d9c3888e3e26a328", 2 - 1), ("Myra Elemefayo", "Nibbler Grigoryan", "2025-07-18T04:29:33.564533+00:00", 3, Day::Day(170))),
+                (("6841030dec9dc637cfd0cade", 17 - 1), ("Noodlehead Li", "Muffin Major", "2025-07-16T04:32:17.924992+00:00", 3, Day::Day(170))),
+                (("6840fcd8ed58166c1895a9a5", 15 - 1), ("Novak Mann", "Quackers Hunter", "2025-07-21T03:57:06.092120+00:00", 3, Day::Day(170))),
+                (("6840fa88896f631e9d688d28", 19 - 1), ("Popquiz Beltre", "Jill Pratt", "2025-07-22T04:44:04.614065+00:00", 3, Day::Day(170))),
+                (("684674e9ec9dc637cfd0d407", 12 - 1), ("Seok-Jin Clarke", "Jupiter Lucas", "2025-07-23T04:24:10.714881+00:00", 3, Day::Day(170))),
+                (("6840faf7e63d9bb8728896c0", 13 - 1), ("Test Estrada", "Mateo Kawashima", "2025-07-16T04:01:27.045974+00:00", 3, Day::Day(170))),
+                (("6805db0cac48194de3cd405f", 7 - 1), ("Waylon Osman", "Ziggy Lysenko", "2025-07-27T21:17:26.893992+00:00", 3, Day::Day(170))),
+                (("68751f7fc1f9dc22d3a8f267", 8 - 1), ("Yasmin Barlow", "Hudson Berg", "2025-07-22T04:51:04.832373+00:00", 3, Day::Day(170))),
+            ]
+            .into_iter()
+            .map(|(key, (nb, na, dt, s, d))| (key, (nb, na, DateTime::parse_from_rfc3339(dt).unwrap().naive_utc()), s, d))
+        );
         hashes
     };
 
@@ -249,10 +474,16 @@ pub fn chron_player_feed_as_new<'a>(
     let mut paradigm_shifts = Vec::new();
     let mut recompositions = Vec::new();
 
+    let mut pending_inferred_recompositions = inferred_recompositions.get_mut(player_id).map(|r| r.into_iter().peekable());
+
+    // This will *almost* always be equal to feed_items.len(), but not
+    // when there is an impermanent event
+    let mut max_permanent_feed_event_index_plus_one = 0;
     for (index, event) in feed_items.iter().enumerate() {
         let feed_event_index = index as i32;
         let time = event.timestamp.naive_utc();
 
+        let mut inferred_event_index = 0;
         if impermanent_feed_events.contains(&(player_id, time)) {
             info!(
                 "Skipping feed event \"{}\" because it was reverted later",
@@ -274,7 +505,90 @@ pub fn chron_player_feed_as_new<'a>(
             continue;
         }
 
-        match mmolb_parsing::feed_event::parse_feed_event(event) {
+        max_permanent_feed_event_index_plus_one = feed_event_index + 1;
+
+        // Apply any inferred recompositions whose time is before this event's time
+        if let Some(pending) = &mut pending_inferred_recompositions {
+            while let Some((time, info)) = pending.next_if(|(dt, _)| *dt <= time) {
+                let (season, day, player_name_before, player_name_after) = info;
+                info!("Applying inferred recomposition from {player_name_before} to {player_name_after}");
+                player_full_name.check_or_set_name(player_name_before);
+                player_full_name.set_name(player_name_after);
+                let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
+                recompositions.push(NewPlayerRecomposition {
+                    mmolb_player_id: player_id,
+                    feed_event_index,
+                    inferred_event_index: Some(inferred_event_index),
+                    time: *time,
+                    season: *season,
+                    day_type,
+                    day,
+                    superstar_day,
+                    player_name_before,
+                    player_name_after,
+                });
+                inferred_event_index += 1;
+            }
+        };
+
+        let parsed_event = mmolb_parsing::feed_event::parse_feed_event(event);
+        let skip_this_event = if let Some(info) = overwritten_recompositions.get(&(player_id, feed_event_index)) {
+            let (player_name_before, player_name_after, time, season, day) = info;
+
+            // The first time we hit one of these, it'll be a Recompose event
+            let skip_this_event = if let ParsedFeedEventText::Recomposed { new, previous } = &parsed_event {
+                debug!("Checking and skipping overwritten Recomposed event from {previous} to {new}");
+                // This is a real event now, but it's marked as overwritten,
+                // which means it's about to be deleted and become implied.
+                // So we ignore the real version and insert the inferred version
+                if *new != player_name_after {
+                    error!(
+                        "The overwritten Recomposed event new player name didn't match: expected \
+                        {player_name_after}, but observed {new}.",
+                    );
+                }
+                if *previous != player_name_before {
+                    error!(
+                        "The overwritten Recomposed event previous player name didn't match: \
+                        expected {player_name_before}, but observed {previous}.",
+                    );
+                }
+                true
+            } else {
+                false
+            };
+
+            player_full_name.check_or_set_name(player_name_before);
+            // There shouldn't be any subsequent events, but there is still
+            // the player_final_name check so we do have to update the name
+            player_full_name.set_name(player_name_after);
+
+            let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
+            recompositions.push(NewPlayerRecomposition {
+                mmolb_player_id: player_id,
+                feed_event_index,
+                inferred_event_index: Some(inferred_event_index),
+                time: *time,
+                season: *season,
+                day_type,
+                day,
+                superstar_day,
+                player_name_before,
+                player_name_after,
+            });
+            inferred_event_index += 1;
+
+            skip_this_event
+        } else {
+            false
+        };
+
+        if skip_this_event {
+            debug!("Skipping event \"{}\" because `skip_this_event` told us to", event.text);
+            continue;
+        }
+
+        match parsed_event {
             ParsedFeedEventText::ParseError { error, text } => {
                 // TODO Expose player ingest errors on the site
                 error!(
@@ -400,6 +714,7 @@ pub fn chron_player_feed_as_new<'a>(
                 recompositions.push(NewPlayerRecomposition {
                     mmolb_player_id: player_id,
                     feed_event_index,
+                    inferred_event_index: None,
                     time,
                     season: event.season as i32,
                     day_type,
@@ -437,6 +752,35 @@ pub fn chron_player_feed_as_new<'a>(
             }
         }
     }
+
+    // Apply any pending inferred whose time is before this event's time
+    if let Some(pending) = &mut pending_inferred_recompositions {
+        let naive_valid_from = valid_from.naive_utc();
+        let mut inferred_event_index = 0;
+        while let Some((time, info)) = pending.next_if(|(dt, _)| *dt <= naive_valid_from) {
+            let (season, day, player_name_before, player_name_after) = info;
+            info!("Applying inferred recomposition from {player_name_before} to {player_name_after}");
+            player_full_name.check_or_set_name(player_name_before);
+            player_full_name.set_name(player_name_after);
+            let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
+            recompositions.push(NewPlayerRecomposition {
+                mmolb_player_id: player_id,
+                // feed_event_index for inferred events is the feed event index of
+                // the first real feed event _after_ this inferred event. For inferred
+                // events that are after the last real event, it's the past-the-end index.
+                feed_event_index: max_permanent_feed_event_index_plus_one,
+                inferred_event_index: Some(inferred_event_index),
+                time: *time,
+                season: *season,
+                day_type,
+                day,
+                superstar_day,
+                player_name_before,
+                player_name_after,
+            });
+            inferred_event_index += 1;
+        }
+    };
 
     if let Some(name) = final_player_name {
         player_full_name.check_or_set_name(name);

@@ -204,6 +204,7 @@ pub mod data {
             superstar_day -> Nullable<Int4>,
             player_name_before -> Text,
             player_name_after -> Text,
+            inferred_event_index -> Nullable<Int4>,
         }
     }
 

@@ -512,6 +512,7 @@ pub struct DbPlayerRecomposition {
     pub id: i64,
     pub mmolb_player_id: String,
     pub feed_event_index: i32,
+    pub inferred_event_index: Option<i32>,
     pub time: NaiveDateTime,
     pub season: i32,
     pub day_type: Option<i64>,
@@ -527,6 +528,7 @@ pub struct DbPlayerRecomposition {
 pub struct NewPlayerRecomposition<'a> {
     pub mmolb_player_id: &'a str,
     pub feed_event_index: i32,
+    pub inferred_event_index: Option<i32>,
     pub time: NaiveDateTime,
     pub season: i32,
     pub day_type: Option<i64>,

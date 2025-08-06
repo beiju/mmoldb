@@ -164,12 +164,12 @@ async fn ingest_stage_1(
         };
 
         info!(
-            "Stage 1 ingest saving {} {kind} ({} skipped at start)",
+            "Stage 1 ingest saving {} {kind}(s) ({} skipped at start)",
             chunk.len(),
             num_skipped_at_start.load(std::sync::atomic::Ordering::SeqCst)
         );
         let inserted = db::insert_versions(&mut conn, &chunk).into_diagnostic()?;
-        info!("Stage 1 ingest saving {} {kind}", inserted);
+        info!("Stage 1 ingest saved {}(s) {kind}", inserted);
 
         notify.notify_one();
 
@@ -221,10 +221,7 @@ async fn ingest_stage_2_internal(
     notify.notify_one();
 
     'outer: while {
-        debug!(
-            "{kind} stage 2 ingest worker {worker_id} is waiting to be woken up (notify: {:?})",
-            notify
-        );
+        debug!("{kind} stage 2 ingest worker {worker_id} is waiting to be woken up");
         tokio::select! {
             biased; // We always want to respond to abort, notify, and finish in that order
             _ = abort.cancelled() => { false }
