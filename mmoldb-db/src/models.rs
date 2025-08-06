@@ -536,6 +536,7 @@ pub struct NewPlayerRecomposition<'a> {
     pub superstar_day: Option<i32>,
     pub player_name_before: &'a str,
     pub player_name_after: &'a str,
+    pub reverts_recomposition: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]

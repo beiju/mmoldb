@@ -205,6 +205,7 @@ pub mod data {
             player_name_before -> Text,
             player_name_after -> Text,
             inferred_event_index -> Nullable<Int4>,
+            reverts_recomposition -> Nullable<Timestamp>,
         }
     }
 

@@ -23,7 +23,8 @@ truncate table
 alter table data.player_recompositions
     drop constraint player_recompositions_mmolb_player_id_feed_event_index_key,
     add column inferred_event_index int, -- null = this event was not inferred
-    add constraint unique_player_id_feed_event_index_inferred_event_index unique (mmolb_player_id, feed_event_index, inferred_event_index);
+    add constraint unique_player_id_feed_event_index_inferred_event_index unique (mmolb_player_id, feed_event_index, inferred_event_index),
+    add column reverts_recomposition timestamp without time zone; -- null = this does not revert a prior recomposition
 
 drop trigger on_insert_player_recomposition_trigger on data.player_recompositions;
 drop function data.on_insert_player_recomposition;

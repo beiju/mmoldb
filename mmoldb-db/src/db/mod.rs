@@ -1771,3 +1771,39 @@ pub fn insert_player_versions(
 
     Ok(num_player_insertions)
 }
+
+macro_rules! rollback_table {
+    ($conn:expr, $($namespace:ident)::*, $table_name:ident, $dt:ident) => {{
+        // This struct is a workaround for the apparent otherwise inability
+        // to get Diesel to set a column to null
+        #[derive(AsChangeset)]
+        #[diesel(table_name = $($namespace)::*::$table_name)]
+        #[diesel(treat_none_as_null = true)]
+        struct Update {
+            valid_until: Option<NaiveDateTime>,
+        }
+
+        // Delete all versions that began after the target date
+        diesel::delete($($namespace)::*::$table_name::dsl::$table_name)
+            .filter($($namespace)::*::$table_name::dsl::valid_from.le($dt))
+            .execute($conn)?;
+
+        // Un-close-out all versions that were closed out after the target date
+        diesel::update($($namespace)::*::$table_name::dsl::$table_name)
+            .filter($($namespace)::*::$table_name::dsl::valid_until.le($dt))
+            .set(&Update { valid_until: None })
+            .execute($conn)?;
+    }};
+}
+
+pub fn roll_back_ingest_to_date(conn: &mut PgConnection, dt: NaiveDateTime) -> QueryResult<()> {
+    use crate::schema::data_schema::data as schema;
+
+    rollback_table!(conn, schema, player_versions, dt);
+    rollback_table!(conn, schema, player_feed_versions, dt);
+    rollback_table!(conn, schema, player_modification_versions, dt);
+    rollback_table!(conn, schema, player_equipment_versions, dt);
+    rollback_table!(conn, schema, player_equipment_effect_versions, dt);
+
+    Ok(())
+}

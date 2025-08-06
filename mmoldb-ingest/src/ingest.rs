@@ -6,13 +6,15 @@ use miette::{Diagnostic, IntoDiagnostic, WrapErr};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, async_db, db, QueryResult, QueryError};
 use std::sync::Arc;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime};
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
+
+const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = Some("2025-07-16 04:07:42.699296Z");
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -214,6 +216,12 @@ async fn ingest_stage_2_internal(
     let mut async_conn = AsyncPgConnection::establish(url).await.into_diagnostic()?;
     let mut conn = PgConnection::establish(url).into_diagnostic()?;
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
+
+    if let Some(dt) = ROLL_BACK_INGEST_TO_DATE {
+        let dt = DateTime::parse_from_rfc3339(dt).unwrap().naive_utc();
+        info!("Rolling back ingest to {}", dt);
+        db::roll_back_ingest_to_date(&mut conn, dt).into_diagnostic()?;
+    }
 
     // Permit ourselves to start processing right away, in case there
     // are unprocessed players left over from a previous ingest. This

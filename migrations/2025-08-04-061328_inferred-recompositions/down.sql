@@ -28,6 +28,7 @@ create trigger on_insert_player_recomposition_trigger
     execute function data.on_insert_player_recomposition();
 
 alter table data.player_recompositions
+    drop column reverts_recomposition,
     drop constraint unique_player_id_feed_event_index_inferred_event_index,
     drop column inferred_event_index,
     add constraint player_recompositions_mmolb_player_id_feed_event_index_key unique (mmolb_player_id, feed_event_index);
