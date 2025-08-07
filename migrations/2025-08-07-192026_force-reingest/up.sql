@@ -16,5 +16,7 @@ truncate table
     data.player_feed_versions,
     data.player_equipment_versions,
     data.player_equipment_effect_versions,
+    data.ejections,
+    data.aurora_photos,
     info.ingest_timings,
     info.ingests;

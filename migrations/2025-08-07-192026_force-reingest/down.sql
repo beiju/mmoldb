@@ -1,1 +1,1 @@
--- This file should undo anything in `up.sql`
+select null from data.weather; -- some random no-op query
