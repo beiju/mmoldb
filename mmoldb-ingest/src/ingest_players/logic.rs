@@ -400,7 +400,7 @@ fn chron_player_as_new<'a>(
         }
     };
 
-    let occupied_equipment_slots = entity.data.equipment.as_ref().ok().map(|e| {
+    let mut occupied_equipment_slots = entity.data.equipment.as_ref().ok().map(|e| {
         e.inner.keys().map(equipment_slot_to_str).filter_map(|s| match s {
             Ok(s) => Some(s),
             Err(err) => {
@@ -411,6 +411,8 @@ fn chron_player_as_new<'a>(
         })
             .collect_vec()
     }).unwrap_or_default();
+    // Important, because they can be returned in arbitrary order
+    occupied_equipment_slots.sort();
 
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
