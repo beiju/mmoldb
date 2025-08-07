@@ -2,6 +2,32 @@
 
 pub mod data {
     diesel::table! {
+        data.aurora_photos (id) {
+            id -> Int8,
+            event_id -> Int8,
+            is_listed_first -> Bool,
+            team_emoji -> Text,
+            player_slot -> Int8,
+            player_name -> Text,
+        }
+    }
+
+    diesel::table! {
+        data.ejections (id) {
+            id -> Int8,
+            event_id -> Int8,
+            team_emoji -> Text,
+            team_name -> Text,
+            ejected_player_name -> Text,
+            ejected_player_slot -> Int8,
+            violation_type -> Text,
+            reason -> Text,
+            replacement_player_name -> Text,
+            replacement_player_slot -> Nullable<Int8>,
+        }
+    }
+
+    diesel::table! {
         data.entities (kind, entity_id) {
             kind -> Text,
             entity_id -> Text,
@@ -271,6 +297,8 @@ pub mod data {
         }
     }
 
+    diesel::joinable!(aurora_photos -> events (event_id));
+    diesel::joinable!(ejections -> events (event_id));
     diesel::joinable!(event_baserunners -> events (event_id));
     diesel::joinable!(event_fielders -> events (event_id));
     diesel::joinable!(events -> games (game_id));
@@ -278,6 +306,8 @@ pub mod data {
     diesel::joinable!(player_modification_versions -> modifications (modification_id));
 
     diesel::allow_tables_to_appear_in_same_query!(
+        aurora_photos,
+        ejections,
         entities,
         event_baserunners,
         event_fielders,

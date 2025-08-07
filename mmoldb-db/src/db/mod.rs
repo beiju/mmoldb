@@ -24,7 +24,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -394,6 +394,36 @@ pub struct EventsForGameTimings {
     pub post_process_duration: f64,
 }
 
+pub fn group_child_table_results<'a, ChildT>(
+    games_events: impl IntoIterator<Item=&'a Vec<DbEvent>>,
+    child_results: Vec<ChildT>,
+    event_id_for_child: impl Fn(&ChildT) -> i64,
+) -> Vec<Vec<Vec<ChildT>>> {
+    let mut child_results_iter = child_results.into_iter().peekable();
+    
+    let results = games_events
+        .into_iter()
+        .map(|game_events| {
+            game_events
+                .iter()
+                .map(|game_event| {
+                    let mut children = Vec::new();
+                    while let Some(child) =
+                        child_results_iter.next_if(|f| event_id_for_child(f) == game_event.id)
+                    {
+                        children.push(child);
+                    }
+                    children
+                })
+                .collect_vec()
+        })
+        .collect_vec();
+
+    assert_eq!(child_results_iter.count(), 0);
+    
+    results
+}
+
 pub fn events_for_games(
     conn: &mut PgConnection,
     taxa: &Taxa,
@@ -404,6 +434,8 @@ pub fn events_for_games(
 )> {
     use crate::data_schema::data::event_baserunners::dsl as runner_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielder_dsl;
+    use crate::data_schema::data::aurora_photos::dsl as aurora_photo_dsl;
+    use crate::data_schema::data::ejections::dsl as ejection_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
 
@@ -440,78 +472,63 @@ pub fn events_for_games(
     let group_events_duration = (Utc::now() - group_events_start).as_seconds_f64();
 
     let get_runners_start = Utc::now();
-    let mut db_runners_iter = runner_dsl::event_baserunners
+    let db_runners = runner_dsl::event_baserunners
         .filter(runner_dsl::event_id.eq_any(&all_event_ids))
         .order_by((
             runner_dsl::event_id.asc(),
             runner_dsl::base_before.desc().nulls_last(),
         ))
         .select(DbRunner::as_select())
-        .load(conn)?
-        .into_iter()
-        .peekable();
+        .load(conn)?;
     let get_runners_duration = (Utc::now() - get_runners_start).as_seconds_f64();
 
     let group_runners_start = Utc::now();
-    let db_runners = db_games_events
-        .iter()
-        .map(|game_events| {
-            game_events
-                .iter()
-                .map(|game_event| {
-                    let mut runners = Vec::new();
-                    while let Some(runner) =
-                        db_runners_iter.next_if(|f| f.event_id == game_event.id)
-                    {
-                        runners.push(runner);
-                    }
-                    runners
-                })
-                .collect_vec()
-        })
-        .collect_vec();
-    assert_eq!(db_runners_iter.count(), 0);
+    let db_runners = group_child_table_results(&db_games_events, db_runners, |r| r.event_id);
     let group_runners_duration = (Utc::now() - group_runners_start).as_seconds_f64();
 
     let get_fielders_start = Utc::now();
-    let mut db_fielders_iter = fielder_dsl::event_fielders
+    let db_fielders = fielder_dsl::event_fielders
         .filter(fielder_dsl::event_id.eq_any(&all_event_ids))
         .order_by((fielder_dsl::event_id, fielder_dsl::play_order))
         .select(DbFielder::as_select())
-        .load(conn)?
-        .into_iter()
-        .peekable();
+        .load(conn)?;
     let get_fielders_duration = (Utc::now() - get_fielders_start).as_seconds_f64();
 
     let group_fielders_start = Utc::now();
-    let db_fielders = db_games_events
-        .iter()
-        .map(|game_events| {
-            game_events
-                .iter()
-                .map(|game_event| {
-                    let mut fielders = Vec::new();
-                    while let Some(fielder) =
-                        db_fielders_iter.next_if(|f| f.event_id == game_event.id)
-                    {
-                        fielders.push(fielder);
-                    }
-                    fielders
-                })
-                .collect_vec()
-        })
-        .collect_vec();
-    assert_eq!(db_fielders_iter.count(), 0);
+    let db_fielders = group_child_table_results(&db_games_events, db_fielders, |r| r.event_id);
     let group_fielders_duration = (Utc::now() - group_fielders_start).as_seconds_f64();
 
+    let get_aurora_photos_start = Utc::now();
+    let db_aurora_photos = aurora_photo_dsl::aurora_photos
+        .filter(aurora_photo_dsl::event_id.eq_any(&all_event_ids))
+        .order_by((aurora_photo_dsl::event_id, aurora_photo_dsl::is_listed_first.desc()))
+        .select(DbAuroraPhoto::as_select())
+        .load(conn)?;
+    let get_aurora_photos_duration = (Utc::now() - get_aurora_photos_start).as_seconds_f64();
+
+    let group_aurora_photos_start = Utc::now();
+    let db_aurora_photos = group_child_table_results(&db_games_events, db_aurora_photos, |r| r.event_id);
+    let group_aurora_photos_duration = (Utc::now() - group_aurora_photos_start).as_seconds_f64();
+    let get_ejections_start = Utc::now();
+    let db_ejections = ejection_dsl::ejections
+        .filter(ejection_dsl::event_id.eq_any(&all_event_ids))
+        .order_by(ejection_dsl::event_id)
+        .select(DbEjection::as_select())
+        .load(conn)?;
+    let get_ejections_duration = (Utc::now() - get_ejections_start).as_seconds_f64();
+
+    let group_ejections_start = Utc::now();
+    let db_ejections = group_child_table_results(&db_games_events, db_ejections, |r| r.event_id);
+    let group_ejections_duration = (Utc::now() - group_ejections_start).as_seconds_f64();
+    
     let post_process_start = Utc::now();
-    let result = itertools::izip!(game_ids, db_games_events, db_runners, db_fielders)
-        .map(|(game_id, events, runners, fielders)| {
+    let result = itertools::izip!(game_ids, db_games_events, db_runners, db_fielders, db_aurora_photos, db_ejections)
+        .map(|(game_id, events, runners, fielders, aurora_photos, ejections)| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
-            let detail_events = itertools::izip!(events, runners, fielders)
-                .map(|(event, runners, fielders)| {
-                    to_db_format::row_to_event(taxa, event, runners, fielders)
+            let detail_events = itertools::izip!(events, runners, fielders, aurora_photos, ejections)
+                .map(|(event, runners, fielders, aurora_photo, ejection)| {
+                    to_db_format::row_to_event(taxa, event, runners, fielders, aurora_photo, ejection)
                 })
                 .collect_vec();
             (game_id, detail_events)
@@ -632,6 +649,8 @@ fn insert_games_internal<'e>(
 ) -> QueryResult<InsertGamesTimings> {
     use crate::data_schema::data::event_baserunners::dsl as baserunners_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielders_dsl;
+    use crate::data_schema::data::aurora_photos::dsl as aurora_photos_dsl;
+    use crate::data_schema::data::ejections::dsl as ejections_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
@@ -928,6 +947,56 @@ fn insert_games_internal<'e>(
         n_fielders_inserted,
     );
     let insert_fielders_duration = (Utc::now() - insert_fielders_start).as_seconds_f64();
+
+    let insert_aurora_photos_start = Utc::now();
+    let new_aurora_photos = iter::zip(&event_ids_by_game, &completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_aurora_photos(taxa, *event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_aurora_photos_to_insert = new_aurora_photos.len();
+    let n_aurora_photos_inserted = diesel::copy_from(aurora_photos_dsl::aurora_photos)
+        .from_insertable(&new_aurora_photos)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_aurora_photos_to_insert == n_aurora_photos_inserted,
+        "Event aurora photos insert should have inserted {} rows, but it inserted {}",
+        n_aurora_photos_to_insert,
+        n_aurora_photos_inserted,
+    );
+    let insert_aurora_photos_duration = (Utc::now() - insert_aurora_photos_start).as_seconds_f64();
+
+    let insert_ejections_start = Utc::now();
+    let new_ejections = iter::zip(&event_ids_by_game, &completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_ejection(taxa, *event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_ejections_to_insert = new_ejections.len();
+    let n_ejections_inserted = diesel::copy_from(ejections_dsl::ejections)
+        .from_insertable(&new_ejections)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_ejections_to_insert == n_ejections_inserted,
+        "Event ejections insert should have inserted {} rows, but it inserted {}",
+        n_ejections_to_insert,
+        n_ejections_inserted,
+    );
+    let insert_ejections_duration = (Utc::now() - insert_ejections_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,

@@ -9,7 +9,7 @@ use diesel::QueryResult;
 use diesel::prelude::*;
 use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
-use log::error;
+use log::{error, warn};
 use std::collections::HashSet;
 use taxa_macro::*;
 
@@ -675,6 +675,42 @@ impl Into<mmolb_parsing::enums::Place> for TaxaSlot {
             TaxaSlot::StartingPitcher => mmolb_parsing::enums::Place::StartingPitcher(None),
             TaxaSlot::ReliefPitcher => mmolb_parsing::enums::Place::ReliefPitcher(None),
             TaxaSlot::Pitcher => mmolb_parsing::enums::Place::Pitcher,
+        }
+    }
+}
+
+impl From<mmolb_parsing::enums::Place> for TaxaSlot {
+    fn from(value: mmolb_parsing::enums::Place) -> Self {
+        match value {
+            mmolb_parsing::enums::Place::Catcher => TaxaSlot::Catcher,
+            mmolb_parsing::enums::Place::FirstBaseman => TaxaSlot::FirstBase,
+            mmolb_parsing::enums::Place::SecondBaseman => TaxaSlot::SecondBase,
+            mmolb_parsing::enums::Place::ThirdBaseman => TaxaSlot::ThirdBase,
+            mmolb_parsing::enums::Place::ShortStop => TaxaSlot::Shortstop,
+            mmolb_parsing::enums::Place::LeftField => TaxaSlot::LeftField,
+            mmolb_parsing::enums::Place::CenterField => TaxaSlot::CenterField,
+            mmolb_parsing::enums::Place::RightField => TaxaSlot::RightField,
+            mmolb_parsing::enums::Place::DesignatedHitter => TaxaSlot::DesignatedHitter,
+            mmolb_parsing::enums::Place::StartingPitcher(None) => TaxaSlot::StartingPitcher,
+            mmolb_parsing::enums::Place::StartingPitcher(Some(1)) => TaxaSlot::StartingPitcher1,
+            mmolb_parsing::enums::Place::StartingPitcher(Some(2)) => TaxaSlot::StartingPitcher2,
+            mmolb_parsing::enums::Place::StartingPitcher(Some(3)) => TaxaSlot::StartingPitcher3,
+            mmolb_parsing::enums::Place::StartingPitcher(Some(4)) => TaxaSlot::StartingPitcher4,
+            mmolb_parsing::enums::Place::StartingPitcher(Some(5)) => TaxaSlot::StartingPitcher5,
+            mmolb_parsing::enums::Place::StartingPitcher(other) => {
+                warn!("Unexpected starting pitcher number {:?}", other);
+                TaxaSlot::StartingPitcher
+            },
+            mmolb_parsing::enums::Place::ReliefPitcher(None) => TaxaSlot::ReliefPitcher,
+            mmolb_parsing::enums::Place::ReliefPitcher(Some(1)) => TaxaSlot::ReliefPitcher1,
+            mmolb_parsing::enums::Place::ReliefPitcher(Some(2)) => TaxaSlot::ReliefPitcher2,
+            mmolb_parsing::enums::Place::ReliefPitcher(Some(3)) => TaxaSlot::ReliefPitcher3,
+            mmolb_parsing::enums::Place::ReliefPitcher(other) => {
+                warn!("Unexpected relief pitcher number {:?}", other);
+                TaxaSlot::ReliefPitcher
+            },
+            mmolb_parsing::enums::Place::Closer => TaxaSlot::Closer,
+            mmolb_parsing::enums::Place::Pitcher => TaxaSlot::Pitcher,
         }
     }
 }

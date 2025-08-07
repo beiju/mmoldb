@@ -2909,6 +2909,11 @@ impl<'g> Game<'g> {
                     // TODO Don't ignore prosperity weather
                     None
                 },
+                [ParsedEventMessageDiscriminants::PhotoContest]
+                ParsedEventMessage::PhotoContest { .. } => {
+                    // TODO Don't ignore the photo contest result
+                    None
+                },
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for
                 [ParsedEventMessageDiscriminants::KnownBug]

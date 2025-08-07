@@ -20,6 +20,7 @@ struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
 const START_INGEST_EVERY_LAUNCH: bool = true;
 const INGEST_PERIOD_SEC: i64 = 30 * 60;
 const STATEMENT_TIMEOUT_SEC: i64 = 0;
+const ENABLE_PLAYER_INGEST: bool = false;
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
@@ -154,8 +155,10 @@ async fn ingest_everything(
     ingest_id: i64,
     abort: CancellationToken,
 ) -> miette::Result<()> {
-    ingest_players::ingest_players(pg_url.clone(), abort.clone()).await?;
-    // Player feed ingest has to start after all players with inbuilt feeds are processed
-    ingest_feed::ingest_player_feeds(pg_url.clone(), abort.clone()).await?;
+    if ENABLE_PLAYER_INGEST {
+        ingest_players::ingest_players(pg_url.clone(), abort.clone()).await?;
+        // Player feed ingest has to start after all players with inbuilt feeds are processed
+        ingest_feed::ingest_player_feeds(pg_url.clone(), abort.clone()).await?;
+    }
     ingest_games::ingest_games(pg_url, ingest_id, abort).await
 }

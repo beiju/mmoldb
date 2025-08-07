@@ -1,8 +1,9 @@
+use itertools::Itertools;
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbEvent, DbFielder, DbRunner, NewBaserunner, NewEvent, NewFielder};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbFielder, DbRunner, NewAuroraPhoto, NewBaserunner, NewEjection, NewEvent, NewFielder};
 use crate::taxa::Taxa;
 use miette::Diagnostic;
-use mmolb_parsing::parsed_event::Cheer;
+use mmolb_parsing::parsed_event::{Cheer, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, PlacedPlayer, SnappedPhotos, ViolationType};
 use thiserror::Error;
 
 pub fn event_to_row<'e>(
@@ -91,17 +92,90 @@ pub fn event_to_fielders<'e>(
         .collect()
 }
 
+pub fn event_to_aurora_photos<'e>(
+    taxa: &Taxa,
+    event_id: i64,
+    event: &'e EventDetail<&'e str>,
+) -> Vec<NewAuroraPhoto<'e>> {
+
+    match &event.aurora_photos {
+        None => Vec::new(),
+        Some(photos) => vec![
+            NewAuroraPhoto {
+                is_listed_first: true,
+                event_id,
+                team_emoji: photos.first_team_emoji,
+                player_slot: taxa.slot_id(photos.first_player.place.into()),
+                player_name: photos.first_player.name,
+            },
+            NewAuroraPhoto {
+                is_listed_first: false,
+                event_id,
+                team_emoji: photos.second_team_emoji,
+                player_slot: taxa.slot_id(photos.second_player.place.into()),
+                player_name: photos.second_player.name,
+            }
+        ]
+    }
+}
+
+pub fn event_to_ejection<'e>(
+    taxa: &Taxa,
+    event_id: i64,
+    event: &'e EventDetail<&'e str>,
+) -> Vec<NewEjection<'e>> {
+
+    match &event.ejection {
+        None => Vec::new(),
+        Some(photos) => vec![
+            match photos.replacement {
+                EjectionReplacement::BenchPlayer { player_name } => NewEjection {
+                    event_id,
+                    team_emoji: photos.team.emoji,
+                    team_name: photos.team.name,
+                    ejected_player_name: photos.ejected_player.name,
+                    ejected_player_slot: taxa.slot_id(photos.ejected_player.place.into()),
+                    violation_type: photos.violation_type.to_string(),
+                    reason: photos.reason.to_string(),
+                    replacement_player_name: player_name,
+                    replacement_player_slot: None,
+                },
+                EjectionReplacement::RosterPlayer { player } => NewEjection {
+                    event_id,
+                    team_emoji: photos.team.emoji,
+                    team_name: photos.team.name,
+                    ejected_player_name: photos.ejected_player.name,
+                    ejected_player_slot: taxa.slot_id(photos.ejected_player.place.into()),
+                    violation_type: photos.violation_type.to_string(),
+                    reason: photos.reason.to_string(),
+                    replacement_player_name: player.name,
+                    replacement_player_slot: Some(taxa.slot_id(player.place.into())),
+                }
+            }
+        ]
+    }
+}
+
 #[derive(Debug, Error, Diagnostic)]
 pub enum RowToEventError {
-    #[error("Database returned invalid event type id {0}")]
+    #[error("invalid event type id {0}")]
     InvalidEventTypeId(i64),
+
+    #[error("invalid number of aurora photos on a single event (expected 0 or 2, not {0})")]
+    InvalidNumberOfAuroraPhotos(usize),
+
+    #[error("invalid number of ejections on a single event (expected 0 or 1, not {0})")]
+    InvalidNumberOfEjections(usize),
 }
+
 
 pub fn row_to_event<'e>(
     taxa: &Taxa,
     event: DbEvent,
     runners: Vec<DbRunner>,
     fielders: Vec<DbFielder>,
+    aurora_photo: Vec<DbAuroraPhoto>,
+    ejection: Vec<DbEjection>,
 ) -> Result<EventDetail<String>, RowToEventError> {
     let baserunners = runners
         .into_iter()
@@ -132,6 +206,61 @@ pub fn row_to_event<'e>(
             }
         })
         .collect();
+
+    let aurora_photos = match aurora_photo.len() {
+        0 => None,
+        2 => {
+            let (first, second) = aurora_photo.into_iter().collect_tuple().unwrap();
+            Some(SnappedPhotos {
+                first_team_emoji: first.team_emoji,
+                first_player: PlacedPlayer {
+                    name: first.player_name,
+                    place: taxa.slot_from_id(first.player_slot).into(),
+                },
+                second_team_emoji: second.team_emoji,
+                second_player: PlacedPlayer {
+                    name: second.player_name,
+                    place: taxa.slot_from_id(second.player_slot).into(),
+                },
+            })
+        },
+        other => {
+            return Err(RowToEventError::InvalidNumberOfAuroraPhotos(other));
+        }
+    };
+
+    let ejection = match ejection.len() {
+        0 => None,
+        1 => {
+            let (ejection,) = ejection.into_iter().collect_tuple().unwrap();
+            Some(Ejection {
+                team: EmojiTeam {
+                    emoji: ejection.team_emoji,
+                    name: ejection.team_name,
+                },
+                ejected_player: PlacedPlayer {
+                    name: ejection.ejected_player_name,
+                    place: taxa.slot_from_id(ejection.ejected_player_slot).into(),
+                },
+                violation_type: ViolationType::new(&ejection.violation_type),
+                reason: EjectionReason::new(&ejection.reason),
+                replacement: match ejection.replacement_player_slot {
+                    None => EjectionReplacement::BenchPlayer {
+                        player_name: ejection.replacement_player_name,
+                    },
+                    Some(replacement_player_slot) => EjectionReplacement::RosterPlayer {
+                        player: PlacedPlayer {
+                            name: ejection.replacement_player_name,
+                            place: taxa.slot_from_id(replacement_player_slot).into(),
+                        },
+                    }
+                },
+            })
+        },
+        other => {
+            return Err(RowToEventError::InvalidNumberOfEjections(other));
+        }
+    };
 
     Ok(EventDetail {
         game_event_index: event.game_event_index as usize,
@@ -174,8 +303,8 @@ pub fn row_to_event<'e>(
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
         cheer: event.cheer.as_deref().map(Cheer::new),
-        aurora_photos: None,  // TODO
-        ejection: None,  // TODO
-        fair_ball_ejection: None,  // TODO
+        aurora_photos,
+        ejection,
+        fair_ball_ejection: None, // TODO
     })
 }

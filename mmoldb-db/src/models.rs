@@ -658,3 +658,58 @@ pub struct NewPlayerEquipmentEffectVersion<'a> {
     pub effect_type: i64,
     pub value: f64,
 }
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::ejections)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbEjection {
+    pub id: i64,
+    pub event_id: i64,
+    pub team_emoji: String,
+    pub team_name: String,
+    pub ejected_player_name: String,
+    pub ejected_player_slot: i64,
+    pub violation_type: String,
+    pub reason: String,
+    pub replacement_player_name: String,
+    pub replacement_player_slot: Option<i64>,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::ejections)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewEjection<'a> {
+    pub event_id: i64,
+    pub team_emoji: &'a str,
+    pub team_name: &'a str,
+    pub ejected_player_name: &'a str,
+    pub ejected_player_slot: i64,
+    pub violation_type: String,
+    pub reason: String,
+    pub replacement_player_name: &'a str,
+    pub replacement_player_slot: Option<i64>,
+
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::aurora_photos)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbAuroraPhoto {
+    pub id: i64,
+    pub event_id: i64,
+    pub is_listed_first: bool,
+    pub team_emoji: String,
+    pub player_slot: i64,
+    pub player_name: String,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::aurora_photos)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewAuroraPhoto<'a> {
+    pub is_listed_first: bool,
+    pub event_id: i64,
+    pub team_emoji: &'a str,
+    pub player_slot: i64,
+    pub player_name: &'a str,
+}
