@@ -7,7 +7,7 @@ use mmolb_parsing::enums::{
     GameOverMessage, HomeAway, NowBattingStats, Place, StrikeType, TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, Ejection, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher};
 use mmoldb_db::taxa::AsInsertable;
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
@@ -938,6 +938,28 @@ impl<'g> EventDetailBuilder<'g> {
             ingest_logs.error(format!("Runner(s) out not found: {:?}", extra_runners_out));
         }
 
+        let pitcher_name = if let MaybePlayer::Player(pitcher) = &self.raw_event.pitcher {
+            pitcher
+        } else {
+            // TODO Correct error handling
+            panic!("Must have a pitcher when building an EventDetail");
+        };
+        // When the active pitcher is ejected, MMOLB updates the name
+        // in the event data on that event, even though the previous
+        // pitcher is responsible for what happened in that event.
+        let pitcher_name = if let Some(ejection) = &self.ejection {
+            if ejection.ejected_player.name == pitcher_name {
+                match ejection.replacement {
+                    EjectionReplacement::BenchPlayer { player_name } => { player_name}
+                    EjectionReplacement::RosterPlayer { player } => { player.name}
+                }
+            } else {
+                pitcher_name
+            }
+        } else {
+            pitcher_name
+        };
+
         EventDetail {
             game_event_index: self.game_event_index,
             fair_ball_event_index: self.fair_ball_event_index,
@@ -954,12 +976,7 @@ impl<'g> EventDetailBuilder<'g> {
             home_team_score_before: self.prev_game_state.home_score,
             home_team_score_after: game.state.home_score,
             batter_name,
-            pitcher_name: if let MaybePlayer::Player(pitcher) = &self.raw_event.pitcher {
-                pitcher
-            } else {
-                // TODO Correct error handling
-                panic!("Must have a pitcher when building an EventDetail");
-            },
+            pitcher_name,
             fielders: self.fielders,
             detail_type: type_detail,
             hit_base: self.hit_base,
@@ -1902,6 +1919,55 @@ impl<'g> Game<'g> {
         None
     }
 
+    fn handle_ejection(&mut self, ejection: &Option<Ejection<&'g str>>, ingest_logs: &mut IngestLogs) {
+        if let Some(ejection) = ejection {
+            Game::handle_ejection_for_team(self.defending_team_mut(), ejection, ingest_logs);
+            // The batting team's pitcher could get ejected too
+            Game::handle_ejection_for_team(self.batting_team_mut(), ejection, ingest_logs);
+            // Ejections always happen at the end of a PA (I think) so no
+            // need to do anything about batter swaps. They also don't
+            // affect the runner -- an ejected player gets to stay on the
+            // bases until they get out/home/stranded.
+        }
+    }
+
+    fn handle_ejection_for_team(team: &mut TeamInGame<'g>, ejection: &Ejection<&'g str>, ingest_logs: &mut IngestLogs) {
+        if team.team_emoji == ejection.team.emoji &&
+                team.team_name == ejection.team.name &&
+                team.active_pitcher.name == ejection.ejected_player.name {
+            if team.active_pitcher.slot != ejection.ejected_player.place.into() {
+                // TODO If this warn is never hit, consider restricting on slot too
+                ingest_logs.warn(format!(
+                    "A player who matches the active pitcher's team and name was ejected, but \
+                    their slots didn't match (active pitcher {} vs ejected player {})",
+                    team.active_pitcher.slot, ejection.ejected_player.place
+                ));
+            }
+
+            // Assume the active pitcher was replaced
+            ingest_logs.info(format!(
+                "A player who matches the active pitcher's team and name was ejected. Assuming it \
+                was the active pitcher and replacing {} {}'s {} with {}.",
+                team.team_emoji, team.team_name, team.active_pitcher, match ejection.replacement {
+                    EjectionReplacement::BenchPlayer { player_name } => {
+                        format!("bench player {}", player_name)
+                    }
+                    EjectionReplacement::RosterPlayer { player } => player.to_string(),
+                }
+            ));
+
+            match &ejection.replacement {
+                EjectionReplacement::BenchPlayer { player_name } => {
+                    // Assuming for now that the bench player always assumes the same slot
+                    team.active_pitcher.name = player_name;
+                }
+                EjectionReplacement::RosterPlayer { player } => {
+                    team.active_pitcher = (*player).into();
+                }
+            }
+        }
+    }
+
     pub fn next(
         &mut self,
         game_event_index: usize,
@@ -1972,9 +2038,27 @@ impl<'g> Game<'g> {
 
                     match pitcher_status {
                         StartOfInningPitcher::Same { emoji, name } => {
-                            ingest_logs.info(format!("Not incrementing pitcher_count on returning pitcher {emoji} {name}"));
+                            ingest_logs.info(format!(
+                                "Not incrementing pitcher_count on returning pitcher {} {}",
+                                emoji, name
+                            ));
+                            let defending_team = self.defending_team();
+                            if *name != defending_team.active_pitcher.name {
+                                ingest_logs.warn(format!(
+                                    "Returning pitcher name {} does not match stored pitcher name \
+                                    {}",
+                                    name, defending_team.active_pitcher.name,
+                                ));
+                            }
                         }
                         StartOfInningPitcher::Different { leaving_emoji: _, leaving_pitcher, arriving_emoji: _, arriving_pitcher } => {
+                            let defending_team = self.defending_team();
+                            if leaving_pitcher.name != defending_team.active_pitcher.name {
+                                ingest_logs.warn(format!(
+                                    "Leaving pitcher name {} does not match stored pitcher name {}",
+                                    leaving_pitcher.name, defending_team.active_pitcher.name,
+                                ));
+                            }
                             self.defending_team_mut().active_pitcher = (*arriving_pitcher).into();
                             self.defending_team_mut().pitcher_count += 1;
                             ingest_logs.info(format!("Incrementing pitcher_count as {leaving_pitcher} is replaced by {arriving_pitcher}."));
@@ -2076,6 +2160,7 @@ impl<'g> Game<'g> {
                             },
                             ingest_logs,
                         );
+                        self.handle_ejection(ejection, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
@@ -2091,6 +2176,7 @@ impl<'g> Game<'g> {
                         self.check_count(*count, ingest_logs);
 
                         self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
+                        self.handle_ejection(ejection, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
@@ -2134,6 +2220,7 @@ impl<'g> Game<'g> {
                             }
                             (Some(FoulType::Tip), StrikeType::Swinging) => { TaxaEventType::FoulTipStrikeout }
                         };
+                        self.handle_ejection(ejection, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
@@ -2166,6 +2253,7 @@ impl<'g> Game<'g> {
                     [ParsedEventMessageDiscriminants::FairBall]
                     ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, ejection } => {
                         self.check_batter(batter_name, batter, ingest_logs);
+                        self.handle_ejection(ejection, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
                             game_event_index,
@@ -2194,6 +2282,7 @@ impl<'g> Game<'g> {
                             ingest_logs,
                         );
                         self.finish_pa(batter);
+                        self.handle_ejection(ejection, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
@@ -2220,6 +2309,7 @@ impl<'g> Game<'g> {
                             ingest_logs,
                         );
                         self.finish_pa(batter);
+                        self.handle_ejection(ejection, ingest_logs);
 
                         detail_builder
                             .pitch(pitch)
@@ -2336,6 +2426,7 @@ impl<'g> Game<'g> {
                     );
                     self.add_out();
                     self.finish_pa(batter_name);
+                    self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball)
@@ -2362,6 +2453,7 @@ impl<'g> Game<'g> {
                     );
                     self.add_out();
                     self.finish_pa(batter_name);
+                    self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball)
@@ -2389,6 +2481,7 @@ impl<'g> Game<'g> {
                     );
 
                     self.finish_pa(batter_name);
+                    self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball)
@@ -2416,6 +2509,7 @@ impl<'g> Game<'g> {
                     );
                     self.add_error();
                     self.finish_pa(batter_name);
+                    self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball)
@@ -2457,6 +2551,7 @@ impl<'g> Game<'g> {
                     // without an existing runner
                     self.add_runs_to_batting_team(1);
                     self.finish_pa(batter_name);
+                    self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball)
@@ -2484,6 +2579,7 @@ impl<'g> Game<'g> {
                     );
                     self.add_out(); // This is the out for the batter
                     self.finish_pa(batter_name);  // Must be after all outs are added
+                    self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball)
@@ -2511,6 +2607,7 @@ impl<'g> Game<'g> {
                         ingest_logs,
                     );
                     self.finish_pa(batter_name);
+                    self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball)
@@ -2542,6 +2639,7 @@ impl<'g> Game<'g> {
                         ingest_logs,
                     );
                     self.finish_pa(batter_name);
+                    self.handle_ejection(ejection, ingest_logs);
 
                     let detail_builder = detail_builder
                         .fair_ball(fair_ball)
@@ -2558,6 +2656,7 @@ impl<'g> Game<'g> {
                     } else {
                         detail_builder.add_runner(batter, TaxaBase::First)
                     };
+                    self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
                         .fielders(fielders.clone(), ingest_logs)?
@@ -2584,6 +2683,7 @@ impl<'g> Game<'g> {
                             );
 
                             self.finish_pa(batter_name);
+                            self.handle_ejection(ejection, ingest_logs);
 
                             detail_builder
                                 .fair_ball(fair_ball)
@@ -2618,6 +2718,7 @@ impl<'g> Game<'g> {
                             } else {
                                 ingest_logs.warn("Expected exactly one listed fielder in a fielder's choice with an error");
                             }
+                            self.handle_ejection(ejection, ingest_logs);
 
                             detail_builder
                                 .fair_ball(fair_ball)

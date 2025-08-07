@@ -3,7 +3,7 @@ use mmolb_parsing::parsed_event::PlacedPlayer;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum BestEffortSlot {
     Slot(Slot),
     SlotType(SlotDiscriminants),
