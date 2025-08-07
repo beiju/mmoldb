@@ -320,14 +320,8 @@ pub fn chron_player_feed_as_new<'a>(
                 ("684148178ba62cf2ce8d92f6", [
                     ("2025-07-15T06:39:09.516311Z", (3, Day::Day(21), "Sophia Chavarria", "Marcelle Thornton"))
                 ]),
-                ("6841372354a7fbd41338748e", [
-                    ("2025-07-18T02:11:20.277059Z", (3, Day::Day(89), "Yolo Clemente", "Tim Brito"))
-                ]),
                 ("68655d8277149281c81ea917", [
                     ("2025-07-18T05:04:14.432935Z", (3, Day::Day(92), "Lucy Haque", "Yara Sin"))
-                ]),
-                ("6841004288056169e00787af", [
-                    ("2025-07-20T04:59:15.816116Z", (3, Day::Day(121), "Eizabeth Lindberg", "Susie Ellsworth"))
                 ]),
                 ("684cec93523adf827ba420e4", [
                     ("2025-07-22T05:08:47.992513Z", (3, Day::Day(170), "Algernon Larsson", "Dustin Randybass"))
@@ -337,15 +331,6 @@ pub fn chron_player_feed_as_new<'a>(
                 ]),
                 ("684128b38ba62cf2ce8d91f8", [
                     ("2025-07-23T05:09:54.563711Z", (3, Day::Day(194), "Harmon Matsui", "Myra Tomlinson"))
-                ]),
-                ("6840fea6f415a392f733fa2e", [
-                    ("2025-07-26T03:42:55.386382Z", (3, Day::PostseasonPreview, "Aria Petrov", "Franklin Channing"))
-                ]),
-                ("6875c6ddf6f381c8cf035cfb", [
-                    ("2025-07-26T05:19:40.249936Z", (3, Day::PostseasonPreview, "Yongjun Mitra", "Bat Gül"))
-                ]),
-                ("68427bbaf415a392f73402b3", [
-                    ("2025-07-26T02:15:32.098589Z", (3, Day::PostseasonPreview, "Atem Masson", "Pogo-Stick Granados"))
                 ]),
                 ("6879d391762fe1c1e4769883", [
                     ("2025-07-26T00:42:41.224451Z", (3, Day::PostseasonPreview, "Han-Soo van der Meer", "Tommy van den Berg"))
@@ -433,7 +418,7 @@ pub fn chron_player_feed_as_new<'a>(
     struct CheckPlayerName<'a> {
         known_name: Option<&'a str>,
         temporary_name_override: Option<&'a str>,
-    };
+    }
     impl<'a> CheckPlayerName<'a> {
         pub fn new() -> Self {
             Self { known_name: None, temporary_name_override: None }
