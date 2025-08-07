@@ -1934,20 +1934,14 @@ impl<'g> Game<'g> {
     fn handle_ejection_for_team(team: &mut TeamInGame<'g>, ejection: &Ejection<&'g str>, ingest_logs: &mut IngestLogs) {
         if team.team_emoji == ejection.team.emoji &&
                 team.team_name == ejection.team.name &&
-                team.active_pitcher.name == ejection.ejected_player.name {
-            if team.active_pitcher.slot != ejection.ejected_player.place.into() {
-                // TODO If this warn is never hit, consider restricting on slot too
-                ingest_logs.warn(format!(
-                    "A player who matches the active pitcher's team and name was ejected, but \
-                    their slots didn't match (active pitcher {} vs ejected player {})",
-                    team.active_pitcher.slot, ejection.ejected_player.place
-                ));
-            }
-
+                team.active_pitcher.name == ejection.ejected_player.name &&
+                // I checked that the slots do match for all true ejections, even
+                // down to e.g. SP vs SP5
+                team.active_pitcher.slot == ejection.ejected_player.place.into() {
             // Assume the active pitcher was replaced
             ingest_logs.info(format!(
-                "A player who matches the active pitcher's team and name was ejected. Assuming it \
-                was the active pitcher and replacing {} {}'s {} with {}.",
+                "A player who matches the active pitcher's team, name, and slot was ejected. \
+                Assuming it was the active pitcher and replacing {} {}'s {} with {}.",
                 team.team_emoji, team.team_name, team.active_pitcher, match ejection.replacement {
                     EjectionReplacement::BenchPlayer { player_name } => {
                         format!("bench player {}", player_name)
@@ -2042,22 +2036,56 @@ impl<'g> Game<'g> {
                                 "Not incrementing pitcher_count on returning pitcher {} {}",
                                 emoji, name
                             ));
-                            let defending_team = self.defending_team();
+                            let season = self.season; // for lifetime reasons
+                            let defending_team = self.defending_team_mut();
                             if *name != defending_team.active_pitcher.name {
-                                ingest_logs.warn(format!(
-                                    "Returning pitcher name {} does not match stored pitcher name \
-                                    {}",
-                                    name, defending_team.active_pitcher.name,
-                                ));
+                                if season < 3 {
+                                    // TODO Look into the pre-s3 failures here
+                                    ingest_logs.info(format!(
+                                        "Returning pitcher name {} does not match stored pitcher \
+                                        name {}. This warning is temporarily downgraded to an info \
+                                        message for seasons before season 3.",
+                                        name, defending_team.active_pitcher.name,
+                                    ));
+                                } else if *number == 1 {
+                                    // see:
+                                    // https://mmolb.com/watch/6889c31c23b4f3b305e99e1b?event=5
+                                    // https://mmolb.com/watch/6889c32323b4f3b305e99f7b?event=45
+                                    ingest_logs.info(format!(
+                                        "Returning pitcher name {} does not match stored pitcher \
+                                        name {} in inning 1. Assuming this was a late-firing \
+                                        recompose.",
+                                        name, defending_team.active_pitcher.name,
+                                    ));
+                                    // Recompose can't have changed the player's slot
+                                    defending_team.active_pitcher.name = name;
+                                } else {
+                                    ingest_logs.warn(format!(
+                                        "Returning pitcher name {} does not match stored pitcher \
+                                        name {}.",
+                                        name, defending_team.active_pitcher.name,
+                                    ));
+                                }
                             }
                         }
                         StartOfInningPitcher::Different { leaving_emoji: _, leaving_pitcher, arriving_emoji: _, arriving_pitcher } => {
                             let defending_team = self.defending_team();
                             if leaving_pitcher.name != defending_team.active_pitcher.name {
-                                ingest_logs.warn(format!(
-                                    "Leaving pitcher name {} does not match stored pitcher name {}",
-                                    leaving_pitcher.name, defending_team.active_pitcher.name,
-                                ));
+                                if self.season < 3 {
+                                    // TODO Look into the pre-s3 failures here
+                                    ingest_logs.info(format!(
+                                        "Leaving pitcher name {} does not match stored pitcher \
+                                        name {}. This warning is temporarily downgraded to an info \
+                                        message for seasons before season 3.",
+                                        leaving_pitcher.name, defending_team.active_pitcher.name,
+                                    ));
+                                }  else {
+                                    ingest_logs.warn(format!(
+                                        "Leaving pitcher name {} does not match stored pitcher \
+                                        name {}",
+                                        leaving_pitcher.name, defending_team.active_pitcher.name,
+                                    ));
+                                }
                             }
                             self.defending_team_mut().active_pitcher = (*arriving_pitcher).into();
                             self.defending_team_mut().pitcher_count += 1;

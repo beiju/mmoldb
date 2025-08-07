@@ -18,7 +18,7 @@ chrono = "0.4.41"
 itertools = "0.14.0"
 log = "0.4.27"
 serde_json = "1.0.140"
-mmolb_parsing = { git = "https://github.com/beiju/mmolb_parsing.git", branch = "more-s3" }
+mmolb_parsing = { git = "https://github.com/unnamed-girl/mmolb_parsing.git" }
 miette = "7.6.0"
 hashbrown = "0.15.4"
 thiserror = "2.0.12"
