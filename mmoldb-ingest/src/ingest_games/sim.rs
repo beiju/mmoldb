@@ -7,10 +7,7 @@ use mmolb_parsing::enums::{
     GameOverMessage, HomeAway, NowBattingStats, Place, StrikeType, TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{
-    BaseSteal, Cheer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug,
-    ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, StartOfInningPitcher,
-};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, Ejection, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher};
 use mmoldb_db::taxa::AsInsertable;
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
@@ -160,12 +157,14 @@ struct Pitch {
 }
 
 #[derive(Debug, Clone)]
-struct FairBall {
+struct FairBall<'g> {
     game_event_index: usize,
     fair_ball_type: FairBallType,
     fair_ball_destination: FairBallDestination,
     pitch: Option<Pitch>,
     cheer: Option<Cheer>,
+    aurora_photos: Option<SnappedPhotos<&'g str>>,
+    ejection: Option<Ejection<&'g str>>
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -228,7 +227,7 @@ enum EventContext<'g> {
         batter_name: &'g str,
         first_pitch_of_plate_appearance: bool,
     },
-    ExpectFairBallOutcome(&'g str, FairBall),
+    ExpectFairBallOutcome(&'g str, FairBall<'g>),
     ExpectFallingStarOutcome {
         falling_star_hit_player: &'g str,
         batter_name: &'g str,
@@ -495,15 +494,24 @@ struct EventDetailBuilder<'g> {
     runners_out: Vec<RunnerOut<&'g str>>,
     batter_scores: bool,
     cheer: Option<Cheer>,
+    aurora_photos: Option<SnappedPhotos<&'g str>>,
+    ejection: Option<Ejection<&'g str>>,
+    fair_ball_ejection: Option<Ejection<&'g str>>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
-    fn fair_ball(mut self, fair_ball: FairBall) -> Self {
+    fn fair_ball(mut self, fair_ball: FairBall<'g>) -> Self {
         self = self.pitch(fair_ball.pitch);
         self.fair_ball_event_index = Some(fair_ball.game_event_index);
         self.fair_ball_type = Some(fair_ball.fair_ball_type.into());
         self.fair_ball_direction = Some(fair_ball.fair_ball_destination.into());
+        // Cheer and aurora photos can't happen on a FairBallOutcome,
+        // so it's ok to use the same fields
         self = self.cheer(fair_ball.cheer);
+        self = self.aurora_photos(fair_ball.aurora_photos);
+        // Ejections can happen on either event (possibly both?) so we
+        // have to store them separately
+        self.fair_ball_ejection = fair_ball.ejection;
         self
     }
 
@@ -682,6 +690,16 @@ impl<'g> EventDetailBuilder<'g> {
 
     fn cheer(mut self, cheer: Option<Cheer>) -> Self {
         self.cheer = cheer;
+        self
+    }
+
+    fn aurora_photos(mut self, aurora_photos: Option<SnappedPhotos<&'g str>>) -> Self {
+        self.aurora_photos = aurora_photos;
+        self
+    }
+
+    fn ejection(mut self, ejection: Option<Ejection<&'g str>>) -> Self {
+        self.ejection = ejection;
         self
     }
 
@@ -958,6 +976,9 @@ impl<'g> EventDetailBuilder<'g> {
             batter_count: game.batting_team().batter_count,
             batter_subcount: game.batting_team().batter_subcount,
             cheer: self.cheer,
+            aurora_photos: self.aurora_photos,
+            ejection: self.ejection,
+            fair_ball_ejection: self.fair_ball_ejection,
         }
     }
 }
@@ -1387,6 +1408,9 @@ impl<'g> Game<'g> {
             runners_out: Vec::new(),
             batter_scores: false,
             cheer: None,
+            aurora_photos: None,
+            ejection: None,
+            fair_ball_ejection: None,
         }
     }
 
@@ -2040,7 +2064,7 @@ impl<'g> Game<'g> {
                 game_event!(
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
-                    ParsedEventMessage::Ball { count, steals, cheer } => {
+                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection } => {
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
                         self.update_runners(
@@ -2056,11 +2080,13 @@ impl<'g> Game<'g> {
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
+                            .aurora_photos(aurora_photos.clone())
+                            .ejection(ejection.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals, cheer } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection } => {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
@@ -2069,6 +2095,8 @@ impl<'g> Game<'g> {
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
+                            .aurora_photos(aurora_photos.clone())
+                            .ejection(ejection.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
@@ -2076,7 +2104,7 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::StrikeOut]
-                    ParsedEventMessage::StrikeOut { foul, batter, strike, steals, cheer } => {
+                    ParsedEventMessage::StrikeOut { foul, batter, strike, steals, cheer, aurora_photos, ejection } => {
                         self.check_batter(batter_name, batter, ingest_logs);
                         if self.state.count_strikes < 2 {
                             ingest_logs.warn(format!(
@@ -2110,11 +2138,13 @@ impl<'g> Game<'g> {
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
+                            .aurora_photos(aurora_photos.clone())
+                            .ejection(ejection.clone())
                             .steals(steals.clone())
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
-                    ParsedEventMessage::Foul { foul, steals, count, cheer } => {
+                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos } => {
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
                             self.state.count_strikes += 1;
@@ -2126,6 +2156,7 @@ impl<'g> Game<'g> {
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
+                            .aurora_photos(aurora_photos.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match foul {
                                 FoulType::Tip => TaxaEventType::FoulTip,
@@ -2133,7 +2164,7 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
-                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer } => {
+                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, ejection } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
@@ -2142,11 +2173,13 @@ impl<'g> Game<'g> {
                             fair_ball_destination: *destination,
                             pitch,
                             cheer: cheer.clone(),
+                            aurora_photos: aurora_photos.clone(),
+                            ejection: ejection.clone(),
                         });
                         None
                     },
                     [ParsedEventMessageDiscriminants::Walk]
-                    ParsedEventMessage::Walk { batter, advances, scores, cheer } => {
+                    ParsedEventMessage::Walk { batter, advances, scores, cheer, aurora_photos, ejection } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(
@@ -2165,12 +2198,14 @@ impl<'g> Game<'g> {
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
+                            .aurora_photos(aurora_photos.clone())
+                            .ejection(ejection.clone())
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .build_some(self, batter, ingest_logs, TaxaEventType::Walk)
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]
-                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer } => {
+                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer, aurora_photos, ejection } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(
@@ -2189,6 +2224,8 @@ impl<'g> Game<'g> {
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
+                            .aurora_photos(aurora_photos.clone())
+                            .ejection(ejection.clone())
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)
@@ -2283,7 +2320,7 @@ impl<'g> Game<'g> {
             EventContext::ExpectFairBallOutcome(batter_name, fair_ball) => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::CaughtOut]
-                ParsedEventMessage::CaughtOut { batter, fair_ball_type, caught_by, advances, scores, sacrifice, perfect } => {
+                ParsedEventMessage::CaughtOut { batter, fair_ball_type, caught_by, advances, scores, sacrifice, perfect, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
@@ -2302,6 +2339,7 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
+                        .ejection(ejection.clone())
                         .described_as_sacrifice(*sacrifice)
                         .is_toasty(*perfect)
                         .fielder(*caught_by, ingest_logs)?
@@ -2309,7 +2347,7 @@ impl<'g> Game<'g> {
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::CaughtOut)
                 },
                 [ParsedEventMessageDiscriminants::GroundedOut]
-                ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, perfect } => {
+                ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, perfect, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
                     self.update_runners(
@@ -2327,13 +2365,14 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
+                        .ejection(ejection.clone())
                         .is_toasty(*perfect)
                         .fielders(fielders.clone(), ingest_logs)?
                         .runner_changes(advances.clone(), scores.clone())
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::GroundedOut)
                 },
                 [ParsedEventMessageDiscriminants::BatterToBase]
-                ParsedEventMessage::BatterToBase { batter, distance, fair_ball_type, fielder, advances, scores } => {
+                ParsedEventMessage::BatterToBase { batter, distance, fair_ball_type, fielder, advances, scores, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
@@ -2353,6 +2392,7 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
+                        .ejection(ejection.clone())
                         .hit_base((*distance).into())
                         .fielder(*fielder, ingest_logs)?
                         .runner_changes(advances.clone(), scores.clone())
@@ -2360,7 +2400,7 @@ impl<'g> Game<'g> {
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::Hit)
                 },
                 [ParsedEventMessageDiscriminants::ReachOnFieldingError]
-                ParsedEventMessage::ReachOnFieldingError { batter, fielder, error, scores, advances } => {
+                ParsedEventMessage::ReachOnFieldingError { batter, fielder, error, scores, advances, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
                     self.update_runners(
@@ -2379,6 +2419,7 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
+                        .ejection(ejection.clone())
                         .fielding_error_type((*error).into())
                         .fielder(*fielder, ingest_logs)?
                         .runner_changes(advances.clone(), scores.clone())
@@ -2386,7 +2427,7 @@ impl<'g> Game<'g> {
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldingError)
                 },
                 [ParsedEventMessageDiscriminants::HomeRun]
-                ParsedEventMessage::HomeRun { batter, fair_ball_type, destination, scores, grand_slam } => {
+                ParsedEventMessage::HomeRun { batter, fair_ball_type, destination, scores, grand_slam, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
                     self.check_fair_ball_destination(&fair_ball, *destination, ingest_logs);
@@ -2419,13 +2460,14 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
+                        .ejection(ejection.clone())
                         .hit_base(TaxaBase::Home)
                         .runner_changes(Vec::new(), scores.clone())
                         .set_batter_scores()
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::HomeRun)
                 },
                 [ParsedEventMessageDiscriminants::DoublePlayCaught]
-                ParsedEventMessage::DoublePlayCaught { batter, advances, scores, out_two, fair_ball_type, fielders } => {
+                ParsedEventMessage::DoublePlayCaught { batter, advances, scores, out_two, fair_ball_type, fielders, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
@@ -2445,13 +2487,14 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
+                        .ejection(ejection.clone())
                         .runner_changes(advances.clone(), scores.clone())
                         .add_out(*out_two)
                         .fielders(fielders.clone(), ingest_logs)?
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::DoublePlay)
                 },
                 [ParsedEventMessageDiscriminants::DoublePlayGrounded]
-                ParsedEventMessage::DoublePlayGrounded { batter, advances, scores, out_one, out_two, fielders, sacrifice } => {
+                ParsedEventMessage::DoublePlayGrounded { batter, advances, scores, out_one, out_two, fielders, sacrifice, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
                     self.update_runners(
@@ -2471,6 +2514,7 @@ impl<'g> Game<'g> {
 
                     detail_builder
                         .fair_ball(fair_ball)
+                        .ejection(ejection.clone())
                         .described_as_sacrifice(*sacrifice)
                         .runner_changes(advances.clone(), scores.clone())
                         .add_out(*out_one)
@@ -2479,7 +2523,7 @@ impl<'g> Game<'g> {
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::DoublePlay)
                 },
                 [ParsedEventMessageDiscriminants::ForceOut]
-                ParsedEventMessage::ForceOut { batter, out, fielders, scores, advances, fair_ball_type } => {
+                ParsedEventMessage::ForceOut { batter, out, fielders, scores, advances, fair_ball_type, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
 
@@ -2501,6 +2545,7 @@ impl<'g> Game<'g> {
 
                     let detail_builder = detail_builder
                         .fair_ball(fair_ball)
+                        .ejection(ejection.clone())
                         .runner_changes(advances.clone(), scores.clone())
                         .add_out(*out);
 
@@ -2519,7 +2564,7 @@ impl<'g> Game<'g> {
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::ForceOut)
                 },
                 [ParsedEventMessageDiscriminants::ReachOnFieldersChoice]
-                ParsedEventMessage::ReachOnFieldersChoice { batter, fielders, result, scores, advances } => {
+                ParsedEventMessage::ReachOnFieldersChoice { batter, fielders, result, scores, advances, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
                     match result {
@@ -2542,6 +2587,7 @@ impl<'g> Game<'g> {
 
                             detail_builder
                                 .fair_ball(fair_ball)
+                                .ejection(ejection.clone())
                                 .runner_changes(advances.clone(), scores.clone())
                                 .add_runner(batter, TaxaBase::First)
                                 .add_out(*out)
@@ -2575,6 +2621,7 @@ impl<'g> Game<'g> {
 
                             detail_builder
                                 .fair_ball(fair_ball)
+                                .ejection(ejection.clone())
                                 .runner_changes(advances.clone(), scores.clone())
                                 .add_runner(batter, TaxaBase::First)
                                 .fielders(fielders.clone(), ingest_logs)?

@@ -14,7 +14,8 @@ use thiserror::Error;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = Some("2025-07-16 04:07:42.699296Z");
+// const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = Some("2025-07-16 04:07:42.699296Z");
+const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = None;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {

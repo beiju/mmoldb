@@ -10,7 +10,8 @@ use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
 use mmolb_parsing::parsed_event::{
-    BaseSteal, Cheer, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut,
+    BaseSteal, Cheer, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut,
+    SnappedPhotos,
 };
 use std::fmt::Formatter;
 use thiserror::Error;
@@ -69,6 +70,9 @@ pub struct EventDetail<StrT: Clone> {
     pub batter_count: i32,
     pub batter_subcount: i32,
     pub cheer: Option<Cheer>,
+    pub aurora_photos: Option<SnappedPhotos<StrT>>,
+    pub ejection: Option<Ejection<StrT>>,
+    pub fair_ball_ejection: Option<Ejection<StrT>>,
 }
 
 #[derive(Debug)]
@@ -373,12 +377,16 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 steals: self.steals(),
                 count: self.count(),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,
                 steals: self.steals(),
                 count: self.count(),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -386,12 +394,16 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 strike: StrikeType::Looking,
                 steals: self.steals(),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::SwingingStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Swinging,
                 steals: self.steals(),
                 count: self.count(),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -399,12 +411,15 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 strike: StrikeType::Swinging,
                 steals: self.steals(),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::FoulTip => ParsedEventMessage::Foul {
                 foul: FoulType::Tip,
                 steals: self.steals(),
                 count: self.count(),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
             },
             TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
                 foul: Some(FoulType::Tip),
@@ -412,12 +427,15 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 strike: StrikeType::Swinging,
                 steals: self.steals(),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::FoulBall => ParsedEventMessage::Foul {
                 foul: FoulType::Ball,
                 steals: self.steals(),
                 count: self.count(),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
@@ -442,6 +460,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 fielder: exactly_one_fielder()?,
                 scores: self.scores(),
                 advances: self.advances(false),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::ForceOut => {
                 let (runner_out_name, runner_out_at_base) = exactly_one_runner_out()?;
@@ -467,6 +486,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     advances: self.advances(
                         any_existing_runner_advanced && Base::Second != runner_out_at_base.into(),
                     ),
+                    ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 }
             }
             TaxaEventType::CaughtOut => {
@@ -501,6 +521,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     advances: self.advances(false),
                     sacrifice,
                     perfect,
+                    ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 }
             }
             TaxaEventType::GroundedOut => ParsedEventMessage::GroundedOut {
@@ -513,12 +534,15 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .ok_or_else(|| ToParsedError::MissingIsToasty {
                         event_type: self.detail_type,
                     })?,
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::Walk => ParsedEventMessage::Walk {
                 batter: self.batter_name.as_ref(),
                 scores: self.scores(),
                 advances: self.advances(false),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::HomeRun => {
                 let mut scores = self.scores();
@@ -552,6 +576,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     destination: mandatory_fair_ball_direction()?,
                     scores,
                     grand_slam,
+                    ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 }
             }
             TaxaEventType::FieldingError => ParsedEventMessage::ReachOnFieldingError {
@@ -560,12 +585,15 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 error: mandatory_fielding_error_type()?,
                 scores: self.scores(),
                 advances: self.advances(false),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::HitByPitch => ParsedEventMessage::HitByPitch {
                 batter: self.batter_name.as_ref(),
                 scores: self.scores(),
                 advances: self.advances(false),
                 cheer: self.cheer.clone(),
+                aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                ejection: self.ejection.as_ref().map(Ejection::as_ref),
             },
             TaxaEventType::DoublePlay => {
                 let scores = self.scores();
@@ -583,6 +611,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                         },
                         scores,
                         advances: self.advances(false),
+                        ejection: self.ejection.as_ref().map(Ejection::as_ref),
                     },
                     [(name_one, base_one), (name_two, base_two)] => {
                         let sacrifice = self.described_as_sacrifice.ok_or_else(|| {
@@ -606,6 +635,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                             scores,
                             advances: self.advances(true),
                             sacrifice,
+                            ejection: self.ejection.as_ref().map(Ejection::as_ref),
                         }
                     }
                     _ => {
@@ -629,6 +659,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                         },
                         scores: self.scores(),
                         advances: self.advances(false),
+                        ejection: self.ejection.as_ref().map(Ejection::as_ref),
                     }
                 } else {
                     let fielder = exactly_one_fielder()?;
@@ -662,6 +693,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     },
                     scores: self.scores(),
                     advances: self.advances(false),
+                    ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 }
             }
             TaxaEventType::Balk => ParsedEventMessage::Balk {
@@ -694,6 +726,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             fair_ball_type: mandatory_fair_ball_type()?,
             destination: mandatory_fair_ball_direction()?,
             cheer: self.cheer.clone(),
+            aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+            ejection: self.fair_ball_ejection.as_ref().map(Ejection::as_ref),
         })
     }
 }

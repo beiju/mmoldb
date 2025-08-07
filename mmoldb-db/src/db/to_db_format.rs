@@ -174,5 +174,8 @@ pub fn row_to_event<'e>(
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
         cheer: event.cheer.as_deref().map(Cheer::new),
+        aurora_photos: None,  // TODO
+        ejection: None,  // TODO
+        fair_ball_ejection: None,  // TODO
     })
 }

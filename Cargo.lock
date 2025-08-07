@@ -1896,7 +1896,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.36.0"
-source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#8ed84479d7f5217067825b42bd59962e5be2bb95"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=more-s3#e18311dcbbcdf12bddb844f456d9a458bd2764b1"
 dependencies = [
  "chrono",
  "nom 8.0.0",
