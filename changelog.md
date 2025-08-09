@@ -4,8 +4,11 @@ Changelog
 Upcoming
 ----------
 
+- Season 4 support! This includes aurora photos and ejections. Thanks to
+  WoofyJack for help on parsing. 
 - Player ingest! Thanks to Centride on the MMOLB discord for data entry 
   assistance, and as usual big thanks to WoofyJack for work on parsing.
+- 
 
 2025-07-20
 ----------

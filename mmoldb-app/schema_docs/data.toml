@@ -722,10 +722,14 @@ where batter_subcount = (
     where e2.game_id = e.game_id
       and e2.top_of_inning = e.top_of_inning
       and e2.batter_count = e.batter_count)
-group by game_id, top_of_inning, batter_count, batter_subcount
+group by
+    game_id,
+    top_of_inning,
+    batter_count,
+    batter_subcount
 ```
 
-Note that if you only want last event in each group of consecutive
+Note that if you only want the last event in each group of consecutive
 plate appearances, it's sufficient to group by `batter_count` and then
 select the row with the highest `game_event_index`, which should be
 much faster.
@@ -796,7 +800,7 @@ To identify a particular baserunner on a particular event use the
 combination of its `mmolb_game_id`, `game_event_index`, and
 `base_before`. You have to join the `data.events` table to access
 `game_event_index`, and from there join the `data.games` tables to
-access `game_event_index`.
+access `mmolb_game_id`.
 """
 
 [[table.column]]
@@ -916,7 +920,7 @@ To identify a particular baserunner on a particular event use the
 combination of its `mmolb_game_id`, `game_event_index`, and
 `play_order`. You have to join the `data.events` table to access
 `game_event_index`, and from there join the `data.games` tables to
-access `game_event_index`.
+access `mmolb_game_id`.
 """
 
 [[table.column]]
@@ -1088,4 +1092,160 @@ description = """
 The actual data of the entity. This is the data exactly as returned by the
 MMOLB API with no modification, so structure is subject to change whenever the
 API changes.
+"""
+
+[[table]]
+name = "aurora_photos"
+description = """
+A record of players snapping photos of the aurora during Geomagnetic Storms
+weather. Every event with aurora photos has two, one from each team, and they
+are stored as separate rows in this table. `is_listed_first` identifies which
+one is listed first.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+aurora photo use the combination of its `mmolb_game_id`, `game_event_index`,
+and `is_listed_first`. You have to join the `data.events` table to access
+`game_event_index`, and from there join the `data.games` tables to access
+`mmolb_game_id`.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event this aurora photo belongs to. References the `data.events`
+table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use the combination
+of `mmolb_game_id` and `game_event_index` as described in the
+documentation for `data.events`' `id` column.
+"""
+
+[[table.column]]
+name = "is_listed_first"
+type = "boolean"
+description = """
+`true` if this photo was the first one listed in its event, `false` if it was
+the second.
+
+There's always one photo from each team, but there's not enough information in
+the event itself to know which team, so MMOLDB doesn't attempt to record that.
+"""
+
+[[table.column]]
+name = "team_emoji"
+type = "text"
+description = """
+The team emoji of the player who took this picture.
+"""
+
+[[table.column]]
+name = "player_slot"
+type = "bigint"
+description = """
+The roster slot of the player who took this picture. References `taxa.slot`.
+"""
+
+[[table.column]]
+name = "player_name"
+type = "text"
+description = """
+The name of the player who took this picture.
+"""
+
+[[table]]
+name = "ejections"
+description = """
+Instances of players being ejected by ROBO-UMP.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+ejection use the combination of its `mmolb_game_id` and `game_event_index`.
+You have to join the `data.events` table to access `game_event_index`, and from
+there join the `data.games` tables to access `mmolb_game_id`.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event this ejection happend on. References the `data.events`
+table.
+
+These IDs are *not* stable. You should not store these ids between queries, nor
+hard-code them into queries. Instead use the combination of `mmolb_game_id` and
+`game_event_index` as described in the documentation for `data.events`' `id`
+column.
+"""
+
+[[table.column]]
+name = "team_emoji"
+type = "text"
+description = """
+The team emoji of the player who was ejected.
+"""
+
+[[table.column]]
+name = "team_name"
+type = "text"
+description = """
+The team name of the player who was ejected.
+"""
+
+[[table.column]]
+name = "ejected_player_name"
+type = "text"
+description = """
+The name of the player who was ejected.
+"""
+
+[[table.column]]
+name = "ejected_player_slot"
+type = "bigint"
+description = """
+The roster slot of the player who was ejected. References `taxa.slot`.
+"""
+
+[[table.column]]
+name = "violation_type"
+type = "text"
+description = """
+The type of violation, e.g. "Communication" or "Sportsmanship".
+"""
+
+[[table.column]]
+name = "reason"
+type = "text"
+description = """
+The reason for the ejection.
+"""
+
+[[table.column]]
+name = "replacement_player_name"
+type = "text"
+description = """
+The name of the player is taking the place of the ejected player.
+"""
+
+[[table.column]]
+name = "replacement_player_slot"
+type = "bigint"
+description = """
+The roster slot of the player who is taking the place of the ejected player,
+if one is given. References `taxa.slot`.
+"""
+nullable_explanation = """
+`null` if the replacement is a bench player.
 """
