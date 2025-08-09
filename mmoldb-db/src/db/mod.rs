@@ -1589,53 +1589,6 @@ fn insert_player_equipment(
 
     insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
 
-    // Close out any valid equipment effect versions whose modification_order is
-    // greater than the number of mods stored in the currently active player version
-    sql_query("
-        update data.player_equipment_effect_versions as peev
-        -- this equipment version does *not* have this effect version,
-        -- meaning the effect version should be closed out as of the
-        -- start of the equipment version
-        set valid_until=pev.valid_from
-        from data.player_equipment_versions AS pev -- this is like a join i think?
-        where pev.mmolb_player_id=peev.mmolb_player_id
-            and pev.equipment_slot=peev.equipment_slot
-            and pev.valid_until is null
-            and peev.valid_until is null
-            and peev.effect_index >= pev.num_effects
-    ").execute(conn)?;
-
-    // Close out any valid equipment effect versions for equipment slots that are not
-    // occupied on the currently active player version
-    sql_query("
-        update data.player_equipment_effect_versions as peev
-        -- this player version does not have this slot occupied,
-        -- meaning the effect version should be closed out as of the
-        -- start of the player version
-        set valid_until=pv.valid_from
-        from data.player_versions AS pv -- this is like a join i think?
-        where pv.mmolb_player_id=peev.mmolb_player_id
-          and pv.valid_until is null
-          and peev.valid_until is null
-          and not (peev.equipment_slot=any(pv.occupied_equipment_slots))
-    ").execute(conn)?;
-
-    // Close out any valid equipment versions for equipment slots that are not
-    // occupied on the currently active player version
-    // (same as the above but for equipment instead of effects)
-    sql_query("
-        update data.player_equipment_versions as pev
-        -- this player version does not have this slot occupied,
-        -- meaning the effect version should be closed out as of the
-        -- start of the player version
-        set valid_until=pv.valid_from
-        from data.player_versions AS pv -- this is like a join i think?
-        where pv.mmolb_player_id=pev.mmolb_player_id
-          and pv.valid_until is null
-          and pev.valid_until is null
-          and not (pev.equipment_slot=any(pv.occupied_equipment_slots))
-    ").execute(conn)?;
-
     Ok(num_inserted)
 }
 
@@ -1811,31 +1764,13 @@ pub fn insert_player_versions(
     insert_player_equipment(conn, new_player_equipment)?;
     let insert_player_equipment_duration = (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
-    let trim_mod_versions_start = Utc::now();
-    // Close out any valid mod versions whose modification_order is
-    // greater than the number of mods stored in the currently active player version
-    sql_query("
-        update data.player_modification_versions as pmv
-        -- this player version does *not* have this modification version,
-        -- meaning the modification version should be closed out as of the
-        -- start of the player version
-        set valid_until=pv.valid_from
-        from data.player_versions AS pv -- this is like a join i think?
-        where pv.mmolb_player_id=pmv.mmolb_player_id
-            and pv.valid_until is null
-            and pmv.valid_until is null
-            and pmv.modification_order >= pv.num_modifications
-    ").execute(conn)?;
-    let trim_mod_versions_duration = (Utc::now() - trim_mod_versions_start).as_seconds_f64();
-
     info!(
         "preprocess_duration: {preprocess_duration:.2}, \
         insert_player_equipment_duration: {insert_player_equipment_duration:.2}, \
         insert_player_reports_duration: {insert_player_reports_duration:.2}, \
         insert_player_feed_versions_duration: {insert_player_feed_versions_duration:.2}, \
         insert_player_modifications_duration: {insert_player_modifications_duration:.2}, \
-        insert_player_version_duration: {insert_player_version_duration:.2}, \
-        trim_mod_versions_duration: {trim_mod_versions_duration:.2}"
+        insert_player_version_duration: {insert_player_version_duration:.2}"
     );
 
     Ok(num_player_insertions)
