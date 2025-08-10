@@ -1639,7 +1639,7 @@ users. To see player equipment, use the `data.player_equipment_versions` table.
 name = "player_modification_versions"
 description = """
 Records instances of modifications on players. This connects
-`data.player_versions`
+`data.player_versions` to `data.modifications`.
 
 See the documentation of `data.player_versions` for a description of how to use
 `valid_from` and `valid_until`.
