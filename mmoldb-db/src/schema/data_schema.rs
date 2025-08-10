@@ -196,7 +196,7 @@ pub mod data {
         data.player_modification_versions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
-            modification_order -> Int4,
+            modification_index -> Int4,
             valid_from -> Timestamp,
             valid_until -> Nullable<Timestamp>,
             duplicates -> Int4,

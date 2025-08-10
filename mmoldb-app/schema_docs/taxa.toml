@@ -504,3 +504,158 @@ type = "text"
 description = """
 The MMOLB id for the league itself.
 """
+
+[[table]]
+name = "day_type"
+description = """
+MMOLB has several time periods that are not included in the normal day
+count. This includes the postseason, election, and several different
+types of break. This `taxa` lists the various special "day" types, as
+well as the standard "Day".
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a day type. When this appears as a foreign key
+you are encouraged to join this `taxa` and use its `name` column,
+rather than directly using day type ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this day type. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this day type.
+"""
+
+[[table]]
+name = "attribute_category"
+description = """
+The category of an attribute, e.g. "Batting" or "Defense". Luck and Priority
+are in the "Generic" category.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for an attribute category. When this appears as a foreign key
+you are encouraged to join this `taxa` and use its `name`column, rather than
+directly using attribute category ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this attribute category. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+
+This is also the human-friendly name for each attribute category.
+"""
+
+
+[[table]]
+name = "attribute"
+description = """
+Identifies a player attribute, e.g. "Intimidation" or "Luck".
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for an attribute. When this appears as a foreign key you are
+encouraged to join this `taxa` and use its `name`column, rather than directly
+using attribute ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this attribute. Guaranteed to contain alphanumeric
+characters only and start with a letter.
+
+This is also the human-friendly name for each attribute.
+"""
+
+[[table.column]]
+name = "category"
+type = "bigint"
+description = """
+This attribute's category. References `taxa.attribute_category`.
+"""
+
+[[table]]
+name = "attribute_effect_type"
+description = """
+How a particular effect applies to an attribute. Based on
+[this description][https://discord.com/channels/1136709081319604324/1148829574524850197/1368118313292398673]
+from the MMOLB discord there are Flat, Additive, and Multiplicative bonuses.
+
+This determines how effects are combined with the attribute's base value to
+create the final effective attribute value. The formula is:
+```
+(Base + sum(Flat)) * sum(Additive) * product(Multiplicative)
+```
+
+Base is the base value of that attribute (visible through the player report,
+for example), and Flat, Additive, and Multiplicative are the three effect
+types.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for an attribute effect type. When this appears as a foreign
+key you are encouraged to join this `taxa` and use its `name`column, rather
+than directly using attribute effect type ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this attribute effect type. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+
+This is also the human-friendly name for each attribute effect type.
+"""
+
+[[table]]
+name = "handedness"
+description = """
+Player handedness: Left, Right, or Switch. Players have a separate batting and
+pitching handedness.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a handedness. When this appears as a foreign key you are
+encouraged to join this `taxa` and use its `name`column, rather than directly
+using handedness ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this handedness. Guaranteed to contain alphanumeric
+characters only and start with a letter.
+
+This is also the human-friendly name for each handedness.
+"""

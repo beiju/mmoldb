@@ -5,7 +5,7 @@ pub mod taxa {
         taxa.attribute (id) {
             id -> Int8,
             name -> Text,
-            category -> Nullable<Int8>,
+            category -> Int8,
         }
     }
 

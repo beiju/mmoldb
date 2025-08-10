@@ -1264,7 +1264,9 @@ taxa! {
         id_column = crate::taxa_schema::taxa::attribute_effect_type::dsl::id,
     ]
     pub enum TaxaEffectType {
-        FlatBonus=1
+        Flat = 1,
+        Additive = 2,
+        Multiplicative = 3,
     }
 }
 
@@ -1272,7 +1274,7 @@ impl From<mmolb_parsing::enums::EquipmentEffectType> for TaxaEffectType {
     fn from(value: mmolb_parsing::enums::EquipmentEffectType) -> Self {
         match value {
             mmolb_parsing::enums::EquipmentEffectType::FlatBonus => {
-                TaxaEffectType::FlatBonus
+                TaxaEffectType::Flat
             }
         }
     }

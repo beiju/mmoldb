@@ -1249,3 +1249,822 @@ if one is given. References `taxa.slot`.
 nullable_explanation = """
 `null` if the replacement is a bench player.
 """
+
+[[table]]
+name = "modifications"
+description = """
+The possible player modifications, including Greater and Lesser boons (which
+are special categories of modifications).
+
+MMOLB doesn't provide a machine-readable description of modifications' effects,
+and no work has yet been done on parsing them from the description. If you want
+that, please let us know in the Discord or Github so we know to prioritize it.
+Or, better yet, contribute it yourself!
+
+This table is populated dynamically from API data in a non-determinstic
+order. This means ids are *not* stable. You should not store modification
+ids between queries, nor hard-code modification ids into queries. Always
+join with the `modifications` table.
+
+Two modifications are considered distinct if their name, emoji, *or*
+description are different. There may be many entries in this table with the
+same name, but their emoji and/or description will be different.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store
+modification ids between queries, nor hard-code modification ids into queries.
+Always join with the `modifications` table.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The modification's name. This is not guaranteed to be code-friendly.
+"""
+
+[[table.column]]
+name = "emoji"
+type = "text"
+description = """
+The modification's emoji.
+"""
+
+[[table.column]]
+name = "description"
+type = "text"
+description = """
+The modification's description as seen in the tooltip.
+"""
+
+[[table]]
+name = "player_versions"
+description = """
+Historical and current player information.
+
+This table contains basic information about a player, like their name and
+birthday. It has many child tables with more advanced information like their
+augment and recompose history, their clubhouse reports, and their equipment.
+Most of these tables use `valid_from` and `valid_until` to track which version
+of the player data was active at any point in time.
+
+For any of these tables, `valid_from` is the date (always UTC) when this
+version of the player was first observed, and `valid_until` is the date when
+a different version of the player was first observed, or `null` if this is
+still the active version. The range of times when the player version was valid
+is therefore `valid_from` inclusive to `valid_until` exclusive. The
+(non-`null`) `valid_until` of one version should exactly match the `valid_from`
+of the next version.
+
+Remember that these are the dates of *observations* of the versions. In reality
+the data changed sometime between the last observation of the previous version
+(which is not currently exposed by chron) and the first observation of the new
+version. In fact, caching and network delay may mean that the change actually
+occurred on the "wrong" side of the `valid_from`/`valid_until` date. This
+should hopefully be rare.
+
+To select only active versions, add `where valid_until is null` to your query.
+To select the version that was active at a given time `t`, add
+`where valid_from <= t and (valid_until > t or valid_until is null)` to
+your query. Remember to group that in parentheses if you're adding it to other
+`where` clauses that are combined using `or`.
+
+Much of the player information is in child tables:
+- `data.player_modification_versions` has the player modifications.
+- `data.player_equipment_versions` has the equipment equipped by each player.
+- `data.player_equipment_effect_versions` has the attribute effects on each
+  piece of equipment.
+- `data.player_augments` has the record of all augments to attributes each
+  player has recieved.
+- `data.player_paradigm_shifts` has the record of all paradigm shifts that have
+  affected this player.
+- `data.player_recompositions` has the record of all times this player has been
+  recomposed. See the documentation for the `mmolb_player_id` column for more
+  on using this table.
+- `data.player_reports` has the values of the player attributes from clubhouse
+  reports for each player.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for this player. This is the preferred way to identify a player.
+
+Keep in mind that recomposing players does *not* change their MMOLB id. If you
+want to separate recomposed players (and you generally should), there are two
+ways to do it. One is to group by name as well as id (it must be both, because
+there are many examples of players with the same name), and assume every name
+change is a recomposition. That's not strictly true, there have been players
+whose name was changed without a recomposition, but not many.
+
+The other option is to use `data.player_recompositions` to track the generation
+of the player id, i.e. how many times it's been recomposed. Then each
+`(mmolb_player_id, generation)` represents a unique player. Unfortunately,
+there are (as yet unexplained) instances where the straightforward association
+between recompositions and their player version chooses the wrong player.
+
+If you want to do it that way, you can use a query like this one:
+
+```
+select
+	*,
+	(select count(1)
+	 from data.player_recompositions pr
+	 where pr.mmolb_player_id=pv.mmolb_player_id
+	 	and pr.time < pv.valid_from
+	 ) as generation
+from data.player_versions pv
+limit 10 -- limit while debugging
+```
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the player was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the player was observed, i.e. the
+earliest time we know this version is no longer valid. The latest time we know
+this version *is* valid is not exposed because nobody's requested it yet. If
+you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "int"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "first_name"
+type = "text"
+description = """
+The player's first name.
+
+Players names are usually found in full when they appear in other tables. You
+can assemble the player's full name with the expression 
+`first_name || ' ' || last_name`.
+"""
+
+[[table.column]]
+name = "last_name"
+type = "text"
+description = """
+The player's last name.
+
+Players names are usually found in full when they appear in other tables. You
+can assemble the player's full name with the expression 
+`first_name || ' ' || last_name`.
+"""
+
+[[table.column]]
+name = "batting_handedness"
+type = "bigint"
+description = """
+Hand this player uses to bat. References `taxa.handedness`.
+"""
+
+[[table.column]]
+name = "pitching_handedness"
+type = "bigint"
+description = """
+Hand this player uses to pitch. References `taxa.handedness`.
+"""
+
+[[table.column]]
+name = "home"
+type = "text"
+description = """
+The player's birthplace. This is the location of the team they were born on at
+the time they were born.
+"""
+
+[[table.column]]
+name = "birthseason"
+type = "int"
+description = """
+The season during which the player was born.
+"""
+
+[[table.column]]
+name = "birthday_type"
+type = "bigint"
+description = """
+The type of the day during which the player was born. References
+`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+"""
+
+[[table.column]]
+name = "birthday_day"
+type = "int"
+description = """
+The regular day during which the player was born. This should be set if and
+only if `birthday_type` is `Day`.
+"""
+nullable_explanation = """
+`null` if this player wasn't born on a regular day.
+"""
+
+[[table.column]]
+name = "birthday_superstar_day"
+type = "int"
+description = """
+The superstar day during which the player was born. This should be set if and
+only if `birthday_type` is `SuperstarDay`.
+"""
+nullable_explanation = """
+`null` if this player wasn't born on a superstar day.
+"""
+
+[[table.column]]
+name = "likes"
+type = "text"
+description = """
+The thing this player likes.
+"""
+
+[[table.column]]
+name = "dislikes"
+type = "text"
+description = """
+The thing this player dislikes.
+"""
+
+[[table.column]]
+name = "number"
+type = "int"
+description = """
+This player's number (presumably a jersey number). As far as we know this has
+no mechanical effect.
+"""
+
+[[table.column]]
+name = "mmolb_team_id"
+type = "text"
+description = """
+The MMOLB id for the team this player belongs to.
+
+Teams are planned for addition to MMOLDB, and at that time you'll be able to
+use this to connect a player to their team.
+"""
+nullable_explanation = """
+`null` if this player is not currently on a team. Players can become teamless
+for many reasons, including a player Retiring after losing all their
+durability, being Released (full-team Release, different to Recompose) in the
+Hall of Unmaking, and Relegation (a season 0 mechanic which is no longer
+available).
+"""
+
+[[table.column]]
+name = "slot"
+type = "bigint"
+description = """
+The player's roster slot. References `taxa.slot`.
+
+This can be used along with the player's name to more accurately connect 
+players to game events.
+"""
+
+[[table.column]]
+name = "durability"
+type = "TODO"
+description = """
+The player's durability. Displayed as a green progress bar on the player page.
+
+This is a number that starts at 1 and is reduced by 0.05 at the end of every 
+season, as well as when the player is damaged by a falling star. When it
+reaches 0, the player Retires. 
+"""
+
+[[table.column]]
+name = "greater_boon"
+type = "bigint"
+description = """
+The player's Greater Boon, if they have one. This references 
+`data.modifications`.
+
+Modification ids (including boons) are *not* stable. You should not store 
+these ids between queries, nor hard-code them into queries. Always join to 
+`data.modifications` and use the modification name (and emoji and description 
+if you like) instead.
+"""
+nullable_explanation = """
+`null` if this player does not have a Greater Boon.
+"""
+
+[[table.column]]
+name = "lesser_boon"
+type = "bigint"
+description = """
+The player's Lesser Boon, if they have one. This references 
+`data.modifications`.
+
+Modification ids (including boons) are *not* stable. You should not store 
+these ids between queries, nor hard-code them into queries. Always join to 
+`data.modifications` and use the modification name (and emoji and description 
+if you like) instead.
+"""
+nullable_explanation = """
+`null` if this player does not have a Lesser Boon.
+"""
+
+[[table.column]]
+name = "num_modifications"
+type = "int"
+description = """
+The number of modifications the player has.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see player modifications, use the
+`data.player_modification_versions` table.
+"""
+
+[[table.column]]
+name = "num_modifications"
+type = "text[]"
+description = """
+A list of which equipment slots are occupied on this player.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see player equipment, use the `data.player_equipment_versions` table.
+"""
+
+[[table]]
+name = "player_modification_versions"
+description = """
+Records instances of modifications on players. This connects
+`data.player_versions`
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`. There can be a break in versions in this table without
+a corresponding break in versions in `data.player_versions` and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+modification on a particular player use the combination of its
+`mmolb_player_id` and `modification_index`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player this modification belongs to. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their modifications.
+"""
+
+[[table.column]]
+name = "modification_index"
+type = "int"
+description = """
+The index of this modification in the player's modifications list. A
+`(mmolb_player_id, modification_index)` pair uniquely and stably identifies a
+modification on a player.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the player modification was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the player modification was observed,
+i.e. the earliest time we know this version is no longer valid. The latest time
+we know this version *is* valid is not exposed because nobody's requested it
+yet. If you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "int"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "modification_id"
+type = "bigint"
+description = """
+Which modification this is. References the `data.modifications` table.
+
+Modification ids are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Always join to `data.modifications`
+and use the modification name (and emoji and description if you like) instead.
+"""
+
+[[table]]
+name = "player_equipment_versions"
+description = """
+Records player equipment.
+
+Though pieces of equipment are distinct objects that can theoretically be
+tracked as they're moved around, MMOLB doesn't provide a stable identifer for
+them. Because of this, we use the player and slot the item is equipped into
+as its identifier, and an equipment being moved from one player to another is
+treated as if the old item ceased to exist and the new item came into being.
+Same for if an existing item is modified using orbs.
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`. There can be a break in versions in this table without
+a corresponding break in versions in `data.player_versions` and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+piece of equipment on a particular player use the combination of its
+`mmolb_player_id` and `equipment_slot`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player this equipment is equipped to. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their equipment.
+"""
+
+[[table.column]]
+name = "equipment_slot"
+type = "text"
+description = """
+The equipment slot that this piece of equipment is equipped to. Current values
+are:
+- Accessory
+- Body
+- Feet
+- Hands
+- Head
+
+This may be replaced with a `taxa`.
+
+A `(mmolb_player_id, equipment_slot)` pair uniquely and stably identifies a
+piece of equipment.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the player equipment was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the player equipment was observed,
+i.e. the earliest time we know this version is no longer valid. The latest time
+we know this version *is* valid is not exposed because nobody's requested it
+yet. If you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "int"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "emoji"
+type = "text"
+description = """
+The equipment's emoji.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The equipment's normal name.
+
+If the equipment has a `rare_name`, this name is not used. Otherwise, this name
+is combined with the item's prefixes and suffixes to create its displayed name.
+
+As of the end of season 4, there is only one `name` for each equipment slot:
+- Accessory: Ring
+- Body: T-Shirt
+- Feet: Sneakers
+- Hands: Gloves
+- Head: Cap
+"""
+nullable_explanation = """
+`null` if the item's name is not a string. This represents a player ingest error.
+"""
+
+[[table.column]]
+name = "special_type"
+type = "text"
+description = """
+This field exists in the API but we've never seen a value from it.
+"""
+nullable_explanation = """
+`null` for every known piece of equipment.
+"""
+
+[[table.column]]
+name = "description"
+type = "text"
+description = """
+This field exists in the API but we've never seen a value from it.
+"""
+nullable_explanation = """
+`null` for every known piece of equipment.
+"""
+
+[[table.column]]
+name = "rare_name"
+type = "text"
+description = """
+Rare and higher magic items gain a new name that overrides the
+prefix-and-suffix-based default name. This is that name.
+
+Items keep their rare name even if they are downgraded past rare with a
+Disintegrating Orb.
+"""
+nullable_explanation = """
+`null` if this item is not, and has never been, Rare or higher.
+"""
+
+[[table.column]]
+name = "cost"
+type = "int"
+description = """
+Presumably, the amount the equipment cost to buy from Mother Quaelyth.
+"""
+
+[[table.column]]
+name = "prefixes"
+type = "text[]"
+description = """
+A list of up to two prefixes the item has. These are prepended to `name` to
+create the item's display name, unless overridden by `rare_name`.
+"""
+
+[[table.column]]
+name = "suffixes"
+type = "text[]"
+description = """
+A list of up to two suffixes the item has. These are appended to `name` to
+create the item's display name, unless overridden by `rare_name`.
+"""
+
+[[table.column]]
+name = "rarity"
+type = "text"
+description = """
+The item's rarity. "Normal", "Magic", or "Rare".
+"""
+nullable_explanation = """
+`null` if the item's rarity is not a string. This represents a player ingest error.
+"""
+
+[[table.column]]
+name = "num_effects"
+type = "int"
+description = """
+The number of effects this piece of equipment has.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see equipment effects, use the
+`data.player_equipment_effect_versions` table.
+"""
+
+[[table]]
+name = "player_equipment_effect_versions"
+description = """
+Records player equipment effects.
+
+See the documentation of `data.player_equipment_versions` for a description of
+how MMOLDB handles equipment.
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`. There can be a break in versions in this table without
+a corresponding break in versions in `data.player_versions` and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+effect on a particular piece of equipment on a particular player use the
+combination of its `mmolb_player_id`, `equipment_slot`, and `effect_index`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player this equipment is equipped to. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their equipment.
+"""
+
+[[table.column]]
+name = "equipment_slot"
+type = "text"
+description = """
+The equipment slot that this piece of equipment is equipped to. See
+`equipment_slot` on `data.player_equipment_versions` for more.
+"""
+
+[[table.column]]
+name = "effect_index"
+type = "int"
+description = """
+The index of this effect within this piece of equipment's list of effects. A
+`(mmolb_player_id, equipment_slot, effect_index)` triple uniquely and stably
+identifies an equipment effect.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the player equipment effect was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the player equipment effect was
+observed, i.e. the earliest time we know this version is no longer valid. The
+latest time we know this version *is* valid is not exposed because nobody's
+requested it yet. If you have a use for it, contact us in the MMOLB discord or
+on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "int"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "attribute"
+type = "bigint"
+description = """
+The attribute this effect modifies. References `taxa.attribute`.
+"""
+
+[[table.column]]
+name = "effect_type"
+type = "bigint"
+description = """
+The type of effect. References `taxa.attribute_effect_type`.
+
+As of the end of season 4, the only effect type that's ever appeared is Flat.
+"""
+
+[[table.column]]
+name = "value"
+type = "int"
+description = """
+The value of the modification. This is stored exactly as displayed in the MMOLB
+UI. This means that attribute values range from 5 to 20.
+"""
+
+[[table]]
+name = "player_feed_versions"
+description = """
+Records when new items appear in the player feed.
+
+This is mainly used by MMOLDB itself. It's not likely to be useful outside of
+that.
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`. There can be a break in versions in this table without
+a corresponding break in versions in `data.player_versions` and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+player feed use its `mmolb_player_id`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player this feed belongs to. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their feeds.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the player feed was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the player feed was observed, i.e. the
+earliest time we know this version is no longer valid. The latest time we know
+this version *is* valid is not exposed because nobody's requested it yet. If
+you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "int"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "num_entries"
+type = "bigint"
+description = """
+The number of entries in this feed.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see the information from the feed, use the tables:
+- `data.player_augments` for the record of all augments to attributes each
+  player has recieved.
+- `data.player_paradigm_shifts` for the record of all paradigm shifts that have
+  affected this player.
+- `data.player_recompositions` for the record of all times this player has been
+  recomposed.
+"""
