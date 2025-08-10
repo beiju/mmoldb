@@ -414,6 +414,7 @@ pub struct NewPlayerVersion<'a> {
     pub lesser_boon: Option<i64>,
     pub num_modifications: i32,
     pub occupied_equipment_slots: Vec<&'a str>,
+    pub included_report_categories: Vec<i64>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -443,6 +444,7 @@ pub struct DbPlayerVersion {
     pub lesser_boon: Option<i64>,
     pub num_modifications: i32,
     pub occupied_equipment_slots: Vec<Option<String>>,
+    pub included_report_categories: Vec<Option<i64>>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -540,31 +542,60 @@ pub struct NewPlayerRecomposition<'a> {
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
-#[diesel(table_name = crate::data_schema::data::player_report_attributes)]
+#[diesel(table_name = crate::data_schema::data::player_report_versions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbPlayerReportAttributes {
+pub struct DbPlayerReportVersion {
     pub id: i64,
     pub mmolb_player_id: String,
-    pub season: i32,
+    pub category: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub season: Option<i32>,
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
-    pub observed: NaiveDateTime,
+    pub quote: String,
+    pub included_attributes: Vec<Option<i64>>,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_report_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPlayerReportVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub category: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub season: Option<i32>,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
+    pub quote: &'a str,
+    pub included_attributes: Vec<i64>,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::player_report_attribute_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerReportAttributeVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub category: i64,
     pub attribute: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
     pub stars: i32,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
-#[diesel(table_name = crate::data_schema::data::player_report_attributes)]
+#[diesel(table_name = crate::data_schema::data::player_report_attribute_versions)]
 #[diesel(treat_none_as_default_value = false)]
-pub struct NewPlayerReportAttributes<'a> {
+pub struct NewPlayerReportAttributeVersion<'a> {
     pub mmolb_player_id: &'a str,
-    pub season: i32,
-    pub day_type: Option<i64>,
-    pub day: Option<i32>,
-    pub superstar_day: Option<i32>,
-    pub observed: NaiveDateTime,
+    pub category: i64,
     pub attribute: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
     pub stars: i32,
 }
 

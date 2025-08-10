@@ -24,7 +24,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributes, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -1372,6 +1372,8 @@ pub fn get_player_ingest_start_cursor(
         cursor_from_table!(conn, schema, player_modification_versions)?,
         cursor_from_table!(conn, schema, player_equipment_versions)?,
         cursor_from_table!(conn, schema, player_equipment_effect_versions)?,
+        cursor_from_table!(conn, schema, player_report_versions)?,
+        cursor_from_table!(conn, schema, player_report_attribute_versions)?,
     ].into_iter()
         // Compute the latest of all cursors
         .fold(None, |accum, value| match (accum, value) {
@@ -1528,24 +1530,57 @@ type NewPlayerVersionExt<'a> = (
     NewPlayerVersion<'a>,
     Vec<NewPlayerModificationVersion<'a>>,
     Option<NewPlayerFeedVersionExt<'a>>,
-    Vec<NewPlayerReportAttributes<'a>>,
+    Vec<(
+        NewPlayerReportVersion<'a>,
+        Vec<NewPlayerReportAttributeVersion<'a>>,
+    )>,
     Vec<(
         NewPlayerEquipmentVersion<'a>,
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
-    )>
+    )>,
 );
 
-fn insert_player_reports(
+fn insert_player_report_attribute_versions(
     conn: &mut PgConnection,
-    new_player_report_attributes: Vec<Vec<NewPlayerReportAttributes>>,
+    new_player_report_attribute_versions: Vec<Vec<NewPlayerReportAttributeVersion>>,
 ) -> QueryResult<usize> {
-    use crate::data_schema::data::player_report_attributes::dsl as pr_dsl;
-    let new_player_report_attributes = new_player_report_attributes.into_iter().flatten().collect_vec();
+    use crate::data_schema::data::player_report_attribute_versions::dsl as prav_dsl;
+    let new_player_report_attribute_versions = new_player_report_attribute_versions
+        .into_iter()
+        .flatten()
+        .collect_vec();
 
     // Insert new records
-    diesel::copy_from(pr_dsl::player_report_attributes)
-        .from_insertable(new_player_report_attributes)
+    diesel::copy_from(prav_dsl::player_report_attribute_versions)
+        .from_insertable(new_player_report_attribute_versions)
         .execute(conn)
+}
+
+fn insert_player_report_versions(
+    conn: &mut PgConnection,
+    new_player_report_versions: Vec<Vec<(
+        NewPlayerReportVersion,
+        Vec<NewPlayerReportAttributeVersion>,
+    )>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_report_versions::dsl as prv_dsl;
+
+    let (
+        new_player_report_versions,
+        new_player_report_attribute_versions,
+    ): (
+        Vec<NewPlayerReportVersion>,
+        Vec<Vec<NewPlayerReportAttributeVersion>>,
+    ) = itertools::multiunzip(new_player_report_versions.into_iter().flatten());
+
+    // Insert new records
+    let num_inserted = diesel::copy_from(prv_dsl::player_report_versions)
+        .from_insertable(new_player_report_versions)
+        .execute(conn)?;
+
+    insert_player_report_attribute_versions(conn, new_player_report_attribute_versions)?;
+
+    Ok(num_inserted)
 }
 
 fn insert_player_equipment_effects(
@@ -1733,11 +1768,14 @@ pub fn insert_player_versions(
         Vec<NewPlayerVersion>,
         Vec<Vec<NewPlayerModificationVersion>>,
         Vec<Option<NewPlayerFeedVersionExt>>,
-        Vec<Vec<NewPlayerReportAttributes>>,
+        Vec<Vec<(
+            NewPlayerReportVersion,
+            Vec<NewPlayerReportAttributeVersion>,
+        )>>,
         Vec<Vec<(
             NewPlayerEquipmentVersion,
             Vec<NewPlayerEquipmentEffectVersion>,
-        )>>
+        )>>,
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
 
@@ -1757,7 +1795,7 @@ pub fn insert_player_versions(
     let insert_player_feed_versions_duration = (Utc::now() - insert_player_feed_versions_start).as_seconds_f64();
 
     let insert_player_reports_start = Utc::now();
-    insert_player_reports(conn, new_player_report_attributes)?;
+    insert_player_report_versions(conn, new_player_report_attributes)?;
     let insert_player_reports_duration = (Utc::now() - insert_player_reports_start).as_seconds_f64();
 
     let insert_player_equipment_start = Utc::now();
@@ -1808,6 +1846,8 @@ pub fn roll_back_ingest_to_date(conn: &mut PgConnection, dt: NaiveDateTime) -> Q
     rollback_table!(conn, schema, player_modification_versions, dt);
     rollback_table!(conn, schema, player_equipment_versions, dt);
     rollback_table!(conn, schema, player_equipment_effect_versions, dt);
+    rollback_table!(conn, schema, player_report_versions, dt);
+    rollback_table!(conn, schema, player_report_attribute_versions, dt);
 
     Ok(())
 }

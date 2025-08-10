@@ -1370,6 +1370,11 @@ impl Taxa {
     pub fn attribute_id(&self, ty: TaxaAttribute) -> i64 {
         self.attribute_mapping[ty]
     }
+
+    pub fn attribute_category_id(&self, ty: TaxaAttributeCategory) -> i64 {
+        self.attribute_category_mapping[ty]
+    }
+
     pub fn effect_type_id(&self, ty: TaxaEffectType) -> i64 {
         self.effect_type_mapping[ty]
     }
@@ -1442,6 +1447,14 @@ impl Taxa {
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
             .expect("TODO Handle unknown handedness")
+            .0
+    }
+
+    pub fn attribute_category_from_id(&self, id: i64) -> TaxaAttributeCategory {
+        self.attribute_category_mapping
+            .iter()
+            .find(|(_, ty_id)| id == **ty_id)
+            .expect("TODO Handle unknown attribute category")
             .0
     }
 

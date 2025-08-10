@@ -236,16 +236,30 @@ pub mod data {
     }
 
     diesel::table! {
-        data.player_report_attributes (id) {
+        data.player_report_attribute_versions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
-            season -> Int4,
+            category -> Int8,
+            attribute -> Int8,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            stars -> Int4,
+        }
+    }
+
+    diesel::table! {
+        data.player_report_versions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            category -> Int8,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            season -> Nullable<Int4>,
             day_type -> Nullable<Int8>,
             day -> Nullable<Int4>,
             superstar_day -> Nullable<Int4>,
-            observed -> Timestamp,
-            attribute -> Int8,
-            stars -> Int4,
+            quote -> Text,
+            included_attributes -> Array<Nullable<Int8>>,
         }
     }
 
@@ -275,6 +289,7 @@ pub mod data {
             lesser_boon -> Nullable<Int8>,
             num_modifications -> Int4,
             occupied_equipment_slots -> Array<Nullable<Text>>,
+            included_report_categories -> Array<Nullable<Int8>>,
         }
     }
 
@@ -321,7 +336,8 @@ pub mod data {
         player_modification_versions,
         player_paradigm_shifts,
         player_recompositions,
-        player_report_attributes,
+        player_report_attribute_versions,
+        player_report_versions,
         player_versions,
         versions,
         weather,

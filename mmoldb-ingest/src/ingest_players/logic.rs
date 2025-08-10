@@ -8,8 +8,8 @@ use mmolb_parsing::{AddedLater, RemovedLater, NotRecognized, MaybeRecognizedResu
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributes, NewPlayerVersion};
-use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
+use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion};
+use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaSlot};
 use mmoldb_db::{PgConnection, QueryResult, db};
 use rayon::prelude::*;
 use thiserror::Error;
@@ -337,7 +337,10 @@ fn chron_player_as_new<'a>(
         Vec<NewPlayerParadigmShift<'a>>,
         Vec<NewPlayerRecomposition<'a>>,
     )>,
-    Vec<NewPlayerReportAttributes<'a>>,
+    Vec<(
+        NewPlayerReportVersion<'a>,
+        Vec<NewPlayerReportAttributeVersion<'a>>,
+    )>,
     Vec<(
         NewPlayerEquipmentVersion<'a>,
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
@@ -414,6 +417,20 @@ fn chron_player_as_new<'a>(
     // Important, because they can be returned in arbitrary order
     occupied_equipment_slots.sort();
 
+    // No sort necessary because order is hard-coded
+    let included_report_categories = entity.data.talk.as_ref().map(|t| {
+        [
+            if t.batting.is_some() { Some(TaxaAttributeCategory::Batting) } else { None },
+            if t.pitching.is_some() { Some(TaxaAttributeCategory::Pitching) } else { None },
+            if t.defense.is_some() { Some(TaxaAttributeCategory::Defense) } else { None },
+            if t.baserunning.is_some() { Some(TaxaAttributeCategory::Baserunning) } else { None },
+        ]
+            .into_iter()
+            .flatten()
+            .map(|category| taxa.attribute_category_id(category))
+            .collect_vec()
+    }).unwrap_or_default();
+
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
         valid_from: entity.valid_from.naive_utc(),
@@ -437,27 +454,28 @@ fn chron_player_as_new<'a>(
         lesser_boon: entity.data.lesser_boon.as_ref().map(get_modification_id),
         num_modifications: entity.data.modifications.len() as i32,
         occupied_equipment_slots,
+        included_report_categories,
     };
 
     let player_full_name = format!("{} {}", player.first_name, player.last_name);
     let feed_as_new = match &entity.data.feed {
         Ok(entries) => Some(chron_player_feed_as_new(taxa, &entity.entity_id, entity.valid_from, entries, Some(&player_full_name))),
         Err(_) => None,
-    } ;
+    };
 
-    let mut report_attributes = Vec::new();
+    let mut report_versions = Vec::new();
     if let Some(talk) = &entity.data.talk {
-        if let Some(category) = &talk.batting {
-            process_talk_category(category, entity, &mut report_attributes, taxa);
+        if let Some(report) = &talk.batting {
+            report_versions.push(report_as_new(TaxaAttributeCategory::Batting, report, entity, taxa));
         }
-        if let Some(category) = &talk.pitching {
-            process_talk_category(category, entity, &mut report_attributes, taxa);
+        if let Some(report) = &talk.pitching {
+            report_versions.push(report_as_new(TaxaAttributeCategory::Pitching, report, entity, taxa));
         }
-        if let Some(category) = &talk.defense {
-            process_talk_category(category, entity, &mut report_attributes, taxa);
+        if let Some(report) = &talk.defense {
+            report_versions.push(report_as_new(TaxaAttributeCategory::Defense, report, entity, taxa));
         }
-        if let Some(category) = &talk.baserunning {
-            process_talk_category(category, entity, &mut report_attributes, taxa);
+        if let Some(report) = &talk.baserunning {
+            report_versions.push(report_as_new(TaxaAttributeCategory::Baserunning, report, entity, taxa));
         }
     }
 
@@ -584,41 +602,54 @@ fn chron_player_as_new<'a>(
         player,
         modifications,
         feed_as_new,
-        report_attributes,
+        report_versions,
         equipment,
     )
 }
 
-fn process_talk_category<'e>(
-    category: &TalkCategory,
+fn report_as_new<'e>(
+    category: TaxaAttributeCategory,
+    report: &'e TalkCategory,
     entity: &'e ChronEntity<mmolb_parsing::player::Player>,
-    report_attributes: &mut Vec<NewPlayerReportAttributes<'e>>,
     taxa: &Taxa,
-) {
-    let Ok(season) = category.season else {
-        // TODO See if I can figure out a fallback for reports generated
-        //   before `season` was added
-        return;
+) -> (NewPlayerReportVersion<'e>, Vec<NewPlayerReportAttributeVersion<'e>>) {
+    let season = match report.season {
+        Ok(season) => Some(season as i32),
+        Err(AddedLater) => None,
     };
 
-    let Ok(day) = &category.day else {
-        // TODO See if I can figure out a fallback for reports generated
-        //   before `day` was added
-        return;
+    let (day_type, day, superstar_day) = match &report.day {
+        Ok(maybe_day) => day_to_db(maybe_day, taxa),
+        Err(AddedLater) => (None, None, None),
     };
 
-    let (day_type, day, superstar_day) = day_to_db(day, taxa);
+    let included_attributes = report.stars.iter()
+        .map(|(attribute, _)| taxa.attribute_id((*attribute).into()))
+        .collect_vec();
 
-    for (attribute, stars) in &category.stars {
-        report_attributes.push(NewPlayerReportAttributes {
+    let report_version = NewPlayerReportVersion {
+        mmolb_player_id: &entity.entity_id,
+        category: taxa.attribute_category_id(category),
+        valid_from: entity.valid_from.naive_utc(),
+        valid_until: None,
+        season,
+        day_type,
+        day,
+        superstar_day,
+        quote: &report.quote,
+        included_attributes,
+    };
+
+    let report_attribute_versions = report.stars.iter()
+        .map(|(attribute, stars)| NewPlayerReportAttributeVersion {
             mmolb_player_id: &entity.entity_id,
-            season: season as i32,
-            day_type,
-            day,
-            superstar_day,
-            observed: entity.valid_from.naive_utc(),
+            category: taxa.attribute_category_id(category),
             attribute: taxa.attribute_id((*attribute).into()),
+            valid_from: entity.valid_from.naive_utc(),
+            valid_until: None,
             stars: *stars as i32,
-        });
-    }
+        })
+        .collect_vec();
+
+    (report_version, report_attribute_versions)
 }
