@@ -203,7 +203,7 @@ taxa! {
         #[
             display_name: &'a str = "hit by pitch",
             ends_plate_appearance: bool = true,
-            is_in_play: bool = true,
+            is_in_play: bool = false,
             is_hit: bool = false,
             is_error: bool = false,
             is_ball: bool = true, // it's recorded as a Ball for the pitcher
