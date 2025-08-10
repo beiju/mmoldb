@@ -8,7 +8,7 @@ use mmolb_parsing::{AddedLater, RemovedLater, NotRecognized, MaybeRecognizedResu
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion};
+use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion};
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
 use mmoldb_db::{PgConnection, QueryResult, db};
 use rayon::prelude::*;
@@ -333,7 +333,7 @@ fn chron_player_as_new<'a>(
     Vec<NewPlayerModificationVersion<'a>>,
     Option<(
         NewPlayerFeedVersion<'a>,
-        Vec<NewPlayerAugment<'a>>,
+        Vec<NewPlayerAttributeAugment<'a>>,
         Vec<NewPlayerParadigmShift<'a>>,
         Vec<NewPlayerRecomposition<'a>>,
     )>,
@@ -373,7 +373,7 @@ fn chron_player_as_new<'a>(
             mmolb_player_id: &entity.entity_id,
             valid_from: entity.valid_from.naive_utc(),
             valid_until: None,
-            modification_order: i as i32,
+            modification_index: i as i32,
             modification_id: get_modification_id(m),
         })
         .collect_vec();

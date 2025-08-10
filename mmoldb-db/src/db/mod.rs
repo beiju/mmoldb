@@ -24,7 +24,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -1519,7 +1519,7 @@ pub fn latest_player_versions(
 
 type NewPlayerFeedVersionExt<'a> = (
     NewPlayerFeedVersion<'a>,
-    Vec<NewPlayerAugment<'a>>,
+    Vec<NewPlayerAttributeAugment<'a>>,
     Vec<NewPlayerParadigmShift<'a>>,
     Vec<NewPlayerRecomposition<'a>>,
 );
@@ -1600,12 +1600,12 @@ pub fn insert_player_feed_versions<'a>(
 
     let (
         new_player_feed_versions,
-        new_player_augments,
+        new_player_attribute_augments,
         new_player_paradigm_shifts,
         new_player_recompositions,
     ): (
         Vec<NewPlayerFeedVersion>,
-        Vec<Vec<NewPlayerAugment>,>,
+        Vec<Vec<NewPlayerAttributeAugment>,>,
         Vec<Vec<NewPlayerParadigmShift>,>,
         Vec<Vec<NewPlayerRecomposition>,>,
     ) = itertools::multiunzip(new_player_feed_versions.into_iter());
@@ -1615,7 +1615,7 @@ pub fn insert_player_feed_versions<'a>(
         .from_insertable(new_player_feed_versions)
         .execute(conn)?;
 
-    insert_player_augments(conn, new_player_augments)?;
+    insert_player_attribute_augments(conn, new_player_attribute_augments)?;
     insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
     insert_player_recompositions(conn, new_player_recompositions)?;
 
@@ -1654,16 +1654,16 @@ fn insert_player_paradigm_shifts(
         .execute(conn)
 }
 
-fn insert_player_augments(
+fn insert_player_attribute_augments(
     conn: &mut PgConnection,
-    new_player_augments: Vec<Vec<NewPlayerAugment>>,
+    new_player_augments: Vec<Vec<NewPlayerAttributeAugment>>,
 ) -> QueryResult<usize> {
-    use crate::data_schema::data::player_augments::dsl as pa_dsl;
-    let player_augments = new_player_augments.into_iter().flatten().collect_vec();
+    use crate::data_schema::data::player_attribute_augments::dsl as paa_dsl;
+    let player_attribute_augments = new_player_augments.into_iter().flatten().collect_vec();
 
     // Insert new records
-    diesel::copy_from(pa_dsl::player_augments)
-        .from_insertable(player_augments)
+    diesel::copy_from(paa_dsl::player_attribute_augments)
+        .from_insertable(player_attribute_augments)
         .execute(conn)
 }
 

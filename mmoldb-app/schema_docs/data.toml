@@ -1338,8 +1338,8 @@ Much of the player information is in child tables:
 - `data.player_equipment_versions` has the equipment equipped by each player.
 - `data.player_equipment_effect_versions` has the attribute effects on each
   piece of equipment.
-- `data.player_augments` has the record of all augments to attributes each
-  player has recieved.
+- `data.player_attribute_augments` has the record of all augments to attributes
+  each player has recieved.
 - `data.player_paradigm_shifts` has the record of all paradigm shifts that have
   affected this player.
 - `data.player_recompositions` has the record of all times this player has been
@@ -1347,6 +1347,15 @@ Much of the player information is in child tables:
   on using this table.
 - `data.player_reports` has the values of the player attributes from clubhouse
   reports for each player.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a player use
+their `mmolb_player_id`.
 """
 
 [[table.column]]
@@ -1405,10 +1414,13 @@ you have a use for it, contact us in the MMOLB discord or on Github.
 See the `data.player_versions` table description for how to use `valid_from`
 and `valid_until`.
 """
+nullable_explanation = """
+`null` if this version is still valid.
+"""
 
 [[table.column]]
 name = "duplicates"
-type = "int"
+type = "integer"
 description = """
 Currently being used to debug MMOLDB itself. This field may be deleted soon.
 """
@@ -1441,12 +1453,20 @@ type = "bigint"
 description = """
 Hand this player uses to bat. References `taxa.handedness`.
 """
+nullable_explanation = """
+`null` if this player's batting handedness was not recognized. This represents
+an ingest error.
+"""
 
 [[table.column]]
 name = "pitching_handedness"
 type = "bigint"
 description = """
 Hand this player uses to pitch. References `taxa.handedness`.
+"""
+nullable_explanation = """
+`null` if this player's pitching handedness was not recognized. This represents
+an ingest error.
 """
 
 [[table.column]]
@@ -1459,7 +1479,7 @@ the time they were born.
 
 [[table.column]]
 name = "birthseason"
-type = "int"
+type = "integer"
 description = """
 The season during which the player was born.
 """
@@ -1471,10 +1491,14 @@ description = """
 The type of the day during which the player was born. References
 `taxa.day_type`. See the documentation on `taxa.day_type` for details.
 """
+nullable_explanation = """
+`null` if this player's birthday type was not recognized. This represents
+an ingest error.
+"""
 
 [[table.column]]
 name = "birthday_day"
-type = "int"
+type = "integer"
 description = """
 The regular day during which the player was born. This should be set if and
 only if `birthday_type` is `Day`.
@@ -1485,7 +1509,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "birthday_superstar_day"
-type = "int"
+type = "integer"
 description = """
 The superstar day during which the player was born. This should be set if and
 only if `birthday_type` is `SuperstarDay`.
@@ -1510,7 +1534,7 @@ The thing this player dislikes.
 
 [[table.column]]
 name = "number"
-type = "int"
+type = "integer"
 description = """
 This player's number (presumably a jersey number). As far as we know this has
 no mechanical effect.
@@ -1542,10 +1566,14 @@ The player's roster slot. References `taxa.slot`.
 This can be used along with the player's name to more accurately connect 
 players to game events.
 """
+nullable_explanation = """
+`null` if this player's slot was not recognized. This represents an ingest
+error.
+"""
 
 [[table.column]]
 name = "durability"
-type = "TODO"
+type = "double precision"
 description = """
 The player's durability. Displayed as a green progress bar on the player page.
 
@@ -1588,7 +1616,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "num_modifications"
-type = "int"
+type = "integer"
 description = """
 The number of modifications the player has.
 
@@ -1598,8 +1626,8 @@ users. To see player modifications, use the
 """
 
 [[table.column]]
-name = "num_modifications"
-type = "text[]"
+name = "occupied_equipment_slots"
+type = "ARRAY" # TODO Add support for specific array types
 description = """
 A list of which equipment slots are occupied on this player.
 
@@ -1619,6 +1647,9 @@ See the documentation of `data.player_versions` for a description of how to use
 Note that versions of this table do not need to coincide with versions of
 `data.player_versions`. There can be a break in versions in this table without
 a corresponding break in versions in `data.player_versions` and vice versa.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
 """
 
 [[table.column]]
@@ -1642,7 +1673,7 @@ associate players with their modifications.
 
 [[table.column]]
 name = "modification_index"
-type = "int"
+type = "integer"
 description = """
 The index of this modification in the player's modifications list. A
 `(mmolb_player_id, modification_index)` pair uniquely and stably identifies a
@@ -1671,10 +1702,13 @@ yet. If you have a use for it, contact us in the MMOLB discord or on Github.
 See the `data.player_versions` table description for how to use `valid_from`
 and `valid_until`.
 """
+nullable_explanation = """
+`null` if this version is still valid.
+"""
 
 [[table.column]]
 name = "duplicates"
-type = "int"
+type = "integer"
 description = """
 Currently being used to debug MMOLDB itself. This field may be deleted soon.
 """
@@ -1769,10 +1803,13 @@ yet. If you have a use for it, contact us in the MMOLB discord or on Github.
 See the `data.player_versions` table description for how to use `valid_from`
 and `valid_until`.
 """
+nullable_explanation = """
+`null` if this version is still valid.
+"""
 
 [[table.column]]
 name = "duplicates"
-type = "int"
+type = "integer"
 description = """
 Currently being used to debug MMOLDB itself. This field may be deleted soon.
 """
@@ -1799,9 +1836,6 @@ As of the end of season 4, there is only one `name` for each equipment slot:
 - Feet: Sneakers
 - Hands: Gloves
 - Head: Cap
-"""
-nullable_explanation = """
-`null` if the item's name is not a string. This represents a player ingest error.
 """
 
 [[table.column]]
@@ -1840,14 +1874,17 @@ nullable_explanation = """
 
 [[table.column]]
 name = "cost"
-type = "int"
+type = "integer"
 description = """
 Presumably, the amount the equipment cost to buy from Mother Quaelyth.
+"""
+nullable_explanation = """
+`null` if the cost was not an integer. This represents an ingest error.
 """
 
 [[table.column]]
 name = "prefixes"
-type = "text[]"
+type = "ARRAY" # TODO Add support for specific array types
 description = """
 A list of up to two prefixes the item has. These are prepended to `name` to
 create the item's display name, unless overridden by `rare_name`.
@@ -1855,7 +1892,7 @@ create the item's display name, unless overridden by `rare_name`.
 
 [[table.column]]
 name = "suffixes"
-type = "text[]"
+type = "ARRAY" # TODO Add support for specific array types
 description = """
 A list of up to two suffixes the item has. These are appended to `name` to
 create the item's display name, unless overridden by `rare_name`.
@@ -1873,7 +1910,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "num_effects"
-type = "int"
+type = "integer"
 description = """
 The number of effects this piece of equipment has.
 
@@ -1927,7 +1964,7 @@ The equipment slot that this piece of equipment is equipped to. See
 
 [[table.column]]
 name = "effect_index"
-type = "int"
+type = "integer"
 description = """
 The index of this effect within this piece of equipment's list of effects. A
 `(mmolb_player_id, equipment_slot, effect_index)` triple uniquely and stably
@@ -1957,10 +1994,13 @@ on Github.
 See the `data.player_versions` table description for how to use `valid_from`
 and `valid_until`.
 """
+nullable_explanation = """
+`null` if this version is still valid.
+"""
 
 [[table.column]]
 name = "duplicates"
-type = "int"
+type = "integer"
 description = """
 Currently being used to debug MMOLDB itself. This field may be deleted soon.
 """
@@ -1983,7 +2023,7 @@ As of the end of season 4, the only effect type that's ever appeared is Flat.
 
 [[table.column]]
 name = "value"
-type = "int"
+type = "double precision"
 description = """
 The value of the modification. This is stored exactly as displayed in the MMOLB
 UI. This means that attribute values range from 5 to 20.
@@ -2045,24 +2085,27 @@ you have a use for it, contact us in the MMOLB discord or on Github.
 See the `data.player_versions` table description for how to use `valid_from`
 and `valid_until`.
 """
+nullable_explanation = """
+`null` if this version is still valid.
+"""
 
 [[table.column]]
 name = "duplicates"
-type = "int"
+type = "integer"
 description = """
 Currently being used to debug MMOLDB itself. This field may be deleted soon.
 """
 
 [[table.column]]
 name = "num_entries"
-type = "bigint"
+type = "integer"
 description = """
 The number of entries in this feed.
 
 This is used internally by MMOLDB itself, and is not likely to be useful to
 users. To see the information from the feed, use the tables:
-- `data.player_augments` for the record of all augments to attributes each
-  player has recieved.
+- `data.player_attribute_augments` for the record of all augments to attributes
+  each player has recieved.
 - `data.player_paradigm_shifts` for the record of all paradigm shifts that have
   affected this player.
 - `data.player_recompositions` for the record of all times this player has been
@@ -2070,10 +2113,9 @@ users. To see the information from the feed, use the tables:
 """
 
 [[table]]
-name = "player_augments"
+name = "player_attribute_augments"
 description = """
-This possibly-misnamed table records the changes to player attributes as the
-result of augments. The effects of other augments are recorded elsewhere.
+Records the changes to player attributes as the result of augments.
 """
 
 [[table.column]]
@@ -2096,7 +2138,7 @@ associate players with their augments.
 
 [[table.column]]
 name = "feed_event_index"
-type = "int"
+type = "integer"
 description = """
 The index of this augment in the player's feed. A
 `(mmolb_player_id, feed_event_index)` pair uniquely and stably
@@ -2115,7 +2157,7 @@ call, and so should be trustworthy.
 
 [[table.column]]
 name = "season"
-type = "int"
+type = "integer"
 description = """
 The season during which the augment was applied.
 """
@@ -2127,10 +2169,14 @@ description = """
 The type of the day during which the augment was applied. References
 `taxa.day_type`. See the documentation on `taxa.day_type` for details.
 """
+nullable_explanation = """
+`null` if this augment's day was not recognized. This represents an ingest
+error.
+"""
 
 [[table.column]]
 name = "day"
-type = "int"
+type = "integer"
 description = """
 The regular day during which the augment was applied. This should be set if and
 only if `day_type` is `Day`.
@@ -2141,7 +2187,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "superstar_day"
-type = "int"
+type = "integer"
 description = """
 The superstar day during which the augment was applied This should be set if
 and only if `day_type` is `SuperstarDay`.
@@ -2159,7 +2205,7 @@ The attribute this augment modifies. References `taxa.attribute`.
 
 [[table.column]]
 name = "value"
-type = "int"
+type = "integer"
 description = """
 The value by which the attribute was increased. This is stored exactly as
 displayed in the MMOLB UI. Common values are 5, 6, 15, 30, and 50.
@@ -2195,7 +2241,7 @@ associate players with their paradigm shifts.
 
 [[table.column]]
 name = "feed_event_index"
-type = "int"
+type = "integer"
 description = """
 The index of this paradigm shift in the player's feed. A
 `(mmolb_player_id, feed_event_index)` pair uniquely and stably
@@ -2214,7 +2260,7 @@ call, and so should be trustworthy.
 
 [[table.column]]
 name = "season"
-type = "int"
+type = "integer"
 description = """
 The season during which the paradigm shift was applied.
 """
@@ -2226,10 +2272,14 @@ description = """
 The type of the day during which the paradigm shift was applied. References
 `taxa.day_type`. See the documentation on `taxa.day_type` for details.
 """
+nullable_explanation = """
+`null` if this paradigm shift's day was not recognized. This represents an
+ingest error.
+"""
 
 [[table.column]]
 name = "day"
-type = "int"
+type = "integer"
 description = """
 The regular day during which the paradigm shift was applied. This should be set
 if and only if `day_type` is `Day`.
@@ -2240,7 +2290,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "superstar_day"
-type = "int"
+type = "integer"
 description = """
 The superstar day during which the paradigm shift was applied This should be
 set if and only if `day_type` is `SuperstarDay`.
@@ -2313,7 +2363,7 @@ associate players with their recompositions.
 
 [[table.column]]
 name = "inferred_event_index"
-type = "int"
+type = "integer"
 description = """
 For an inferred recomposition, the index of this recomposition amongst only the
 other inferred recompositions with the same `feed_event_index`.
@@ -2324,7 +2374,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "feed_event_index"
-type = "int"
+type = "integer"
 description = """
 The index of this recomposition in the player's feed, for non-inferred
 recompositions. For inferred recompsitions this is the index of the next event
@@ -2348,7 +2398,7 @@ recompositions).
 
 [[table.column]]
 name = "season"
-type = "int"
+type = "integer"
 description = """
 The season during which the recomposition was applied.
 """
@@ -2360,10 +2410,14 @@ description = """
 The type of the day during which the recomposition was applied. References
 `taxa.day_type`. See the documentation on `taxa.day_type` for details.
 """
+nullable_explanation = """
+`null` if this recomposition's day was not recognized. This represents an
+ingest error.
+"""
 
 [[table.column]]
 name = "day"
-type = "int"
+type = "integer"
 description = """
 The regular day during which the recomposition was applied. This should be set
 if and only if `day_type` is `Day`.
@@ -2374,7 +2428,7 @@ nullable_explanation = """
 
 [[table.column]]
 name = "superstar_day"
-type = "int"
+type = "integer"
 description = """
 The superstar day during which the recomposition was applied This should be
 set if and only if `day_type` is `SuperstarDay`.

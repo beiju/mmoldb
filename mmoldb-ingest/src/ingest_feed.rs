@@ -13,7 +13,7 @@ use serde::Deserialize;
 use mmoldb_db::{db, PgConnection};
 use tokio_util::sync::CancellationToken;
 use chron::ChronEntity;
-use mmoldb_db::models::{NewPlayerAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition};
+use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition};
 use mmoldb_db::taxa::Taxa;
 use crate::ingest::{batch_by_entity, IngestFatalError};
 use crate::ingest_players::day_to_db;
@@ -163,7 +163,7 @@ pub fn chron_player_feed_as_new<'a>(
     mut final_player_name: Option<&str>,
 ) -> (
     NewPlayerFeedVersion<'a>,
-    Vec<NewPlayerAugment<'a>>,
+    Vec<NewPlayerAttributeAugment<'a>>,
     Vec<NewPlayerParadigmShift<'a>>,
     Vec<NewPlayerRecomposition<'a>>,
 ) {
@@ -497,7 +497,7 @@ pub fn chron_player_feed_as_new<'a>(
     // Current plan is to regenerate all feed-dependent tables every
     // time a player is ingested, and use a database function to handle
     // the many duplicates that will create.
-    let mut augments = Vec::new();
+    let mut attribute_augments = Vec::new();
     let mut paradigm_shifts = Vec::new();
     let mut recompositions = Vec::new();
 
@@ -690,7 +690,7 @@ pub fn chron_player_feed_as_new<'a>(
 
                 for change in changes {
                     check_player_name.check_or_set_name(&change.player_name);
-                    augments.push(NewPlayerAugment {
+                    attribute_augments.push(NewPlayerAttributeAugment {
                         mmolb_player_id: player_id,
                         feed_event_index,
                         time,
@@ -864,7 +864,7 @@ pub fn chron_player_feed_as_new<'a>(
 
     (
         player_feed_version,
-        augments,
+        attribute_augments,
         paradigm_shifts,
         recompositions,
     )

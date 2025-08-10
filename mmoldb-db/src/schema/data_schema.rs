@@ -131,7 +131,7 @@ pub mod data {
     }
 
     diesel::table! {
-        data.player_augments (id) {
+        data.player_attribute_augments (id) {
             id -> Int8,
             mmolb_player_id -> Text,
             feed_event_index -> Int4,
@@ -314,7 +314,7 @@ pub mod data {
         events,
         games,
         modifications,
-        player_augments,
+        player_attribute_augments,
         player_equipment_effect_versions,
         player_equipment_versions,
         player_feed_versions,

@@ -384,7 +384,7 @@ pub struct NewPlayerModificationVersion<'a> {
     pub mmolb_player_id: &'a str,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
-    pub modification_order: i32,
+    pub modification_index: i32,
     pub modification_id: i64,
 }
 
@@ -446,9 +446,9 @@ pub struct DbPlayerVersion {
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
-#[diesel(table_name = crate::data_schema::data::player_augments)]
+#[diesel(table_name = crate::data_schema::data::player_attribute_augments)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbPlayerAugment {
+pub struct DbPlayerAttributeAugment {
     pub id: i64,
     pub mmolb_player_id: String,
     pub feed_event_index: i32,
@@ -462,9 +462,9 @@ pub struct DbPlayerAugment {
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
-#[diesel(table_name = crate::data_schema::data::player_augments)]
+#[diesel(table_name = crate::data_schema::data::player_attribute_augments)]
 #[diesel(treat_none_as_default_value = false)]
-pub struct NewPlayerAugment<'a> {
+pub struct NewPlayerAttributeAugment<'a> {
     pub mmolb_player_id: &'a str,
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
