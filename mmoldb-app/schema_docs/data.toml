@@ -2068,3 +2068,344 @@ users. To see the information from the feed, use the tables:
 - `data.player_recompositions` for the record of all times this player has been
   recomposed.
 """
+
+[[table]]
+name = "player_augments"
+description = """
+This possibly-misnamed table records the changes to player attributes as the
+result of augments. The effects of other augments are recorded elsewhere.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+augment use the combination of its `mmolb_player_id` and `feed_event_index`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player this that was augmented. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their augments.
+"""
+
+[[table.column]]
+name = "feed_event_index"
+type = "int"
+description = """
+The index of this augment in the player's feed. A
+`(mmolb_player_id, feed_event_index)` pair uniquely and stably
+identifies an applied augment.
+"""
+
+[[table.column]]
+name = "time"
+type = "timestamp without time zone"
+description = """
+The exact time this augment was applied.
+
+This time is given to us by the MMOLB API, rather than being the time of an API
+call, and so should be trustworthy.
+"""
+
+[[table.column]]
+name = "season"
+type = "int"
+description = """
+The season during which the augment was applied.
+"""
+
+[[table.column]]
+name = "day_type"
+type = "bigint"
+description = """
+The type of the day during which the augment was applied. References
+`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+"""
+
+[[table.column]]
+name = "day"
+type = "int"
+description = """
+The regular day during which the augment was applied. This should be set if and
+only if `day_type` is `Day`.
+"""
+nullable_explanation = """
+`null` if this augment wasn't applied on a regular day.
+"""
+
+[[table.column]]
+name = "superstar_day"
+type = "int"
+description = """
+The superstar day during which the augment was applied This should be set if
+and only if `day_type` is `SuperstarDay`.
+"""
+nullable_explanation = """
+`null` if this augment wasn't applied on a superstar day.
+"""
+
+[[table.column]]
+name = "attribute"
+type = "bigint"
+description = """
+The attribute this augment modifies. References `taxa.attribute`.
+"""
+
+[[table.column]]
+name = "value"
+type = "int"
+description = """
+The value by which the attribute was increased. This is stored exactly as
+displayed in the MMOLB UI. Common values are 5, 6, 15, 30, and 50.
+"""
+
+[[table]]
+name = "player_paradigm_shifts"
+description = """
+Records every instance of each player being involved in a paradigm shift.
+
+Each paradigm shift that fires will create 9 entries in this table. MMOLDB
+doesn't (yet) connect the paradigm shifts to a team.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+paradigm shift use the combination of its `mmolb_player_id` and
+`feed_event_index`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player whose priority was changed. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their paradigm shifts.
+"""
+
+[[table.column]]
+name = "feed_event_index"
+type = "int"
+description = """
+The index of this paradigm shift in the player's feed. A
+`(mmolb_player_id, feed_event_index)` pair uniquely and stably
+identifies an applied paradigm shift on a particular player.
+"""
+
+[[table.column]]
+name = "time"
+type = "timestamp without time zone"
+description = """
+The exact time this paradigm shift was applied.
+
+This time is given to us by the MMOLB API, rather than being the time of an API
+call, and so should be trustworthy.
+"""
+
+[[table.column]]
+name = "season"
+type = "int"
+description = """
+The season during which the paradigm shift was applied.
+"""
+
+[[table.column]]
+name = "day_type"
+type = "bigint"
+description = """
+The type of the day during which the paradigm shift was applied. References
+`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+"""
+
+[[table.column]]
+name = "day"
+type = "int"
+description = """
+The regular day during which the paradigm shift was applied. This should be set
+if and only if `day_type` is `Day`.
+"""
+nullable_explanation = """
+`null` if this paradigm shift wasn't applied on a regular day.
+"""
+
+[[table.column]]
+name = "superstar_day"
+type = "int"
+description = """
+The superstar day during which the paradigm shift was applied This should be
+set if and only if `day_type` is `SuperstarDay`.
+"""
+nullable_explanation = """
+`null` if this paradigm shift wasn't applied on a superstar day.
+"""
+
+[[table.column]]
+name = "attribute"
+type = "bigint"
+description = """
+The attribute this paradigm shift sorts the lineup by. References `taxa.attribute`.
+"""
+
+[[table]]
+name = "player_recompositions"
+description = """
+Records every instance of a player being recomposed.
+
+This table is more complicated because there have been 3 distinct recompose
+bugs that have been handled by deleting and/or inserting inferred
+recompositions which aren't present in the feed. Inferred recompositions have
+the `feed_event_index` of the first feed event to happen *after* them, but also
+have an `inferred_event_index`.
+
+The 3 bugs have been:
+1. Some recompositions were reverted entirely, and their events were removed
+   from  the player feed. These have been handled by suppressing the
+   recompositions entirely, so they don't appear in this table. After more
+   investigation the handling may  or may not change to insert two inferred
+   recompositions in quick succession, with the latter reverting the former.
+2. Some recompositions occurred without a feed event. These have been handled
+   by adding an inferred recomposition. The time for these inferred
+   recompositions is set to the first time we observed the recomposed player,
+   and the season and day derived from that time.
+3. Some recompositions had their feed event and attributes reverted, but not
+   their name change. These have been handled by suppressing the real
+   recompositions (for the short time they appeared) and inserting an inferred
+   recomposition to replace it (making it permanent), plus an additional
+   recomposition when the overwrite happens. This latter recomposition doesn't
+   change the player name, but does change their attributes. It's also marked
+   as reverting the prior recomposition.
+
+   Because of this bug, it is not entirely true to assume that player
+   attributes after a recomposition are within the newly-generated-player
+   boundaries. You can check for non-`null` `reverts_recomposition` to see if
+   the "recomposed" player's attributes weren't freshly generated and may have
+   been subject to augments.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+recomposition use the combination of its `mmolb_player_id`,
+`inferred_event_index`, and `feed_event_index`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player who was recomposed. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their recompositions.
+"""
+
+[[table.column]]
+name = "inferred_event_index"
+type = "int"
+description = """
+For an inferred recomposition, the index of this recomposition amongst only the
+other inferred recompositions with the same `feed_event_index`.
+"""
+nullable_explanation = """
+`null` if this is not an inferred recompsition.
+"""
+
+[[table.column]]
+name = "feed_event_index"
+type = "int"
+description = """
+The index of this recomposition in the player's feed, for non-inferred
+recompositions. For inferred recompsitions this is the index of the next event
+in the player's feed. See the table description for more details.
+
+A `(mmolb_player_id, inferred_event_index, feed_event_index)` triple uniquely and
+stably identifies an applied recomposition on a particular player.
+"""
+
+[[table.column]]
+name = "time"
+type = "timestamp without time zone"
+description = """
+The exact time this recomposition was applied, for non-inferred recompositions.
+For inferred recompositions this time may not be exact.
+
+This time is given to us by the MMOLB API, rather than being the time of an API
+call, and so should be trustworthy (except in the case of inferred
+recompositions).
+"""
+
+[[table.column]]
+name = "season"
+type = "int"
+description = """
+The season during which the recomposition was applied.
+"""
+
+[[table.column]]
+name = "day_type"
+type = "bigint"
+description = """
+The type of the day during which the recomposition was applied. References
+`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+"""
+
+[[table.column]]
+name = "day"
+type = "int"
+description = """
+The regular day during which the recomposition was applied. This should be set
+if and only if `day_type` is `Day`.
+"""
+nullable_explanation = """
+`null` if this recomposition wasn't applied on a regular day.
+"""
+
+[[table.column]]
+name = "superstar_day"
+type = "int"
+description = """
+The superstar day during which the recomposition was applied This should be
+set if and only if `day_type` is `SuperstarDay`.
+"""
+nullable_explanation = """
+`null` if this recomposition wasn't applied on a superstar day.
+"""
+
+[[table.column]]
+name = "player_name_before"
+type = "text"
+description = """
+The player's full name before the recomposition.
+"""
+
+[[table.column]]
+name = "player_name_after"
+type = "text"
+description = """
+The player's full name after the recomposition.
+"""
+
+[[table.column]]
+name = "reverts_recomposition"
+type = "timestamp without time zone"
+description = """
+If this recomposition reverts another recomposition, the `time` of the
+recomposition it reverts. This means that after this recomposition, the
+player's attributes are set equal to what they were before the recomposition
+that this recomposition reverts. See the table description for more details.
+"""
+nullable_explanation = """
+`null` if this recomposition does not revert another recomposition.
+"""
