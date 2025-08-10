@@ -540,9 +540,9 @@ pub struct NewPlayerRecomposition<'a> {
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
-#[diesel(table_name = crate::data_schema::data::player_reports)]
+#[diesel(table_name = crate::data_schema::data::player_report_attributes)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbPlayerReport {
+pub struct DbPlayerReportAttributes {
     pub id: i64,
     pub mmolb_player_id: String,
     pub season: i32,
@@ -555,9 +555,9 @@ pub struct DbPlayerReport {
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
-#[diesel(table_name = crate::data_schema::data::player_reports)]
+#[diesel(table_name = crate::data_schema::data::player_report_attributes)]
 #[diesel(treat_none_as_default_value = false)]
-pub struct NewPlayerReport<'a> {
+pub struct NewPlayerReportAttributes<'a> {
     pub mmolb_player_id: &'a str,
     pub season: i32,
     pub day_type: Option<i64>,

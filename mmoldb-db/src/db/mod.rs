@@ -24,7 +24,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributes, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -1528,7 +1528,7 @@ type NewPlayerVersionExt<'a> = (
     NewPlayerVersion<'a>,
     Vec<NewPlayerModificationVersion<'a>>,
     Option<NewPlayerFeedVersionExt<'a>>,
-    Vec<NewPlayerReport<'a>>,
+    Vec<NewPlayerReportAttributes<'a>>,
     Vec<(
         NewPlayerEquipmentVersion<'a>,
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
@@ -1537,14 +1537,14 @@ type NewPlayerVersionExt<'a> = (
 
 fn insert_player_reports(
     conn: &mut PgConnection,
-    new_player_reports: Vec<Vec<NewPlayerReport>>,
+    new_player_report_attributes: Vec<Vec<NewPlayerReportAttributes>>,
 ) -> QueryResult<usize> {
-    use crate::data_schema::data::player_reports::dsl as pr_dsl;
-    let player_recompositions = new_player_reports.into_iter().flatten().collect_vec();
+    use crate::data_schema::data::player_report_attributes::dsl as pr_dsl;
+    let new_player_report_attributes = new_player_report_attributes.into_iter().flatten().collect_vec();
 
     // Insert new records
-    diesel::copy_from(pr_dsl::player_reports)
-        .from_insertable(player_recompositions)
+    diesel::copy_from(pr_dsl::player_report_attributes)
+        .from_insertable(new_player_report_attributes)
         .execute(conn)
 }
 
@@ -1727,13 +1727,13 @@ pub fn insert_player_versions(
         new_player_versions,
         new_player_modification_versions,
         new_player_feed_versions,
-        new_player_reports,
+        new_player_report_attributes,
         new_player_equipment,
     ): (
         Vec<NewPlayerVersion>,
         Vec<Vec<NewPlayerModificationVersion>>,
         Vec<Option<NewPlayerFeedVersionExt>>,
-        Vec<Vec<NewPlayerReport>>,
+        Vec<Vec<NewPlayerReportAttributes>>,
         Vec<Vec<(
             NewPlayerEquipmentVersion,
             Vec<NewPlayerEquipmentEffectVersion>,
@@ -1757,7 +1757,7 @@ pub fn insert_player_versions(
     let insert_player_feed_versions_duration = (Utc::now() - insert_player_feed_versions_start).as_seconds_f64();
 
     let insert_player_reports_start = Utc::now();
-    insert_player_reports(conn, new_player_reports)?;
+    insert_player_reports(conn, new_player_report_attributes)?;
     let insert_player_reports_duration = (Utc::now() - insert_player_reports_start).as_seconds_f64();
 
     let insert_player_equipment_start = Utc::now();

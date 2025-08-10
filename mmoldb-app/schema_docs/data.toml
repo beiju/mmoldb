@@ -1345,8 +1345,8 @@ Much of the player information is in child tables:
 - `data.player_recompositions` has the record of all times this player has been
   recomposed. See the documentation for the `mmolb_player_id` column for more
   on using this table.
-- `data.player_reports` has the values of the player attributes from clubhouse
-  reports for each player.
+- `data.player_report_attributes` has the values of the player attributes from
+  clubhouse reports for each player.
 """
 
 [[table.column]]
@@ -2462,4 +2462,99 @@ that this recomposition reverts. See the table description for more details.
 """
 nullable_explanation = """
 `null` if this recomposition does not revert another recomposition.
+"""
+
+
+[[table]]
+name = "player_report_attributes"
+description = """
+Records the attribute values for every observed clubhouse report.
+
+Before the Season 4 superstar break, reports displayed the player's attributes
+as of the creation of the report. After the Season 4 superstar break, reports
+display the player's current attributes.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+report use the combination of its `mmolb_player_id` and `attribute`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player who this report is about. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their reports.
+"""
+
+[[table.column]]
+name = "attribute"
+type = "bigint"
+description = """
+The attribute this effect modifies. References `taxa.attribute`. A
+`(mmolb_player_id, attribute)` pair uniquely identifies a report attribute.
+"""
+
+[[table.column]]
+name = "observed"
+type = "timestamp without time zone"
+description = """
+The first time this value of this attribute on this player was observed.
+
+This was designed when player reports were snapshots. It may be replaced by
+`valid_from` and `valid_until` soon.
+"""
+
+[[table.column]]
+name = "season"
+type = "integer"
+description = """
+The season during which the report was created.
+"""
+
+[[table.column]]
+name = "day_type"
+type = "bigint"
+description = """
+The type of the day during which the report was created. References
+`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+"""
+nullable_explanation = """
+`null` if this report's day was not recognized. This represents an ingest
+error.
+"""
+
+[[table.column]]
+name = "day"
+type = "integer"
+description = """
+The regular day during which the report was created. This should be set if and
+only if `day_type` is `Day`.
+"""
+nullable_explanation = """
+`null` if this report wasn't created on a regular day.
+"""
+
+[[table.column]]
+name = "superstar_day"
+type = "integer"
+description = """
+The superstar day during which the report was created This should be
+set if and only if `day_type` is `SuperstarDay`.
+"""
+nullable_explanation = """
+`null` if this report wasn't created on a superstar day.
+"""
+
+[[table.column]]
+name = "stars"
+type = "integer"
+description = """
+The number of stars this attribute had in this report.
 """

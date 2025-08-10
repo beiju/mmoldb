@@ -236,14 +236,14 @@ pub mod data {
     }
 
     diesel::table! {
-        data.player_reports (id) {
+        data.player_report_attributes (id) {
             id -> Int8,
             mmolb_player_id -> Text,
             season -> Int4,
             day_type -> Nullable<Int8>,
             day -> Nullable<Int4>,
             superstar_day -> Nullable<Int4>,
-            observed -> Timestamptz,
+            observed -> Timestamp,
             attribute -> Int8,
             stars -> Int4,
         }
@@ -321,7 +321,7 @@ pub mod data {
         player_modification_versions,
         player_paradigm_shifts,
         player_recompositions,
-        player_reports,
+        player_report_attributes,
         player_versions,
         versions,
         weather,

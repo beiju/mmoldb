@@ -8,7 +8,7 @@ use mmolb_parsing::{AddedLater, RemovedLater, NotRecognized, MaybeRecognizedResu
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReport, NewPlayerVersion};
+use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributes, NewPlayerVersion};
 use mmoldb_db::taxa::{Taxa, TaxaDayType, TaxaSlot};
 use mmoldb_db::{PgConnection, QueryResult, db};
 use rayon::prelude::*;
@@ -337,7 +337,7 @@ fn chron_player_as_new<'a>(
         Vec<NewPlayerParadigmShift<'a>>,
         Vec<NewPlayerRecomposition<'a>>,
     )>,
-    Vec<NewPlayerReport<'a>>,
+    Vec<NewPlayerReportAttributes<'a>>,
     Vec<(
         NewPlayerEquipmentVersion<'a>,
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
@@ -445,19 +445,19 @@ fn chron_player_as_new<'a>(
         Err(_) => None,
     } ;
 
-    let mut reports = Vec::new();
+    let mut report_attributes = Vec::new();
     if let Some(talk) = &entity.data.talk {
         if let Some(category) = &talk.batting {
-            process_talk_category(category, entity, &mut reports, taxa);
+            process_talk_category(category, entity, &mut report_attributes, taxa);
         }
         if let Some(category) = &talk.pitching {
-            process_talk_category(category, entity, &mut reports, taxa);
+            process_talk_category(category, entity, &mut report_attributes, taxa);
         }
         if let Some(category) = &talk.defense {
-            process_talk_category(category, entity, &mut reports, taxa);
+            process_talk_category(category, entity, &mut report_attributes, taxa);
         }
         if let Some(category) = &talk.baserunning {
-            process_talk_category(category, entity, &mut reports, taxa);
+            process_talk_category(category, entity, &mut report_attributes, taxa);
         }
     }
 
@@ -584,7 +584,7 @@ fn chron_player_as_new<'a>(
         player,
         modifications,
         feed_as_new,
-        reports,
+        report_attributes,
         equipment,
     )
 }
@@ -592,7 +592,7 @@ fn chron_player_as_new<'a>(
 fn process_talk_category<'e>(
     category: &TalkCategory,
     entity: &'e ChronEntity<mmolb_parsing::player::Player>,
-    reports: &mut Vec<NewPlayerReport<'e>>,
+    report_attributes: &mut Vec<NewPlayerReportAttributes<'e>>,
     taxa: &Taxa,
 ) {
     let Ok(season) = category.season else {
@@ -610,7 +610,7 @@ fn process_talk_category<'e>(
     let (day_type, day, superstar_day) = day_to_db(day, taxa);
 
     for (attribute, stars) in &category.stars {
-        reports.push(NewPlayerReport {
+        report_attributes.push(NewPlayerReportAttributes {
             mmolb_player_id: &entity.entity_id,
             season: season as i32,
             day_type,
