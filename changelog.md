@@ -1,14 +1,25 @@
 Changelog
 =========
 
-Upcoming
+2025-08-10
 ----------
 
-- Season 4 support! This includes aurora photos and ejections. Thanks to
-  WoofyJack for help on parsing. 
+- Season 4 support! This includes aurora photos and ejections, both of which 
+  have new tables. Thanks to WoofyJack for help on parsing. 
 - Player ingest! Thanks to Centride on the MMOLB discord for data entry 
-  assistance, and as usual big thanks to WoofyJack for work on parsing.
-- 
+  assistance, and as usual big thanks to WoofyJack for work on parsing. Players
+  have the following new tables, all documented in the docs page:
+  - `data.modifications`
+  - `data.player_versions`
+  - `data.player_modification_versions`
+  - `data.player_equipment_versions`
+  - `data.player_equipment_effect_versions`
+  - `data.player_feed_versions`
+  - `data.player_attribute_augments`
+  - `data.player_recompositions`
+  - `data.player_paradigm_shifts`
+  - `data.player_report_attributes`
+- Fix HitByPitch erroneously being labeled as a ball in play
 
 2025-07-20
 ----------
