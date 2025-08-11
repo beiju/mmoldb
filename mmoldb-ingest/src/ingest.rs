@@ -7,7 +7,7 @@ use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, async_db, db, QueryResult, QueryError};
 use std::sync::Arc;
 use chrono::{DateTime, NaiveDateTime};
-use hashbrown::hash_map::Entry;
+use hashbrown::hash_map::{Entry, EntryRef};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use thiserror::Error;
@@ -201,7 +201,7 @@ async fn ingest_stage_2(
     }
     result
 }
-
+// 2025-08-11T04:50:48Z DEBUG
 async fn ingest_stage_2_internal(
     kind: &'static str,
     stage_2_chunks_page_size: usize,
@@ -246,6 +246,8 @@ async fn ingest_stage_2_internal(
 
         info!("{kind} stage 2 ingest starting at {ingest_start_cursor:?}");
 
+        let mut num_skipped = 0;
+        let mut entity_cache = HashMap::<String, serde_json::Value>::new();
         let versions_stream = async_db::stream_versions_at_cursor(
             &mut async_conn,
             kind,
@@ -256,6 +258,44 @@ async fn ingest_stage_2_internal(
             .await
             .into_diagnostic()
             .context("Getting versions at cursor")?
+            .filter(|result| futures::future::ready(match result {
+                Ok(entity) => {
+                    let data_without_stats = match &entity.data {
+                        serde_json::Value::Object(obj) => {
+                            obj.iter()
+                                // This is a bit dangerous to do in a function that's generic
+                                // over `kind`. Hopefully this doesn't come back to bite me.
+                                .filter(|(k, _)| *k != "Stats" && *k != "SeasonStats")
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect()
+                        }
+                        other => other.clone(),
+                    };
+                    match entity_cache.entry_ref(&entity.entity_id) {
+                        EntryRef::Occupied(mut entry) => {
+                            if entry.get() == &data_without_stats {
+                                num_skipped += 1;
+                                if num_skipped % 100000 == 0 {
+                                    debug!(
+                                        "{num_skipped} duplicate {kind} versions skipped so far. \
+                                        {} entities in the cache.",
+                                        entity_cache.len(),
+                                    );
+                                }
+                                false // Skip
+                            } else {
+                                entry.insert(data_without_stats);
+                                true // This was a changed version; don't skip
+                            }
+                        }
+                        EntryRef::Vacant(entry) => {
+                            entry.insert(data_without_stats);
+                            true // This was a new version, don't skip
+                        }
+                    }
+                }
+                Err(_) => true, // This was an error, don't skip
+            }))
             .try_chunks(stage_2_chunks_page_size)
             .map(|raw_versions| {
                 // when an error occurs, try_chunks gives us the successful portion of the chunk

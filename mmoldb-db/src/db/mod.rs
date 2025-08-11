@@ -1618,11 +1618,19 @@ fn insert_player_equipment(
     ) = itertools::multiunzip(new_player_equipment.into_iter().flatten());
 
     // Insert new records
+    let insert_versions_start = Utc::now();
     let num_inserted = diesel::copy_from(pev_dsl::player_equipment_versions)
         .from_insertable(new_player_equipment_versions)
         .execute(conn)?;
+    let insert_versions_duration = (Utc::now() - insert_versions_start).as_seconds_f64();
 
+    let insert_effect_versions_start = Utc::now();
     insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
+    let insert_effect_versions_duration = (Utc::now() - insert_effect_versions_start).as_seconds_f64();
+    info!(
+        "insert_equipment_versions_duration: {insert_versions_duration:.2}, \
+        insert_equipment_effect_versions_duration: {insert_effect_versions_duration:.2}"
+    );
 
     Ok(num_inserted)
 }
