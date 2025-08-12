@@ -429,7 +429,7 @@ pub struct NewPlayerVersion<'a> {
     pub included_report_categories: Vec<i64>,
 }
 
-#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
 #[diesel(table_name = crate::data_schema::data::player_versions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbPlayerVersion {

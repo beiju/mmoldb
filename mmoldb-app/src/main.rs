@@ -9,6 +9,8 @@ use rocket_dyn_templates::tera::Value;
 use rocket_sync_db_pools::database;
 use rocket_sync_db_pools::diesel::{PgConnection, prelude::*};
 use std::collections::HashMap;
+use miette::IntoDiagnostic;
+use mmoldb_db::taxa::Taxa;
 
 #[database("mmoldb")]
 struct Db(PgConnection);
@@ -62,6 +64,13 @@ fn rocket() -> _ {
     rocket::custom(get_figment_with_constructed_db_url())
         .mount("/", web::routes())
         .mount("/static", rocket::fs::FileServer::from("./static"))
+        .manage({
+            let url = mmoldb_db::postgres_url_from_environment();
+            let mut conn = PgConnection::establish(&url)
+                .expect("Failed to connect to mmoldb database");
+            Taxa::new(&mut conn)
+                .expect("Error creating Taxa")
+        })
         .attach(Template::custom(|engines| {
             engines.tera.register_filter("num_format", NumFormat);
         }))

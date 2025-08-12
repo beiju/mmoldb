@@ -20,6 +20,9 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
+use diesel::dsl::count;
+use diesel::query_dsl::InternalJoinDsl;
+use mmolb_parsing::player::Player;
 use thiserror::Error;
 // First-party imports
 use crate::QueryError;
@@ -1875,4 +1878,39 @@ pub fn roll_back_ingest_to_date(conn: &mut PgConnection, dt: NaiveDateTime) -> Q
     rollback_table!(conn, schema, player_report_attribute_versions, dt);
 
     Ok(())
+}
+
+pub fn player_all(conn: &mut PgConnection, player_id: &str) -> QueryResult<(DbPlayerVersion, Option<HashMap<Option<i64>, i64>>)> {
+    use crate::schema::data_schema::data::player_versions::dsl as pv_dsl;
+    use crate::schema::data_schema::data::events::dsl as event_dsl;
+    use crate::schema::data_schema::data::games::dsl as game_dsl;
+
+    let player = pv_dsl::player_versions
+            .filter(pv_dsl::mmolb_player_id.eq(player_id))
+            .filter(pv_dsl::valid_until.is_null())
+            .select(DbPlayerVersion::as_select())
+            .get_result(conn)?;
+
+    let full_name = format!("{} {}", player.first_name, player.last_name);
+    let pitches = if let Some(team_id) = &player.mmolb_team_id {
+        let q = event_dsl::events
+            .inner_join(game_dsl::games)
+            .filter(event_dsl::top_of_inning.and(game_dsl::home_team_mmolb_id.eq(team_id))
+                .or(diesel::dsl::not(event_dsl::top_of_inning).and(game_dsl::away_team_mmolb_id.eq(team_id))))
+            .filter(event_dsl::pitcher_name.eq(&full_name))
+            .group_by(event_dsl::pitch_type)
+            .select((event_dsl::pitch_type, count(event_dsl::id)));
+        println!("query: {}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
+        Some(
+            q.
+                get_results::<(Option<i64>, i64)>(conn)?
+                .into_iter()
+                .collect()
+        )
+    } else {
+        None
+    };
+
+
+    Ok((player, pitches))
 }

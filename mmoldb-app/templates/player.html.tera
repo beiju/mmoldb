@@ -1,0 +1,47 @@
+{% import "macros" as macros %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MMOLDB &mdash; Player</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/player.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
+</head>
+<body>
+    <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
+    
+    <section class="card player">
+        <h2>{{ player.first_name }} {{ player.last_name }}</h2>
+
+        <p>
+            Home: {{ player.home }}
+            <br />Birthday: {{ player.birthday }}
+            <br />Bats: {{ player.batting_handedness }}
+            <br />Throws: {{ player.pitching_handedness }}
+            <br />Likes: {{ player.likes }}
+            <br />Dislikes: {{ player.dislikes }}
+            <br />Durability: {{ player.durability * 20 | round }}/20 hits remaining ({{ player.durability | round(precision=2) }})
+            {% if total_balks and total_w_balks %}
+                <br />Balks: {{ total_balks }} / {{ total_w_balks }} ({{ total_balks / total_w_balks * 100 | round(precision=3) }}%)
+            {% elif total_w_balks %}
+                <br />Balks: 0 / {{ total_w_balks }} (0%)
+            {% endif %}
+            <br />Pitch types:
+            {% if pitch_types %}
+                <ul>
+                    {% for pitch_type in pitch_types %}
+                        <li>{{ pitch_type[0] }}: {{ pitch_type[1] }} / {{ total_wo_balks }} ({{ pitch_type[1] / total_wo_balks * 100 | round(precision=1) }}%)</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+            <br />And more info! If there's anything else you want to see, request it in the MMOLDB
+            <a href="https://github.com/beiju/mmoldb/issues">Github</a> or
+            <a href="https://discord.com/channels/1136709081319604324/1366497767090028554">Discord channel</a>.
+        </p>
+
+{#        <pre>{{ player_raw | json_encode(pretty=true) }}</pre>#}
+    </section>
+</body>
+</html>

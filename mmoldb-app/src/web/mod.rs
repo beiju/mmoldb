@@ -2,6 +2,7 @@ mod docs_pages;
 mod error;
 mod pages;
 mod utility_contexts;
+mod player_pages;
 
 pub fn routes() -> Vec<rocket::Route> {
     rocket::routes![
@@ -19,5 +20,6 @@ pub fn routes() -> Vec<rocket::Route> {
         pages::paginated_ingest_page,
         pages::game_page,
         pages::debug_always_error_page,
+        player_pages::player,
     ]
 }

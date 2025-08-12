@@ -11,6 +11,7 @@ use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
 use log::{error, warn};
 use std::collections::HashSet;
+use serde::Serialize;
 use taxa_macro::*;
 
 taxa! {
@@ -939,6 +940,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::pitch_type,
         table = crate::taxa_schema::taxa::pitch_type::dsl::pitch_type,
         id_column = crate::taxa_schema::taxa::pitch_type::dsl::id,
+        derive = (Serialize,)
     ]
     pub enum TaxaPitchType {
         #[display_name: &'a str = "Fastball", abbreviation: &'a str = "FF"]
@@ -1463,6 +1465,14 @@ impl Taxa {
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
             .expect("TODO Handle unknown attribute")
+            .0
+    }
+
+    pub fn day_type_from_id(&self, id: i64) -> TaxaDayType {
+        self.day_type_mapping
+            .iter()
+            .find(|(_, ty_id)| id == **ty_id)
+            .expect("TODO Handle unknown day type")
             .0
     }
 }
