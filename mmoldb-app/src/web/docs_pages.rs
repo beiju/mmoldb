@@ -236,7 +236,7 @@ mod tests {
         let file_contents = file.contents();
 
         let docs: SchemaDocs =
-            toml::from_slice(file_contents).expect("Couldn't deserialize  schema docs file");
+            toml::from_slice(file_contents).expect("Couldn't deserialize schema docs file");
 
         let db = crate::tests::get_db().await;
 
@@ -284,7 +284,7 @@ mod tests {
         for doc in docs_without_schemas {
             assert!(
                 false,
-                "Documented column {} does not exist {schema_name}.{}",
+                "Documented column {} does not exist in {schema_name}.{}",
                 doc.name, table.name
             );
         }

@@ -222,6 +222,92 @@ the new game is processed and added to `data.games`. This mostly happens with
 ongoing games, but it can also happen with finished games.
 """
 
+[[table.column]]
+name = "away_team_earned_coins"
+type = "integer"
+description = """
+The number of coins the away team earned. This includes coins earned from
+Prosperity weather, from Geomagnetic Storms weather, and from any other future
+coin-earning sources.
+"""
+nullable_explanation = """
+`null` in the following situations:
+1. This is not a coin-awarding weather.
+2. This is a coin-awarding weather, but there was no message about teams
+   earning coins. This can happen in e.g. Geomagnetic Storms weather if no
+   storm events occurred. It is not possible in Prosperity weather, even though
+   it was at once time possible for neither team to earn any coins*. In that
+   event there is still a message, but neither team earns any coins (MMOLDB
+   records this as both teams earning 0 coins.)
+3. This is a coin-awarding weather that MMOLDB does not yet support. If this
+   ever occurs, we are presumably working on it.
+4. This is a coin-awarding weather, and we do support it, and there was a
+   message about the teams earning coins, but we don't know which is the home
+   team and which is the away team because the teams have identical names and
+   emoji.
+"""
+
+[[table.column]]
+name = "home_team_earned_coins"
+type = "integer"
+description = """
+The number of coins the home team earned. This includes coins earned from
+Prosperity weather, from Geomagnetic Storms weather, and from any other future
+coin-earning sources.
+"""
+nullable_explanation = """
+See `away_team_earned_coins` for an explanation of what `null` indicates.
+"""
+
+[[table.column]]
+name = "away_team_photo_contest_top_scorer"
+type = "text"
+description = """
+The name of the away team's top scorer in this game's photo contest.
+"""
+nullable_explanation = """
+`null` in the following situations:
+1. This is not Geomagnetic Storms weather.
+2. There were no aurorae during this game, so there was no photo contest.
+3. We can't tell which player belongs to the home team because the home and
+   away teams have the exact same name and emoji.
+"""
+
+[[table.column]]
+name = "away_team_photo_contest_score"
+type = "integer"
+description = """
+The score that the away team's top scoring photo earned in this game's photo
+contest.
+"""
+nullable_explanation = """
+See `away_team_photo_contest_top_scorer` for an explanation of what `null`
+indicates.
+"""
+
+[[table.column]]
+name = "home_team_photo_contest_top_scorer"
+type = "text"
+description = """
+The name of the home team's top scorer in this game's photo contest.
+"""
+nullable_explanation = """
+See `away_team_photo_contest_top_scorer` for an explanation of what `null`
+indicates.
+"""
+
+[[table.column]]
+name = "home_team_photo_contest_score"
+type = "integer"
+description = """
+The score that the home team's top scoring photo earned in this game's photo
+contest.
+"""
+nullable_explanation = """
+See `away_team_photo_contest_top_scorer` for an explanation of what `null`
+indicates.
+"""
+
 [[table]]
 name = "events"
 description = """
@@ -1067,9 +1153,9 @@ The entity's MMOLB id.
 name = "valid_from"
 type = "timestamp without time zone"
 description = """
-The earliest date that Chron observed this version of the entity was observed.
-This may not (and typically will not) line up perfectly with when this version
-was created because Chron can only poll so often.
+The earliest date that Chron observed this version of the entity. This may not
+(and typically will not) line up perfectly with when this version was created
+because Chron can only poll so often.
 """
 
 [[table.column]]
@@ -1345,8 +1431,8 @@ Much of the player information is in child tables:
 - `data.player_recompositions` has the record of all times this player has been
   recomposed. See the documentation for the `mmolb_player_id` column for more
   on using this table.
-- `data.player_report_attributes` has the values of the player attributes from
-  clubhouse reports for each player.
+- `data.player_report_versions` and `data.player_report_attribute_versions`
+  have the contents of clubhouse reports for each player.
 """
 
 [[table.column]]
@@ -1633,6 +1719,16 @@ A list of which equipment slots are occupied on this player.
 
 This is used internally by MMOLDB itself, and is not likely to be useful to
 users. To see player equipment, use the `data.player_equipment_versions` table.
+"""
+
+[[table.column]]
+name = "included_report_categories"
+type = "ARRAY" # TODO Add support for specific array types
+description = """
+A list of which clubhouse reports are included on this player.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see player reports, use the `data.player_report_versions` table.
 """
 
 [[table]]
@@ -1931,8 +2027,9 @@ See the documentation of `data.player_versions` for a description of how to use
 `valid_from` and `valid_until`.
 
 Note that versions of this table do not need to coincide with versions of
-`data.player_versions`. There can be a break in versions in this table without
-a corresponding break in versions in `data.player_versions` and vice versa.
+`data.player_versions`, nor versions of `data.player_equipment_versions`.
+There can be a break in versions in this table without a corresponding break in
+versions in either of those tables and vice versa.
 """
 
 [[table.column]]
@@ -2464,15 +2561,28 @@ nullable_explanation = """
 `null` if this recomposition does not revert another recomposition.
 """
 
-
 [[table]]
-name = "player_report_attributes"
+name = "player_report_versions"
 description = """
-Records the attribute values for every observed clubhouse report.
+The contents of player clubhouse reports, also called "talk"s.
+
+Attributes are recorded in `data.player_report_attribute_versions`. For many
+common uses of reports you can skip this table entirely and go straight to that
+one.
 
 Before the Season 4 superstar break, reports displayed the player's attributes
 as of the creation of the report. After the Season 4 superstar break, reports
-display the player's current attributes.
+display the player's current attributes (for our purposes, this means the
+attributes as of `valid_from` and until sometime before `valid_until`). The
+season and day of a report does *not* update live, even after the Season 4
+change. For post-s4-ss reports, the season and day is not particularly useful.
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`. There can be a break in versions in this table without
+a corresponding break in versions in `data.player_versions` and vice versa.
 """
 
 [[table.column]]
@@ -2481,7 +2591,7 @@ type = "bigint"
 description = """
 An arbitrary numeric ID. These IDs are *not* stable. You should not store these
 ids between queries, nor hard-code them into queries. To identify a particular
-report use the combination of its `mmolb_player_id` and `attribute`.
+report use the combination of its `mmolb_player_id` and `category`.
 """
 
 [[table.column]]
@@ -2494,21 +2604,37 @@ associate players with their reports.
 """
 
 [[table.column]]
-name = "attribute"
+name = "category"
 type = "bigint"
 description = """
-The attribute this effect modifies. References `taxa.attribute`. A
-`(mmolb_player_id, attribute)` pair uniquely identifies a report attribute.
+The category this report is for ("Batting", "Baserunning", etc.). References
+`taxa.attribute_category`.
 """
 
 [[table.column]]
-name = "observed"
+name = "valid_from"
 type = "timestamp without time zone"
 description = """
-The first time this value of this attribute on this player was observed.
+The earliest time this version of the report was observed.
 
-This was designed when player reports were snapshots. It may be replaced by
-`valid_from` and `valid_until` soon.
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the report was observed, i.e. the
+earliest time we know this version is no longer valid. The latest time we know
+this version *is* valid is not exposed because nobody's requested it yet. If
+you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
 """
 
 [[table.column]]
@@ -2516,6 +2642,14 @@ name = "season"
 type = "integer"
 description = """
 The season during which the report was created.
+
+This value only changes when a new report is generated (including the reports
+from Recomposing the player). Do not assume that the value of an attribute
+corresponds with the season that its report was generated.
+"""
+nullable_explanation = """
+`null` for reports that were generated before their season and day were
+recorded.
 """
 
 [[table.column]]
@@ -2524,10 +2658,14 @@ type = "bigint"
 description = """
 The type of the day during which the report was created. References
 `taxa.day_type`. See the documentation on `taxa.day_type` for details.
+
+This value only changes when a new report is generated (including the reports
+from Recomposing the player). Do not assume that the value of an attribute
+corresponds with the day_type that its report was generated.
 """
 nullable_explanation = """
-`null` if this report's day was not recognized. This represents an ingest
-error.
+`null` for reports that were generated before their season and day were
+recorded.
 """
 
 [[table.column]]
@@ -2536,25 +2674,137 @@ type = "integer"
 description = """
 The regular day during which the report was created. This should be set if and
 only if `day_type` is `Day`.
+
+This value only changes when a new report is generated (including the reports
+from Recomposing the player). Do not assume that the value of an attribute
+corresponds with the day that its report was generated.
 """
 nullable_explanation = """
-`null` if this report wasn't created on a regular day.
+`null` if this report wasn't created on a regular day, or if this report was
+generated before reports' season and day were recorded.
 """
 
 [[table.column]]
 name = "superstar_day"
 type = "integer"
 description = """
-The superstar day during which the report was created This should be
+The superstar day during which the report was created. This should be
 set if and only if `day_type` is `SuperstarDay`.
+
+This value only changes when a new report is generated (including the reports
+from Recomposing the player). Do not assume that the value of an attribute
+corresponds with the superstar day that its report was generated.
 """
 nullable_explanation = """
-`null` if this report wasn't created on a superstar day.
+`null` if this report wasn't created on a superstar day, or if this report was
+generated before reports' season and day were recorded.
+"""
+
+[[table.column]]
+name = "quote"
+type = "text"
+description = """
+The quote from this player report.
+"""
+
+[[table.column]]
+name = "included_attributes"
+type = "ARRAY" # TODO Add support for specific array types
+description = """
+A list of which attributes are included in this report.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see attribute values, use the `data.player_report_attribute_versions`
+table.
+"""
+
+[[table]]
+name = "player_report_attribute_versions"
+description = """
+The values of attributes in player clubhouse reports.
+
+This is a child table of `data.player_report_versions`, but for many common
+uses of attributes you don't need to reference the intermediate table.
+
+Before the Season 4 superstar break, reports displayed the player's attributes
+as of the creation of the report. After the Season 4 superstar break, reports
+display the player's current attributes (for our purposes, this means the
+attributes as of `valid_from` and until sometime before `valid_until`). The
+season and day of a report does *not* update live, even after the Season 4
+change. For post-s4-ss reports, the season and day is not particularly useful.
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`, nor versions of `data.player_report_versions`. There
+can be a break in versions in this table without a corresponding break in
+versions in either of those tables and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+report attribute use the combination of its `mmolb_player_id` and `attribute`
+(optionally also `category`).
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player who this report attribute belongs to. Use this to
+join on `data.player_versions` (using `valid_from` and `valid_until`
+accordingly) to associate players with their attributes.
+"""
+
+[[table.column]]
+name = "category"
+type = "bigint"
+description = """
+The category this report is for ("Batting", "Baserunning", etc.). References
+`taxa.attribute_category`.
+"""
+
+[[table.column]]
+name = "attribute"
+type = "bigint"
+description = """
+Which attribute this is. References `taxa.attribute`.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the attribute  was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the report was observed, i.e. the
+earliest time we know this version is no longer valid. The latest time we know
+this version *is* valid is not exposed because nobody's requested it yet. If
+you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
 """
 
 [[table.column]]
 name = "stars"
 type = "integer"
 description = """
-The number of stars this attribute had in this report.
+The number of stars the player has in this attribute.
 """

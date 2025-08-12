@@ -623,9 +623,12 @@ fn report_as_new<'e>(
         Err(AddedLater) => (None, None, None),
     };
 
-    let included_attributes = report.stars.iter()
+    let mut included_attributes = report.stars.iter()
         .map(|(attribute, _)| taxa.attribute_id((*attribute).into()))
         .collect_vec();
+    // This is meant to be a set. Sort it to make sure that order
+    // never causes two identical sets to be considered different.
+    included_attributes.sort();
 
     let report_version = NewPlayerReportVersion {
         mmolb_player_id: &entity.entity_id,

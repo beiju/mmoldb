@@ -1,6 +1,20 @@
 Changelog
 =========
 
+Contributors (project lifetime): WoofyJack, Ifhbiff, Centride.
+
+2025-08-11
+----------
+
+- Remove `data.player_report_attributes` and replace it with 
+  `data.player_report_versions` and `data.player_report_attribute_versions`.
+  These use the same `valid_from` and `valid_until` system that other 
+  `_versions` tables do, reflecting the fact that player reports are now 
+  live-updating. This also adds recording of clubhouse talk quotes, which were
+  previously not in the database.
+- Add tracking of coins earned (in both Prosperity and Geomagnetic Storms 
+  weathers) and photo contest outcomes. See the docs on `data.games` for info.
+
 2025-08-10
 ----------
 
