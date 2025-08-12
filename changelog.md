@@ -1,7 +1,7 @@
 Changelog
 =========
 
-Contributors (project lifetime): WoofyJack, Ifhbiff, Centride.
+Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
 2025-08-11
 ----------
