@@ -118,6 +118,12 @@ pub mod data {
             is_ongoing -> Bool,
             from_version -> Timestamp,
             stadium_name -> Nullable<Text>,
+            home_team_earned_coins -> Nullable<Int4>,
+            away_team_earned_coins -> Nullable<Int4>,
+            home_team_photo_contest_top_scorer -> Nullable<Text>,
+            home_team_photo_contest_score -> Nullable<Int4>,
+            away_team_photo_contest_top_scorer -> Nullable<Text>,
+            away_team_photo_contest_score -> Nullable<Int4>,
         }
     }
 

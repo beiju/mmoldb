@@ -389,6 +389,14 @@ fn prepare_completed_game_for_db(
         logs: all_logs,
         parsed_game,
         stadium_name,
+        away_team_final_score: game.away_team_final_score,
+        home_team_final_score: game.home_team_final_score,
+        home_team_earned_coins: game.home_team_earned_coins,
+        away_team_earned_coins: game.away_team_earned_coins,
+        home_team_photo_contest_top_scorer: game.home_team_photo_contest_top_scorer,
+        home_team_photo_contest_score: game.home_team_photo_contest_score,
+        away_team_photo_contest_top_scorer: game.away_team_photo_contest_top_scorer,
+        away_team_photo_contest_score: game.away_team_photo_contest_score,
     })
 }
 

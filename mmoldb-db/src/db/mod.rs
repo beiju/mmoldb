@@ -559,6 +559,14 @@ pub struct CompletedGameForDb<'g> {
     // This is used for verifying the round trip
     pub parsed_game: Vec<ParsedEventMessage<&'g str>>,
     pub stadium_name: Option<&'g str>,
+    pub away_team_final_score: Option<i32>,
+    pub home_team_final_score: Option<i32>,
+    pub home_team_earned_coins: Option<i32>,
+    pub away_team_earned_coins: Option<i32>,
+    pub home_team_photo_contest_top_scorer: Option<&'g str>,
+    pub home_team_photo_contest_score: Option<i32>,
+    pub away_team_photo_contest_top_scorer: Option<&'g str>,
+    pub away_team_photo_contest_score: Option<i32>,
 }
 
 pub enum GameForDb<'g> {
@@ -706,48 +714,57 @@ fn insert_games_internal<'e>(
                 }
             };
 
-            let (away_team_final_score, home_team_final_score) = if let GameForDb::Completed {
-                game: complete_game,
-                ..
-            } = game
-            {
-                complete_game
-                    .events
-                    .last()
-                    .map(|event| {
-                        (
-                            Some(event.away_team_score_after as i32),
-                            Some(event.home_team_score_after as i32),
-                        )
-                    })
-                    .unwrap_or((None, None))
-            } else {
-                (None, None)
-            };
-
-            let stadium_name = match game {
-                GameForDb::Completed { game, .. } => game.stadium_name,
-                _ => None,
-            };
-
-            NewGame {
-                ingest: ingest_id,
-                mmolb_game_id: game_id,
-                season: raw_game.season as i32,
-                day: day.map(Into::into),
-                superstar_day: superstar_day.map(Into::into),
-                weather: *weather_id,
-                away_team_emoji: &raw_game.away_team_emoji,
-                away_team_name: &raw_game.away_team_name,
-                away_team_mmolb_id: &raw_game.away_team_id,
-                away_team_final_score,
-                home_team_emoji: &raw_game.home_team_emoji,
-                home_team_name: &raw_game.home_team_name,
-                home_team_mmolb_id: &raw_game.home_team_id,
-                home_team_final_score,
-                is_ongoing: game.is_ongoing(),
-                stadium_name,
-                from_version: from_version.naive_utc(),
+            match game {
+                GameForDb::Completed { game: completed_game, .. } => NewGame {
+                    ingest: ingest_id,
+                    mmolb_game_id: game_id,
+                    season: raw_game.season as i32,
+                    day: day.map(Into::into),
+                    superstar_day: superstar_day.map(Into::into),
+                    weather: *weather_id,
+                    away_team_emoji: &raw_game.away_team_emoji,
+                    away_team_name: &raw_game.away_team_name,
+                    away_team_mmolb_id: &raw_game.away_team_id,
+                    away_team_final_score: completed_game.away_team_final_score,
+                    home_team_emoji: &raw_game.home_team_emoji,
+                    home_team_name: &raw_game.home_team_name,
+                    home_team_mmolb_id: &raw_game.home_team_id,
+                    home_team_final_score: completed_game.home_team_final_score,
+                    is_ongoing: game.is_ongoing(),
+                    stadium_name: completed_game.stadium_name,
+                    from_version: from_version.naive_utc(),
+                    home_team_earned_coins: completed_game.home_team_earned_coins,
+                    away_team_earned_coins: completed_game.away_team_earned_coins,
+                    home_team_photo_contest_top_scorer: completed_game.home_team_photo_contest_top_scorer,
+                    home_team_photo_contest_score: completed_game.home_team_photo_contest_score,
+                    away_team_photo_contest_top_scorer: completed_game.away_team_photo_contest_top_scorer,
+                    away_team_photo_contest_score: completed_game.away_team_photo_contest_score,
+                },
+                _ => NewGame {
+                    ingest: ingest_id,
+                    mmolb_game_id: game_id,
+                    season: raw_game.season as i32,
+                    day: day.map(Into::into),
+                    superstar_day: superstar_day.map(Into::into),
+                    weather: *weather_id,
+                    away_team_emoji: &raw_game.away_team_emoji,
+                    away_team_name: &raw_game.away_team_name,
+                    away_team_mmolb_id: &raw_game.away_team_id,
+                    away_team_final_score: None,
+                    home_team_emoji: &raw_game.home_team_emoji,
+                    home_team_name: &raw_game.home_team_name,
+                    home_team_mmolb_id: &raw_game.home_team_id,
+                    home_team_final_score: None,
+                    is_ongoing: game.is_ongoing(),
+                    stadium_name: None,
+                    from_version: from_version.naive_utc(),
+                    home_team_earned_coins: None,
+                    away_team_earned_coins: None,
+                    home_team_photo_contest_top_scorer: None,
+                    home_team_photo_contest_score: None,
+                    away_team_photo_contest_top_scorer: None,
+                    away_team_photo_contest_score: None,
+                },
             }
         })
         .collect_vec();

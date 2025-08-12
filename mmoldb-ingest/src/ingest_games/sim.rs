@@ -321,6 +321,14 @@ pub struct Game<'g> {
     pub season: i64,
     pub day: Day,
     pub stadium_name: Option<&'g str>,
+    pub away_team_final_score: Option<i32>,
+    pub home_team_final_score: Option<i32>,
+    pub home_team_earned_coins: Option<i32>,
+    pub away_team_earned_coins: Option<i32>,
+    pub home_team_photo_contest_top_scorer: Option<&'g str>,
+    pub home_team_photo_contest_score: Option<i32>,
+    pub away_team_photo_contest_top_scorer: Option<&'g str>,
+    pub away_team_photo_contest_score: Option<i32>,
 
     // Aggregates
     away: TeamInGame<'g>,
@@ -1198,6 +1206,14 @@ impl<'g> Game<'g> {
                 }
             },
             stadium_name: *stadium_name,
+            away_team_final_score: None,
+            home_team_final_score: None,
+            home_team_earned_coins: None,
+            away_team_earned_coins: None,
+            home_team_photo_contest_top_scorer: None,
+            home_team_photo_contest_score: None,
+            away_team_photo_contest_top_scorer: None,
+            away_team_photo_contest_score: None,
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
@@ -3034,20 +3050,88 @@ impl<'g> Game<'g> {
                     None
                 },
                 [ParsedEventMessageDiscriminants::WeatherProsperity]
-                ParsedEventMessage::WeatherProsperity { .. } => {
-                    // TODO Don't ignore prosperity weather
+                ParsedEventMessage::WeatherProsperity { away_income, home_income } => {
+                    // If the home and away teams are indistinguishable, mmolb_parsing may
+                    // incorrectly attribute the income.
+                    // TODO Use winning and losing team info to fix this
+                    // Temporarily, don't fill in the coins info if the teams are
+                    // indistinguishable
+                    if !(
+                        self.away.team_emoji == self.home.team_emoji &&
+                        self.away.team_name == self.home.team_name
+                    ) {
+                        self.away_team_earned_coins = Some(*away_income as i32);
+                        self.home_team_earned_coins = Some(*home_income as i32);
+                    } else {
+                        ingest_logs.info(format!(
+                            "Home team {} {} exactly matches away team {} {}, so we can't record \
+                            the prosperity winnings for this game (TODO use final scores to figure \
+                            it out).",
+                            self.home.team_emoji, self.home.team_name,
+                            self.away.team_emoji, self.away.team_name,
+                        ));
+                    }
                     None
                 },
                 [ParsedEventMessageDiscriminants::PhotoContest]
-                ParsedEventMessage::PhotoContest { .. } => {
-                    // TODO Don't ignore the photo contest result
+                ParsedEventMessage::PhotoContest { losing_player, losing_team, losing_score, losing_tokens, winning_player, winning_team, winning_score, winning_tokens } => {
+                    // If the home and away teams are indistinguishable, mmolb_parsing may
+                    // incorrectly attribute the income and winner. Unlike prosperity, there's
+                    // not any easily accessible information we can use to fix this
+                    if !(
+                        self.away.team_emoji == self.home.team_emoji &&
+                        self.away.team_name == self.home.team_name
+                    ) {
+                        // Check everything that should match for robustness
+                        if losing_team.emoji == self.away.team_emoji &&
+                            losing_team.name == self.away.team_name &&
+                            winning_team.emoji == self.home.team_emoji &&
+                            winning_team.name == self.home.team_name {
+                            // Then losing is away and winning is home
+                            self.away_team_earned_coins = Some(*losing_tokens as i32);
+                            self.home_team_earned_coins = Some(*winning_tokens as i32);
+                            self.away_team_photo_contest_top_scorer = Some(losing_player);
+                            self.home_team_photo_contest_top_scorer = Some(winning_player);
+                            self.away_team_photo_contest_score = Some(*losing_score as i32);
+                            self.home_team_photo_contest_score = Some(*winning_score as i32);
+                        } else if winning_team.emoji == self.away.team_emoji &&
+                            winning_team.name == self.away.team_name &&
+                            losing_team.emoji == self.home.team_emoji &&
+                            losing_team.name == self.home.team_name {
+                            // Then winning is away and losing is home
+                            self.away_team_earned_coins = Some(*winning_tokens as i32);
+                            self.home_team_earned_coins = Some(*losing_tokens as i32);
+                            self.away_team_photo_contest_top_scorer = Some(winning_player);
+                            self.home_team_photo_contest_top_scorer = Some(losing_player);
+                            self.away_team_photo_contest_score = Some(*winning_score as i32);
+                            self.home_team_photo_contest_score = Some(*losing_score as i32);
+                        } else {
+                            ingest_logs.warn(format!(
+                                "Couldn't match winning team {} {} and losing team {} {} with home \
+                                team {} {} and away team {} {}, so we can't record the photo \
+                                contest results for this game.",
+                                winning_team.emoji, winning_team.name,
+                                losing_team.emoji, losing_team.name,
+                                self.home.team_emoji, self.home.team_name,
+                                self.away.team_emoji, self.away.team_name,
+                            ));
+                        }
+                    } else {
+                        ingest_logs.info(format!(
+                            "Home team {} {} exactly matches away team {} {}, so we can't record \
+                            the photo contest results for this game.",
+                            self.home.team_emoji, self.home.team_name,
+                            self.away.team_emoji, self.away.team_name,
+                        ));
+                    }
                     None
                 },
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for
                 [ParsedEventMessageDiscriminants::KnownBug]
                 ParsedEventMessage::KnownBug { bug: KnownBug::NoOneProspers } => {
-                    // TODO Don't ignore prosperity weather
+                    self.away_team_earned_coins = Some(0);
+                    self.home_team_earned_coins = Some(0);
                     None
                 }
             ),
