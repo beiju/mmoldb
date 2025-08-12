@@ -236,7 +236,7 @@ nullable_explanation = """
 2. This is a coin-awarding weather, but there was no message about teams
    earning coins. This can happen in e.g. Geomagnetic Storms weather if no
    storm events occurred. It is not possible in Prosperity weather, even though
-   it was at once time possible for neither team to earn any coins*. In that
+   it was at once time possible for neither team to earn any coins. In that
    event there is still a message, but neither team earns any coins (MMOLDB
    records this as both teams earning 0 coins.)
 3. This is a coin-awarding weather that MMOLDB does not yet support. If this
