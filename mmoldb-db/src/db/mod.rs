@@ -17,7 +17,7 @@ use hashbrown::HashMap;
 use itertools::{Either, Itertools};
 use log::{info, warn};
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::Day;
+use mmolb_parsing::enums::{Day, PitchType};
 use serde::Serialize;
 use std::iter;
 use diesel::dsl::count;
@@ -28,7 +28,7 @@ use thiserror::Error;
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
-use crate::taxa::Taxa;
+use crate::taxa::{Taxa, TaxaEventType};
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
     // Note that `alter role` cannot use a prepared query. The only way to
@@ -1880,7 +1880,17 @@ pub fn roll_back_ingest_to_date(conn: &mut PgConnection, dt: NaiveDateTime) -> Q
     Ok(())
 }
 
-pub fn player_all(conn: &mut PgConnection, player_id: &str) -> QueryResult<(DbPlayerVersion, Option<HashMap<Option<i64>, i64>>)> {
+#[derive(Queryable)]
+pub struct PitchTypeInfo {
+    pub pitch_type: Option<i64>,
+    pub event_type: i64,
+    pub min_speed: Option<f64>,
+    pub max_speed: Option<f64>,
+    pub count: i64,
+}
+
+pub fn player_all(conn: &mut PgConnection, player_id: &str) -> QueryResult<(DbPlayerVersion, Option<Vec<PitchTypeInfo>>)> {
+    use diesel::dsl::{max, min};
     use crate::schema::data_schema::data::player_versions::dsl as pv_dsl;
     use crate::schema::data_schema::data::events::dsl as event_dsl;
     use crate::schema::data_schema::data::games::dsl as game_dsl;
@@ -1898,15 +1908,11 @@ pub fn player_all(conn: &mut PgConnection, player_id: &str) -> QueryResult<(DbPl
             .filter(event_dsl::top_of_inning.and(game_dsl::home_team_mmolb_id.eq(team_id))
                 .or(diesel::dsl::not(event_dsl::top_of_inning).and(game_dsl::away_team_mmolb_id.eq(team_id))))
             .filter(event_dsl::pitcher_name.eq(&full_name))
-            .group_by(event_dsl::pitch_type)
-            .select((event_dsl::pitch_type, count(event_dsl::id)));
+            .group_by((event_dsl::pitch_type, event_dsl::event_type))
+            .order_by((event_dsl::pitch_type.asc(), event_dsl::event_type.asc()))
+            .select((event_dsl::pitch_type, event_dsl::event_type, min(event_dsl::pitch_speed), max(event_dsl::pitch_speed), count(event_dsl::id)));
         println!("query: {}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
-        Some(
-            q.
-                get_results::<(Option<i64>, i64)>(conn)?
-                .into_iter()
-                .collect()
-        )
+        Some(q.get_results::<PitchTypeInfo>(conn)?)
     } else {
         None
     };

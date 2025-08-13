@@ -13,7 +13,7 @@ use chrono::NaiveDateTime;
 use thiserror::Error;
 use rocket::time::PrimitiveDateTime;
 use mmoldb_db::models::DbPlayerVersion;
-use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType};
+use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType, TaxaEventType};
 
 #[derive(Serialize)]
 pub struct PlayerContext<'r, 't> {
@@ -80,22 +80,41 @@ pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Tem
     let raw_clone = player_raw.clone();
     let player = PlayerContext::from_db(&player_raw, &taxa);
 
-    let total_w_balks = pitches.as_ref().map(|pitches| pitches.iter()
-        .map(|(_, count)| *count)
+    let total_events = pitches.as_ref().map(|pitches| pitches.iter()
+        .map(|info| info.count)
         .sum::<i64>()
     );
 
-    let total_wo_balks = pitches.as_ref().map(|pitches| pitches.iter()
-        .map(|(ty, count)| if ty.is_some() { *count } else { 0 })
+    let total_pitches = pitches.as_ref().map(|pitches| pitches.iter()
+        .map(|info| if info.pitch_type.is_some() { info.count } else { 0 })
         .sum::<i64>()
     );
 
-    let total_balks = pitches.as_ref().and_then(|pitches| pitches.get(&None));
-
-    let pitch_types = pitches.as_ref().map(|pitches| pitches.iter()
-        .filter_map(|(ty, count)| ty.map(|ty| (taxa.pitch_type_from_id(ty), *count)))
-        .collect_vec()
+    let balk_id = taxa.event_type_id(TaxaEventType::Balk);
+    let total_balks = pitches.as_ref().map(|pitches| pitches.iter()
+        .map(|info| if info.event_type == balk_id { info.count } else { 0 })
+        .sum::<i64>()
     );
+    let unexpected_non_pitch_events = total_events.unwrap_or(0) - total_pitches.unwrap_or(0) - total_balks.unwrap_or(0);
+
+    let pitch_types = pitches.as_ref().map(|pitches| {
+        let chunks = pitches.iter()
+            .filter_map(|info| info.pitch_type.map(|ty| (taxa.pitch_type_from_id(ty), info.min_speed, info.max_speed, info.count)))
+            .chunk_by(|(ty, _, _, _)| *ty);
+        chunks
+            .into_iter()
+            .map(|(ty, chunk)| {
+                chunk
+                    .into_iter()
+                    .reduce(|(_, acc_min_speed, acc_max_speed, acc_count), (_, min_speed, max_speed, count)| (
+                        ty,
+                        [acc_min_speed, min_speed].into_iter().flatten().reduce(f64::min),
+                        [acc_max_speed, max_speed].into_iter().flatten().reduce(f64::max),
+                        acc_count + count,
+                    ))
+            })
+            .collect_vec()
+    });
 
     Ok(Template::render(
         "player",
@@ -103,9 +122,10 @@ pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Tem
             index_url: uri!(index_page()),
             player,
             player_raw: raw_clone,
+            total_events,
+            total_pitches,
             total_balks,
-            total_w_balks,
-            total_wo_balks,
+            unexpected_non_pitch_events,
             pitch_types,
         },
     ))
