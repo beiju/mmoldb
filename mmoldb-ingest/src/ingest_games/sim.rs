@@ -957,10 +957,7 @@ impl<'g> EventDetailBuilder<'g> {
         // pitcher is responsible for what happened in that event.
         let pitcher_name = if let Some(ejection) = &self.ejection {
             if ejection.ejected_player.name == pitcher_name {
-                match ejection.replacement {
-                    EjectionReplacement::BenchPlayer { player_name } => { player_name}
-                    EjectionReplacement::RosterPlayer { player } => { player.name}
-                }
+                ejection.ejected_player.name
             } else {
                 pitcher_name
             }
