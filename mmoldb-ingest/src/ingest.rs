@@ -4,15 +4,16 @@ use futures::{StreamExt, TryStreamExt, pin_mut};
 use log::{debug, error, info};
 use miette::{Diagnostic, IntoDiagnostic, WrapErr};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, async_db, db, QueryResult, QueryError};
+use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, async_db, db, QueryResult, QueryError, IngestLog};
 use std::sync::Arc;
-use chrono::{DateTime, NaiveDateTime};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::hash_map::{Entry, EntryRef};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
+use mmoldb_db::models::NewVersionIngestLog;
 
 // const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = Some("2025-07-16 04:07:42.699296Z");
 const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = None;
@@ -25,6 +26,67 @@ pub enum IngestFatalError {
     #[error(transparent)]
     DbError(#[from] QueryError),
 }
+
+pub struct VersionIngestLogs<'a> {
+    pub kind: &'a str,
+    pub entity_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    logs: Vec<NewVersionIngestLog<'a>>,
+}
+
+impl<'a> VersionIngestLogs<'a> {
+    pub fn new(kind: &'a str, entity_id: &'a str, valid_from: DateTime<Utc>) -> Self {
+        Self { kind, entity_id, valid_from: valid_from.naive_utc(), logs: Vec::new() }
+    }
+
+    pub fn add_log(&mut self, log_level: i32, s: impl Into<String>) {
+        let log_index = self.logs.len() as i32;
+        self.logs.push(NewVersionIngestLog {
+            kind: self.kind,
+            entity_id: self.entity_id,
+            valid_from: self.valid_from,
+            log_index,
+            log_level: 0,
+            log_text: s.into(),
+        });
+    }
+
+    #[allow(dead_code)]
+    pub fn critical(&mut self, s: impl Into<String>) {
+        self.add_log(0, s);
+    }
+
+    #[allow(dead_code)]
+    pub fn error(&mut self, s: impl Into<String>) {
+        self.add_log(1, s);
+    }
+
+    #[allow(dead_code)]
+    pub fn warn(&mut self, s: impl Into<String>) {
+        self.add_log(2, s);
+    }
+
+    #[allow(dead_code)]
+    pub fn info(&mut self, s: impl Into<String>) {
+        self.add_log(3, s);
+    }
+
+    #[allow(dead_code)]
+    pub fn debug(&mut self, s: impl Into<String>) {
+        self.add_log(4, s);
+    }
+
+    #[allow(dead_code)]
+    pub fn trace(&mut self, s: impl Into<String>) {
+        self.add_log(5, s);
+    }
+
+    pub fn into_vec(self) -> Vec<NewVersionIngestLog<'a>> {
+        self.logs
+    }
+}
+
+
 pub async fn ingest(
     ingest_id: i64,
     kind: &'static str,

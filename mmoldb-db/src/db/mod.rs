@@ -27,7 +27,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog};
 use crate::taxa::{Taxa, TaxaEventType};
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -1577,6 +1577,7 @@ type NewPlayerFeedVersionExt<'a> = (
     Vec<NewPlayerAttributeAugment<'a>>,
     Vec<NewPlayerParadigmShift<'a>>,
     Vec<NewPlayerRecomposition<'a>>,
+    Vec<NewVersionIngestLog<'a>>,
 );
 
 type NewPlayerVersionExt<'a> = (
@@ -1591,6 +1592,7 @@ type NewPlayerVersionExt<'a> = (
         NewPlayerEquipmentVersion<'a>,
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
     )>,
+    Vec<NewVersionIngestLog<'a>>,
 );
 
 fn insert_player_report_attribute_versions(
@@ -1699,11 +1701,13 @@ pub fn insert_player_feed_versions<'a>(
         new_player_attribute_augments,
         new_player_paradigm_shifts,
         new_player_recompositions,
+        ingest_logs,
     ): (
         Vec<NewPlayerFeedVersion>,
         Vec<Vec<NewPlayerAttributeAugment>,>,
         Vec<Vec<NewPlayerParadigmShift>,>,
         Vec<Vec<NewPlayerRecomposition>,>,
+        Vec<Vec<NewVersionIngestLog>,>,
     ) = itertools::multiunzip(new_player_feed_versions.into_iter());
 
     // Insert new records
@@ -1714,6 +1718,7 @@ pub fn insert_player_feed_versions<'a>(
     insert_player_attribute_augments(conn, new_player_attribute_augments)?;
     insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
     insert_player_recompositions(conn, new_player_recompositions)?;
+    insert_ingest_logs(conn, ingest_logs)?;
 
     Ok(num_inserted)
 }
@@ -1731,6 +1736,22 @@ fn insert_player_recompositions(
     // Insert new records
     diesel::copy_from(pr_dsl::player_recompositions)
         .from_insertable(player_recompositions)
+        .execute(conn)
+}
+
+fn insert_ingest_logs(
+    conn: &mut PgConnection,
+    new_logs: Vec<Vec<NewVersionIngestLog>>,
+) -> QueryResult<usize> {
+    use crate::info_schema::info::version_ingest_log::dsl as vil_dsl;
+    let new_logs = new_logs
+        .into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(vil_dsl::version_ingest_log)
+        .from_insertable(new_logs)
         .execute(conn)
 }
 
@@ -1825,6 +1846,7 @@ pub fn insert_player_versions(
         new_player_feed_versions,
         new_player_report_attributes,
         new_player_equipment,
+        new_ingest_logs,
     ): (
         Vec<NewPlayerVersion>,
         Vec<Vec<NewPlayerModificationVersion>>,
@@ -1837,6 +1859,7 @@ pub fn insert_player_versions(
             NewPlayerEquipmentVersion,
             Vec<NewPlayerEquipmentEffectVersion>,
         )>>,
+        Vec<Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
 
@@ -1863,13 +1886,18 @@ pub fn insert_player_versions(
     insert_player_equipment(conn, new_player_equipment)?;
     let insert_player_equipment_duration = (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
+    let insert_ingest_logs_start = Utc::now();
+    insert_ingest_logs(conn, new_ingest_logs)?;
+    let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
+
     info!(
         "preprocess_duration: {preprocess_duration:.2}, \
         insert_player_equipment_duration: {insert_player_equipment_duration:.2}, \
         insert_player_reports_duration: {insert_player_reports_duration:.2}, \
         insert_player_feed_versions_duration: {insert_player_feed_versions_duration:.2}, \
         insert_player_modifications_duration: {insert_player_modifications_duration:.2}, \
-        insert_player_version_duration: {insert_player_version_duration:.2}"
+        insert_player_version_duration: {insert_player_version_duration:.2}, \
+        insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
     );
 
     Ok(num_player_insertions)
@@ -1955,11 +1983,24 @@ pub fn player_all(conn: &mut PgConnection, player_id: &str) -> QueryResult<(DbPl
     Ok((player, pitches))
 }
 
+type NewTeamVersionExt<'a> = (
+    NewTeamVersion<'a>,
+    Vec<NewVersionIngestLog<'a>>
+);
+
 pub fn insert_team_versions(
     conn: &mut PgConnection,
-    new_team_versions: &[NewTeamVersion],
+    new_team_versions: Vec<NewTeamVersionExt>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::team_versions::dsl as tv_dsl;
+
+    let (
+        new_team_versions,
+        new_ingest_logs,
+    ): (
+        Vec<NewTeamVersion>,
+        Vec<Vec<NewVersionIngestLog>>,
+    ) = itertools::multiunzip(new_team_versions);
 
     // Insert new records
     let insert_team_version_start = Utc::now();
@@ -1968,8 +2009,13 @@ pub fn insert_team_versions(
         .execute(conn)?;
     let insert_team_version_duration = (Utc::now() - insert_team_version_start).as_seconds_f64();
 
+    let insert_ingest_logs_start = Utc::now();
+    insert_ingest_logs(conn, new_ingest_logs)?;
+    let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
+
     info!(
-        "insert_team_version_duration: {insert_team_version_duration:.2}"
+        "insert_team_version_duration: {insert_team_version_duration:.2}, \
+        insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
     );
 
     Ok(num_team_insertions)

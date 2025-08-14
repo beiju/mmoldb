@@ -3,13 +3,13 @@ use itertools::Itertools;
 use log::{debug, error, info};
 use miette::{Context, IntoDiagnostic};
 use mmolb_parsing::{AddedLater, NotRecognized};
-use crate::ingest::{batch_by_entity, IngestFatalError};
+use crate::ingest::{batch_by_entity, IngestFatalError, VersionIngestLogs};
 use chron::ChronEntity;
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{db, PgConnection};
 use tokio_util::sync::CancellationToken;
 use rayon::prelude::*;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewTeamVersion};
+use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewTeamVersion, NewVersionIngestLog};
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
@@ -88,7 +88,7 @@ pub fn ingest_page_of_teams(
     // provide that guarantee here.
     let new_teams_len = new_teams.len();
     let mut total_inserted = 0;
-    for batch in batch_by_entity(new_teams, |v| v.mmolb_team_id) {
+    for batch in batch_by_entity(new_teams, |v| v.0.mmolb_team_id) {
         let to_insert = batch.len();
         info!(
             "Sent {} new team versions out of {} to the database.",
@@ -96,7 +96,7 @@ pub fn ingest_page_of_teams(
             new_teams_len,
         );
 
-        let inserted = db::insert_team_versions(conn, &batch).into_diagnostic()?;
+        let inserted = db::insert_team_versions(conn, batch).into_diagnostic()?;
         total_inserted += inserted as i32;
 
         info!(
@@ -123,21 +123,26 @@ pub fn chron_team_as_new<'a>(
     team_id: &'a str,
     valid_from: DateTime<Utc>,
     team: &'a mmolb_parsing::team::Team,
-) -> NewTeamVersion<'a> {
+) -> (
+    NewTeamVersion<'a>,
+    Vec<NewVersionIngestLog<'a>>
+) {
+    let mut ingest_logs = VersionIngestLogs::new(TEAM_KIND, team_id, valid_from);
     let ballpark_suffix = match &team.ballpark_suffix {
         Ok(Ok(suffix)) => { Some(suffix.to_string()) }
         Ok(Err(NotRecognized(unrecognized))) => match unrecognized.as_str() {
             Some(value) => Some(value.to_string()),
             None => {
-                // TODO Expose these errors
-                error!("Ballpark suffix was not a string");
+                ingest_logs.error(
+                    format!("Ballpark suffix was not a string: {unrecognized:?}"),
+                );
                 None
             },
         }
         Err(AddedLater) => { None }
     };
 
-    NewTeamVersion {
+    let new_team = NewTeamVersion {
         mmolb_team_id: team_id,
         valid_from: valid_from.naive_utc(),
         valid_until: None,
@@ -159,5 +164,7 @@ pub fn chron_team_as_new<'a>(
         ballpark_word_2: team.ballpark_word_2.as_ref().ok().and_then(|s| s.as_deref()),
         ballpark_suffix,
         ballpark_use_city: team.ballpark_use_city.as_ref().ok().cloned(),
-    }
+    };
+
+    (new_team, ingest_logs.into_vec())
 }

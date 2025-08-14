@@ -15,9 +15,9 @@ use serde::Deserialize;
 use mmoldb_db::{db, PgConnection};
 use tokio_util::sync::CancellationToken;
 use chron::ChronEntity;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition};
+use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use crate::ingest::{batch_by_entity, IngestFatalError};
+use crate::ingest::{batch_by_entity, IngestFatalError, VersionIngestLogs};
 use crate::ingest_players::day_to_db;
 
 // I made this a constant because I'm constant-ly terrified of typoing
@@ -171,7 +171,10 @@ pub fn chron_player_feed_as_new<'a>(
     Vec<NewPlayerAttributeAugment<'a>>,
     Vec<NewPlayerParadigmShift<'a>>,
     Vec<NewPlayerRecomposition<'a>>,
+    Vec<NewVersionIngestLog<'a>>,
 ) {
+    let mut ingest_logs = VersionIngestLogs::new(PLAYER_FEED_KIND, player_id, valid_from);
+
     // TODO make this static, or at least global
     // Some feed events were accidentally reverted (by caching issues I think), and we want to
     // pretend they never happened
@@ -429,38 +432,38 @@ pub fn chron_player_feed_as_new<'a>(
             Self { known_name: None, temporary_name_override: None }
         }
 
-        pub fn check_or_set_name(&mut self, name: &'a str) {
+        pub fn check_or_set_name(&mut self, name: &'a str, ingest_logs: &mut VersionIngestLogs) {
             if let Some(n) = self.temporary_name_override {
                 if !name_matches(name, n) {
                     // This is just for a better error message
                     if let Some(n2) = self.known_name {
                         if name_matches(name, n2) {
-                            error!(
+                            ingest_logs.error(format!(
                                 "Player name from feed event (\"{name}\") does not match the \
                                 current temporary name override (\"{n}\"). Note: It does match \
                                 the current non-override name (\"{n2}\")."
-                            );
+                            ));
                         } else {
-                            error!(
+                            ingest_logs.error(format!(
                                 "Player name from feed event (\"{name}\") does not match the \
                                 current temporary name override (\"{n}\"). Note: It also does \
                                 not match the current non-override name (\"{n2}\")."
-                            );
+                            ));
                         }
                     } else {
-                        error!(
+                        ingest_logs.error(format!(
                             "Player name from feed event (\"{name}\") does not match the \
                             current temporary name override (\"{n}\"). Note: The current \
                             non-override name is not known."
-                        );
+                        ));
                     }
                 }
             } else if let Some(n) = self.known_name {
                 if !name_matches(name, n) {
-                    error!(
+                    ingest_logs.error(format!(
                         "Player name from feed event (\"{name}\") does not match the known \
                         player name (\"{n}\")."
-                    );
+                    ));
                 }
             } else {
                 self.known_name = Some(name);
@@ -521,16 +524,16 @@ pub fn chron_player_feed_as_new<'a>(
         if impermanent_feed_events.contains(&(player_id, time)) {
             // TODO Add this as a pair of recompose/unrecompose events, so the attributes
             //   in between are accurate
-            info!(
+            ingest_logs.info(format!(
                 "Skipping feed event \"{}\" because it was reverted later",
                 event.text,
-            );
+            ));
             if index + 1 != feed_items.len() {
-                warn!(
+                ingest_logs.warn(format!(
                     "This non-permanent event is not the last event in the feed ({} of {}).",
                     index + 1,
                     feed_items.len(),
-                );
+                ));
             }
 
             // Impermanent feed events still change the player name, but since we
@@ -547,8 +550,11 @@ pub fn chron_player_feed_as_new<'a>(
         if let Some(pending) = &mut pending_inferred_recompositions {
             while let Some((time, info)) = pending.next_if(|(dt, _)| *dt <= time) {
                 let (season, day, player_name_before, player_name_after) = info;
-                info!("Applying inferred recomposition from {player_name_before} to {player_name_after}");
-                check_player_name.check_or_set_name(player_name_before);
+                ingest_logs.info(format!(
+                    "Applying inferred recomposition from {} to {}",
+                    player_name_before, player_name_after
+                ));
+                check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
                 check_player_name.set_known_name(player_name_after);
                 let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
                 recompositions.push(NewPlayerRecomposition {
@@ -572,16 +578,16 @@ pub fn chron_player_feed_as_new<'a>(
         let skip_this_event = if let Some(info) = overwritten_recompositions.get(&(player_id, feed_event_index)) {
             let (player_name_before, player_name_after, recompose_time, season, day) = info;
 
-            check_player_name.check_or_set_name(player_name_before);
+            check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
             // There shouldn't be any subsequent events, but there is still
             // the player_final_name check so we do have to update the name
             check_player_name.set_known_name(player_name_after);
-            debug!("Set expected player name to {player_name_after}");
+            ingest_logs.debug(format!("Set expected player name to {player_name_after}"));
 
-            debug!(
+            ingest_logs.debug(format!(
                 "Inserting implied Recomposed event for overwritten Recompose from \
                 {player_name_before} to {player_name_after}",
-            );
+            ));
             let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
             recompositions.push(NewPlayerRecomposition {
                 mmolb_player_id: player_id,
@@ -600,32 +606,36 @@ pub fn chron_player_feed_as_new<'a>(
 
             if let ParsedPlayerFeedEventText::Recomposed { new, previous } = &parsed_event {
                 // The first time we hit one of these, it'll be a Recompose event
-                debug!("Checking and skipping overwritten Recomposed event from {previous} to {new}");
+                ingest_logs.debug(format!(
+                    "Checking and skipping overwritten Recomposed event from {previous} to {new}",
+                ));
                 // This is a real event now, but it's marked as overwritten,
                 // which means it's about to be deleted and become implied.
                 // So we ignore the real version and insert the inferred version
                 if new != player_name_after {
-                    error!(
+                    ingest_logs.error(format!(
                         "The overwritten Recomposed event new player name didn't match: expected \
                         {player_name_after}, but observed {new}.",
-                    );
+                    ));
                 }
                 if previous != player_name_before {
-                    error!(
+                    ingest_logs.error(format!(
                         "The overwritten Recomposed event previous player name didn't match: \
                         expected {player_name_before}, but observed {previous}.",
-                    );
+                    ));
                 }
                 if *recompose_time != time {
-                    error!(
+                    ingest_logs.error(format!(
                         "The overwritten Recomposed event timestamp didn't match: \
                         expected {recompose_time}, but observed {}.",
                         event.timestamp.naive_utc(),
-                    );
+                    ));
                 }
                 true
             } else {
-                debug!("Inserting unrecompose event to reset {player_name_after}'s attributes");
+                ingest_logs.debug(format!(
+                    "Inserting unrecompose event to reset {player_name_after}'s attributes",
+                ));
                 // If the event in question is *not* a recompose event, that means this is the
                 // event that reverted the recompose. We need to insert the unrecompose event.
                 recompositions.push(NewPlayerRecomposition {
@@ -661,17 +671,19 @@ pub fn chron_player_feed_as_new<'a>(
         };
 
         if skip_this_event {
-            debug!("Skipping event \"{}\" because `skip_this_event` told us to", event.text);
+            ingest_logs.debug(format!(
+                "Skipping event \"{}\" because `skip_this_event` told us to", event.text,
+            ));
             continue;
         }
 
         match parsed_event {
             ParsedPlayerFeedEventText::ParseError { error, text } => {
                 // TODO Expose player ingest errors on the site
-                error!(
+                ingest_logs.error(format!(
                     "Error {error} parsing {text} from {} ({})'s feed",
                     check_player_name, player_id,
-                );
+                ));
             }
             ParsedPlayerFeedEventText::Delivery { .. } => {
                 // We don't (yet) use this event, but feed events have a timestamp so it
@@ -690,7 +702,7 @@ pub fn chron_player_feed_as_new<'a>(
             ParsedPlayerFeedEventText::AttributeChanges { player_name, attribute, amount } => {
                 let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
 
-                check_player_name.check_or_set_name(player_name);
+                check_player_name.check_or_set_name(player_name, &mut ingest_logs);
                 attribute_augments.push(NewPlayerAttributeAugment {
                     mmolb_player_id: player_id,
                     feed_event_index,
@@ -708,7 +720,7 @@ pub fn chron_player_feed_as_new<'a>(
                 changing_attribute,
                 value_attribute,
             } => {
-                check_player_name.check_or_set_name(&player_name);
+                check_player_name.check_or_set_name(&player_name, &mut ingest_logs);
                 // The handling of a non-priority SingleAttributeEquals will have to
                 // be so different that it's not worth trying to implement before it
                 // actually appears
@@ -748,7 +760,7 @@ pub fn chron_player_feed_as_new<'a>(
             ParsedPlayerFeedEventText::Recomposed { new, previous } => {
                 let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
 
-                check_player_name.check_or_set_name(previous);
+                check_player_name.check_or_set_name(previous, &mut ingest_logs);
                 check_player_name.set_known_name(new);
                 recompositions.push(NewPlayerRecomposition {
                     mmolb_player_id: player_id,
@@ -775,11 +787,11 @@ pub fn chron_player_feed_as_new<'a>(
                     && (event.season, &event.day) != (3, &Ok(Day::Day(1)))
                 {
                     // TODO Expose player ingest warnings on the site
-                    warn!(
+                    ingest_logs.warn(format!(
                         "Released event wasn't the last event in the player's feed. {}/{}",
                         index + 1,
                         feed_items.len(),
-                    );
+                    ));
                 }
             }
             ParsedPlayerFeedEventText::Modification { .. } => {
@@ -794,8 +806,10 @@ pub fn chron_player_feed_as_new<'a>(
         let mut inferred_event_index = 0;
         while let Some((time, info)) = pending.next_if(|(dt, _)| *dt <= naive_valid_from) {
             let (season, day, player_name_before, player_name_after) = info;
-            info!("Applying inferred recomposition from {player_name_before} to {player_name_after}");
-            check_player_name.check_or_set_name(player_name_before);
+            ingest_logs.info(format!(
+                "Applying inferred recomposition from {player_name_before} to {player_name_after}",
+            ));
+            check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
             check_player_name.set_known_name(player_name_after);
             let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
             recompositions.push(NewPlayerRecomposition {
@@ -821,7 +835,7 @@ pub fn chron_player_feed_as_new<'a>(
     check_player_name.clear_temporary_name_override();
 
     if let Some(name) = final_player_name {
-        check_player_name.check_or_set_name(name);
+        check_player_name.check_or_set_name(name, &mut ingest_logs);
     }
 
     (
@@ -829,5 +843,6 @@ pub fn chron_player_feed_as_new<'a>(
         attribute_augments,
         paradigm_shifts,
         recompositions,
+        ingest_logs.into_vec(),
     )
 }

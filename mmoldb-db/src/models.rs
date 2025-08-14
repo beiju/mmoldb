@@ -798,7 +798,7 @@ pub struct NewVersionIngestLog<'a> {
     pub valid_from: NaiveDateTime,
     pub log_index: i32,
     pub log_level: i32,
-    pub log_text: &'a str,
+    pub log_text: String,
 }
 
 

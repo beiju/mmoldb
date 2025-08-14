@@ -9,13 +9,14 @@ use mmolb_parsing::{AddedLater, RemovedLater, NotRecognized, MaybeRecognizedResu
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion};
+use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaSlot};
 use mmoldb_db::{PgConnection, QueryResult, db};
 use rayon::prelude::*;
 use thiserror::Error;
-use crate::ingest::{batch_by_entity, IngestFatalError};
+use crate::ingest::{batch_by_entity, IngestFatalError, VersionIngestLogs};
 use crate::ingest_feed::chron_player_feed_as_new;
+use crate::ingest_players::PLAYER_KIND;
 
 pub fn ingest_page_of_players(
     taxa: &Taxa,
@@ -96,7 +97,7 @@ pub fn ingest_page_of_players(
     for batch in batch_by_entity(new_players, |v| v.0.mmolb_player_id) {
         let prev_batch = stored_batch.take();
         let new_stored_batch = stored_batch.insert(HashMap::new());
-        for (player, _, _, _, _) in &batch {
+        for (player, _, _, _, _, _) in &batch {
             if let Some(prev_batch) = &prev_batch {
                 if let Some(prev_valid_from) = prev_batch.get(player.mmolb_player_id) {
                     assert!(&player.valid_from >= prev_valid_from);
@@ -122,8 +123,9 @@ pub fn ingest_page_of_players(
                 _modification_version,
                 _feed_version,
                 _report,
-                _equipment
-            ): &(NewPlayerVersion, _, _, _, _) = player;
+                _equipment,
+                _logs,
+            ): &(NewPlayerVersion, _, _, _, _, _) = player;
             error!(
                 "Error {err} ingesting player {} at {}",
                 version.mmolb_player_id, version.valid_from,
@@ -339,6 +341,7 @@ fn chron_player_as_new<'a>(
         Vec<NewPlayerAttributeAugment<'a>>,
         Vec<NewPlayerParadigmShift<'a>>,
         Vec<NewPlayerRecomposition<'a>>,
+        Vec<NewVersionIngestLog<'a>>,
     )>,
     Vec<(
         NewPlayerReportVersion<'a>,
@@ -347,8 +350,10 @@ fn chron_player_as_new<'a>(
     Vec<(
         NewPlayerEquipmentVersion<'a>,
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
-    )>
+    )>,
+    Vec<NewVersionIngestLog<'a>>,
 ) {
+    let mut ingest_logs = VersionIngestLogs::new(PLAYER_KIND, &entity.entity_id, entity.valid_from);
     let (birthday_type, birthday_day, birthday_superstar_day) =
         day_to_db(&entity.data.birthday, taxa);
 
@@ -362,10 +367,10 @@ fn chron_player_as_new<'a>(
             .expect("All modifications should have been added to the modifications table")
     };
 
-    let get_handedness_id = |handedness: &Result<Handedness, NotRecognized>| match handedness {
+    let get_handedness_id = |handedness: &Result<Handedness, NotRecognized>, ingest_logs: &mut VersionIngestLogs| match handedness {
         Ok(handedness) => Some(taxa.handedness_id((*handedness).into())),
         Err(err) => {
-            error!("Player had unexpected batting handedness {err}");
+            ingest_logs.error(format!("Player had unexpected batting handedness {err}"));
             None
         }
     };
@@ -400,8 +405,7 @@ fn chron_player_as_new<'a>(
             Position::Closer => TaxaSlot::Closer,
         })),
         Err(err) => {
-            // TODO Expose player ingest errors on the web interface
-            error!("Player position not recognized: {err}");
+            ingest_logs.error(format!("Player position not recognized: {err}"));
             None
         }
     };
@@ -410,8 +414,9 @@ fn chron_player_as_new<'a>(
         e.inner.keys().map(equipment_slot_to_str).filter_map(|s| match s {
             Ok(s) => Some(s),
             Err(err) => {
-                // TODO Expose player ingest errors on the web interface
-                error!("Error processing player equipment slot: {err}. This slot will be ignored.");
+                ingest_logs.error(format!(
+                    "Error processing player equipment slot: {err}. This slot will be ignored.",
+                ));
                 None
             }
         })
@@ -440,8 +445,8 @@ fn chron_player_as_new<'a>(
         valid_until: None,
         first_name: &entity.data.first_name,
         last_name: &entity.data.last_name,
-        batting_handedness: get_handedness_id(&entity.data.bats),
-        pitching_handedness: get_handedness_id(&entity.data.throws),
+        batting_handedness: get_handedness_id(&entity.data.bats, &mut ingest_logs),
+        pitching_handedness: get_handedness_id(&entity.data.throws, &mut ingest_logs),
         home: &entity.data.home,
         birthseason: entity.data.birthseason as i32,
         birthday_type,
@@ -492,8 +497,9 @@ fn chron_player_as_new<'a>(
                     let equipment_slot = match maybe_recognized_str(slot) {
                         Ok(equipment_slot) => equipment_slot,
                         Err(non_string_value) => {
-                            // TODO Expose this error on the web interface
-                            error!("Ignoring equipment with non-string slot {non_string_value:?}");
+                            ingest_logs.error(format!(
+                                "Ignoring equipment with non-string slot {non_string_value:?}",
+                            ));
                             return None;
                         }
                     };
@@ -501,8 +507,9 @@ fn chron_player_as_new<'a>(
                     let name = match maybe_recognized_str(equipment.name) {
                         Ok(name) => name,
                         Err(non_string_value) => {
-                            // TODO Expose this error on the web interface
-                            error!("Ignoring equipment with non-string name {non_string_value:?}");
+                            ingest_logs.error(format!(
+                                "Ignoring equipment with non-string name {non_string_value:?}",
+                            ));
                             return None;
                         }
                     };
@@ -511,8 +518,9 @@ fn chron_player_as_new<'a>(
                         Ok(rarity) => match maybe_recognized_str(rarity) {
                             Ok(rarity) => Some(rarity),
                             Err(non_string_value) => {
-                                // TODO Expose this error on the web interface
-                                error!("Ignoring non-string equipment rarity {non_string_value:?}");
+                                ingest_logs.error(format!(
+                                    "Ignoring non-string equipment rarity {non_string_value:?}",
+                                ));
                                 None
                             }
                         }
@@ -546,12 +554,13 @@ fn chron_player_as_new<'a>(
                         Some(effects) => effects
                             .into_iter()
                             .enumerate()
-                            .filter_map(move |(index, effect)| {
+                            .filter_map(|(index, effect)| {
                                 let effect = match effect {
                                     Ok(effect) => effect,
                                     Err(NotRecognized(value)) => {
-                                        // TODO Expose this error to the web interface
-                                        error!("Skipping unrecognized equipment effect {value:?}");
+                                        ingest_logs.error(format!(
+                                            "Skipping unrecognized equipment effect {value:?}",
+                                        ));
                                         return None;
                                     }
                                 };
@@ -559,11 +568,10 @@ fn chron_player_as_new<'a>(
                                 let attribute = match effect.attribute {
                                     Ok(attribute) => attribute,
                                     Err(NotRecognized(value)) => {
-                                        // TODO Expose this error to the web interface
-                                        error!(
+                                        ingest_logs.error(format!(
                                             "Skipping unrecognized equipment effect attribute {:?}",
                                             value,
-                                        );
+                                        ));
                                         return None;
                                     }
                                 };
@@ -571,11 +579,10 @@ fn chron_player_as_new<'a>(
                                 let effect_type = match effect.effect_type {
                                     Ok(effect_type) => effect_type,
                                     Err(NotRecognized(value)) => {
-                                        // TODO Expose this error to the web interface
-                                        error!(
+                                        ingest_logs.error(format!(
                                             "Skipping unrecognized equipment effect type {:?}",
                                             value,
-                                        );
+                                        ));
                                         return None;
                                     }
                                 };
@@ -607,6 +614,7 @@ fn chron_player_as_new<'a>(
         feed_as_new,
         report_versions,
         equipment,
+        ingest_logs.into_vec(),
     )
 }
 
