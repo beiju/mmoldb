@@ -6,6 +6,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::{HashSet, HashMap};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
+use miette::IntoDiagnostic;
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
@@ -26,8 +27,9 @@ const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_PLAYER_FEED_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_PLAYER_FEED_BATCH_SIZE: usize = 1000;
 
-pub async fn ingest_player_feeds(pg_url: String, abort: CancellationToken) -> miette::Result<()> {
+pub async fn ingest_player_feeds(ingest_id: i64, pg_url: String, abort: CancellationToken) -> miette::Result<()> {
     crate::ingest::ingest(
+        ingest_id,
         PLAYER_FEED_KIND,
         CHRON_FETCH_PAGE_SIZE,
         RAW_PLAYER_FEED_INSERT_BATCH_SIZE,
@@ -44,7 +46,7 @@ pub fn ingest_page_of_player_feeds(
     raw_player_feeds: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
     worker_id: usize,
-) -> Result<(), IngestFatalError> {
+) -> miette::Result<i32> {
     debug!(
         "Starting of {} player feeds on worker {worker_id}",
         raw_player_feeds.len()
@@ -69,7 +71,7 @@ pub fn ingest_page_of_player_feeds(
                 data: serde_json::from_value(game_json.data)?,
             })
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>().into_diagnostic()?;
     let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} player feeds in {:.2} seconds on worker {}",
@@ -93,6 +95,7 @@ pub fn ingest_page_of_player_feeds(
     // requires that a given batch of players does not have the same player twice. We
     // provide that guarantee here.
     let new_player_feeds_len = new_player_feeds.len();
+    let mut total_inserted = 0;
     for batch in batch_by_entity(new_player_feeds, |v| v.0.mmolb_player_id) {
         let to_insert = batch.len();
         info!(
@@ -101,7 +104,8 @@ pub fn ingest_page_of_player_feeds(
             new_player_feeds_len,
         );
 
-        let inserted = db::insert_player_feed_versions(conn, batch)?;
+        let inserted = db::insert_player_feed_versions(conn, batch).into_diagnostic()?;
+        total_inserted += inserted as i32;
 
         info!(
             "Sent {} new player feed versions out of {} to the database. \
@@ -119,7 +123,7 @@ pub fn ingest_page_of_player_feeds(
         player_feeds.len(),
     );
 
-    Ok(())
+    Ok(total_inserted)
 }
 
 

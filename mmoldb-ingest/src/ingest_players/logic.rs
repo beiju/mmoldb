@@ -4,6 +4,7 @@ use chrono::{NaiveDateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
+use miette::IntoDiagnostic;
 use mmolb_parsing::{AddedLater, RemovedLater, NotRecognized, MaybeRecognizedResult, RemovedLaterResult, AddedLaterResult};
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
@@ -21,7 +22,7 @@ pub fn ingest_page_of_players(
     raw_players: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
     worker_id: usize,
-) -> Result<(), IngestFatalError> {
+) -> miette::Result<i32> {
     debug!(
         "Starting ingest page of {} players on worker {worker_id}",
         raw_players.len()
@@ -41,7 +42,7 @@ pub fn ingest_page_of_players(
                 data: serde_json::from_value(game_json.data)?,
             })
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>().into_diagnostic()?;
     let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} players in {deserialize_duration:.2} seconds on worker {worker_id}",
@@ -79,7 +80,7 @@ pub fn ingest_page_of_players(
         .unique()
         .collect_vec();
 
-    let modifications = get_filled_modifications_map(conn, &unique_modifications)?;
+    let modifications = get_filled_modifications_map(conn, &unique_modifications).into_diagnostic()?;
 
     // Convert to Insertable type
     let new_players = players
@@ -91,6 +92,7 @@ pub fn ingest_page_of_players(
     // requires that a given batch of players does not have the same player twice. We
     // provide that guarantee here.
     let mut stored_batch: Option<HashMap<&str, NaiveDateTime>> = None;
+    let mut total_inserted = 0;
     for batch in batch_by_entity(new_players, |v| v.0.mmolb_player_id) {
         let prev_batch = stored_batch.take();
         let new_stored_batch = stored_batch.insert(HashMap::new());
@@ -112,6 +114,7 @@ pub fn ingest_page_of_players(
         );
 
         let (inserted, errs) = db::insert_player_versions_with_retry(conn, &batch);
+        total_inserted += inserted as i32;
 
         for (player, err) in errs {
             let (
@@ -143,7 +146,7 @@ pub fn ingest_page_of_players(
         players.len(),
     );
 
-    Ok(())
+    Ok(total_inserted)
 }
 
 pub fn get_filled_modifications_map(

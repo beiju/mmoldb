@@ -756,3 +756,103 @@ pub struct NewAuroraPhoto<'a> {
     pub player_slot: i64,
     pub player_name: &'a str,
 }
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::info_schema::info::ingest_counts)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbIngestCount {
+    pub id: i64,
+    pub ingest_id: i64,
+    pub name: String,
+    pub count: i32,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq, AsChangeset)]
+#[diesel(table_name = crate::info_schema::info::ingest_counts)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewIngestCount<'a> {
+    pub ingest_id: i64,
+    pub name: &'a str,
+    pub count: i32,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::info_schema::info::version_ingest_log)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbVersionIngestLog {
+    pub id: i64,
+    pub kind: String,
+    pub entity_id: String,
+    pub valid_from: NaiveDateTime,
+    pub log_index: i32,
+    pub log_level: i32,
+    pub log_text: String,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::info_schema::info::version_ingest_log)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewVersionIngestLog<'a> {
+    pub kind: &'a str,
+    pub entity_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub log_index: i32,
+    pub log_level: i32,
+    pub log_text: &'a str,
+}
+
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::team_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewTeamVersion<'a> {
+    pub mmolb_team_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub name: &'a str,
+    pub emoji: &'a str,
+    pub color: &'a str,
+    pub location: &'a str,
+    pub full_location: &'a str,
+    pub abbreviation: &'a str,
+    pub motto: Option<&'a str>,
+    pub active: bool,
+    pub eligible: Option<bool>,
+    pub augments: i32,
+    pub championships: i32,
+    pub motes_used: Option<i32>,
+    pub mmolb_league_id: Option<&'a str>,
+    pub ballpark_name: Option<&'a str>,
+    pub ballpark_word_1: Option<&'a str>,
+    pub ballpark_word_2: Option<&'a str>,
+    pub ballpark_suffix: Option<String>,
+    pub ballpark_use_city: Option<bool>,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::team_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbTeamVersion {
+    pub id: i64,
+    pub mmolb_team_id: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub name: String,
+    pub emoji: String,
+    pub color: String,
+    pub location: String,
+    pub full_location: String,
+    pub abbreviation: String,
+    pub motto: Option<String>,
+    pub active: bool,
+    pub eligible: Option<bool>,
+    pub augments: i32,
+    pub championships: i32,
+    pub motes_used: Option<i32>,
+    pub mmolb_league_id: Option<String>,
+    pub ballpark_name: Option<String>,
+    pub ballpark_word_1: Option<String>,
+    pub ballpark_word_2: Option<String>,
+    pub ballpark_suffix: Option<String>,
+    pub ballpark_use_city: Option<bool>,
+}

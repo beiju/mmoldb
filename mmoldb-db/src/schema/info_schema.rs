@@ -13,6 +13,15 @@ pub mod info {
     }
 
     diesel::table! {
+        info.ingest_counts (id) {
+            id -> Int8,
+            ingest_id -> Int8,
+            name -> Text,
+            count -> Int4,
+        }
+    }
+
+    diesel::table! {
         info.ingest_timings (id) {
             id -> Int8,
             ingest_id -> Int8,
@@ -65,12 +74,27 @@ pub mod info {
         }
     }
 
+    diesel::table! {
+        info.version_ingest_log (id) {
+            id -> Int8,
+            kind -> Text,
+            entity_id -> Text,
+            valid_from -> Timestamp,
+            log_index -> Int4,
+            log_level -> Int4,
+            log_text -> Text,
+        }
+    }
+
+    diesel::joinable!(ingest_counts -> ingests (ingest_id));
     diesel::joinable!(ingest_timings -> ingests (ingest_id));
 
     diesel::allow_tables_to_appear_in_same_query!(
         event_ingest_log,
+        ingest_counts,
         ingest_timings,
         ingests,
         raw_events,
+        version_ingest_log,
     );
 }

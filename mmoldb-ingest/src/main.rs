@@ -3,6 +3,7 @@ mod ingest_games;
 mod ingest_players;
 mod ingest_feed;
 mod signal;
+mod ingest_teams;
 
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
@@ -20,6 +21,7 @@ struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
 const START_INGEST_EVERY_LAUNCH: bool = true;
 const INGEST_PERIOD_SEC: i64 = 30 * 60;
 const STATEMENT_TIMEOUT_SEC: i64 = 0;
+const ENABLE_TEAM_INGEST: bool = false;
 const ENABLE_PLAYER_INGEST: bool = true;
 
 #[tokio::main]
@@ -155,10 +157,13 @@ async fn ingest_everything(
     ingest_id: i64,
     abort: CancellationToken,
 ) -> miette::Result<()> {
+    if ENABLE_TEAM_INGEST {
+        ingest_teams::ingest_teams(ingest_id, pg_url.clone(), abort.clone()).await?;
+    }
     if ENABLE_PLAYER_INGEST {
-        ingest_players::ingest_players(pg_url.clone(), abort.clone()).await?;
+        ingest_players::ingest_players(ingest_id, pg_url.clone(), abort.clone()).await?;
         // Player feed ingest has to start after all players with inbuilt feeds are processed
-        ingest_feed::ingest_player_feeds(pg_url.clone(), abort.clone()).await?;
+        ingest_feed::ingest_player_feeds(ingest_id, pg_url.clone(), abort.clone()).await?;
     }
     ingest_games::ingest_games(pg_url, ingest_id, abort).await
 }

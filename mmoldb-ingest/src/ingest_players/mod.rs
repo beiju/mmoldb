@@ -12,8 +12,9 @@ const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_PLAYER_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_PLAYER_BATCH_SIZE: usize = 50000;
 
-pub async fn ingest_players(pg_url: String, abort: CancellationToken) -> miette::Result<()> {
+pub async fn ingest_players(ingest_id: i64, pg_url: String, abort: CancellationToken) -> miette::Result<()> {
     crate::ingest::ingest(
+        ingest_id,
         PLAYER_KIND,
         CHRON_FETCH_PAGE_SIZE,
         RAW_PLAYER_INSERT_BATCH_SIZE,

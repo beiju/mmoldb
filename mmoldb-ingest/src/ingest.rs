@@ -26,6 +26,7 @@ pub enum IngestFatalError {
     DbError(#[from] QueryError),
 }
 pub async fn ingest(
+    ingest_id: i64,
     kind: &'static str,
     chron_fetch_page_size: usize,
     stage_1_chunks_page_size: usize,
@@ -33,7 +34,7 @@ pub async fn ingest(
     pg_url: String,
     abort: CancellationToken,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> + Copy + Send + Sync + 'static,
-    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> Result<(), IngestFatalError> + Copy + Send + Sync + 'static,
+    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32> + Copy + Send + Sync + 'static,
 ) -> miette::Result<()> {
     let notify = Arc::new(Notify::new());
     // Finish tells the task "once there are no more players to process, exit", while
@@ -42,6 +43,7 @@ pub async fn ingest(
 
     // Don't increase this past 1 until players are dispatched to tasks by ID. The DB insert
     // logic requires that the versions for a given player are inserted in order.
+    // Also need to handle NewIngestCounts correctly
     let num_workers = 1;
     debug!("Ingesting {kind} with {num_workers} workers");
 
@@ -61,6 +63,7 @@ pub async fn ingest(
             tokio::task::Builder::new()
                 .name(task_name)
                 .spawn(ingest_stage_2(
+                    ingest_id,
                     kind,
                     stage_2_chunks_page_size,
                     pg_url,
@@ -185,6 +188,7 @@ async fn ingest_stage_1(
 }
 
 async fn ingest_stage_2(
+    ingest_id: i64,
     kind: &'static str,
     stage_2_chunks_page_size: usize,
     url: String,
@@ -193,9 +197,9 @@ async fn ingest_stage_2(
     finish: CancellationToken,
     worker_id: usize,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>,
-    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> Result<(), IngestFatalError>,
+    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32>,
 ) -> miette::Result<()> {
-    let result = ingest_stage_2_internal(kind, stage_2_chunks_page_size, &url, abort, notify, finish, worker_id, get_start_cursor, ingest_versions_page).await;
+    let result = ingest_stage_2_internal(ingest_id, kind, stage_2_chunks_page_size, &url, abort, notify, finish, worker_id, get_start_cursor, ingest_versions_page).await;
     if let Err(err) = &result {
         error!("Error in {kind} Stage 2 ingest: {}. ", err);
     }
@@ -203,6 +207,7 @@ async fn ingest_stage_2(
 }
 // 2025-08-11T04:50:48Z DEBUG
 async fn ingest_stage_2_internal(
+    ingest_id: i64,
     kind: &'static str,
     stage_2_chunks_page_size: usize,
     url: &str,
@@ -211,7 +216,7 @@ async fn ingest_stage_2_internal(
     finish: CancellationToken,
     worker_id: usize,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>,
-    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> Result<(), IngestFatalError>,
+    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32>,
 ) -> miette::Result<()> {
     info!("{kind} stage 2 ingest worker launched");
     let mut async_conn = AsyncPgConnection::establish(url).await.into_diagnostic()?;
@@ -247,6 +252,7 @@ async fn ingest_stage_2_internal(
         info!("{kind} stage 2 ingest starting at {ingest_start_cursor:?}");
 
         let mut num_skipped = 0;
+        let mut num_ingested = 0;
         let mut entity_cache = HashMap::<String, serde_json::Value>::new();
         let versions_stream = async_db::stream_versions_at_cursor(
             &mut async_conn,
@@ -300,18 +306,22 @@ async fn ingest_stage_2_internal(
             .map(|raw_versions| {
                 // when an error occurs, try_chunks gives us the successful portion of the chunk
                 // and then the error. we could ingest the successful part, but we don't (yet).
-                let raw_versions = raw_versions.map_err(|err| err.1)?;
+                let raw_versions = raw_versions.map_err(|err| err.1).into_diagnostic()?;
 
                 info!(
-                "Processing batch of {} {kind} on worker {worker_id}",
-                raw_versions.len()
-            );
-                ingest_versions_page(
+                    "Processing batch of {} {kind} on worker {worker_id}",
+                    raw_versions.len()
+                );
+                num_ingested += ingest_versions_page(
                     &taxa,
                     raw_versions,
                     &mut conn,
                     worker_id,
-                )
+                )?;
+                
+                db::update_num_ingested(&mut conn, ingest_id, kind, num_ingested).into_diagnostic()?;
+                
+                Ok::<_, miette::Report>(())
             });
         pin_mut!(versions_stream);
 

@@ -27,7 +27,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount};
 use crate::taxa::{Taxa, TaxaEventType};
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -1360,7 +1360,7 @@ pub fn tables_for_schema(
         .collect()
 }
 
-macro_rules! cursor_from_table {
+macro_rules! player_cursor_from_table {
     ($conn:expr, $($namespace:ident)::*, $table_name:ident) => {
         $($namespace)::*::$table_name::dsl::$table_name
             .select(($($namespace)::*::$table_name::dsl::valid_from, $($namespace)::*::$table_name::dsl::mmolb_player_id))
@@ -1374,6 +1374,15 @@ macro_rules! cursor_from_table {
     };
 }
 
+fn max_of_options<T: Ord>(a: Option<T>, b: Option<T>) -> Option<T> {
+    match (a, b) {
+        (None, None) => None,
+        (Some(accum), None) => Some(accum),
+        (None, Some(value)) => Some(value),
+        (Some(accum), Some(value)) => Some(std::cmp::max(accum, value)),
+    }
+}
+
 pub fn get_player_ingest_start_cursor(
     conn: &mut PgConnection,
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {
@@ -1383,25 +1392,49 @@ pub fn get_player_ingest_start_cursor(
 
     // This must list all tables that have a valid_from derived from the `player` kind.
     let cursor: Option<(NaiveDateTime, String)> = [
-        cursor_from_table!(conn, schema, player_versions)?,
-        cursor_from_table!(conn, schema, player_feed_versions)?
+        player_cursor_from_table!(conn, schema, player_versions)?,
+        player_cursor_from_table!(conn, schema, player_feed_versions)?
             .map(|(dt, id)| (
                 std::cmp::min(player_version_with_embedded_feed_cutoff, dt),
                 id,
             )),
-        cursor_from_table!(conn, schema, player_modification_versions)?,
-        cursor_from_table!(conn, schema, player_equipment_versions)?,
-        cursor_from_table!(conn, schema, player_equipment_effect_versions)?,
-        cursor_from_table!(conn, schema, player_report_versions)?,
-        cursor_from_table!(conn, schema, player_report_attribute_versions)?,
+        player_cursor_from_table!(conn, schema, player_modification_versions)?,
+        player_cursor_from_table!(conn, schema, player_equipment_versions)?,
+        player_cursor_from_table!(conn, schema, player_equipment_effect_versions)?,
+        player_cursor_from_table!(conn, schema, player_report_versions)?,
+        player_cursor_from_table!(conn, schema, player_report_attribute_versions)?,
     ].into_iter()
         // Compute the latest of all cursors
-        .fold(None, |accum, value| match (accum, value) {
-            (None, None) => None,
-            (Some(accum), None) => Some(accum),
-            (None, Some(value)) => Some(value),
-            (Some(accum), Some(value)) => Some(std::cmp::max(accum, value)),
-        });
+        .fold(None, max_of_options);
+
+    Ok(cursor)
+}
+
+macro_rules! team_cursor_from_table {
+    ($conn:expr, $($namespace:ident)::*, $table_name:ident) => {
+        $($namespace)::*::$table_name::dsl::$table_name
+            .select(($($namespace)::*::$table_name::dsl::valid_from, $($namespace)::*::$table_name::dsl::mmolb_team_id))
+            .order_by((
+                $($namespace)::*::$table_name::dsl::valid_from.desc(),
+                $($namespace)::*::$table_name::dsl::mmolb_team_id.desc(),
+            ))
+            .limit(1)
+            .get_result::<(NaiveDateTime, String)>($conn)
+            .optional()
+    };
+}
+
+pub fn get_team_ingest_start_cursor(
+    conn: &mut PgConnection,
+) -> QueryResult<Option<(NaiveDateTime, String)>> {
+    use crate::schema::data_schema::data as schema;
+
+    // This must list all tables that have a valid_from derived from the `player` kind.
+    let cursor: Option<(NaiveDateTime, String)> = [
+        team_cursor_from_table!(conn, schema, team_versions)?,
+    ].into_iter()
+        // Compute the latest of all cursors
+        .fold(None, max_of_options);
 
     Ok(cursor)
 }
@@ -1876,6 +1909,7 @@ pub fn roll_back_ingest_to_date(conn: &mut PgConnection, dt: NaiveDateTime) -> Q
     rollback_table!(conn, schema, player_equipment_effect_versions, dt);
     rollback_table!(conn, schema, player_report_versions, dt);
     rollback_table!(conn, schema, player_report_attribute_versions, dt);
+    rollback_table!(conn, schema, team_versions, dt);
 
     Ok(())
 }
@@ -1919,4 +1953,43 @@ pub fn player_all(conn: &mut PgConnection, player_id: &str) -> QueryResult<(DbPl
 
 
     Ok((player, pitches))
+}
+
+pub fn insert_team_versions(
+    conn: &mut PgConnection,
+    new_team_versions: &[NewTeamVersion],
+) -> QueryResult<usize> {
+    use crate::data_schema::data::team_versions::dsl as tv_dsl;
+
+    // Insert new records
+    let insert_team_version_start = Utc::now();
+    let num_team_insertions = diesel::copy_from(tv_dsl::team_versions)
+        .from_insertable(new_team_versions)
+        .execute(conn)?;
+    let insert_team_version_duration = (Utc::now() - insert_team_version_start).as_seconds_f64();
+
+    info!(
+        "insert_team_version_duration: {insert_team_version_duration:.2}"
+    );
+
+    Ok(num_team_insertions)
+}
+
+pub fn update_num_ingested(conn: &mut PgConnection, ingest_id: i64, name: &str, count: i32) -> QueryResult<()> {
+    use crate::info_schema::info::ingest_counts::dsl as ic_dsl;
+
+    let new = NewIngestCount {
+        ingest_id,
+        name,
+        count,
+    };
+
+    diesel::insert_into(ic_dsl::ingest_counts)
+        .values(&new)
+        .on_conflict((ic_dsl::ingest_id, ic_dsl::name))
+        .do_update()
+        .set(&new)
+        .execute(conn)?;
+
+    Ok(())
 }
