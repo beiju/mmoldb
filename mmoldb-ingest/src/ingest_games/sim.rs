@@ -164,7 +164,6 @@ struct FairBall<'g> {
     pitch: Option<Pitch>,
     cheer: Option<Cheer>,
     aurora_photos: Option<SnappedPhotos<&'g str>>,
-    ejection: Option<Ejection<&'g str>>
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -504,7 +503,6 @@ struct EventDetailBuilder<'g> {
     cheer: Option<Cheer>,
     aurora_photos: Option<SnappedPhotos<&'g str>>,
     ejection: Option<Ejection<&'g str>>,
-    fair_ball_ejection: Option<Ejection<&'g str>>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
@@ -517,9 +515,6 @@ impl<'g> EventDetailBuilder<'g> {
         // so it's ok to use the same fields
         self = self.cheer(fair_ball.cheer);
         self = self.aurora_photos(fair_ball.aurora_photos);
-        // Ejections can happen on either event (possibly both?) so we
-        // have to store them separately
-        self.fair_ball_ejection = fair_ball.ejection;
         self
     }
 
@@ -1004,7 +999,6 @@ impl<'g> EventDetailBuilder<'g> {
             cheer: self.cheer,
             aurora_photos: self.aurora_photos,
             ejection: self.ejection,
-            fair_ball_ejection: self.fair_ball_ejection,
         }
     }
 }
@@ -1444,7 +1438,6 @@ impl<'g> Game<'g> {
             cheer: None,
             aurora_photos: None,
             ejection: None,
-            fair_ball_ejection: None,
         }
     }
 
@@ -2296,9 +2289,8 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
-                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, ejection } => {
+                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos } => {
                         self.check_batter(batter_name, batter, ingest_logs);
-                        self.handle_ejection(ejection, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
                             game_event_index,
@@ -2307,7 +2299,6 @@ impl<'g> Game<'g> {
                             pitch,
                             cheer: cheer.clone(),
                             aurora_photos: aurora_photos.clone(),
-                            ejection: ejection.clone(),
                         });
                         None
                     },

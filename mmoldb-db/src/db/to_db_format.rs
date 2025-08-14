@@ -305,6 +305,5 @@ pub fn row_to_event<'e>(
         cheer: event.cheer.as_deref().map(Cheer::new),
         aurora_photos,
         ejection,
-        fair_ball_ejection: None, // TODO
     })
 }

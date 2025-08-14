@@ -7,7 +7,8 @@ use hashbrown::{HashSet, HashMap};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use mmolb_parsing::enums::{Attribute, Day};
-use mmolb_parsing::feed_event::{FeedEvent, ParsedFeedEventText};
+use mmolb_parsing::feed_event::FeedEvent;
+use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
 use rayon::iter::IntoParallelIterator;
 use serde::Deserialize;
 use mmoldb_db::{db, PgConnection};
@@ -148,7 +149,7 @@ fn process_paradigm_shift<'e>(
     } else {
         // TODO Expose player ingest errors on the site
         error!(
-            "Encountered a SingleAttributeEquals feed event that changes an \
+            "Encountered an AttributeEquals feed event that changes an \
             attribute other than priority. Player {} feed event {} changes {}",
             player_id, feed_event_index, changing_attribute,
         );
@@ -563,7 +564,7 @@ pub fn chron_player_feed_as_new<'a>(
             }
         };
 
-        let parsed_event = mmolb_parsing::feed_event::parse_feed_event(event);
+        let parsed_event = mmolb_parsing::player_feed::parse_player_feed_event(event);
         let skip_this_event = if let Some(info) = overwritten_recompositions.get(&(player_id, feed_event_index)) {
             let (player_name_before, player_name_after, recompose_time, season, day) = info;
 
@@ -593,7 +594,7 @@ pub fn chron_player_feed_as_new<'a>(
             });
             inferred_event_index += 1;
 
-            if let ParsedFeedEventText::Recomposed { new, previous } = &parsed_event {
+            if let ParsedPlayerFeedEventText::Recomposed { new, previous } = &parsed_event {
                 // The first time we hit one of these, it'll be a Recompose event
                 debug!("Checking and skipping overwritten Recomposed event from {previous} to {new}");
                 // This is a real event now, but it's marked as overwritten,
@@ -661,17 +662,14 @@ pub fn chron_player_feed_as_new<'a>(
         }
 
         match parsed_event {
-            ParsedFeedEventText::ParseError { error, text } => {
+            ParsedPlayerFeedEventText::ParseError { error, text } => {
                 // TODO Expose player ingest errors on the site
                 error!(
                     "Error {error} parsing {text} from {} ({})'s feed",
                     check_player_name, player_id,
                 );
             }
-            ParsedFeedEventText::GameResult { .. } => {
-                // We don't (yet) have a use for this event
-            }
-            ParsedFeedEventText::Delivery { .. } => {
+            ParsedPlayerFeedEventText::Delivery { .. } => {
                 // We don't (yet) use this event, but feed events have a timestamp so it
                 // could be used to backdate when players got their item. Although it
                 // doesn't really matter because player items can't (yet) change during
@@ -679,31 +677,29 @@ pub fn chron_player_feed_as_new<'a>(
                 // game they were observed doing. Also this doesn't apply to item changes
                 // that team owners make using the inventory, so there's not much point.
             }
-            ParsedFeedEventText::Shipment { .. } => {
+            ParsedPlayerFeedEventText::Shipment { .. } => {
                 // See comment on Delivery
             }
-            ParsedFeedEventText::SpecialDelivery { .. } => {
+            ParsedPlayerFeedEventText::SpecialDelivery { .. } => {
                 // See comment on Delivery
             }
-            ParsedFeedEventText::AttributeChanges { changes } => {
+            ParsedPlayerFeedEventText::AttributeChanges { player_name, attribute, amount } => {
                 let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
 
-                for change in changes {
-                    check_player_name.check_or_set_name(&change.player_name);
-                    attribute_augments.push(NewPlayerAttributeAugment {
-                        mmolb_player_id: player_id,
-                        feed_event_index,
-                        time,
-                        season: event.season as i32,
-                        day_type,
-                        day,
-                        superstar_day,
-                        attribute: taxa.attribute_id(change.attribute.into()),
-                        value: change.amount as i32,
-                    })
-                }
+                check_player_name.check_or_set_name(player_name);
+                attribute_augments.push(NewPlayerAttributeAugment {
+                    mmolb_player_id: player_id,
+                    feed_event_index,
+                    time,
+                    season: event.season as i32,
+                    day_type,
+                    day,
+                    superstar_day,
+                    attribute: taxa.attribute_id(attribute.into()),
+                    value: amount as i32,
+                })
             }
-            ParsedFeedEventText::SingleAttributeEquals {
+            ParsedPlayerFeedEventText::AttributeEquals {
                 player_name,
                 changing_attribute,
                 value_attribute,
@@ -723,62 +719,29 @@ pub fn chron_player_feed_as_new<'a>(
                     taxa,
                 )
             }
-            ParsedFeedEventText::MassAttributeEquals {
-                value_attribute,
-                changing_attribute,
-                players,
-            } => {
-                if players.is_empty() {
-                    // TODO Expose player ingest warnings on the site
-                    warn!("MassAttributeEquals had 0 players");
-                } else if let Some(((_, player_name),)) = players.iter().collect_tuple() {
-                    check_player_name.check_or_set_name(player_name);
-                    process_paradigm_shift(
-                        changing_attribute,
-                        value_attribute,
-                        &mut paradigm_shifts,
-                        feed_event_index,
-                        event,
-                        time,
-                        player_id,
-                        taxa,
-                    );
-                } else {
-                    // TODO Expose player ingest warnings on the site
-                    warn!("MassAttributeEquals on players shouldn't have more than one player");
-                }
-            }
-            ParsedFeedEventText::S1Enchantment { .. } => {
-                // This only affects items. Rationale is the same as Delivery.
-            }
-            ParsedFeedEventText::S2Enchantment { .. } => {
-                // This only affects items. Rationale is the same as Delivery.
-            }
-            ParsedFeedEventText::TakeTheMound { .. } => {
+            ParsedPlayerFeedEventText::TakeTheMound { .. } => {
                 // We can use this to backdate certain position changes, but
                 // the utility of doing that is limited for the same reason
                 // as the utility of processing Delivery is limited.
             }
-            ParsedFeedEventText::TakeThePlate { .. } => {
+            ParsedPlayerFeedEventText::TakeThePlate { .. } => {
                 // See comment on TakeTheMound
             }
-            ParsedFeedEventText::SwapPlaces { .. } => {
+            ParsedPlayerFeedEventText::SwapPlaces { .. } => {
                 // See comment on TakeTheMound
             }
-            ParsedFeedEventText::InfusedByFallingStar { .. } => {
+            ParsedPlayerFeedEventText::Enchantment { .. } => {
+                // See comment on Delivery
+            }
+            ParsedPlayerFeedEventText::InjuredByFallingStar { .. } => {
+                // We don't (yet) have a use for this event
+            }
+            ParsedPlayerFeedEventText::InfusedByFallingStar { .. } => {
                 // We can use this to backdate certain mod changes, but
                 // the utility of doing that is limited for the same reason
                 // as the utility of processing Delivery is limited.
             }
-            ParsedFeedEventText::InjuredByFallingStar { .. } => {
-                // We don't (yet) have a use for this event
-            }
-            ParsedFeedEventText::Prosperous { .. } => {
-                // This is entirely redundant with the information available
-                // when parsing games. I suppose it might be used for
-                // synchronization, but we have no need of that yet.
-            }
-            ParsedFeedEventText::Recomposed { new, previous } => {
+            ParsedPlayerFeedEventText::Recomposed { new, previous } => {
                 let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
 
                 check_player_name.check_or_set_name(previous);
@@ -797,15 +760,7 @@ pub fn chron_player_feed_as_new<'a>(
                     reverts_recomposition: None,
                 });
             }
-            ParsedFeedEventText::Modification { .. } => {
-                // See comment on HitByFallingStar
-            }
-            ParsedFeedEventText::Retirement { .. } => {
-                // This seems to include retirements of other players. Regardless,
-                // we don't need it because after this the player's ID is no longer
-                // used.
-            }
-            ParsedFeedEventText::Released { .. } => {
+            ParsedPlayerFeedEventText::Released { .. } => {
                 // There shouldn't be anything to do about this. Unlike recomposition,
                 // this player's ID is retired instead of being repurposed for the
                 // new player.
@@ -822,6 +777,9 @@ pub fn chron_player_feed_as_new<'a>(
                         feed_items.len(),
                     );
                 }
+            }
+            ParsedPlayerFeedEventText::Modification { .. } => {
+                // See comment on HitByFallingStar
             }
         }
     }

@@ -72,7 +72,6 @@ pub struct EventDetail<StrT: Clone> {
     pub cheer: Option<Cheer>,
     pub aurora_photos: Option<SnappedPhotos<StrT>>,
     pub ejection: Option<Ejection<StrT>>,
-    pub fair_ball_ejection: Option<Ejection<StrT>>,
 }
 
 #[derive(Debug)]
@@ -727,7 +726,6 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             destination: mandatory_fair_ball_direction()?,
             cheer: self.cheer.clone(),
             aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
-            ejection: self.fair_ball_ejection.as_ref().map(Ejection::as_ref),
         })
     }
 }
