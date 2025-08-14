@@ -34,10 +34,7 @@ create table data.team_versions (
     location text not null,
     full_location text not null,
     abbreviation text not null,
-    motto text, -- null = not provided
-    active bool not null,
     eligible bool, -- null = not provided
-    augments integer not null,
     championships integer not null,
     motes_used int,  -- null = not provided on the object
     mmolb_league_id text, -- null = not provided on the object
@@ -57,6 +54,9 @@ create table data.team_versions (
     --   - record: this is 1:N so it'll probably be in a child table? undecided
     --   - season_records: changes too quickly, no plan to include it yet
     --   - inventory: no plans to include this because it was only available for a short time
+    --   - motto: no plans to include this because it's now been removed
+    --   - active: no plans to include this because it's now been removed
+    --   - augments: no plans to include this because it's now been removed
 
     unique (mmolb_team_id, valid_from),
     unique nulls not distinct (mmolb_team_id, valid_until)

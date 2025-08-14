@@ -749,11 +749,9 @@ pub fn chron_player_feed_as_new<'a>(
             ParsedPlayerFeedEventText::Enchantment { .. } => {
                 // See comment on Delivery
             }
-            ParsedPlayerFeedEventText::InjuredByFallingStar { .. } => {
-                // We don't (yet) have a use for this event
-            }
-            ParsedPlayerFeedEventText::InfusedByFallingStar { .. } => {
-                // We can use this to backdate certain mod changes, but
+            ParsedPlayerFeedEventText::FallingStarOutcome { .. } => {
+                // We don't (yet) have a use for this event.
+                // We can use some variants to backdate certain mod changes, but
                 // the utility of doing that is limited for the same reason
                 // as the utility of processing Delivery is limited.
             }
@@ -781,12 +779,12 @@ pub fn chron_player_feed_as_new<'a>(
                 // this player's ID is retired instead of being repurposed for the
                 // new player.
 
-                // There was a bug at the start of s3 where released players weren't actually
-                // released.
+                // Warn if anything's happened to this player since they were
+                // Released. Except for players affected by a bug at the start
+                // of s3 where released players weren't actually released.
                 if index + 1 != feed_items.len()
                     && (event.season, &event.day) != (3, &Ok(Day::Day(1)))
                 {
-                    // TODO Expose player ingest warnings on the site
                     ingest_logs.warn(format!(
                         "Released event wasn't the last event in the player's feed. {}/{}",
                         index + 1,
@@ -794,9 +792,20 @@ pub fn chron_player_feed_as_new<'a>(
                     ));
                 }
             }
+            ParsedPlayerFeedEventText::Retirement { .. } => {
+                // Warn if anything's happened to this player since they were
+                // Retirement.
+                if index + 1 != feed_items.len() {
+                    ingest_logs.warn(format!(
+                        "Retirement event wasn't the last event in the player's feed. {}/{}",
+                        index + 1,
+                        feed_items.len(),
+                    ));
+                }
+            },
             ParsedPlayerFeedEventText::Modification { .. } => {
                 // See comment on HitByFallingStar
-            }
+            },
         }
     }
 
