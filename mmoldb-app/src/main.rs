@@ -1,4 +1,5 @@
 mod web;
+mod api;
 
 use num_format::{Locale, ToFormattedString};
 use rocket::fairing::AdHoc;
@@ -61,8 +62,12 @@ fn get_figment_with_constructed_db_url() -> figment::Figment {
 
 #[launch]
 fn rocket() -> _ {
+    let cors = rocket_cors::CorsOptions::default().to_cors()
+        .expect("CORS specification should be valid");
     rocket::custom(get_figment_with_constructed_db_url())
+        .attach(cors)
         .mount("/", web::routes())
+        .mount("/api", api::routes())
         .mount("/static", rocket::fs::FileServer::from("./static"))
         .manage({
             let url = mmoldb_db::postgres_url_from_environment();

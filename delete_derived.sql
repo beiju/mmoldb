@@ -14,6 +14,8 @@ truncate table
     data.ejections,
     data.aurora_photos,
     info.raw_events,
+    info.ingest_counts,
+    info.version_ingest_log,
 
     -- player
     data.modifications,
@@ -26,4 +28,7 @@ truncate table
     data.player_paradigm_shifts,
     data.player_feed_versions,
     data.player_equipment_versions,
-    data.player_equipment_effect_versions;
+    data.player_equipment_effect_versions,
+
+    -- team
+    data.team_versions;
