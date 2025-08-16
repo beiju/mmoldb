@@ -410,18 +410,30 @@ fn chron_player_as_new<'a>(
         }
     };
 
-    let mut occupied_equipment_slots = entity.data.equipment.as_ref().ok().map(|e| {
-        e.inner.keys().map(equipment_slot_to_str).filter_map(|s| match s {
-            Ok(s) => Some(s),
-            Err(err) => {
-                ingest_logs.error(format!(
-                    "Error processing player equipment slot: {err}. This slot will be ignored.",
-                ));
-                None
-            }
-        })
-            .collect_vec()
-    }).unwrap_or_default();
+    let mut occupied_equipment_slots = match &entity.data.equipment {
+        Ok(equipment) => {
+             equipment.inner
+                 .iter()
+                 .filter_map(|(slot, equipment)| {
+                     if equipment.is_none() {
+                         None
+                     } else {
+                         match equipment_slot_to_str(&slot) {
+                             Ok(slot) => Some(slot),
+                             Err(err) => {
+                                 ingest_logs.error(format!(
+                                     "Error processing player equipment slot: {err}. This slot will be ignored.",
+                                 ));
+                                 None
+                             }
+                         }
+                     }
+                 })
+                 .collect_vec()
+        }
+        Err(AddedLater) => Vec::new(),
+    };
+
     // Important, because they can be returned in arbitrary order
     occupied_equipment_slots.sort();
 
