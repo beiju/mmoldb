@@ -391,6 +391,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::slot,
         table = crate::taxa_schema::taxa::slot::dsl::slot,
         id_column = crate::taxa_schema::taxa::slot::dsl::id,
+        derive = (Serialize)
     ]
     pub enum TaxaSlot {
         // IDs here are chosen to match the order on the MMOLB team page
@@ -1001,6 +1002,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::handedness,
         table = crate::taxa_schema::taxa::handedness::dsl::handedness,
         id_column = crate::taxa_schema::taxa::handedness::dsl::id,
+        derive = (Serialize)
     ]
     pub enum TaxaHandedness {
         Right = 1,
@@ -1024,6 +1026,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::day_type,
         table = crate::taxa_schema::taxa::day_type::dsl::day_type,
         id_column = crate::taxa_schema::taxa::day_type::dsl::id,
+        derive = (Serialize)
     ]
     // I reserved numbers for every member of the `phase_times` object in the `times` entity type,
     // in case they ever show up as Days

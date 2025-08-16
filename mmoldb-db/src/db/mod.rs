@@ -17,18 +17,16 @@ use hashbrown::HashMap;
 use itertools::{Either, Itertools};
 use log::{info, warn};
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{Day, PitchType};
+use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
 use diesel::dsl::count;
-use diesel::query_dsl::InternalJoinDsl;
-use mmolb_parsing::player::Player;
 use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog};
-use crate::taxa::{Taxa, TaxaEventType};
+use crate::taxa::{Taxa};
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
     // Note that `alter role` cannot use a prepared query. The only way to
@@ -1901,6 +1899,15 @@ pub fn insert_player_versions(
     );
 
     Ok(num_player_insertions)
+}
+
+pub fn get_player_versions(conn: &mut PgConnection, player_id: &str) -> QueryResult<Vec<DbPlayerVersion>> {
+    use crate::data_schema::data::player_versions::dsl as pv_dsl;
+
+    pv_dsl::player_versions
+        .filter(pv_dsl::mmolb_player_id.eq(player_id))
+        .select(DbPlayerVersion::as_select())
+        .get_results(conn)
 }
 
 macro_rules! rollback_table {
