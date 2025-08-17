@@ -1,4 +1,5 @@
 mod player;
+mod error;
 
 #[rocket::get("/")]
 pub async fn index() -> &'static str {

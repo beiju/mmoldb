@@ -25,7 +25,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification};
 use crate::taxa::{Taxa};
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -1906,7 +1906,27 @@ pub fn get_player_versions(conn: &mut PgConnection, player_id: &str) -> QueryRes
 
     pv_dsl::player_versions
         .filter(pv_dsl::mmolb_player_id.eq(player_id))
+        .order(pv_dsl::valid_from.asc())
         .select(DbPlayerVersion::as_select())
+        .get_results(conn)
+}
+
+pub fn get_player_modification_versions(conn: &mut PgConnection, player_id: &str) -> QueryResult<Vec<DbPlayerModificationVersion>> {
+    use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
+
+    pmv_dsl::player_modification_versions
+        .filter(pmv_dsl::mmolb_player_id.eq(player_id))
+        .order(pmv_dsl::valid_from.asc())
+        .select(DbPlayerModificationVersion::as_select())
+        .get_results(conn)
+}
+
+pub fn get_modifications(conn: &mut PgConnection, ids: &[i64]) -> QueryResult<Vec<DbModification>> {
+    use crate::data_schema::data::modifications::dsl as m_dsl;
+
+    m_dsl::modifications
+        .filter(m_dsl::id.eq_any(ids))
+        .select(DbModification::as_select())
         .get_results(conn)
 }
 

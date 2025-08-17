@@ -1920,6 +1920,7 @@ dependencies = [
  "chrono-humanize",
  "diesel",
  "diesel_migrations",
+ "hashbrown 0.15.4",
  "include_dir",
  "itertools",
  "log",

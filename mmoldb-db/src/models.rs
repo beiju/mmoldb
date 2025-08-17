@@ -400,6 +400,18 @@ pub struct NewPlayerModificationVersion<'a> {
     pub modification_id: i64,
 }
 
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::player_modification_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerModificationVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub modification_index: i32,
+    pub modification_id: i64,
+}
+
 #[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::player_versions)]
 #[diesel(treat_none_as_default_value = false)]
