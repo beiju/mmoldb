@@ -2122,8 +2122,10 @@ As of the end of season 4, the only effect type that's ever appeared is Flat.
 name = "value"
 type = "double precision"
 description = """
-The value of the modification. This is stored exactly as displayed in the MMOLB
-UI. This means that attribute values range from 5 to 20.
+The value of the effect. This is stored exactly as stored in the MMOLB
+API (*not* the UI). This means that attribute values range from 0.05 to 0.20.
+
+Note that this is a different scale from attribute augment values.
 """
 
 [[table]]
