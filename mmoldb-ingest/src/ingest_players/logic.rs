@@ -607,7 +607,7 @@ fn chron_player_as_new<'a>(
                                     valid_until: None,
                                     attribute: taxa.attribute_id(attribute.into()),
                                     effect_type: taxa.effect_type_id(effect_type.into()),
-                                    value: 0.0,
+                                    value: effect.value,
                                 })
                             })
                             .collect_vec()

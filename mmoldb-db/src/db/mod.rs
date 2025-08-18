@@ -25,7 +25,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification, DbPlayerEquipmentVersion, DbPlayerEquipmentEffectVersion};
 use crate::taxa::{Taxa};
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -1918,6 +1918,26 @@ pub fn get_player_modification_versions(conn: &mut PgConnection, player_id: &str
         .filter(pmv_dsl::mmolb_player_id.eq(player_id))
         .order(pmv_dsl::valid_from.asc())
         .select(DbPlayerModificationVersion::as_select())
+        .get_results(conn)
+}
+
+pub fn get_player_equipment_versions(conn: &mut PgConnection, player_id: &str) -> QueryResult<Vec<DbPlayerEquipmentVersion>> {
+    use crate::data_schema::data::player_equipment_versions::dsl as pev_dsl;
+
+    pev_dsl::player_equipment_versions
+        .filter(pev_dsl::mmolb_player_id.eq(player_id))
+        .order(pev_dsl::valid_from.asc())
+        .select(DbPlayerEquipmentVersion::as_select())
+        .get_results(conn)
+}
+
+pub fn get_player_equipment_effect_versions(conn: &mut PgConnection, player_id: &str) -> QueryResult<Vec<DbPlayerEquipmentEffectVersion>> {
+    use crate::data_schema::data::player_equipment_effect_versions::dsl as peev_dsl;
+
+    peev_dsl::player_equipment_effect_versions
+        .filter(peev_dsl::mmolb_player_id.eq(player_id))
+        .order(peev_dsl::valid_from.asc())
+        .select(DbPlayerEquipmentEffectVersion::as_select())
         .get_results(conn)
 }
 

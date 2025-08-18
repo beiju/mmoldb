@@ -1141,6 +1141,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::attribute,
         table = crate::taxa_schema::taxa::attribute::dsl::attribute,
         id_column = crate::taxa_schema::taxa::attribute::dsl::id,
+        derive = (Serialize)
     ]
     pub enum TaxaAttribute {
         // NOTE: Category numbers reference the assigned values in TaxaAttributeCategory
@@ -1267,6 +1268,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::attribute_effect_type,
         table = crate::taxa_schema::taxa::attribute_effect_type::dsl::attribute_effect_type,
         id_column = crate::taxa_schema::taxa::attribute_effect_type::dsl::id,
+        derive = (Serialize)
     ]
     pub enum TaxaEffectType {
         Flat = 1,
@@ -1468,6 +1470,14 @@ impl Taxa {
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
             .expect("TODO Handle unknown attribute")
+            .0
+    }
+
+    pub fn effect_type_from_id(&self, id: i64) -> TaxaEffectType {
+        self.effect_type_mapping
+            .iter()
+            .find(|(_, ty_id)| id == **ty_id)
+            .expect("TODO Handle unknown effect type")
             .0
     }
 
