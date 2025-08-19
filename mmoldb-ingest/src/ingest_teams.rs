@@ -6,10 +6,10 @@ use mmolb_parsing::{AddedLater, NotRecognized};
 use crate::ingest::{batch_by_entity, IngestFatalError, VersionIngestLogs};
 use chron::ChronEntity;
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{db, PgConnection};
+use mmoldb_db::{db, BestEffortSlot, PgConnection};
 use tokio_util::sync::CancellationToken;
 use rayon::prelude::*;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewTeamVersion, NewVersionIngestLog};
+use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
@@ -119,12 +119,13 @@ pub fn ingest_page_of_teams(
 }
 
 pub fn chron_team_as_new<'a>(
-    _taxa: &Taxa,
+    taxa: &Taxa,
     team_id: &'a str,
     valid_from: DateTime<Utc>,
     team: &'a mmolb_parsing::team::Team,
 ) -> (
     NewTeamVersion<'a>,
+    Vec<NewTeamPlayerVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>
 ) {
     let mut ingest_logs = VersionIngestLogs::new(TEAM_KIND, team_id, valid_from);
@@ -141,6 +142,35 @@ pub fn chron_team_as_new<'a>(
         }
         Err(AddedLater) => { None }
     };
+
+    let new_team_players = team.players
+        .iter()
+        .enumerate()
+        .map(|(idx, pl)| {
+            // Note: I have to include undrafted players because the closeout
+            // logic otherwise doesn't handle full team redraft properly
+            NewTeamPlayerVersion {
+                mmolb_team_id: team_id,
+                team_player_index: idx as i32,
+                valid_from: valid_from.naive_utc(),
+                valid_until: None,
+                first_name: &pl.first_name,
+                last_name: &pl.last_name,
+                number: pl.number as i32,
+                slot: match &pl.slot {
+                    Ok(slot) => Some(taxa.slot_id(BestEffortSlot::Slot(*slot).into())),
+                    Err(NotRecognized(other)) => {
+                        ingest_logs.error(format!(
+                            "Failed to parse {} {}'s slot ({other:?}",
+                            pl.first_name, pl.last_name
+                        ));
+                        None
+                    }
+                },
+                mmolb_player_id: &pl.player_id,
+            }
+        })
+        .collect_vec();
 
     let new_team = NewTeamVersion {
         mmolb_team_id: team_id,
@@ -161,7 +191,8 @@ pub fn chron_team_as_new<'a>(
         ballpark_word_2: team.ballpark_word_2.as_ref().ok().and_then(|s| s.as_deref()),
         ballpark_suffix,
         ballpark_use_city: team.ballpark_use_city.as_ref().ok().cloned(),
+        num_players: 0,
     };
 
-    (new_team, ingest_logs.into_vec())
+    (new_team, new_team_players, ingest_logs.into_vec())
 }

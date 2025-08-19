@@ -25,7 +25,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification, DbPlayerEquipmentVersion, DbPlayerEquipmentEffectVersion};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification, DbPlayerEquipmentVersion, DbPlayerEquipmentEffectVersion, NewTeamPlayerVersion};
 use crate::taxa::{Taxa};
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -2032,8 +2032,26 @@ pub fn player_all(conn: &mut PgConnection, player_id: &str) -> QueryResult<(DbPl
 
 type NewTeamVersionExt<'a> = (
     NewTeamVersion<'a>,
-    Vec<NewVersionIngestLog<'a>>
+    Vec<NewTeamPlayerVersion<'a>>,
+    Vec<NewVersionIngestLog<'a>>,
 );
+
+fn insert_team_player_versions(
+    conn: &mut PgConnection,
+    new_team_player_versions: Vec<Vec<NewTeamPlayerVersion>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::team_player_versions::dsl as tpv_dsl;
+
+    let new_team_player_versions = new_team_player_versions
+        .into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(tpv_dsl::team_player_versions)
+        .from_insertable(new_team_player_versions)
+        .execute(conn)
+}
 
 pub fn insert_team_versions(
     conn: &mut PgConnection,
@@ -2043,9 +2061,11 @@ pub fn insert_team_versions(
 
     let (
         new_team_versions,
+        new_team_player_versions,
         new_ingest_logs,
     ): (
         Vec<NewTeamVersion>,
+        Vec<Vec<NewTeamPlayerVersion>>,
         Vec<Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_team_versions);
 
@@ -2056,12 +2076,17 @@ pub fn insert_team_versions(
         .execute(conn)?;
     let insert_team_version_duration = (Utc::now() - insert_team_version_start).as_seconds_f64();
 
+    let insert_team_player_versions_start = Utc::now();
+    insert_team_player_versions(conn, new_team_player_versions)?;
+    let insert_team_player_versions_duration = (Utc::now() - insert_team_player_versions_start).as_seconds_f64();
+
     let insert_ingest_logs_start = Utc::now();
     insert_ingest_logs(conn, new_ingest_logs)?;
     let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
 
     info!(
         "insert_team_version_duration: {insert_team_version_duration:.2}, \
+        insert_team_player_versions_duration: {insert_team_player_versions_duration:.2}, \
         insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
     );
 

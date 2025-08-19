@@ -300,6 +300,22 @@ pub mod data {
     }
 
     diesel::table! {
+        data.team_player_versions (id) {
+            id -> Int8,
+            mmolb_team_id -> Text,
+            team_player_index -> Int4,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            first_name -> Text,
+            last_name -> Text,
+            number -> Int4,
+            slot -> Nullable<Int8>,
+            mmolb_player_id -> Text,
+        }
+    }
+
+    diesel::table! {
         data.team_versions (id) {
             id -> Int8,
             mmolb_team_id -> Text,
@@ -324,6 +340,7 @@ pub mod data {
             ballpark_word_2 -> Nullable<Text>,
             ballpark_suffix -> Nullable<Text>,
             ballpark_use_city -> Nullable<Bool>,
+            num_players -> Int4,
         }
     }
 
@@ -373,6 +390,7 @@ pub mod data {
         player_report_attribute_versions,
         player_report_versions,
         player_versions,
+        team_player_versions,
         team_versions,
         versions,
         weather,

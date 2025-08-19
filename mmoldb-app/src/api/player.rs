@@ -79,7 +79,7 @@ impl NextChangeTime {
 
     pub fn with_change(&mut self, time: DateTime<Utc>) {
         if let Some(t) = &mut self.0 {
-            if (time < *t) {
+            if time < *t {
                 *t = time;
             }
         } else {

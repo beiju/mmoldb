@@ -813,7 +813,6 @@ pub struct NewVersionIngestLog<'a> {
     pub log_text: String,
 }
 
-
 #[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::team_versions)]
 #[diesel(treat_none_as_default_value = false)]
@@ -836,6 +835,7 @@ pub struct NewTeamVersion<'a> {
     pub ballpark_word_2: Option<&'a str>,
     pub ballpark_suffix: Option<String>,
     pub ballpark_use_city: Option<bool>,
+    pub num_players: i32,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -861,4 +861,35 @@ pub struct DbTeamVersion {
     pub ballpark_word_2: Option<String>,
     pub ballpark_suffix: Option<String>,
     pub ballpark_use_city: Option<bool>,
+    pub num_players: i32,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::team_player_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewTeamPlayerVersion<'a> {
+    pub mmolb_team_id: &'a str,
+    pub team_player_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub first_name: &'a str,
+    pub last_name: &'a str,
+    pub number: i32,
+    pub slot: Option<i64>,
+    pub mmolb_player_id: &'a str,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::team_player_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbTeamPlayerVersion {
+    pub id: i64,
+    pub mmolb_team_id: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub first_name: String,
+    pub last_name: String,
+    pub number: i32,
+    pub slot: Option<i64>,
+    pub mmolb_player_id: String,
 }
