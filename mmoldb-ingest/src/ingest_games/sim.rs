@@ -2186,7 +2186,7 @@ impl<'g> Game<'g> {
                 game_event!(
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
-                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection } => {
+                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes } => {
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
                         self.update_runners(

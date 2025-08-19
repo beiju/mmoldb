@@ -527,9 +527,9 @@ pub fn events_for_games(
         .map(|(game_id, events, runners, fielders, aurora_photos, ejections)| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
-            let detail_events = itertools::izip!(events, runners, fielders, aurora_photos, ejections)
-                .map(|(event, runners, fielders, aurora_photo, ejection)| {
-                    to_db_format::row_to_event(taxa, event, runners, fielders, aurora_photo, ejection)
+            let detail_events = itertools::izip!(events, runners, fielders, aurora_photos, ejections, door_prizes)
+                .map(|(event, runners, fielders, aurora_photo, ejection, door_prizes)| {
+                    to_db_format::row_to_event(taxa, event, runners, fielders, aurora_photo, ejection, door_prizes)
                 })
                 .collect_vec();
             (game_id, detail_events)

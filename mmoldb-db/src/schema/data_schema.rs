@@ -13,6 +13,30 @@ pub mod data {
     }
 
     diesel::table! {
+        data.door_prize_items (id) {
+            id -> Int8,
+            event_id -> Int8,
+            door_prize_index -> Int4,
+            item_index -> Int4,
+            emoji -> Text,
+            name -> Text,
+            rare_name -> Nullable<Text>,
+            prefix -> Nullable<Text>,
+            suffix -> Nullable<Text>,
+        }
+    }
+
+    diesel::table! {
+        data.door_prizes (id) {
+            id -> Int8,
+            event_id -> Int8,
+            door_prize_index -> Int4,
+            player_name -> Text,
+            tokens -> Nullable<Int4>,
+        }
+    }
+
+    diesel::table! {
         data.ejections (id) {
             id -> Int8,
             event_id -> Int8,
@@ -364,6 +388,8 @@ pub mod data {
     }
 
     diesel::joinable!(aurora_photos -> events (event_id));
+    diesel::joinable!(door_prize_items -> events (event_id));
+    diesel::joinable!(door_prizes -> events (event_id));
     diesel::joinable!(ejections -> events (event_id));
     diesel::joinable!(event_baserunners -> events (event_id));
     diesel::joinable!(event_fielders -> events (event_id));
@@ -373,6 +399,8 @@ pub mod data {
 
     diesel::allow_tables_to_appear_in_same_query!(
         aurora_photos,
+        door_prize_items,
+        door_prizes,
         ejections,
         entities,
         event_baserunners,

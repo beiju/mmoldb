@@ -9,10 +9,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
-use mmolb_parsing::parsed_event::{
-    BaseSteal, Cheer, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut,
-    SnappedPhotos,
-};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos};
 use std::fmt::Formatter;
 use thiserror::Error;
 
@@ -72,6 +69,7 @@ pub struct EventDetail<StrT: Clone> {
     pub cheer: Option<Cheer>,
     pub aurora_photos: Option<SnappedPhotos<StrT>>,
     pub ejection: Option<Ejection<StrT>>,
+    pub door_prizes: Vec<DoorPrize<StrT>>,
 }
 
 #[derive(Debug)]
@@ -310,6 +308,10 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
         self.runners_out_iter().collect()
     }
 
+    fn door_prizes(&self) -> Vec<DoorPrize<&str>> {
+        self.aurora_photos
+    }
+
     pub fn to_parsed(&self) -> Result<ParsedEventMessage<&str>, ToParsedError> {
         let exactly_one_runner_out = || {
             let runners_out = self
@@ -378,6 +380,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                door_prizes: self.door_prizes(),
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,
