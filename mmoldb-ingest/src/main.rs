@@ -22,7 +22,7 @@ const START_INGEST_EVERY_LAUNCH: bool = true;
 const INGEST_PERIOD_SEC: i64 = 30 * 60;
 const STATEMENT_TIMEOUT_SEC: i64 = 0;
 const ENABLE_TEAM_INGEST: bool = false;
-const ENABLE_PLAYER_INGEST: bool = true;
+const ENABLE_PLAYER_INGEST: bool = false;
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {

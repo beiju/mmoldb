@@ -7,7 +7,7 @@ use mmolb_parsing::enums::{
     GameOverMessage, HomeAway, NowBattingStats, Place, StrikeType, TopBottom,
 };
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher};
 use mmoldb_db::taxa::AsInsertable;
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
@@ -164,6 +164,7 @@ struct FairBall<'g> {
     pitch: Option<Pitch>,
     cheer: Option<Cheer>,
     aurora_photos: Option<SnappedPhotos<&'g str>>,
+    door_prizes: Vec<DoorPrize<&'g str>>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -503,6 +504,7 @@ struct EventDetailBuilder<'g> {
     cheer: Option<Cheer>,
     aurora_photos: Option<SnappedPhotos<&'g str>>,
     ejection: Option<Ejection<&'g str>>,
+    door_prizes: Vec<DoorPrize<&'g str>>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
@@ -515,6 +517,8 @@ impl<'g> EventDetailBuilder<'g> {
         // so it's ok to use the same fields
         self = self.cheer(fair_ball.cheer);
         self = self.aurora_photos(fair_ball.aurora_photos);
+        // Ditto door prizes
+        self = self.door_prizes(fair_ball.door_prizes);
         self
     }
 
@@ -703,6 +707,11 @@ impl<'g> EventDetailBuilder<'g> {
 
     fn ejection(mut self, ejection: Option<Ejection<&'g str>>) -> Self {
         self.ejection = ejection;
+        self
+    }
+
+    fn door_prizes(mut self, door_prizes: Vec<DoorPrize<&'g str>>) -> Self {
+        self.door_prizes = door_prizes;
         self
     }
 
@@ -999,6 +1008,7 @@ impl<'g> EventDetailBuilder<'g> {
             cheer: self.cheer,
             aurora_photos: self.aurora_photos,
             ejection: self.ejection,
+            door_prizes: self.door_prizes,
         }
     }
 }
@@ -1438,6 +1448,7 @@ impl<'g> Game<'g> {
             cheer: None,
             aurora_photos: None,
             ejection: None,
+            door_prizes: Vec::new(),
         }
     }
 
@@ -2205,11 +2216,12 @@ impl<'g> Game<'g> {
                             .cheer(cheer.clone())
                             .aurora_photos(aurora_photos.clone())
                             .ejection(ejection.clone())
+                            .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes } => {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
@@ -2221,6 +2233,7 @@ impl<'g> Game<'g> {
                             .cheer(cheer.clone())
                             .aurora_photos(aurora_photos.clone())
                             .ejection(ejection.clone())
+                            .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
@@ -2269,7 +2282,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
-                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos } => {
+                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes } => {
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
                             self.state.count_strikes += 1;
@@ -2282,6 +2295,7 @@ impl<'g> Game<'g> {
                             .pitch(pitch)
                             .cheer(cheer.clone())
                             .aurora_photos(aurora_photos.clone())
+                            .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
                             .build_some(self, batter_name, ingest_logs, match foul {
                                 FoulType::Tip => TaxaEventType::FoulTip,
@@ -2289,7 +2303,7 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
-                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos } => {
+                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
@@ -2299,6 +2313,7 @@ impl<'g> Game<'g> {
                             pitch,
                             cheer: cheer.clone(),
                             aurora_photos: aurora_photos.clone(),
+                            door_prizes: door_prizes.clone(),
                         });
                         None
                     },
@@ -2330,7 +2345,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, TaxaEventType::Walk)
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]
-                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer, aurora_photos, ejection } => {
+                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer, aurora_photos, ejection, door_prizes } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(
@@ -2352,6 +2367,7 @@ impl<'g> Game<'g> {
                             .cheer(cheer.clone())
                             .aurora_photos(aurora_photos.clone())
                             .ejection(ejection.clone())
+                            .door_prizes(door_prizes.clone())
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)

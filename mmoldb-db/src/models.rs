@@ -895,18 +895,13 @@ pub struct DbTeamPlayerVersion {
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
-#[diesel(table_name = crate::data_schema::data::team_player_versions)]
+#[diesel(table_name = crate::data_schema::data::door_prizes)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewDoorPrize<'a> {
-    pub mmolb_team_id: &'a str,
-    pub team_player_index: i32,
-    pub valid_from: NaiveDateTime,
-    pub valid_until: Option<NaiveDateTime>,
-    pub first_name: &'a str,
-    pub last_name: &'a str,
-    pub number: i32,
-    pub slot: Option<i64>,
-    pub mmolb_player_id: &'a str,
+    pub event_id: i64,
+    pub door_prize_index: i32,
+    pub player_name: &'a str,
+    pub tokens: Option<i32>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -921,18 +916,17 @@ pub struct DbDoorPrize {
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
-#[diesel(table_name = crate::data_schema::data::team_player_versions)]
+#[diesel(table_name = crate::data_schema::data::door_prize_items)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewDoorPrizeItem<'a> {
-    pub mmolb_team_id: &'a str,
-    pub team_player_index: i32,
-    pub valid_from: NaiveDateTime,
-    pub valid_until: Option<NaiveDateTime>,
-    pub first_name: &'a str,
-    pub last_name: &'a str,
-    pub number: i32,
-    pub slot: Option<i64>,
-    pub mmolb_player_id: &'a str,
+    pub event_id: i64,
+    pub door_prize_index: i32,
+    pub item_index: i32,
+    pub emoji: &'a str,
+    pub name: &'a str,
+    pub rare_name: Option<&'a str>,
+    pub prefix: Option<&'a str>,
+    pub suffix: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]

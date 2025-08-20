@@ -1,8 +1,7 @@
 use std::str::FromStr;
-use futures::TryStreamExt;
 use itertools::Itertools;
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner, NewAuroraPhoto, NewBaserunner, NewEjection, NewEvent, NewFielder};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent, NewFielder};
 use crate::taxa::Taxa;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
@@ -158,6 +157,64 @@ pub fn event_to_ejection<'e>(
             }
         ]
     }
+}
+
+pub fn event_to_door_prize<'e>(
+    event_id: i64,
+    event: &'e EventDetail<&'e str>,
+) -> Vec<NewDoorPrize<'e>> {
+    event.door_prizes
+        .iter()
+        .enumerate()
+        .map(|(door_prize_index, prize)| {
+            NewDoorPrize {
+                event_id,
+                door_prize_index: door_prize_index as i32,
+                player_name: prize.player,
+                tokens: match prize.prize {
+                    None => None,
+                    Some(Prize::Tokens(num)) => Some(num as i32),
+                    Some(Prize::Items(_)) => None,
+                },
+            }
+        })
+        .collect()
+}
+
+pub fn event_to_door_prize_items<'e>(
+    event_id: i64,
+    event: &'e EventDetail<&'e str>,
+) -> Vec<NewDoorPrizeItem<'e>> {
+    event.door_prizes
+        .iter()
+        .enumerate()
+        .flat_map(|(door_prize_index, prize)| {
+            match &prize.prize {
+                None | Some(Prize::Tokens(_)) => Vec::new(),
+                Some(Prize::Items(items)) => items.iter()
+                    .enumerate()
+                    .map(|(item_index, item)| {
+                        let (prefix, suffix, rare_name) = match item.affixes {
+                            ItemAffixes::None => (None, None, None),
+                            ItemAffixes::PrefixSuffix(prefix, suffix) => (prefix, suffix, None),
+                            ItemAffixes::RareName(rare_name) => (None, None, Some(rare_name)),
+                        };
+
+                        NewDoorPrizeItem {
+                            event_id,
+                            door_prize_index: door_prize_index as i32,
+                            item_index: item_index as i32,
+                            emoji: item.item_emoji,
+                            name: item.item.into(),
+                            rare_name,
+                            prefix: prefix.map(Into::into),
+                            suffix: suffix.map(Into::into),
+                        }
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Error, Diagnostic)]

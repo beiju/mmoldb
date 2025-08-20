@@ -25,7 +25,7 @@ use thiserror::Error;
 // First-party imports
 use crate::QueryError;
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification, DbPlayerEquipmentVersion, DbPlayerEquipmentEffectVersion, NewTeamPlayerVersion};
+use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification, DbPlayerEquipmentVersion, DbPlayerEquipmentEffectVersion, NewTeamPlayerVersion, DbDoorPrize, DbDoorPrizeItem};
 use crate::taxa::{Taxa};
 
 pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
@@ -437,6 +437,8 @@ pub fn events_for_games(
     use crate::data_schema::data::event_fielders::dsl as fielder_dsl;
     use crate::data_schema::data::aurora_photos::dsl as aurora_photo_dsl;
     use crate::data_schema::data::ejections::dsl as ejection_dsl;
+    use crate::data_schema::data::door_prizes::dsl as door_prize_dsl;
+    use crate::data_schema::data::door_prize_items::dsl as door_prize_item_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
 
@@ -510,6 +512,7 @@ pub fn events_for_games(
     let group_aurora_photos_start = Utc::now();
     let db_aurora_photos = group_child_table_results(&db_games_events, db_aurora_photos, |r| r.event_id);
     let group_aurora_photos_duration = (Utc::now() - group_aurora_photos_start).as_seconds_f64();
+    
     let get_ejections_start = Utc::now();
     let db_ejections = ejection_dsl::ejections
         .filter(ejection_dsl::event_id.eq_any(&all_event_ids))
@@ -522,14 +525,38 @@ pub fn events_for_games(
     let db_ejections = group_child_table_results(&db_games_events, db_ejections, |r| r.event_id);
     let group_ejections_duration = (Utc::now() - group_ejections_start).as_seconds_f64();
     
+    let get_door_prizes_start = Utc::now();
+    let db_door_prizes = door_prize_dsl::door_prizes
+        .filter(door_prize_dsl::event_id.eq_any(&all_event_ids))
+        .order_by(door_prize_dsl::event_id)
+        .select(DbDoorPrize::as_select())
+        .load(conn)?;
+    let get_door_prizes_duration = (Utc::now() - get_door_prizes_start).as_seconds_f64();
+
+    let group_door_prizes_start = Utc::now();
+    let db_door_prizes = group_child_table_results(&db_games_events, db_door_prizes, |r| r.event_id);
+    let group_door_prizes_duration = (Utc::now() - group_door_prizes_start).as_seconds_f64();
+    
+    let get_door_prize_items_start = Utc::now();
+    let db_door_prize_items = door_prize_item_dsl::door_prize_items
+        .filter(door_prize_item_dsl::event_id.eq_any(&all_event_ids))
+        .order_by(door_prize_item_dsl::event_id)
+        .select(DbDoorPrizeItem::as_select())
+        .load(conn)?;
+    let get_door_prize_items_duration = (Utc::now() - get_door_prize_items_start).as_seconds_f64();
+
+    let group_door_prize_items_start = Utc::now();
+    let db_door_prize_items = group_child_table_results(&db_games_events, db_door_prize_items, |r| r.event_id);
+    let group_door_prize_items_duration = (Utc::now() - group_door_prize_items_start).as_seconds_f64();
+    
     let post_process_start = Utc::now();
-    let result = itertools::izip!(game_ids, db_games_events, db_runners, db_fielders, db_aurora_photos, db_ejections)
-        .map(|(game_id, events, runners, fielders, aurora_photos, ejections)| {
+    let result = itertools::izip!(game_ids, db_games_events, db_runners, db_fielders, db_aurora_photos, db_ejections, db_door_prizes, db_door_prize_items)
+        .map(|(game_id, events, runners, fielders, aurora_photos, ejections, door_prizes, door_prize_items)| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
-            let detail_events = itertools::izip!(events, runners, fielders, aurora_photos, ejections, door_prizes)
-                .map(|(event, runners, fielders, aurora_photo, ejection, door_prizes)| {
-                    to_db_format::row_to_event(taxa, event, runners, fielders, aurora_photo, ejection, door_prizes)
+            let detail_events = itertools::izip!(events, runners, fielders, aurora_photos, ejections, door_prizes, door_prize_items)
+                .map(|(event, runners, fielders, aurora_photo, ejection, door_prizes, door_prize_items)| {
+                    to_db_format::row_to_event(taxa, event, runners, fielders, aurora_photo, ejection, door_prizes, door_prize_items)
                 })
                 .collect_vec();
             (game_id, detail_events)
@@ -660,6 +687,8 @@ fn insert_games_internal<'e>(
     use crate::data_schema::data::event_fielders::dsl as fielders_dsl;
     use crate::data_schema::data::aurora_photos::dsl as aurora_photos_dsl;
     use crate::data_schema::data::ejections::dsl as ejections_dsl;
+    use crate::data_schema::data::door_prizes::dsl as door_prizes_dsl;
+    use crate::data_schema::data::door_prize_items::dsl as door_prize_items_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
@@ -1015,6 +1044,56 @@ fn insert_games_internal<'e>(
         n_ejections_inserted,
     );
     let insert_ejections_duration = (Utc::now() - insert_ejections_start).as_seconds_f64();
+
+    let insert_door_prizes_start = Utc::now();
+    let new_door_prizes = iter::zip(&event_ids_by_game, &completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_door_prize(*event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_door_prizes_to_insert = new_door_prizes.len();
+    let n_door_prizes_inserted = diesel::copy_from(door_prizes_dsl::door_prizes)
+        .from_insertable(&new_door_prizes)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_door_prizes_to_insert == n_door_prizes_inserted,
+        "Event door prizes insert should have inserted {} rows, but it inserted {}",
+        n_door_prizes_to_insert,
+        n_door_prizes_inserted,
+    );
+    let insert_door_prizes_duration = (Utc::now() - insert_door_prizes_start).as_seconds_f64();
+
+    let insert_door_prize_items_start = Utc::now();
+    let new_door_prize_items = iter::zip(&event_ids_by_game, &completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_door_prize_items(*event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_door_prize_items_to_insert = new_door_prize_items.len();
+    let n_door_prize_items_inserted = diesel::copy_from(door_prize_items_dsl::door_prize_items)
+        .from_insertable(&new_door_prize_items)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_door_prize_items_to_insert == n_door_prize_items_inserted,
+        "Event door prize items insert should have inserted {} rows, but it inserted {}",
+        n_door_prize_items_to_insert,
+        n_door_prize_items_inserted,
+    );
+    let insert_door_prize_items_duration = (Utc::now() - insert_door_prize_items_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,

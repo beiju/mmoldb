@@ -308,10 +308,6 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
         self.runners_out_iter().collect()
     }
 
-    fn door_prizes(&self) -> Vec<DoorPrize<&str>> {
-        self.aurora_photos
-    }
-
     pub fn to_parsed(&self) -> Result<ParsedEventMessage<&str>, ToParsedError> {
         let exactly_one_runner_out = || {
             let runners_out = self
@@ -380,7 +376,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
-                door_prizes: self.door_prizes(),
+                door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,
@@ -389,6 +385,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -406,6 +403,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -422,6 +420,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 count: self.count(),
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
             },
             TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
                 foul: Some(FoulType::Tip),
@@ -438,6 +437,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 count: self.count(),
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+                door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
@@ -596,6 +596,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
             },
             TaxaEventType::DoublePlay => {
                 let scores = self.scores();
@@ -729,6 +730,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             destination: mandatory_fair_ball_direction()?,
             cheer: self.cheer.clone(),
             aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
+            door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
         })
     }
 }

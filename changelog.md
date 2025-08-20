@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Huge thanks to Astrid for Chron, without which none of this would be possible.
+
+Another huge thanks to WoofyJack for `mmolb_parsing`, without which MMOLDB 
+updates would be much slower. 
+
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
 2025-08-11
