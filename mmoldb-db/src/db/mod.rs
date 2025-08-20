@@ -1509,6 +1509,7 @@ pub fn get_team_ingest_start_cursor(
     // This must list all tables that have a valid_from derived from the `player` kind.
     let cursor: Option<(NaiveDateTime, String)> = [
         team_cursor_from_table!(conn, schema, team_versions)?,
+        team_cursor_from_table!(conn, schema, team_player_versions)?,
     ].into_iter()
         // Compute the latest of all cursors
         .fold(None, max_of_options);
