@@ -528,7 +528,7 @@ pub fn events_for_games(
     let get_door_prizes_start = Utc::now();
     let db_door_prizes = door_prize_dsl::door_prizes
         .filter(door_prize_dsl::event_id.eq_any(&all_event_ids))
-        .order_by(door_prize_dsl::event_id)
+        .order_by((door_prize_dsl::event_id, door_prize_dsl::door_prize_index))
         .select(DbDoorPrize::as_select())
         .load(conn)?;
     let get_door_prizes_duration = (Utc::now() - get_door_prizes_start).as_seconds_f64();
@@ -540,7 +540,7 @@ pub fn events_for_games(
     let get_door_prize_items_start = Utc::now();
     let db_door_prize_items = door_prize_item_dsl::door_prize_items
         .filter(door_prize_item_dsl::event_id.eq_any(&all_event_ids))
-        .order_by(door_prize_item_dsl::event_id)
+        .order_by((door_prize_item_dsl::event_id, door_prize_item_dsl::door_prize_index, door_prize_item_dsl::item_index))
         .select(DbDoorPrizeItem::as_select())
         .load(conn)?;
     let get_door_prize_items_duration = (Utc::now() - get_door_prize_items_start).as_seconds_f64();

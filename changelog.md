@@ -8,6 +8,12 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+2025-08-20
+----------
+- Support for door prizes in season 5 (not yet documented). Party support 
+  coming soon.
+- Team ingest (not yet documented).
+
 2025-08-11
 ----------
 

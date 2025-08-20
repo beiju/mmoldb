@@ -89,7 +89,7 @@ create function data.on_insert_team_player_version()
     returns trigger as $$
 begin
     -- check if the currently-valid version is exactly identical to the new version
-    -- the list of columns must exactly match the ones in data.team_versions or
+    -- the list of columns must exactly match the ones in data.team_player_versions or
     -- we'll miss changes
     perform 1
     from data.team_player_versions tpv

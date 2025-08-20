@@ -158,14 +158,15 @@ pub fn chron_team_as_new<'a>(
                 last_name: &pl.last_name,
                 number: pl.number as i32,
                 slot: match &pl.slot {
-                    Ok(slot) => Some(taxa.slot_id(BestEffortSlot::Slot(*slot).into())),
-                    Err(NotRecognized(other)) => {
+                    Ok(Ok(slot)) => Some(taxa.slot_id(BestEffortSlot::Slot(*slot).into())),
+                    Ok(Err(NotRecognized(other))) => {
                         ingest_logs.error(format!(
                             "Failed to parse {} {}'s slot ({other:?}",
                             pl.first_name, pl.last_name
                         ));
                         None
-                    }
+                    },
+                    Err(AddedLater) => None,
                 },
                 mmolb_player_id: &pl.player_id,
             }
@@ -193,6 +194,15 @@ pub fn chron_team_as_new<'a>(
         ballpark_use_city: team.ballpark_use_city.as_ref().ok().cloned(),
         num_players: 0,
     };
+
+    let num_unique = new_team_players
+        .iter()
+        .unique_by(|v| (v.mmolb_team_id, v.team_player_index))
+        .count();
+
+    if num_unique != new_team_players.len() {
+        error!("Got a duplicate team player");
+    }
 
     (new_team, new_team_players, ingest_logs.into_vec())
 }
