@@ -1,9 +1,3 @@
--- it's up to the user to deal with the consequences of trying to revert
--- this migration after adding teams where any of these are null
-alter table data.team_versions
-    alter column active set not null,
-    alter column augments set not null;
-
 drop trigger on_insert_team_player_version_trigger on data.team_player_versions;
 drop function data.on_insert_team_player_version();
 

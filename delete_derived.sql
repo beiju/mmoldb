@@ -14,6 +14,7 @@ truncate table
     data.ejections,
     data.aurora_photos,
     data.door_prizes,
+    data.door_prize_items,
     info.raw_events,
     info.ingest_counts,
     info.version_ingest_log,

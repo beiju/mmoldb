@@ -1,8 +1,3 @@
--- these should have been nullable from the start
-alter table data.team_versions
-    alter column active drop not null,
-    alter column augments drop not null;
-
 -- on_insert_team_player_version accidentally used NEW.mmolb_player_id instead of NEW.mmolb_team_id
 drop trigger on_insert_team_player_version_trigger on data.team_player_versions;
 drop function data.on_insert_team_player_version();
