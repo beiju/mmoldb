@@ -46,7 +46,7 @@ impl<'a> VersionIngestLogs<'a> {
             entity_id: self.entity_id,
             valid_from: self.valid_from,
             log_index,
-            log_level: 0,
+            log_level,
             log_text: s.into(),
         });
     }
