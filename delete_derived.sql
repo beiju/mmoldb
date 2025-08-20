@@ -13,6 +13,7 @@ truncate table
     data.event_baserunners,
     data.ejections,
     data.aurora_photos,
+    data.door_prizes,
     info.raw_events,
     info.ingest_counts,
     info.version_ingest_log,
@@ -31,4 +32,5 @@ truncate table
     data.player_equipment_effect_versions,
 
     -- team
-    data.team_versions;
+    data.team_versions,
+    data.team_player_versions;
