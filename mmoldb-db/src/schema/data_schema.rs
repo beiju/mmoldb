@@ -352,15 +352,9 @@ pub mod data {
             location -> Text,
             full_location -> Text,
             abbreviation -> Text,
-            eligible -> Nullable<Bool>,
             championships -> Int4,
-            motes_used -> Nullable<Int4>,
             mmolb_league_id -> Nullable<Text>,
             ballpark_name -> Nullable<Text>,
-            ballpark_word_1 -> Nullable<Text>,
-            ballpark_word_2 -> Nullable<Text>,
-            ballpark_suffix -> Nullable<Text>,
-            ballpark_use_city -> Nullable<Bool>,
             num_players -> Int4,
         }
     }

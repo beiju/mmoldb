@@ -10,7 +10,6 @@ use rocket_dyn_templates::tera::Value;
 use rocket_sync_db_pools::database;
 use rocket_sync_db_pools::diesel::{PgConnection, prelude::*};
 use std::collections::HashMap;
-use miette::IntoDiagnostic;
 use mmoldb_db::taxa::Taxa;
 
 #[database("mmoldb")]

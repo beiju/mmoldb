@@ -507,11 +507,11 @@ pub fn events_for_games(
         .order_by((aurora_photo_dsl::event_id, aurora_photo_dsl::is_listed_first.desc()))
         .select(DbAuroraPhoto::as_select())
         .load(conn)?;
-    let get_aurora_photos_duration = (Utc::now() - get_aurora_photos_start).as_seconds_f64();
+    let _get_aurora_photos_duration = (Utc::now() - get_aurora_photos_start).as_seconds_f64();
 
     let group_aurora_photos_start = Utc::now();
     let db_aurora_photos = group_child_table_results(&db_games_events, db_aurora_photos, |r| r.event_id);
-    let group_aurora_photos_duration = (Utc::now() - group_aurora_photos_start).as_seconds_f64();
+    let _group_aurora_photos_duration = (Utc::now() - group_aurora_photos_start).as_seconds_f64();
     
     let get_ejections_start = Utc::now();
     let db_ejections = ejection_dsl::ejections
@@ -519,11 +519,11 @@ pub fn events_for_games(
         .order_by(ejection_dsl::event_id)
         .select(DbEjection::as_select())
         .load(conn)?;
-    let get_ejections_duration = (Utc::now() - get_ejections_start).as_seconds_f64();
+    let _get_ejections_duration = (Utc::now() - get_ejections_start).as_seconds_f64();
 
     let group_ejections_start = Utc::now();
     let db_ejections = group_child_table_results(&db_games_events, db_ejections, |r| r.event_id);
-    let group_ejections_duration = (Utc::now() - group_ejections_start).as_seconds_f64();
+    let _group_ejections_duration = (Utc::now() - group_ejections_start).as_seconds_f64();
     
     let get_door_prizes_start = Utc::now();
     let db_door_prizes = door_prize_dsl::door_prizes
@@ -531,11 +531,11 @@ pub fn events_for_games(
         .order_by((door_prize_dsl::event_id, door_prize_dsl::door_prize_index))
         .select(DbDoorPrize::as_select())
         .load(conn)?;
-    let get_door_prizes_duration = (Utc::now() - get_door_prizes_start).as_seconds_f64();
+    let _get_door_prizes_duration = (Utc::now() - get_door_prizes_start).as_seconds_f64();
 
     let group_door_prizes_start = Utc::now();
     let db_door_prizes = group_child_table_results(&db_games_events, db_door_prizes, |r| r.event_id);
-    let group_door_prizes_duration = (Utc::now() - group_door_prizes_start).as_seconds_f64();
+    let _group_door_prizes_duration = (Utc::now() - group_door_prizes_start).as_seconds_f64();
     
     let get_door_prize_items_start = Utc::now();
     let db_door_prize_items = door_prize_item_dsl::door_prize_items
@@ -543,11 +543,11 @@ pub fn events_for_games(
         .order_by((door_prize_item_dsl::event_id, door_prize_item_dsl::door_prize_index, door_prize_item_dsl::item_index))
         .select(DbDoorPrizeItem::as_select())
         .load(conn)?;
-    let get_door_prize_items_duration = (Utc::now() - get_door_prize_items_start).as_seconds_f64();
+    let _get_door_prize_items_duration = (Utc::now() - get_door_prize_items_start).as_seconds_f64();
 
     let group_door_prize_items_start = Utc::now();
     let db_door_prize_items = group_child_table_results(&db_games_events, db_door_prize_items, |r| r.event_id);
-    let group_door_prize_items_duration = (Utc::now() - group_door_prize_items_start).as_seconds_f64();
+    let _group_door_prize_items_duration = (Utc::now() - group_door_prize_items_start).as_seconds_f64();
     
     let post_process_start = Utc::now();
     let result = itertools::izip!(game_ids, db_games_events, db_runners, db_fielders, db_aurora_photos, db_ejections, db_door_prizes, db_door_prize_items)
@@ -1018,7 +1018,7 @@ fn insert_games_internal<'e>(
         n_aurora_photos_to_insert,
         n_aurora_photos_inserted,
     );
-    let insert_aurora_photos_duration = (Utc::now() - insert_aurora_photos_start).as_seconds_f64();
+    let _insert_aurora_photos_duration = (Utc::now() - insert_aurora_photos_start).as_seconds_f64();
 
     let insert_ejections_start = Utc::now();
     let new_ejections = iter::zip(&event_ids_by_game, &completed_games)
@@ -1043,7 +1043,7 @@ fn insert_games_internal<'e>(
         n_ejections_to_insert,
         n_ejections_inserted,
     );
-    let insert_ejections_duration = (Utc::now() - insert_ejections_start).as_seconds_f64();
+    let _insert_ejections_duration = (Utc::now() - insert_ejections_start).as_seconds_f64();
 
     let insert_door_prizes_start = Utc::now();
     let new_door_prizes = iter::zip(&event_ids_by_game, &completed_games)
@@ -1068,7 +1068,7 @@ fn insert_games_internal<'e>(
         n_door_prizes_to_insert,
         n_door_prizes_inserted,
     );
-    let insert_door_prizes_duration = (Utc::now() - insert_door_prizes_start).as_seconds_f64();
+    let _insert_door_prizes_duration = (Utc::now() - insert_door_prizes_start).as_seconds_f64();
 
     let insert_door_prize_items_start = Utc::now();
     let new_door_prize_items = iter::zip(&event_ids_by_game, &completed_games)
@@ -1093,7 +1093,7 @@ fn insert_games_internal<'e>(
         n_door_prize_items_to_insert,
         n_door_prize_items_inserted,
     );
-    let insert_door_prize_items_duration = (Utc::now() - insert_door_prize_items_start).as_seconds_f64();
+    let _insert_door_prize_items_duration = (Utc::now() - insert_door_prize_items_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,

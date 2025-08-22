@@ -192,7 +192,7 @@ pub fn chron_team_as_new<'a>(
         ballpark_word_2: team.ballpark_word_2.as_ref().ok().and_then(|s| s.as_deref()),
         ballpark_suffix,
         ballpark_use_city: team.ballpark_use_city.as_ref().ok().cloned(),
-        num_players: 0,
+        num_players: new_team_players.len() as i32,
     };
 
     let num_unique = new_team_players

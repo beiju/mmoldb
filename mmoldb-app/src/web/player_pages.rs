@@ -1,19 +1,13 @@
 use super::pages::*;
-use crate::Db;
 use crate::web::error::AppError;
-use include_dir::{Dir, include_dir};
+use crate::Db;
 use itertools::Itertools;
-use miette::Diagnostic;
 use mmoldb_db::db;
-use rocket::{get, uri, form::FromForm, State};
-use rocket_dyn_templates::{Template, context};
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use chrono::NaiveDateTime;
-use thiserror::Error;
-use rocket::time::PrimitiveDateTime;
 use mmoldb_db::models::DbPlayerVersion;
 use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType, TaxaEventType};
+use rocket::{get, uri, State};
+use rocket_dyn_templates::{context, Template};
+use serde::Serialize;
 
 #[derive(Serialize)]
 pub struct PlayerContext<'r, 't> {

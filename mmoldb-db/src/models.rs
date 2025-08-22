@@ -826,15 +826,9 @@ pub struct NewTeamVersion<'a> {
     pub location: &'a str,
     pub full_location: &'a str,
     pub abbreviation: &'a str,
-    pub eligible: Option<bool>,
     pub championships: i32,
-    pub motes_used: Option<i32>,
     pub mmolb_league_id: Option<&'a str>,
     pub ballpark_name: Option<&'a str>,
-    pub ballpark_word_1: Option<&'a str>,
-    pub ballpark_word_2: Option<&'a str>,
-    pub ballpark_suffix: Option<String>,
-    pub ballpark_use_city: Option<bool>,
     pub num_players: i32,
 }
 
@@ -852,15 +846,9 @@ pub struct DbTeamVersion {
     pub location: String,
     pub full_location: String,
     pub abbreviation: String,
-    pub eligible: Option<bool>,
     pub championships: i32,
-    pub motes_used: Option<i32>,
     pub mmolb_league_id: Option<String>,
     pub ballpark_name: Option<String>,
-    pub ballpark_word_1: Option<String>,
-    pub ballpark_word_2: Option<String>,
-    pub ballpark_suffix: Option<String>,
-    pub ballpark_use_city: Option<bool>,
     pub num_players: i32,
 }
 

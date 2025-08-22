@@ -2975,3 +2975,151 @@ type = "integer"
 description = """
 The number of stars the player has in this attribute.
 """
+
+[[table]]
+name = "team_versions"
+description = """
+Historical and current team information.
+
+This table contains basic information about a team, like their name and
+location. Information about which players were on the team at any given time is
+in `data.team_player_versions`. Both of these tables use `valid_from` and
+`valid_until` to track which version of the team data was active at any point
+in time.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a team use
+their `mmolb_team_id`.
+"""
+
+[[table.column]]
+name = "mmolb_team_id"
+type = "text"
+description = """
+The MMOLB id for this team. This is the preferred way to identify a team.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the team was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the tean was observed, i.e. the
+earliest time we know this version is no longer valid. The latest time we know
+this version *is* valid is not exposed because nobody's requested it yet. If
+you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "integer"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The team's name.
+"""
+
+[[table.column]]
+name = "emoji"
+type = "text"
+description = """
+The team's emoji.
+"""
+
+[[table.column]]
+name = "color"
+type = "text"
+description = """
+The team's color, in whatever format it's returned by the API.
+"""
+
+[[table.column]]
+name = "location"
+type = "text"
+description = """
+The team's location, e.g. "Baltimore".
+"""
+
+[[table.column]]
+name = "full_location"
+type = "text"
+description = """
+The team's full location, e.g. "Baltimore, MD, USA".
+"""
+
+[[table.column]]
+name = "abbreviation"
+type = "text"
+description = """
+The team's three-letter abbreviation.
+
+As of s5d77, these are not displayed on the site anywhere. However, every team
+has one, automatically derived from the team name and location.
+"""
+
+[[table.column]]
+name = "championships"
+type = "integer"
+description = """
+The number of championships this team has won.
+"""
+
+[[table.column]]
+name = "mmolb_league_id"
+type = "text"
+description = """
+The MMOLB ID of the league this team plays in. Use `taxa.leagues` to get league
+information for now. In future there may be a `data.league_versions` table.
+"""
+nullable_explanation = """
+`null` for certain special event teams, like the Andromeda Collisions and Milky
+Way Two Percenters during the Season 2 special event.
+"""
+
+[[table.column]]
+name = "ballpark_name"
+type = "text"
+description = """
+The name of this team's ballpark, if any.
+"""
+nullable_explanation = """
+`null` for version from before ballparks existed.
+"""
+
+[[table.column]]
+name = "num_players"
+type = "integer"
+description = """
+The number of players the team has.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see players on the team, use the `data.team_player_versions` table.
+"""
