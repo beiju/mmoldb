@@ -348,7 +348,7 @@ async fn ingest_stage_2_internal(
                 futures::future::ready(match result {
                     Ok(entity) => {
                         let now = Utc::now();
-                        let log_debug = if next_duplicates_print < now {
+                        if next_duplicates_print < now {
                             debug!(
                                 "{num_skipped} duplicate {kind} versions skipped so far. \
                                 {} entities in the cache.",
@@ -359,10 +359,7 @@ async fn ingest_stage_2_internal(
                             if next_duplicates_print > now {
                                 next_duplicates_print = now + chrono::Duration::seconds(5);
                             }
-                            true
-                        } else {
-                            false
-                        };
+                        }
                         let data_trimmed = trim_version(&entity.data);
                         match entity_cache.entry_ref(&entity.entity_id) {
                             EntryRef::Occupied(mut entry) => {
@@ -370,33 +367,6 @@ async fn ingest_stage_2_internal(
                                     num_skipped += 1;
                                     false // Skip
                                 } else {
-                                    if log_debug {
-                                        let a = entry.get();
-                                        let b = &data_trimmed;
-                                        match (a, b) {
-                                            (serde_json::Value::Object(a), serde_json::Value::Object(b)) => {
-                                                let a_keys = a.keys().cloned().collect::<HashSet<_>>();
-                                                let b_keys = b.keys().cloned().collect::<HashSet<_>>();
-                                                if a_keys == b_keys {
-                                                    for key in a_keys {
-                                                        let a_ = a.get(&key).unwrap();
-                                                        let b_ = b.get(&key).unwrap();
-                                                        if a_ != b_ {
-                                                            if key == "Feed" {
-                                                                debug!("Objects differ on {key}");
-
-                                                            } else {
-                                                                debug!("Objects differ on {key}: {a_:?} vs {b_:?}");
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            (a, b) => {
-                                                debug!("Objects differ: {} vs {}", json_variant(a), json_variant(b))
-                                            }
-                                        }
-                                    }
                                     entry.insert(data_trimmed);
                                     true // This was a changed version; don't skip
                                 }

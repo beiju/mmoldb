@@ -35,7 +35,7 @@ pub async fn ingest_teams(ingest_id: i64, pg_url: String, abort: CancellationTok
                         // versions created with an integrated feed, and (2) the Feed is persistent,
                         // so we can ignore hundreds of versions and then the first standalone feed
                         // version will capture all the backlog
-                        if k == "SeasonStats" || k == "Record" || k == "Feed" || k == "Augments" || k == "MotesUsed" || k == "SeasonRecords" {
+                        if k == "SeasonStats" || k == "Record" || k == "Feed" || k == "Augments" || k == "MotesUsed" || k == "SeasonRecords" || k == "Inventory" {
                             None
                         } else if k == "Players" {
                             let new_v = match v {
