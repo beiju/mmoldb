@@ -3021,7 +3021,7 @@ and `valid_until`.
 name = "valid_until"
 type = "timestamp without time zone"
 description = """
-The earliest time a different version of the tean was observed, i.e. the
+The earliest time a different version of the team was observed, i.e. the
 earliest time we know this version is no longer valid. The latest time we know
 this version *is* valid is not exposed because nobody's requested it yet. If
 you have a use for it, contact us in the MMOLB discord or on Github.
@@ -3122,4 +3122,138 @@ The number of players the team has.
 
 This is used internally by MMOLDB itself, and is not likely to be useful to
 users. To see players on the team, use the `data.team_player_versions` table.
+"""
+
+[[table]]
+name = "team_player_versions"
+description = """
+Historical and current team player information.
+
+Records the player information that's available with the team object. This is
+mostly useful for the player ID.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.team_versions`, nor versions of `data.player_versions`. There can be a
+break in versions in this table without a corresponding break in versions in
+either of those tables and vice versa. There can also be a break in versions
+in this table *with* a corresponding break in versions in
+`data.player_versions`, but the timestamps will not be synchronized.
+Associating a team_player_version and a player_version is not trivial.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a team player
+use the combination of their `mmolb_team_id` and `team_player_index`.
+"""
+
+[[table.column]]
+name = "mmolb_team_id"
+type = "text"
+description = """
+The MMOLB id for the team this team player belongs to.
+"""
+
+[[table.column]]
+name = "team_player_index"
+type = "integer"
+description = """
+The index of this team player within the team. A (`mmolb_team_id`,
+`team_player_index`) pair uniquely identifies a team player.
+
+As of s5d77 this always corresponds with position order, except for one hour
+from approx. 2025-04-23 00:46:24.695 to 2025-04-23 01:47:01.585 (UTC). Versions
+during that hour used a different format, which actually still lists players in
+the same order but MMOLDB doesn't handle that format's ordering correctly. We
+hope to fix this problem soon.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the team player was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the team player was observed, i.e. the
+earliest time we know this version is no longer valid. The latest time we know
+this version *is* valid is not exposed because nobody's requested it yet. If
+you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "integer"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "first_name"
+type = "text"
+description = """
+The player's first name, as in `data.player_versions`.
+"""
+
+[[table.column]]
+name = "last_name"
+type = "text"
+description = """
+The player's last name, as in `data.player_versions`.
+"""
+
+[[table.column]]
+name = "number"
+type = "integer"
+description = """
+The player's number, as in `data.player_versions`.
+"""
+
+[[table.column]]
+name = "slot"
+type = "bigint"
+description = """
+The player's slot, as in `data.player_versions`.
+
+Some old versions have a partially-known slot, like ReliefPitcher instead of
+ReliefPitcher1.
+"""
+nullable_explanation = """
+`null` if this player's slot was not present or not recognized.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The ID of the player on the team.
+
+This references `data.player_versions`, but when cross-referencing team player
+versions with player versions be aware that the `valid_from` and `valid_until`
+timestamps will not be in perfect sync. When a change that's visible in both
+happens, like a player swap, the version in one of the tables will update
+probably several minutes before the other, and possibly more than that.
+"""
+nullable_explanation = """
+`null` if there is no player in this slot on the team, e.g. if the team is not
+yet fully drafted.
 """

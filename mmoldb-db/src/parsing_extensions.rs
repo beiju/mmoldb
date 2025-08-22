@@ -1,4 +1,4 @@
-use mmolb_parsing::enums::{Place, Slot, SlotDiscriminants};
+use mmolb_parsing::enums::{Place, Position, Slot, SlotDiscriminants};
 use mmolb_parsing::parsed_event::PlacedPlayer;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -8,6 +8,29 @@ pub enum BestEffortSlot {
     Slot(Slot),
     SlotType(SlotDiscriminants),
     GenericPitcher,
+}
+
+impl BestEffortSlot {
+    pub fn from_slot(slot: Slot) -> Self {
+        Self::Slot(slot)
+    }
+    
+    pub fn from_position(position: Position) -> Self {
+        match position {
+            Position::Pitcher => Self::GenericPitcher,
+            Position::Catcher => Self::SlotType(SlotDiscriminants::Catcher),
+            Position::FirstBaseman => Self::SlotType(SlotDiscriminants::FirstBaseman),
+            Position::SecondBaseman => Self::SlotType(SlotDiscriminants::SecondBaseman),
+            Position::ThirdBaseman => Self::SlotType(SlotDiscriminants::ThirdBaseman),
+            Position::ShortStop => Self::SlotType(SlotDiscriminants::ShortStop),
+            Position::LeftField => Self::SlotType(SlotDiscriminants::LeftField),
+            Position::CenterField => Self::SlotType(SlotDiscriminants::CenterField),
+            Position::RightField => Self::SlotType(SlotDiscriminants::RightField),
+            Position::StartingPitcher => Self::SlotType(SlotDiscriminants::StartingPitcher),
+            Position::ReliefPitcher => Self::SlotType(SlotDiscriminants::ReliefPitcher),
+            Position::Closer => Self::SlotType(SlotDiscriminants::Closer),
+        }
+    }
 }
 
 impl Display for BestEffortSlot {

@@ -4,7 +4,7 @@ use futures::{StreamExt, TryStreamExt, pin_mut};
 use log::{debug, error, info};
 use miette::{Diagnostic, IntoDiagnostic, WrapErr};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, async_db, db, QueryResult, QueryError, IngestLog};
+use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, async_db, db, QueryResult, QueryError};
 use std::sync::Arc;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::hash_map::{Entry, EntryRef};

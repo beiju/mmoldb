@@ -14,7 +14,7 @@ use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaSlot};
 use mmoldb_db::{PgConnection, QueryResult, db};
 use rayon::prelude::*;
 use thiserror::Error;
-use crate::ingest::{batch_by_entity, IngestFatalError, VersionIngestLogs};
+use crate::ingest::{batch_by_entity, VersionIngestLogs};
 use crate::ingest_feed::chron_player_feed_as_new;
 use crate::ingest_players::PLAYER_KIND;
 

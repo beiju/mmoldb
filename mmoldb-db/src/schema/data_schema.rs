@@ -335,7 +335,7 @@ pub mod data {
             last_name -> Text,
             number -> Int4,
             slot -> Nullable<Int8>,
-            mmolb_player_id -> Text,
+            mmolb_player_id -> Nullable<Text>,
         }
     }
 

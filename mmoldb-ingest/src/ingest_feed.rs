@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::{HashSet, HashMap};
 use itertools::Itertools;
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use miette::IntoDiagnostic;
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use chron::ChronEntity;
 use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use crate::ingest::{batch_by_entity, IngestFatalError, VersionIngestLogs};
+use crate::ingest::{batch_by_entity, VersionIngestLogs};
 use crate::ingest_players::day_to_db;
 
 // I made this a constant because I'm constant-ly terrified of typoing

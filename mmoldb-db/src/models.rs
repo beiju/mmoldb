@@ -864,7 +864,7 @@ pub struct NewTeamPlayerVersion<'a> {
     pub last_name: &'a str,
     pub number: i32,
     pub slot: Option<i64>,
-    pub mmolb_player_id: &'a str,
+    pub mmolb_player_id: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -879,7 +879,7 @@ pub struct DbTeamPlayerVersion {
     pub last_name: String,
     pub number: i32,
     pub slot: Option<i64>,
-    pub mmolb_player_id: String,
+    pub mmolb_player_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]

@@ -1,15 +1,15 @@
+use crate::ingest::{batch_by_entity, VersionIngestLogs};
+use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use log::{debug, error, info};
+use log::{debug, info};
 use miette::{Context, IntoDiagnostic};
 use mmolb_parsing::{AddedLater, NotRecognized};
-use crate::ingest::{batch_by_entity, IngestFatalError, VersionIngestLogs};
-use chron::ChronEntity;
+use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{db, BestEffortSlot, PgConnection};
-use tokio_util::sync::CancellationToken;
 use rayon::prelude::*;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
+use tokio_util::sync::CancellationToken;
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
@@ -129,19 +129,6 @@ pub fn chron_team_as_new<'a>(
     Vec<NewVersionIngestLog<'a>>
 ) {
     let mut ingest_logs = VersionIngestLogs::new(TEAM_KIND, team_id, valid_from);
-    let ballpark_suffix = match &team.ballpark_suffix {
-        Ok(Ok(suffix)) => { Some(suffix.to_string()) }
-        Ok(Err(NotRecognized(unrecognized))) => match unrecognized.as_str() {
-            Some(value) => Some(value.to_string()),
-            None => {
-                ingest_logs.error(
-                    format!("Ballpark suffix was not a string: {unrecognized:?}"),
-                );
-                None
-            },
-        }
-        Err(AddedLater) => { None }
-    };
 
     let new_team_players = team.players
         .iter()
@@ -158,7 +145,7 @@ pub fn chron_team_as_new<'a>(
                 last_name: &pl.last_name,
                 number: pl.number as i32,
                 slot: match &pl.slot {
-                    Ok(Ok(slot)) => Some(taxa.slot_id(BestEffortSlot::Slot(*slot).into())),
+                    Ok(Ok(slot)) => Some(taxa.slot_id(BestEffortSlot::from_slot(*slot).into())),
                     Ok(Err(NotRecognized(other))) => {
                         ingest_logs.error(format!(
                             "Failed to parse {} {}'s slot ({other:?}",
@@ -167,8 +154,25 @@ pub fn chron_team_as_new<'a>(
                         None
                     },
                     Err(AddedLater) => None,
+                }.or_else(|| match &pl.position {
+                    Some(Ok(position)) => {
+                        Some(taxa.slot_id(BestEffortSlot::from_position(*position).into()))
+                    }
+                    Some(Err(NotRecognized(other))) => {
+                        ingest_logs.error(format!(
+                            "Failed to parse {} {}'s position ({other:?}",
+                            pl.first_name, pl.last_name
+                        ));
+                        None
+                    }
+                    None => None,
+                }),
+                // MMOLB uses "#" for undrafted players
+                mmolb_player_id: if pl.player_id == "#" {
+                    None
+                } else {
+                    Some(&pl.player_id)
                 },
-                mmolb_player_id: &pl.player_id,
             }
         })
         .collect_vec();
@@ -183,15 +187,9 @@ pub fn chron_team_as_new<'a>(
         location: &team.location,
         full_location: &team.full_location,
         abbreviation: &team.abbreviation,
-        eligible: team.eligible.as_ref().ok().cloned(),
         championships: team.championships as i32,
-        motes_used: team.motes_used.as_ref().ok().map(|m| *m as i32),
         mmolb_league_id: team.league.as_deref(),
         ballpark_name: team.ballpark_name.as_ref().ok().map(|s| s.as_str()),
-        ballpark_word_1: team.ballpark_word_1.as_ref().ok().and_then(|s| s.as_deref()),
-        ballpark_word_2: team.ballpark_word_2.as_ref().ok().and_then(|s| s.as_deref()),
-        ballpark_suffix,
-        ballpark_use_city: team.ballpark_use_city.as_ref().ok().cloned(),
         num_players: new_team_players.len() as i32,
     };
 
@@ -201,7 +199,7 @@ pub fn chron_team_as_new<'a>(
         .count();
 
     if num_unique != new_team_players.len() {
-        error!("Got a duplicate team player");
+        ingest_logs.error("Got a duplicate team player");
     }
 
     (new_team, new_team_players, ingest_logs.into_vec())

@@ -1,3 +1,11 @@
+-- values that are now null used to be '#'
+update data.team_player_versions
+set mmolb_player_id='#'
+where mmolb_player_id is null;
+
+alter table data.team_player_versions
+    alter column mmolb_player_id set not null;
+
 drop index data.close_extra_team_player_versions;
 
 alter table data.team_versions

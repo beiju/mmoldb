@@ -71,3 +71,13 @@ alter table data.team_versions
 -- not sure if these indices do anything but they can't hurt, right
 create index close_extra_team_player_versions on data.team_player_versions (mmolb_team_id, team_player_index)
     where valid_until is null;
+
+-- previously, we left the "#" placeholder for undrafted players in place.
+-- it doesn't make sense to do that, now undrafted players will have null
+alter table data.team_player_versions
+    -- null = undrafted player
+    alter column mmolb_player_id drop not null;
+
+update data.team_player_versions
+set mmolb_player_id=null
+where mmolb_player_id='#';
