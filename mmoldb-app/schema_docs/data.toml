@@ -1337,6 +1337,171 @@ nullable_explanation = """
 """
 
 [[table]]
+name = "door_prizes"
+description = """
+Door prizes earned, and not earned, during Party weather.
+
+There's a row in this table every time the player *could* win a door prize,
+regardless whether they did win one.
+
+Tokens won as a door prize are included directly on this table. Items won as a
+door prize are stored on `data.door_prize_items`.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store
+door prize ids between queries, nor hard-code door prize ids into queries.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event this door prize happend on. References the `data.events`
+table.
+
+Event IDs are *not* stable. You should not store event ids between queries, nor
+hard-code them into queries. Instead use the combination of `mmolb_game_id` and
+`game_event_index` as described in the documentation for `data.events`' `id`
+column.
+"""
+
+[[table.column]]
+name = "door_prize_index"
+type = "integer"
+description = """
+Index of this door prize within the event. There can be two door prizes in the
+event that the batter and pitcher are both new to the game.
+"""
+
+[[table.column]]
+name = "player_name"
+type = "text"
+description = """
+Name of the player who recieved this door prize.
+"""
+
+[[table.column]]
+name = "tokens"
+type = "integer"
+description = """
+The number of tokens the player won as a door prize, if any.
+"""
+nullable_explanation = """
+`null` if the player won items as their door prize, or if the player didn't win
+any door prize.
+
+You need to also reference `data.door_prize_items`
+"""
+
+[[table]]
+name = "door_prize_items"
+description = """
+Items earned as a door prize.
+
+This table is meant to be used in conjunction with `data.door_prizes`.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store
+door prize item ids between queries, nor hard-code door prize item ids into
+queries.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event this door prize item was awarded on. References the
+`data.events` table.
+
+Event IDs are *not* stable. You should not store event ids between queries, nor
+hard-code them into queries. Instead use the combination of `mmolb_game_id` and
+`game_event_index` as described in the documentation for `data.events`' `id`
+column.
+"""
+
+[[table.column]]
+name = "door_prize_index"
+type = "integer"
+description = """
+Index of this door prize within the event. There can be two door prizes in the
+event that the batter and pitcher are both new to the game.
+"""
+
+[[table.column]]
+name = "item_index"
+type = "integer"
+description = """
+Index of this item within the list of items the player won. There can be at
+least 12 (yes, twelve) items awarded as a single prize.
+"""
+
+[[table.column]]
+name = "emoji"
+type = "text"
+description = """
+The item's emoji.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The item's name.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how item names work.
+"""
+
+[[table.column]]
+name = "rare_name"
+type = "text"
+description = """
+The item's rare name.
+
+See documentation for `rare_name` on `data.player_equipment_versions` for more
+about how rare names work.
+"""
+nullable_explanation = """
+`null` if this item is not Rare or higher.
+"""
+
+[[table.column]]
+name = "prefix"
+type = "text"
+description = """
+The item's prefix. Note that unlike general items, door prize items may have
+at most one prefix.
+
+See documentation for `prefixes` on `data.player_equipment_versions` for more
+about how prefixes work.
+"""
+nullable_explanation = """
+`null` if this item does not have a prefix.
+"""
+
+[[table.column]]
+name = "suffix"
+type = "text"
+description = """
+The item's suffix. Note that unlike general items, door prize items may have
+at most one suffix.
+
+See documentation for `suffixes` on `data.player_equipment_versions` for more
+about how suffixes work.
+"""
+nullable_explanation = """
+`null` if this item does not have a suffix.
+"""
+
+[[table]]
 name = "modifications"
 description = """
 The possible player modifications, including Greater and Lesser boons (which

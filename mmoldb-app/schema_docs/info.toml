@@ -206,3 +206,18 @@ overlaps all the other `db_fetch_for_check_*_duration`s, and
 `save_duration` overlaps everything but `fetch_duration`.
 """
 allow_undocumented = true
+
+[[table]]
+name = "version_ingest_log"
+description = """
+Like `event_ingest_log` but for version-based entities (e.g. teams and
+players).
+"""
+allow_undocumented = true
+
+[[table]]
+name = "ingest_counts"
+description = """
+Not yet used.
+"""
+allow_undocumented = true
