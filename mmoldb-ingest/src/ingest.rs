@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::iter;
 use chron::{Chron, ChronEntity};
 use futures::{StreamExt, TryStreamExt, pin_mut};
@@ -8,7 +9,7 @@ use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, as
 use std::sync::Arc;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::hash_map::{Entry, EntryRef};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use thiserror::Error;
 use tokio::sync::Notify;
@@ -95,6 +96,7 @@ pub async fn ingest(
     stage_2_chunks_page_size: usize,
     pg_url: String,
     abort: CancellationToken,
+    trim_version: impl Fn(&serde_json::Value) -> serde_json::Value + Copy + Send + Sync + 'static,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> + Copy + Send + Sync + 'static,
     ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32> + Copy + Send + Sync + 'static,
 ) -> miette::Result<()> {
@@ -133,6 +135,7 @@ pub async fn ingest(
                     notify,
                     finish,
                     *n,
+                    trim_version,
                     get_start_cursor,
                     ingest_versions_page,
             ))
@@ -151,11 +154,11 @@ pub async fn ingest(
             // Tell process {kind} workers to stop waiting and exit
             finish.cancel();
 
-            info!("Raw player ingest finished. Waiting for process players task.");
+            info!("Stage 1 {kind} ingest finished. Waiting for stage 2 task.");
         }
         _ = abort.cancelled() => {
             // No need to set any signals because abort was already set by the caller
-            info!("Raw player ingest aborted. Waiting for process players task.");
+            info!("Stage 1 {kind} ingest aborted. Waiting for stage 2 task.");
         }
     }
 
@@ -258,15 +261,28 @@ async fn ingest_stage_2(
     notify: Arc<Notify>,
     finish: CancellationToken,
     worker_id: usize,
+    trim_version: impl Fn(&serde_json::Value) -> serde_json::Value,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>,
     ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32>,
 ) -> miette::Result<()> {
-    let result = ingest_stage_2_internal(ingest_id, kind, stage_2_chunks_page_size, &url, abort, notify, finish, worker_id, get_start_cursor, ingest_versions_page).await;
+    let result = ingest_stage_2_internal(ingest_id, kind, stage_2_chunks_page_size, &url, abort, notify, finish, worker_id, trim_version, get_start_cursor, ingest_versions_page).await;
     if let Err(err) = &result {
         error!("Error in {kind} Stage 2 ingest: {}. ", err);
     }
     result
 }
+
+fn json_variant(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "Null",
+        serde_json::Value::Bool(_) => "Bool",
+        serde_json::Value::Number(_) => "Number",
+        serde_json::Value::String(_) => "String",
+        serde_json::Value::Array(_) => "Array",
+        serde_json::Value::Object(_) => "Object",
+    }
+}
+
 // 2025-08-11T04:50:48Z DEBUG
 async fn ingest_stage_2_internal(
     ingest_id: i64,
@@ -277,6 +293,7 @@ async fn ingest_stage_2_internal(
     notify: Arc<Notify>,
     finish: CancellationToken,
     worker_id: usize,
+    trim_version: impl Fn(&serde_json::Value) -> serde_json::Value,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>,
     ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32>,
 ) -> miette::Result<()> {
@@ -313,6 +330,7 @@ async fn ingest_stage_2_internal(
 
         info!("{kind} stage 2 ingest starting at {ingest_start_cursor:?}");
 
+        let mut next_duplicates_print = Utc::now();
         let mut num_skipped = 0;
         let mut num_ingested = 0;
         let mut entity_cache = HashMap::<String, serde_json::Value>::new();
@@ -326,44 +344,72 @@ async fn ingest_stage_2_internal(
             .await
             .into_diagnostic()
             .context("Getting versions at cursor")?
-            .filter(|result| futures::future::ready(match result {
-                Ok(entity) => {
-                    let data_without_stats = match &entity.data {
-                        serde_json::Value::Object(obj) => {
-                            obj.iter()
-                                // This is a bit dangerous to do in a function that's generic
-                                // over `kind`. Hopefully this doesn't come back to bite me.
-                                .filter(|(k, _)| *k != "Stats" && *k != "SeasonStats")
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect()
-                        }
-                        other => other.clone(),
-                    };
-                    match entity_cache.entry_ref(&entity.entity_id) {
-                        EntryRef::Occupied(mut entry) => {
-                            if entry.get() == &data_without_stats {
-                                num_skipped += 1;
-                                if num_skipped % 100000 == 0 {
-                                    debug!(
-                                        "{num_skipped} duplicate {kind} versions skipped so far. \
-                                        {} entities in the cache.",
-                                        entity_cache.len(),
-                                    );
+            .filter(|result| {
+                futures::future::ready(match result {
+                    Ok(entity) => {
+                        let now = Utc::now();
+                        let log_debug = if next_duplicates_print < now {
+                            debug!(
+                                "{num_skipped} duplicate {kind} versions skipped so far. \
+                                {} entities in the cache.",
+                                entity_cache.len(),
+                            );
+
+                            next_duplicates_print += chrono::Duration::seconds(5);
+                            if next_duplicates_print > now {
+                                next_duplicates_print = now + chrono::Duration::seconds(5);
+                            }
+                            true
+                        } else {
+                            false
+                        };
+                        let data_trimmed = trim_version(&entity.data);
+                        match entity_cache.entry_ref(&entity.entity_id) {
+                            EntryRef::Occupied(mut entry) => {
+                                if entry.get() == &data_trimmed {
+                                    num_skipped += 1;
+                                    false // Skip
+                                } else {
+                                    if log_debug {
+                                        let a = entry.get();
+                                        let b = &data_trimmed;
+                                        match (a, b) {
+                                            (serde_json::Value::Object(a), serde_json::Value::Object(b)) => {
+                                                let a_keys = a.keys().cloned().collect::<HashSet<_>>();
+                                                let b_keys = b.keys().cloned().collect::<HashSet<_>>();
+                                                if a_keys == b_keys {
+                                                    for key in a_keys {
+                                                        let a_ = a.get(&key).unwrap();
+                                                        let b_ = b.get(&key).unwrap();
+                                                        if a_ != b_ {
+                                                            if key == "Feed" {
+                                                                debug!("Objects differ on {key}");
+
+                                                            } else {
+                                                                debug!("Objects differ on {key}: {a_:?} vs {b_:?}");
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            (a, b) => {
+                                                debug!("Objects differ: {} vs {}", json_variant(a), json_variant(b))
+                                            }
+                                        }
+                                    }
+                                    entry.insert(data_trimmed);
+                                    true // This was a changed version; don't skip
                                 }
-                                false // Skip
-                            } else {
-                                entry.insert(data_without_stats);
-                                true // This was a changed version; don't skip
+                            }
+                            EntryRef::Vacant(entry) => {
+                                entry.insert(data_trimmed);
+                                true // This was a new version, don't skip
                             }
                         }
-                        EntryRef::Vacant(entry) => {
-                            entry.insert(data_without_stats);
-                            true // This was a new version, don't skip
-                        }
                     }
-                }
-                Err(_) => true, // This was an error, don't skip
-            }))
+                    Err(_) => true, // This was an error, don't skip
+                })
+            })
             .try_chunks(stage_2_chunks_page_size)
             .map(|raw_versions| {
                 // when an error occurs, try_chunks gives us the successful portion of the chunk

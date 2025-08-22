@@ -27,6 +27,47 @@ pub async fn ingest_teams(ingest_id: i64, pg_url: String, abort: CancellationTok
         PROCESS_TEAM_BATCH_SIZE,
         pg_url,
         abort,
+        |version| match version {
+            serde_json::Value::Object(obj) => serde_json::Value::Object({
+                obj.iter()
+                    .filter_map(|(k, v)| {
+                        // I think it's fine to ignore feed because (1) There are no new team
+                        // versions created with an integrated feed, and (2) the Feed is persistent,
+                        // so we can ignore hundreds of versions and then the first standalone feed
+                        // version will capture all the backlog
+                        if k == "SeasonStats" || k == "Record" || k == "Feed" || k == "Augments" || k == "MotesUsed" || k == "SeasonRecords" {
+                            None
+                        } else if k == "Players" {
+                            let new_v = match v {
+                                serde_json::Value::Array(arr) => serde_json::Value::Array({
+                                    arr.iter()
+                                        .map(|pl| match pl {
+                                            serde_json::Value::Object(pobj) => serde_json::Value::Object({
+                                                pobj.iter()
+                                                    .flat_map(|(pk, pv)| {
+                                                        if pk == "Stats" {
+                                                            None
+                                                        } else {
+                                                            Some((pk.clone(), pv.clone()))
+                                                        }
+                                                    })
+                                                    .collect()
+                                            }),
+                                            other => other.clone(),
+                                        })
+                                        .collect()
+                                }),
+                                other => other.clone(),
+                            };
+                            Some((k.clone(), new_v))
+                        } else {
+                            Some((k.clone(), v.clone()))
+                        }
+                    })
+                    .collect()
+            }),
+            other => other.clone()
+        },
         db::get_team_ingest_start_cursor,
         ingest_page_of_teams,
     ).await

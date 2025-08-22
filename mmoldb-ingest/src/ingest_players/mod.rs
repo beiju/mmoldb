@@ -21,6 +21,15 @@ pub async fn ingest_players(ingest_id: i64, pg_url: String, abort: CancellationT
         PROCESS_PLAYER_BATCH_SIZE,
         pg_url,
         abort,
+        |version| match version {
+            serde_json::Value::Object(obj) => {
+                obj.iter()
+                    .filter(|(k, _)| *k != "Stats" && *k != "SeasonStats")
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            }
+            other => other.clone(),
+        },
         db::get_player_ingest_start_cursor,
         logic::ingest_page_of_players,
     ).await

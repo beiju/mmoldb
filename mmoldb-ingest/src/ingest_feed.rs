@@ -36,6 +36,7 @@ pub async fn ingest_player_feeds(ingest_id: i64, pg_url: String, abort: Cancella
         PROCESS_PLAYER_FEED_BATCH_SIZE,
         pg_url,
         abort,
+        |version| version.clone(),
         db::get_player_feed_ingest_start_cursor,
         ingest_page_of_player_feeds,
     ).await
