@@ -17,6 +17,8 @@ truncate table
     data.aurora_photos,
     data.door_prizes,
     data.door_prize_items,
+    data.pitcher_changes,
+    data.parties,
     info.raw_events,
 
     -- player

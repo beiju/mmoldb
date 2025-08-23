@@ -1030,6 +1030,7 @@ fn is_pitchless_pitch(ty: ParsedEventMessageDiscriminants) -> bool {
     ty == ParsedEventMessageDiscriminants::MoundVisit
         || ty == ParsedEventMessageDiscriminants::Balk
         || ty == ParsedEventMessageDiscriminants::FallingStar
+        || ty == ParsedEventMessageDiscriminants::Party
 }
 
 pub enum EventForTable<StrT: Clone> {
@@ -2127,7 +2128,7 @@ impl<'g> Game<'g> {
                                 pitcher_name: leaving_pitcher.name,
                                 pitcher_slot: leaving_pitcher.place.into(),
                                 new_pitcher_name: Some(arriving_pitcher.name),
-                                new_pitcher_slot: Some(leaving_pitcher.place.into()),
+                                new_pitcher_slot: Some(arriving_pitcher.place.into()),
                             }))
                         }
                     };
@@ -2434,7 +2435,22 @@ impl<'g> Game<'g> {
                             first_pitch_of_plate_appearance,
                         };
                         None
-                    }
+                    },
+                    [ParsedEventMessageDiscriminants::Party]
+                    ParsedEventMessage::Party { pitcher_name, pitcher_amount_gained, pitcher_attribute, batter_name: event_batter_name, batter_amount_gained, batter_attribute } => {
+                        self.check_batter(batter_name, event_batter_name, ingest_logs);
+                        ingest_logs.info(format!("Recording parties for {pitcher_name} and {batter_name}"));
+                        Some(EventForTable::Party(PartyEvent {
+                            game_event_index,
+                            top_of_inning: self.state.inning_half.is_top(),
+                            pitcher_name: *pitcher_name,
+                            pitcher_amount_gained: *pitcher_amount_gained as i32,
+                            pitcher_attribute: (*pitcher_attribute).into(),
+                            batter_name: *event_batter_name,
+                            batter_amount_gained: *batter_amount_gained as i32,
+                            batter_attribute: (*batter_attribute).into(),
+                        }))
+                    },
                 )
             }
             EventContext::ExpectMissingNowBattingBug => {
@@ -3171,18 +3187,6 @@ impl<'g> Game<'g> {
                         ));
                     }
                     None
-                },
-                [ParsedEventMessageDiscriminants::Party]
-                ParsedEventMessage::Party { pitcher_name, pitcher_amount_gained, pitcher_attribute, batter_name, batter_amount_gained, batter_attribute } => {
-                    Some(EventForTable::Party(PartyEvent {
-                        game_event_index,
-                        pitcher_name: *pitcher_name,
-                        pitcher_amount_gained: *pitcher_amount_gained as i32,
-                        pitcher_attribute: (*pitcher_attribute).into(),
-                        batter_name: *batter_name,
-                        batter_amount_gained: *batter_amount_gained as i32,
-                        batter_attribute: (*batter_attribute).into(),
-                    }))
                 },
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for

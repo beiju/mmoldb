@@ -166,6 +166,7 @@ pub mod data {
             game_id -> Int8,
             game_event_index -> Int4,
             is_pitcher -> Bool,
+            top_of_inning -> Bool,
             player_name -> Text,
             attribute -> Int8,
             value -> Int4,

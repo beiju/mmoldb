@@ -24,6 +24,7 @@ create table data.parties (
     game_id bigint references data.games not null,
     game_event_index integer not null,
     is_pitcher boolean not null,
+    top_of_inning boolean not null, -- to identify which team
     player_name text not null,
     attribute bigint references taxa.attribute not null,
     value integer not null,

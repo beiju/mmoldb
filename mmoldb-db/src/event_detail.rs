@@ -744,6 +744,7 @@ pub struct PitcherChange<StrT: Clone> {
 #[derive(Debug, Clone)]
 pub struct PartyEvent<StrT: Clone> {
     pub game_event_index: usize,
+    pub top_of_inning: bool,
     pub pitcher_name: StrT,
     pub pitcher_amount_gained: i32,
     pub pitcher_attribute: TaxaAttribute,
