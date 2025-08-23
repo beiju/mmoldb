@@ -8,7 +8,7 @@ use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{IngestLog, PgConnection, db, QueryError};
 use crate::ingest_games::{check_round_trip, sim};
-use crate::ingest_games::sim::{Game, SimStartupError};
+use crate::ingest_games::sim::{EventForTable, Game, SimStartupError};
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -377,15 +377,22 @@ fn prepare_completed_game_for_db(
         .collect_vec();
 
     // Take the None values out of detail_events
-    let events = detail_events
-        .into_iter()
-        .filter_map(|event| event)
-        .collect_vec();
+    let mut events = Vec::new();
+    let mut pitcher_changes = Vec::new();
+    for event in detail_events {
+        if let Some(event) = event {
+            match event {
+                EventForTable::EventDetail(event_detail) => events.push(event_detail),
+                EventForTable::PitcherChange(pitcher_change) => pitcher_changes.push(pitcher_change),
+            }
+        }
+    }
 
     Ok(CompletedGameForDb {
         id: &entity.entity_id,
         raw_game: &entity.data,
         events,
+        pitcher_changes,
         logs: all_logs,
         parsed_game,
         stadium_name,

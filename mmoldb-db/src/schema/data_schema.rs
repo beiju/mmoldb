@@ -161,6 +161,20 @@ pub mod data {
     }
 
     diesel::table! {
+        data.pitcher_changes (id) {
+            id -> Int8,
+            game_id -> Int8,
+            game_event_index -> Int4,
+            previous_game_event_index -> Nullable<Int4>,
+            source -> Int8,
+            pitcher_name -> Text,
+            pitcher_slot -> Int8,
+            new_pitcher_name -> Nullable<Text>,
+            new_pitcher_slot -> Nullable<Int8>,
+        }
+    }
+
+    diesel::table! {
         data.player_attribute_augments (id) {
             id -> Int8,
             mmolb_player_id -> Text,
@@ -386,6 +400,7 @@ pub mod data {
     diesel::joinable!(event_fielders -> events (event_id));
     diesel::joinable!(events -> games (game_id));
     diesel::joinable!(games -> weather (weather));
+    diesel::joinable!(pitcher_changes -> games (game_id));
     diesel::joinable!(player_modification_versions -> modifications (modification_id));
 
     diesel::allow_tables_to_appear_in_same_query!(
@@ -399,6 +414,7 @@ pub mod data {
         events,
         games,
         modifications,
+        pitcher_changes,
         player_attribute_augments,
         player_equipment_effect_versions,
         player_equipment_versions,

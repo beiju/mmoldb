@@ -931,3 +931,31 @@ pub struct DbDoorPrizeItem {
     pub prefix: Option<String>,
     pub suffix: Option<String>,
 }
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::pitcher_changes)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPitcherChange<'a> {
+    pub game_id: i64,
+    pub game_event_index: i32,
+    pub previous_game_event_index: Option<i32>,
+    pub source: i64,
+    pub pitcher_name: &'a str,
+    pub pitcher_slot: i64,
+    pub new_pitcher_name: Option<&'a str>,
+    pub new_pitcher_slot: Option<i64>,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::pitcher_changes)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPitcherChange {
+    pub id: i64,
+    pub game_event_index: i32,
+    pub previous_game_event_index: Option<i32>,
+    pub source: i64,
+    pub pitcher_name: String,
+    pub pitcher_slot: i64,
+    pub new_pitcher_name: Option<String>,
+    pub new_pitcher_slot: Option<i64>,
+}

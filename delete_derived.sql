@@ -4,6 +4,8 @@ truncate table
     info.event_ingest_log,
     info.ingest_timings,
     info.ingests,
+    info.ingest_counts,
+    info.version_ingest_log,
 
     -- game
     data.weather,
@@ -16,8 +18,6 @@ truncate table
     data.door_prizes,
     data.door_prize_items,
     info.raw_events,
-    info.ingest_counts,
-    info.version_ingest_log,
 
     -- player
     data.modifications,

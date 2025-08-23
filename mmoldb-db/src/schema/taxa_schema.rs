@@ -119,6 +119,14 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.pitcher_change_source (id) {
+            id -> Int8,
+            name -> Text,
+            display_name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.slot (id) {
             id -> Int8,
             name -> Text,
@@ -148,6 +156,7 @@ pub mod taxa {
         handedness,
         leagues,
         pitch_type,
+        pitcher_change_source,
         slot,
     );
 }

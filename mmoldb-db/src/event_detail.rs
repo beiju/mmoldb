@@ -1,8 +1,4 @@
-use crate::taxa::{
-    AsInsertable, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat,
-    TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType,
-    TaxaSlot,
-};
+use crate::taxa::{AsInsertable, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaPitcherChangeSource, TaxaSlot};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::ParsedEventMessage;
@@ -531,7 +527,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 fielders: self.fielders(),
                 scores: self.scores(),
                 advances: self.advances(false),
-                perfect: self
+                amazing: self
                     .is_toasty
                     .ok_or_else(|| ToParsedError::MissingIsToasty {
                         event_type: self.detail_type,
@@ -733,4 +729,17 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
         })
     }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct PitcherChange<StrT: Clone> {
+    pub game_event_index: usize,
+    pub previous_game_event_index: Option<usize>,
+    pub source: TaxaPitcherChangeSource,
+    pub pitcher_name: StrT,
+    pub pitcher_slot: TaxaSlot,
+    pub new_pitcher_name: Option<StrT>,
+    // This can be None if the name is Some, but not vice versa
+    pub new_pitcher_slot: Option<TaxaSlot>,
 }

@@ -2,19 +2,16 @@ use itertools::{EitherOrBoth, Itertools, PeekingNext};
 use log::warn;
 use miette::Diagnostic;
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{
-    Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType,
-    GameOverMessage, HomeAway, NowBattingStats, Place, StrikeType, TopBottom,
-};
+use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, StrikeType, TopBottom};
 use mmolb_parsing::game::MaybePlayer;
 use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher};
-use mmoldb_db::taxa::AsInsertable;
+use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
 };
 use mmoldb_db::{
     BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner,
-    IngestLog,
+    IngestLog, PitcherChange,
 };
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
@@ -234,7 +231,10 @@ enum EventContext<'g> {
         first_pitch_of_plate_appearance: bool,
     },
     ExpectInningEnd,
-    ExpectMoundVisitOutcome(ContextAfterMoundVisitOutcome<'g>),
+    ExpectMoundVisitOutcome {
+        mound_visit_type: MoundVisitType,
+        context_after: ContextAfterMoundVisitOutcome<'g>,
+    },
     ExpectGameEnd,
     ExpectFinalScore,
     Finished,
@@ -329,6 +329,7 @@ pub struct Game<'g> {
     pub home_team_photo_contest_score: Option<i32>,
     pub away_team_photo_contest_top_scorer: Option<&'g str>,
     pub away_team_photo_contest_score: Option<i32>,
+    pub last_game_event_index_with_event_detail: Option<usize>,
 
     // Aggregates
     away: TeamInGame<'g>,
@@ -726,8 +727,8 @@ impl<'g> EventDetailBuilder<'g> {
         batter_name: &'g str,
         ingest_logs: &mut IngestLogs,
         type_detail: TaxaEventType,
-    ) -> Option<EventDetail<&'g str>> {
-        Some(self.build(game, ingest_logs, type_detail, batter_name))
+    ) -> Option<EventForTable<&'g str>> {
+        Some(EventForTable::EventDetail(self.build(game, ingest_logs, type_detail, batter_name)))
     }
 
     pub fn build(
@@ -1034,6 +1035,11 @@ fn is_pitchless_pitch(ty: ParsedEventMessageDiscriminants) -> bool {
         || ty == ParsedEventMessageDiscriminants::FallingStar
 }
 
+pub enum EventForTable<StrT: Clone> {
+    EventDetail(EventDetail<StrT>),
+    PitcherChange(PitcherChange<StrT>),
+}
+
 impl<'g> Game<'g> {
     pub fn new<'a, IterT>(
         game_id: &'g str,
@@ -1219,6 +1225,7 @@ impl<'g> Game<'g> {
             home_team_photo_contest_score: None,
             away_team_photo_contest_top_scorer: None,
             away_team_photo_contest_score: None,
+            last_game_event_index_with_event_detail: None,
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
@@ -1915,8 +1922,9 @@ impl<'g> Game<'g> {
         &mut self,
         team: &EmojiTeam<&'g str>,
         ingest_logs: &mut IngestLogs,
+        mound_visit_type: MoundVisitType,
         context_after: ContextAfterMoundVisitOutcome<'g>,
-    ) -> Option<EventDetail<&'g str>> {
+    ) {
         if team.name != self.defending_team().team_name {
             ingest_logs.info(format!(
                 "Defending team name from MoundVisit ({}) did not match the one from \
@@ -1936,8 +1944,10 @@ impl<'g> Game<'g> {
             self.defending_team_mut().team_emoji = team.emoji;
         }
 
-        self.state.context = EventContext::ExpectMoundVisitOutcome(context_after);
-        None
+        self.state.context = EventContext::ExpectMoundVisitOutcome {
+            mound_visit_type,
+            context_after,
+        };
     }
 
     fn handle_ejection(&mut self, ejection: &Option<Ejection<&'g str>>, ingest_logs: &mut IngestLogs) {
@@ -1989,7 +1999,7 @@ impl<'g> Game<'g> {
         event: &ParsedEventMessage<&'g str>,
         raw_event: &'g mmolb_parsing::game::Event,
         ingest_logs: &mut IngestLogs,
-    ) -> Result<Option<EventDetail<&'g str>>, SimEventError> {
+    ) -> Result<Option<EventForTable<&'g str>>, SimEventError> {
         let previous_event = self.state.prev_event_type;
         let this_event_discriminant = event.discriminant();
 
@@ -2051,7 +2061,7 @@ impl<'g> Game<'g> {
                         self.batting_team_mut().team_emoji = batting_team.emoji;
                     }
 
-                    match pitcher_status {
+                    let picher_swap_result = match pitcher_status {
                         StartOfInningPitcher::Same { emoji, name } => {
                             ingest_logs.info(format!(
                                 "Not incrementing pitcher_count on returning pitcher {} {}",
@@ -2088,6 +2098,7 @@ impl<'g> Game<'g> {
                                     ));
                                 }
                             }
+                            None
                         }
                         StartOfInningPitcher::Different { leaving_emoji: _, leaving_pitcher, arriving_emoji: _, arriving_pitcher } => {
                             let defending_team = self.defending_team();
@@ -2111,8 +2122,17 @@ impl<'g> Game<'g> {
                             self.defending_team_mut().active_pitcher = (*arriving_pitcher).into();
                             self.defending_team_mut().pitcher_count += 1;
                             ingest_logs.info(format!("Incrementing pitcher_count as {leaving_pitcher} is replaced by {arriving_pitcher}."));
+                            Some(EventForTable::PitcherChange(PitcherChange {
+                                game_event_index,
+                                previous_game_event_index: self.last_game_event_index_with_event_detail,
+                                source: TaxaPitcherChangeSource::InningChange,
+                                pitcher_name: leaving_pitcher.name,
+                                pitcher_slot: leaving_pitcher.place.into(),
+                                new_pitcher_name: Some(arriving_pitcher.name),
+                                new_pitcher_slot: Some(leaving_pitcher.place.into()),
+                            }))
                         }
-                    }
+                    };
 
                     // Add the automatic runner to our state without emitting a db event for it.
                     // This way they will just show up on base without having an event that put
@@ -2161,11 +2181,13 @@ impl<'g> Game<'g> {
                     self.state.outs = 0;
                     self.state.errors = 0;
                     self.state.context = EventContext::ExpectNowBatting;
-                    None
+
+                    picher_swap_result
                 },
                 [ParsedEventMessageDiscriminants::MoundVisit]
-                ParsedEventMessage::MoundVisit { team, mound_visit_type: _ } => {
-                    self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectNowBatting)
+                ParsedEventMessage::MoundVisit { team, mound_visit_type } => {
+                    self.process_mound_visit(team, ingest_logs, *mound_visit_type, ContextAfterMoundVisitOutcome::ExpectNowBatting);
+                    None
                 },
             ),
             EventContext::ExpectPitch {
@@ -2373,14 +2395,15 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)
                     },
                     [ParsedEventMessageDiscriminants::MoundVisit]
-                    ParsedEventMessage::MoundVisit { team, mound_visit_type: _ } => {
-                        self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectPitch {
+                    ParsedEventMessage::MoundVisit { team, mound_visit_type } => {
+                        self.process_mound_visit(team, ingest_logs, *mound_visit_type, ContextAfterMoundVisitOutcome::ExpectPitch {
                             batter_name,
                             // Mound visit isn't a pitch, so if we're currently expecting
                             // the first pitch, after the mound visit we will still
                             // expect the first pitch.
                             first_pitch_of_plate_appearance,
-                        })
+                        });
+                        None
                     },
                     [ParsedEventMessageDiscriminants::Balk]
                     ParsedEventMessage::Balk { advances, pitcher, scores } => {
@@ -2455,8 +2478,9 @@ impl<'g> Game<'g> {
                     None
                 },
                 [ParsedEventMessageDiscriminants::MoundVisit]
-                ParsedEventMessage::MoundVisit { team, mound_visit_type: _ } => {
-                    self.process_mound_visit(team, ingest_logs, ContextAfterMoundVisitOutcome::ExpectNowBatting)
+                ParsedEventMessage::MoundVisit { team, mound_visit_type } => {
+                    self.process_mound_visit(team, ingest_logs, *mound_visit_type, ContextAfterMoundVisitOutcome::ExpectNowBatting);
+                    None
                 },
             ),
             EventContext::ExpectFairBallOutcome(batter_name, fair_ball) => game_event!(
@@ -2490,7 +2514,7 @@ impl<'g> Game<'g> {
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::CaughtOut)
                 },
                 [ParsedEventMessageDiscriminants::GroundedOut]
-                ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, perfect, ejection } => {
+                ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, amazing, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
 
                     self.update_runners(
@@ -2510,7 +2534,7 @@ impl<'g> Game<'g> {
                     detail_builder
                         .fair_ball(fair_ball)
                         .ejection(ejection.clone())
-                        .is_toasty(*perfect)
+                        .is_toasty(*amazing)
                         .fielders(fielders.clone(), ingest_logs)?
                         .runner_changes(advances.clone(), scores.clone())
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::GroundedOut)
@@ -2940,13 +2964,21 @@ impl<'g> Game<'g> {
                     None
                 },
             ),
-            EventContext::ExpectMoundVisitOutcome(context_after) => game_event!(
+            EventContext::ExpectMoundVisitOutcome { context_after, mound_visit_type } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::PitcherRemains]
                 ParsedEventMessage::PitcherRemains { remaining_pitcher } => {
                     ingest_logs.info(format!("Not incrementing pitcher_count on remaining pitcher {remaining_pitcher}"));
                     self.state.context = context_after.to_event_context(self.season, self.day, game_event_index);
-                    None
+                    Some(EventForTable::PitcherChange(PitcherChange {
+                        game_event_index,
+                        previous_game_event_index: self.last_game_event_index_with_event_detail,
+                        source: mound_visit_type.into(),
+                        pitcher_name: remaining_pitcher.name,
+                        pitcher_slot: remaining_pitcher.place.into(),
+                        new_pitcher_name: None,
+                        new_pitcher_slot: None,
+                    }))
                 },
                 [ParsedEventMessageDiscriminants::PitcherSwap]
                 ParsedEventMessage::PitcherSwap { leaving_pitcher, leaving_pitcher_emoji, arriving_pitcher_name, arriving_pitcher_emoji, arriving_pitcher_place } => {
@@ -2958,7 +2990,15 @@ impl<'g> Game<'g> {
                     self.defending_team_mut().pitcher_count += 1;
                     ingest_logs.info(format!("Incrementing pitcher_count as {leaving_pitcher_emoji:?} {leaving_pitcher} is replaced by {arriving_pitcher_name}."));
                     self.state.context = context_after.to_event_context(self.season, self.day, game_event_index);
-                    None
+                    Some(EventForTable::PitcherChange(PitcherChange {
+                        game_event_index,
+                        previous_game_event_index: self.last_game_event_index_with_event_detail,
+                        source: mound_visit_type.into(),
+                        pitcher_name: leaving_pitcher.name,
+                        pitcher_slot: leaving_pitcher.place.into(),
+                        new_pitcher_name: Some(arriving_pitcher_name),
+                        new_pitcher_slot: arriving_pitcher_place.map(Into::into),
+                    }))
                 },
             ),
             EventContext::ExpectGameEnd => game_event!(
@@ -3134,6 +3174,10 @@ impl<'g> Game<'g> {
                     }
                     None
                 },
+                [ParsedEventMessageDiscriminants::Party]
+                ParsedEventMessage::Party { pitcher_name, pitcher_amount_gained, pitcher_attribute, batter_name, batter_amount_gained, batter_attribute } => {
+                    None
+                },
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for
                 [ParsedEventMessageDiscriminants::KnownBug]
@@ -3162,6 +3206,10 @@ impl<'g> Game<'g> {
             }
         } else {
             self.check_baserunner_consistency(raw_event, ingest_logs);
+        }
+
+        if let Some(EventForTable::EventDetail(e)) = &result {
+            self.last_game_event_index_with_event_detail = Some(e.game_event_index);
         }
 
         Ok(result)
