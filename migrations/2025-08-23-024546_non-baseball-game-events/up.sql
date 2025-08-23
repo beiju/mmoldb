@@ -19,3 +19,15 @@ create table data.pitcher_changes (
     unique (game_id, game_event_index)
 );
 
+create table data.parties (
+    id bigserial primary key not null,
+    game_id bigint references data.games not null,
+    game_event_index integer not null,
+    is_pitcher boolean not null,
+    player_name text not null,
+    attribute bigint references taxa.attribute not null,
+    value integer not null,
+
+    unique (game_id, game_event_index, is_pitcher)
+);
+

@@ -959,3 +959,28 @@ pub struct DbPitcherChange {
     pub new_pitcher_name: Option<String>,
     pub new_pitcher_slot: Option<i64>,
 }
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::parties)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewParty<'a> {
+    pub game_id: i64,
+    pub game_event_index: i32,
+    pub is_pitcher: bool,
+    pub player_name: &'a str,
+    pub attribute: i64,
+    pub value: i32,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::parties)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbParty {
+    pub id: i64,
+    pub game_id: i64,
+    pub game_event_index: i32,
+    pub is_pitcher: bool,
+    pub player_name: String,
+    pub attribute: i64,
+    pub value: i32,
+}

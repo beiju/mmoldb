@@ -1,10 +1,8 @@
-use crate::taxa::{AsInsertable, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaPitcherChangeSource, TaxaSlot};
+use crate::taxa::{AsInsertable, TaxaAttribute, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaPitcherChangeSource, TaxaSlot};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{
-    Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
-};
+use mmolb_parsing::enums::{Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType};
 use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos};
 use std::fmt::Formatter;
 use thiserror::Error;
@@ -731,7 +729,6 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct PitcherChange<StrT: Clone> {
     pub game_event_index: usize,
@@ -742,4 +739,16 @@ pub struct PitcherChange<StrT: Clone> {
     pub new_pitcher_name: Option<StrT>,
     // This can be None if the name is Some, but not vice versa
     pub new_pitcher_slot: Option<TaxaSlot>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PartyEvent<StrT: Clone> {
+    pub game_event_index: usize,
+    pub pitcher_name: StrT,
+    pub pitcher_amount_gained: i32,
+    pub pitcher_attribute: TaxaAttribute,
+    pub batter_name: StrT,
+    pub batter_amount_gained: i32,
+    pub batter_attribute: TaxaAttribute,
+
 }

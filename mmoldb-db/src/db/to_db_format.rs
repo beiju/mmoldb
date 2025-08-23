@@ -1,14 +1,14 @@
 use std::str::FromStr;
 use itertools::Itertools;
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent, NewFielder, NewPitcherChange};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent, NewFielder, NewParty, NewPitcherChange};
 use crate::taxa::Taxa;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
 use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, PlacedPlayer, Prize, SnappedPhotos, ViolationType};
 use strum::ParseError;
 use thiserror::Error;
-use crate::PitcherChange;
+use crate::{PartyEvent, PitcherChange};
 
 pub fn event_to_row<'e>(
     taxa: &Taxa,
@@ -233,6 +233,31 @@ pub fn pitcher_change_to_row<'e>(
         new_pitcher_name: pitcher_change.new_pitcher_name,
         new_pitcher_slot: pitcher_change.new_pitcher_slot.map(|s| taxa.slot_id(s)),
     }
+}
+
+pub fn party_to_rows<'e>(
+    taxa: &Taxa,
+    game_id: i64,
+    party: &'e PartyEvent<&'e str>,
+) -> [NewParty<'e>; 2] {
+    [
+        NewParty {
+            game_id,
+            game_event_index: party.game_event_index as i32,
+            is_pitcher: true,
+            player_name: party.pitcher_name,
+            attribute: taxa.attribute_id(party.pitcher_attribute),
+            value: party.pitcher_amount_gained,
+        },
+        NewParty {
+            game_id,
+            game_event_index: party.game_event_index as i32,
+            is_pitcher: false,
+            player_name: party.batter_name,
+            attribute: taxa.attribute_id(party.batter_attribute),
+            value: party.batter_amount_gained,
+        },
+    ]
 }
 
 #[derive(Debug, Error, Diagnostic)]

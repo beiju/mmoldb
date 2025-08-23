@@ -379,11 +379,13 @@ fn prepare_completed_game_for_db(
     // Take the None values out of detail_events
     let mut events = Vec::new();
     let mut pitcher_changes = Vec::new();
+    let mut parties = Vec::new();
     for event in detail_events {
         if let Some(event) = event {
             match event {
                 EventForTable::EventDetail(event_detail) => events.push(event_detail),
                 EventForTable::PitcherChange(pitcher_change) => pitcher_changes.push(pitcher_change),
+                EventForTable::Party(party) => parties.push(party),
             }
         }
     }
@@ -393,6 +395,7 @@ fn prepare_completed_game_for_db(
         raw_game: &entity.data,
         events,
         pitcher_changes,
+        parties,
         logs: all_logs,
         parsed_game,
         stadium_name,

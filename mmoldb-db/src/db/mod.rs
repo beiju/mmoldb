@@ -23,7 +23,7 @@ use std::iter;
 use diesel::dsl::count;
 use thiserror::Error;
 // First-party imports
-use crate::{PitcherChange, QueryError};
+use crate::{PartyEvent, PitcherChange, QueryError};
 use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification, DbPlayerEquipmentVersion, DbPlayerEquipmentEffectVersion, NewTeamPlayerVersion, DbDoorPrize, DbDoorPrizeItem};
 use crate::taxa::{Taxa};
@@ -584,6 +584,7 @@ pub struct CompletedGameForDb<'g> {
     pub raw_game: &'g mmolb_parsing::Game,
     pub events: Vec<EventDetail<&'g str>>,
     pub pitcher_changes: Vec<PitcherChange<&'g str>>,
+    pub parties: Vec<PartyEvent<&'g str>>,
     pub logs: Vec<Vec<IngestLog>>,
     // This is used for verifying the round trip
     pub parsed_game: Vec<ParsedEventMessage<&'g str>>,
@@ -695,6 +696,7 @@ fn insert_games_internal<'e>(
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
     use crate::info_schema::info::raw_events::dsl as raw_events_dsl;
     use crate::data_schema::data::pitcher_changes::dsl as pitcher_changes_dsl;
+    use crate::data_schema::data::parties::dsl as parties_dsl;
 
     // First delete all games. If particular debug settings are turned on this may happen for every
     // game, but even in release mode we may need to delete partial games and replace them with
@@ -1119,6 +1121,29 @@ fn insert_games_internal<'e>(
         n_pitcher_changes_inserted,
     );
     let insert_pitcher_changes_duration = (Utc::now() - insert_pitcher_changes_start).as_seconds_f64();
+
+    let insert_parties_start = Utc::now();
+    let new_parties: Vec<_> = completed_games
+        .iter()
+        .flat_map(|(game_id, game)| {
+            game.parties
+                .iter()
+                .flat_map(|party| to_db_format::party_to_rows(taxa, *game_id, party))
+        })
+        .collect();
+
+    let n_parties_to_insert = new_parties.len();
+    let n_parties_inserted = diesel::copy_from(parties_dsl::parties)
+        .from_insertable(&new_parties)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_parties_to_insert == n_parties_inserted,
+        "parties insert should have inserted {} rows, but it inserted {}",
+        n_parties_to_insert,
+        n_parties_inserted,
+    );
+    let insert_parties_duration = (Utc::now() - insert_parties_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,

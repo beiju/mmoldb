@@ -9,10 +9,7 @@ use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
 };
-use mmoldb_db::{
-    BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner,
-    IngestLog, PitcherChange,
-};
+use mmoldb_db::{BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner, IngestLog, PartyEvent, PitcherChange};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::fmt::Write;
@@ -1038,6 +1035,7 @@ fn is_pitchless_pitch(ty: ParsedEventMessageDiscriminants) -> bool {
 pub enum EventForTable<StrT: Clone> {
     EventDetail(EventDetail<StrT>),
     PitcherChange(PitcherChange<StrT>),
+    Party(PartyEvent<StrT>),
 }
 
 impl<'g> Game<'g> {
@@ -3176,7 +3174,15 @@ impl<'g> Game<'g> {
                 },
                 [ParsedEventMessageDiscriminants::Party]
                 ParsedEventMessage::Party { pitcher_name, pitcher_amount_gained, pitcher_attribute, batter_name, batter_amount_gained, batter_attribute } => {
-                    None
+                    Some(EventForTable::Party(PartyEvent {
+                        game_event_index,
+                        pitcher_name: *pitcher_name,
+                        pitcher_amount_gained: *pitcher_amount_gained as i32,
+                        pitcher_attribute: (*pitcher_attribute).into(),
+                        batter_name: *batter_name,
+                        batter_amount_gained: *batter_amount_gained as i32,
+                        batter_attribute: (*batter_attribute).into(),
+                    }))
                 },
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for
