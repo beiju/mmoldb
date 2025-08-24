@@ -3107,6 +3107,8 @@ impl<'g> Game<'g> {
                         warn_if_mismatch!(ingest_logs, "losing", "score", "away", *losing_score, self.state.away_score);
                         warn_if_mismatch!(ingest_logs, "losing", "team emoji", "away", losing_team.emoji, self.away.team_emoji);
                         warn_if_mismatch!(ingest_logs, "losing", "team name", "away", losing_team.name, self.away.team_name);
+                        self.home_team_final_score = Some(*winning_score as i32);
+                        self.away_team_final_score = Some(*losing_score as i32);
                     } else {
                         warn_if_mismatch!(ingest_logs, "winning", "score", "away", *winning_score, self.state.away_score);
                         warn_if_mismatch!(ingest_logs, "winning", "team emoji", "away", winning_team.emoji, self.away.team_emoji);
@@ -3115,6 +3117,8 @@ impl<'g> Game<'g> {
                         warn_if_mismatch!(ingest_logs, "losing", "score", "home", *losing_score, self.state.home_score);
                         warn_if_mismatch!(ingest_logs, "losing", "team emoji", "home", losing_team.emoji, self.home.team_emoji);
                         warn_if_mismatch!(ingest_logs, "losing", "team name", "home", losing_team.name, self.home.team_name);
+                        self.home_team_final_score = Some(*losing_score as i32);
+                        self.away_team_final_score = Some(*winning_score as i32);
                     }
 
                     self.state.context = EventContext::Finished;
