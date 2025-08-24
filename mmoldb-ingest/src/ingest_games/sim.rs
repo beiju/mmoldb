@@ -1519,7 +1519,7 @@ impl<'g> Game<'g> {
         self.add_errors(1)
     }
 
-    fn add_runs_to_batting_team(&mut self, runs: u8) {
+    fn add_runs_to_batting_team(&mut self, runs: u8, ingest_logs: &mut IngestLogs) {
         match self.state.inning_half {
             TopBottom::Top => {
                 self.state.away_score += runs;
@@ -1530,7 +1530,18 @@ impl<'g> Game<'g> {
         }
 
         if self.is_walkoff() {
-            self.end_game();
+            // The first ever walkoff balk was bugged and the game didn't end when
+            // it should. This game's actual end was at the end of a PA, which is
+            // handled by a different function, so we can just ignore all walkoffs
+            // for this game in this function.
+            if self.game_id == "686662b85f5db4ab9490048d" {
+                ingest_logs.info(
+                    "This is the bugged walk-off balk game. The game should have ended at this \
+                    event, but it didn't. Instead it ended when the PA ended."
+                );
+            } else {
+                self.end_game();
+            }
         }
     }
 
@@ -1895,7 +1906,7 @@ impl<'g> Game<'g> {
             }
         }
 
-        self.add_runs_to_batting_team(runs_to_add);
+        self.add_runs_to_batting_team(runs_to_add, ingest_logs);
         self.add_outs(outs_to_add);
     }
 
@@ -2644,7 +2655,7 @@ impl<'g> Game<'g> {
                     );
                     // Also the only situation where you have a score
                     // without an existing runner
-                    self.add_runs_to_batting_team(1);
+                    self.add_runs_to_batting_team(1, ingest_logs);
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
 
