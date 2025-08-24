@@ -243,7 +243,7 @@ async fn ingest_stage_1(
             Ok(x) => Ok(x),
             Err(err) => {
                 error!("Error in stage 1 ingest write: {err}");
-                err
+                Err(err)
             }
         }?;
         info!("Stage 1 ingest saved {}(s) {kind}", inserted);
