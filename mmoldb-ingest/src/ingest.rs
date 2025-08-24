@@ -239,7 +239,13 @@ async fn ingest_stage_1(
             chunk.len(),
             num_skipped_at_start.load(std::sync::atomic::Ordering::SeqCst)
         );
-        let inserted = db::insert_versions(&mut conn, &chunk).into_diagnostic()?;
+        let inserted = match db::insert_versions(&mut conn, &chunk).into_diagnostic() {
+            Ok(x) => Ok(x),
+            Err(err) => {
+                error!("Error in stage 1 ingest write: {err}");
+                err
+            }
+        }?;
         info!("Stage 1 ingest saved {}(s) {kind}", inserted);
 
         notify.notify_one();
