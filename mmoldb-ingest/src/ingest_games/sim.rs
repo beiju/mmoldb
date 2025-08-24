@@ -3004,7 +3004,7 @@ impl<'g> Game<'g> {
                 },
                 [ParsedEventMessageDiscriminants::PitcherSwap]
                 ParsedEventMessage::PitcherSwap { leaving_pitcher, leaving_pitcher_emoji, arriving_pitcher_name, arriving_pitcher_emoji, arriving_pitcher_place } => {
-                    // The pitcher count we report should be before incrementing 
+                    // The pitcher count we report should be before incrementing
                     let pitcher_count = self.defending_team().pitcher_count;
                     ingest_logs.debug(format!("Arriving pitcher {arriving_pitcher_emoji:?} {arriving_pitcher_name} with place {arriving_pitcher_place:?}"));
                     self.defending_team_mut().active_pitcher = BestEffortSlottedPlayer {

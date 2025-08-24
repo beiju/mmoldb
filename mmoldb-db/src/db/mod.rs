@@ -614,6 +614,13 @@ pub enum GameForDb<'g> {
         game: CompletedGameForDb<'g>,
         from_version: DateTime<Utc>,
     },
+    // e.g. the home run challenge
+    NotSupported {
+        game_id: &'g str,
+        from_version: DateTime<Utc>,
+        raw_game: &'g mmolb_parsing::Game,
+        reason: String,
+    },
     FatalError {
         game_id: &'g str,
         from_version: DateTime<Utc>,
@@ -638,6 +645,12 @@ impl<'g> GameForDb<'g> {
             GameForDb::Completed { game, from_version } => {
                 (&game.id, *from_version, &game.raw_game)
             }
+            GameForDb::NotSupported {
+                game_id,
+                from_version,
+                raw_game,
+                ..
+            } => (*game_id, *from_version, raw_game),
             GameForDb::FatalError {
                 game_id,
                 from_version,
@@ -650,10 +663,7 @@ impl<'g> GameForDb<'g> {
     pub fn is_ongoing(&self) -> bool {
         match self {
             GameForDb::Ongoing { .. } => true,
-            GameForDb::ForeverIncomplete { .. } => false,
-            GameForDb::Completed { .. } => false,
-            // We only produce a fatal error on a completed game.
-            GameForDb::FatalError { .. } => false,
+            _ => false,
         }
     }
 }
@@ -830,6 +840,15 @@ fn insert_games_internal<'e>(
                 }))
             },
             GameForDb::Completed { game, .. } => Some(Either::Left((*game_id, game))),
+            GameForDb::NotSupported { reason, .. } => {
+                Some(Either::Right(NewEventIngestLog {
+                    game_id: *game_id,
+                    game_event_index: None, // None => applies to the entire game
+                    log_index: 0,           // there's only ever one
+                    log_level: 3,           // info
+                    log_text: reason,
+                }))
+            },
             GameForDb::FatalError { error_message, .. } => {
                 Some(Either::Right(NewEventIngestLog {
                     game_id: *game_id,

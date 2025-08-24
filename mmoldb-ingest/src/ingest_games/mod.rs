@@ -286,11 +286,13 @@ fn process_games_internal(
                 .into_diagnostic()?;
             info!(
                 "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
-                progress, and skipped {} bugged games on worker {worker_id}.",
+                progress, skipped {} unsupported games, and skipped {} bugged games on worker {}.",
                 stats.num_games_imported,
                 stats.num_games_with_fatal_errors,
                 stats.num_ongoing_games_skipped,
+                stats.num_unsupported_games_skipped,
                 stats.num_bugged_games_skipped,
+                worker_id,
             );
 
             page_index += 1;

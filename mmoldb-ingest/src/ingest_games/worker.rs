@@ -3,6 +3,7 @@ use chrono::Utc;
 use itertools::{Itertools, izip};
 use log::{debug, error, info};
 use miette::{Context, Diagnostic};
+use mmolb_parsing::enums::EventType;
 use thiserror::Error;
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
@@ -48,6 +49,7 @@ pub struct IngestStats {
     pub num_ongoing_games_skipped: usize,
     pub num_bugged_games_skipped: usize,
     pub num_games_with_fatal_errors: usize,
+    pub num_unsupported_games_skipped: usize,
     pub num_games_imported: usize,
 }
 
@@ -112,6 +114,7 @@ pub fn ingest_page_of_games(
     let mut num_ongoing_games_skipped = 0;
     let mut num_bugged_games_skipped = 0;
     let mut num_games_imported = 0;
+    let mut num_unsupported_games_skipped = 0;
     let mut num_games_with_fatal_errors = 0;
     for game in &games_for_db {
         match game {
@@ -124,6 +127,9 @@ pub fn ingest_page_of_games(
             GameForDb::Completed { .. } => {
                 num_games_imported += 1;
             }
+            GameForDb::NotSupported { .. } => {
+                num_unsupported_games_skipped += 1;
+            }
             GameForDb::FatalError { .. } => {
                 num_games_with_fatal_errors += 1;
             }
@@ -133,13 +139,15 @@ pub fn ingest_page_of_games(
         num_ongoing_games_skipped
             + num_bugged_games_skipped
             + num_games_imported
+            + num_unsupported_games_skipped
             + num_games_with_fatal_errors,
         games_for_db.len()
     );
     info!(
         "Ingesting {num_games_imported} games, skipping {num_games_with_fatal_errors} games \
-        due to fatal errors, ignoring {num_ongoing_games_skipped} games in progress, and skipping \
-        {num_bugged_games_skipped} bugged games on worker {worker_id}.",
+        due to fatal errors, skipping {num_unsupported_games_skipped} unsupported games, ignoring \
+        {num_ongoing_games_skipped} games in progress, and skipping {num_bugged_games_skipped} \
+        bugged games on worker {worker_id}.",
     );
     let parse_and_sim_duration = (Utc::now() - parse_and_sim_start).as_seconds_f64();
 
@@ -271,6 +279,7 @@ pub fn ingest_page_of_games(
         num_ongoing_games_skipped,
         num_bugged_games_skipped,
         num_games_with_fatal_errors,
+        num_unsupported_games_skipped,
         num_games_imported,
     })
 }
@@ -297,19 +306,29 @@ fn prepare_game_for_db(
             raw_game: &entity.data,
         }
     } else if entity.data.is_completed() {
-        let game_result = prepare_completed_game_for_db(entity)
-            .wrap_err("Error constructing the initial state. This entire game will be skipped.");
-        match game_result {
-            Ok(game) => GameForDb::Completed {
-                game,
-                from_version: entity.valid_from,
-            },
-            Err(err) => GameForDb::FatalError {
+        // If theres a HrcLiveNow event in the first 10 events, it's a home run challenge
+        if entity.data.event_log.iter().take(10).any(|e| e.event == Ok(EventType::HrcLiveNow)) {
+            GameForDb::NotSupported {
                 game_id: &entity.entity_id,
                 from_version: entity.valid_from,
                 raw_game: &entity.data,
-                error_message: diagnostic_to_string(err),
-            },
+                reason: "Home Run Challenge is not supported".to_string(),
+            }
+        } else {
+            let game_result = prepare_completed_game_for_db(entity)
+                .wrap_err("Error constructing the initial state. This entire game will be skipped.");
+            match game_result {
+                Ok(game) => GameForDb::Completed {
+                    game,
+                    from_version: entity.valid_from,
+                },
+                Err(err) => GameForDb::FatalError {
+                    game_id: &entity.entity_id,
+                    from_version: entity.valid_from,
+                    raw_game: &entity.data,
+                    error_message: diagnostic_to_string(err),
+                },
+            }
         }
     } else {
         GameForDb::ForeverIncomplete {
