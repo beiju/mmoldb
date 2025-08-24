@@ -8,6 +8,23 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+----------
+- Home run challenge games no longer show as errors (they still aren't 
+  supported)
+- Add special handling for [the bugged walkoff balk game][balkoff], so it also
+  no longer shows as an error
+
+[balkoff]: https://mmolb.com/watch/686662b85f5db4ab9490048d?event=402
+
+2025-08-23
+----------
+- Party support
+- Fix for games with players named "Jr." (thanks WoofyJack)
+- Documentation for door prizes
+- Documentation for team ingest
+- Add tablefunc (permanently)
+
 2025-08-20
 ----------
 - Support for door prizes in season 5 (not yet documented). Party support 
