@@ -11,6 +11,9 @@ create table data.pitcher_changes (
     game_event_index integer not null,
     previous_game_event_index integer, -- null in the unlikely event this is the first event
     source bigint references taxa.pitcher_change_source not null,
+    inning integer not null,
+    top_of_inning boolean not null,
+    pitcher_count integer not null,
     pitcher_name text not null,
     pitcher_slot bigint references taxa.slot not null,
     new_pitcher_name text, -- null if the pitcher remained in the game

@@ -2101,6 +2101,8 @@ impl<'g> Game<'g> {
                         }
                         StartOfInningPitcher::Different { leaving_emoji: _, leaving_pitcher, arriving_emoji: _, arriving_pitcher } => {
                             let defending_team = self.defending_team();
+                            // The pitcher_count we report should be before the change
+                            let pitcher_count = defending_team.pitcher_count;
                             if leaving_pitcher.name != defending_team.active_pitcher.name {
                                 if self.season < 3 {
                                     // TODO Look into the pre-s3 failures here
@@ -2125,6 +2127,9 @@ impl<'g> Game<'g> {
                                 game_event_index,
                                 previous_game_event_index: self.last_game_event_index_with_event_detail,
                                 source: TaxaPitcherChangeSource::InningChange,
+                                inning: self.state.inning_number,
+                                top_of_inning: self.state.inning_half.is_top(),
+                                pitcher_count,
                                 pitcher_name: leaving_pitcher.name,
                                 pitcher_slot: leaving_pitcher.place.into(),
                                 new_pitcher_name: Some(arriving_pitcher.name),
@@ -2988,6 +2993,9 @@ impl<'g> Game<'g> {
                         game_event_index,
                         previous_game_event_index: self.last_game_event_index_with_event_detail,
                         source: mound_visit_type.into(),
+                        inning: self.state.inning_number,
+                        top_of_inning: self.state.inning_half.is_top(),
+                        pitcher_count: self.defending_team().pitcher_count,
                         pitcher_name: remaining_pitcher.name,
                         pitcher_slot: remaining_pitcher.place.into(),
                         new_pitcher_name: None,
@@ -2996,6 +3004,8 @@ impl<'g> Game<'g> {
                 },
                 [ParsedEventMessageDiscriminants::PitcherSwap]
                 ParsedEventMessage::PitcherSwap { leaving_pitcher, leaving_pitcher_emoji, arriving_pitcher_name, arriving_pitcher_emoji, arriving_pitcher_place } => {
+                    // The pitcher count we report should be before incrementing 
+                    let pitcher_count = self.defending_team().pitcher_count;
                     ingest_logs.debug(format!("Arriving pitcher {arriving_pitcher_emoji:?} {arriving_pitcher_name} with place {arriving_pitcher_place:?}"));
                     self.defending_team_mut().active_pitcher = BestEffortSlottedPlayer {
                         name: *arriving_pitcher_name,
@@ -3008,6 +3018,9 @@ impl<'g> Game<'g> {
                         game_event_index,
                         previous_game_event_index: self.last_game_event_index_with_event_detail,
                         source: mound_visit_type.into(),
+                        inning: self.state.inning_number,
+                        top_of_inning: self.state.inning_half.is_top(),
+                        pitcher_count,
                         pitcher_name: leaving_pitcher.name,
                         pitcher_slot: leaving_pitcher.place.into(),
                         new_pitcher_name: Some(arriving_pitcher_name),

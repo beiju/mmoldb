@@ -732,7 +732,7 @@ incremented each time there is a pitcher change.
 
 For the purposes of this column, a pitcher change is when a different
 pitching *slot* is chosen to be the active pitcher for this game. When
-pitchers are swapped as a result of an augment, or when a player
+pitchers are swapped as a result of an ejection, an augment, or when a player
 Retires and is replaced in the middle of a game (due to a falling star,
 for example) this number does not increase. Note that augments have
 fired during games as late as Season 2 (although after season 0 it's
@@ -1499,6 +1499,227 @@ about how suffixes work.
 """
 nullable_explanation = """
 `null` if this item does not have a suffix.
+"""
+
+[[table]]
+name = "pitcher_changes"
+description = """
+Pitcher changes and potential pitcher changes (so mound visits with no pitcher
+change are also included).
+
+This table only includes voluntary pitcher changes. Pitcher changes due to
+ejection are not included.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not
+store these ids between queries, nor hard-code them into queries.
+To identify a particular pitcher change use the combination of its
+`mmolb_game_id` (which you access by joining `data.games` on the
+`game_id` column) and `game_event_index`.
+"""
+
+[[table.column]]
+name = "game_id"
+type = "bigint"
+description = """
+The id of the game this pitcher change belongs to. References the `data.games`
+table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
+which you access by joining `data.games` on this column.
+"""
+
+[[table.column]]
+name = "game_event_index"
+type = "integer"
+description = """
+The index of this pitcher change event (starting at 0) in its game's event log.
+This is used in combination with `mmolb_game_id` identify a particular pitcher
+change.
+"""
+
+[[table.column]]
+name = "previous_game_event_index"
+type = "integer"
+description = """
+The index of the most last event to appear in `data.events` before this pitcher
+change. This is included to make it easier to access the current game state,
+e.g. to correlate pitcher changes with the score, the state of the bases, etc.
+
+Note that this is not necessarily a game event where this pitcher was pitching,
+e.g. in the case of a pitcher swap at inning change or a mound visit that occurs
+before any pitches in the half-inning.
+"""
+nullable_explanation = """
+`null` in the unlikely event that a pitcher change occurrs before any pitches
+have happened in the game.
+"""
+
+[[table.column]]
+name = "inning"
+type = "integer"
+description = """
+The inning number, as in `data.events`.
+"""
+
+[[table.column]]
+name = "source"
+type = "bigint"
+description = """
+The source of this pitcher change ("inning change", "mound visit" or "pitcher
+change"). References `taxa.pitcher_change_source`.
+"""
+
+[[table.column]]
+name = "top_of_inning"
+type = "boolean"
+description = """
+`true` when it's the top of the inning, `false` when it's the bottom, as in
+`data.events`.
+"""
+
+[[table.column]]
+name = "pitcher_count"
+type = "integer"
+description = """
+The `pitcher_count` of the existing pitcher, as in `data.events`.
+"""
+
+[[table.column]]
+name = "pitcher_name"
+type = "text"
+description = """
+Name of the previously active pitcher. Called the "leaving pitcher" in the case
+of an actual pitcher change and the "remaining pitcher" in the case of a mound
+visit that does not result in a pitcher change.
+"""
+
+[[table.column]]
+name = "pitcher_slot"
+type = "bigint"
+description = """
+The slot of the previously active pitcher (the same pitcher identified by
+`pitcher_name`).
+"""
+
+[[table.column]]
+name = "new_pitcher_name"
+type = "text"
+description = """
+Name of the incoming pitcher, if there is one. References `taxa.slot`.
+"""
+nullable_explanation = """
+`null` for mound visits that do not result in a pitcher change.
+
+The `null`-ness of this column is the canonical way to figure out whether a
+pitcher change actually occurred. `pitcher_slot` may be null even when a
+pitcher change did occur.
+"""
+
+[[table.column]]
+name = "new_pitcher_slot"
+type = "bigint"
+description = """
+Slot of the incoming pitcher, if there is one. References `taxa.slot`.
+"""
+nullable_explanation = """
+`null` for mound visits that do not result in a pitcher change, and for certain
+events that don't name the pitcher's slot.
+
+Don't rely on this to tell whether a pitcher change actually occurred, because
+there are instances when a pitcher change did occur but MMOLB didn't tell us
+what the new slot was. Use `new_pitcher_name` for that instead.
+"""
+
+[[table]]
+name = "parties"
+description = """
+Parties that occurred during Party weather. Note that Parties are different
+from Door Prizes, which also happen in Party weather.
+
+This table holds parties for individual players. Each Party game event has
+two parties, one for the batter and one for the pitcher.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not
+store these ids between queries, nor hard-code them into queries.
+To identify a particular party use the combination of its
+`mmolb_game_id` (which you access by joining `data.games` on the
+`game_id` column), `game_event_index`, and `is_pitcher`.
+"""
+
+[[table.column]]
+name = "game_id"
+type = "bigint"
+description = """
+The id of the game this party belongs to. References the `data.games`
+table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
+which you access by joining `data.games` on this column.
+"""
+
+[[table.column]]
+name = "game_event_index"
+type = "integer"
+description = """
+The index of this party event (starting at 0) in its game's event log.
+This is used in combination with `mmolb_game_id` and `is_pitcher` to
+identify a particular party.
+"""
+
+[[table.column]]
+name = "is_pitcher"
+type = "boolean"
+description = """
+Whether this party is for the pitcher or batter. Each party event has one party
+for the pitcher and one for the batter. This is used in combination with
+`mmolb_game_id` and `game_event_index` to identify a particular party.
+"""
+
+[[table.column]]
+name = "top_of_inning"
+type = "boolean"
+description = """
+`true` when it's the top of the inning, `false` when it's the bottom, as in
+`data.events`.
+
+This is provided to make it easier to tell which team this party was for. If
+`top_of_inning=is_pitcher`, this party is for the a player on the home team.
+Otherwise this party is for a player on the away team.
+"""
+
+[[table.column]]
+name = "player_name"
+type = "text"
+description = """
+Name of the player who partied.
+"""
+
+[[table.column]]
+name = "attribute"
+type = "bigint"
+description = """
+Attribute that was boosted as a result of this party. References `taxa.attribute`.
+"""
+
+[[table.column]]
+name = "value"
+type = "integer"
+description = """
+Amount by which the attribute was boosted. As of mid-Season 5 this is always
+50, but it may change later. Stores values as they are displayed in the game log,
+meaning attributes are on the 0-100 scale.
 """
 
 [[table]]

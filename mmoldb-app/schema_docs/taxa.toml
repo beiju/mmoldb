@@ -401,7 +401,6 @@ contain alphanumeric characters only and start with a letter.
 This is (currently) also the human-friendly name.
 """
 
-
 [[table]]
 name = "pitch_type"
 description = """
@@ -415,7 +414,7 @@ type = "bigint"
 description = """
 An arbitrary ID for a pitch type. When this appears as a
 foreign key you are encouraged to join this `taxa` and use its `name`
-column, rather than directly using fielding error type ids in your
+column, rather than directly using pitch type ids in your
 queries or results.
 """
 
@@ -439,6 +438,46 @@ name = "abbreviation"
 type = "text"
 description = """
 The standard baseball abbreviation for this pitch type.
+"""
+
+[[table]]
+name = "pitcher_change_source"
+description = """
+The source of a potential pitcher change.
+
+`InningChange` means that the swap happened as part of the half-inning
+starting. This is how closers are usually brought in, for example.
+`MoundVisit` means there was separate mound visit event, where the manager
+vists the pitcher and may or may not swap them. These mound visits are
+announced as "manager is making a mound visit".
+`PitchingChange`: If the manager has already made a mound visit for this
+pitcher, on their next mound visit they must swap the pitcher. There is no
+option to have the pitcher remain in the game again. These mound visits are
+announced as "manager is making a pitching change."
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a pitcher change type. When this appears as a foreign key
+you are encouraged to join this `taxa` and use its `name` column, rather than
+directly using pitcher change type ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this pitcher change type. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this pitcher change type.
 """
 
 [[table]]
@@ -563,7 +602,6 @@ alphanumeric characters only and start with a letter.
 
 This is also the human-friendly name for each attribute category.
 """
-
 
 [[table]]
 name = "attribute"
