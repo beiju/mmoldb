@@ -42,16 +42,21 @@ async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
         .extract_inner("databases.mmoldb")
         .expect("mmoldb database connection information was not found in Rocket.toml");
 
-    tokio::task::spawn_blocking(move || {
-        PgConnection::establish(&config.url)
-            .expect("Failed to connect to mmoldb database during migrations")
-            .run_pending_migrations(MIGRATIONS)
+    let taxa = tokio::task::spawn_blocking(move || {
+        let mut conn = PgConnection::establish(&config.url)
+            .expect("Failed to connect to mmoldb database during migrations");
+
+        conn.run_pending_migrations(MIGRATIONS)
             .expect("Failed to apply migrations");
+
+        Taxa::new(&mut conn)
+            .expect("Error creating Taxa")
     })
     .await
     .expect("Error joining migrations task");
 
-    rocket
+
+    rocket.manage(taxa)
 }
 
 fn get_figment_with_constructed_db_url() -> figment::Figment {
@@ -68,13 +73,6 @@ fn rocket() -> _ {
         .mount("/", web::routes())
         .mount("/api", api::routes())
         .mount("/static", rocket::fs::FileServer::from("./static"))
-        .manage({
-            let url = mmoldb_db::postgres_url_from_environment();
-            let mut conn = PgConnection::establish(&url)
-                .expect("Failed to connect to mmoldb database");
-            Taxa::new(&mut conn)
-                .expect("Error creating Taxa")
-        })
         .attach(Template::custom(|engines| {
             engines.tera.register_filter("num_format", NumFormat);
         }))
