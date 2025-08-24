@@ -85,13 +85,11 @@ pub fn insert_versions(
 ) -> QueryResult<usize> {
     let new_versions = versions
         .iter()
-        .map(|v| {
-            NewVersion {
-                kind: &v.kind,
-                entity_id: &v.entity_id,
-                valid_from: v.valid_from.naive_utc(),
-                data: &v.data,
-            }
+        .map(|v| NewVersion {
+            kind: &v.kind,
+            entity_id: &v.entity_id,
+            valid_from: v.valid_from.naive_utc(),
+            data: &v.data,
         })
         .collect_vec();
 

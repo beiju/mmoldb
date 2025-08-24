@@ -11,6 +11,7 @@ pub use versions::*;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
+use diesel::dsl::count;
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
@@ -20,21 +21,35 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
-use diesel::dsl::count;
 use thiserror::Error;
 // First-party imports
-use crate::{PartyEvent, PitcherChange, QueryError};
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewGameIngestTimings, NewIngest, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewRawEvent, RawDbColumn, RawDbTable, NewTeamVersion, NewIngestCount, NewVersionIngestLog, DbPlayerModificationVersion, DbModification, DbPlayerEquipmentVersion, DbPlayerEquipmentEffectVersion, NewTeamPlayerVersion, DbDoorPrize, DbDoorPrizeItem};
-use crate::taxa::{Taxa};
+use crate::models::{
+    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder,
+    DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion,
+    DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame,
+    NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment,
+    NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion,
+    NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition,
+    NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent,
+    NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable,
+};
+use crate::taxa::Taxa;
+use crate::{PartyEvent, PitcherChange, QueryError};
 
-pub fn set_current_user_statement_timeout(conn: &mut PgConnection, timeout_seconds: i64) -> QueryResult<usize> {
+pub fn set_current_user_statement_timeout(
+    conn: &mut PgConnection,
+    timeout_seconds: i64,
+) -> QueryResult<usize> {
     // Note that `alter role` cannot use a prepared query. The only way to
     // parameterize it is to build it from a string. `timeout_seconds` is
     // an i64 and thus its format cannot have a `'` character, so this should
     // be safe.
-    sql_query(format!("alter role CURRENT_USER set statement_timeout='{}s'", timeout_seconds))
-        .execute(conn)
+    sql_query(format!(
+        "alter role CURRENT_USER set statement_timeout='{}s'",
+        timeout_seconds
+    ))
+    .execute(conn)
 }
 
 pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
@@ -396,12 +411,12 @@ pub struct EventsForGameTimings {
 }
 
 pub fn group_child_table_results<'a, ChildT>(
-    games_events: impl IntoIterator<Item=&'a Vec<DbEvent>>,
+    games_events: impl IntoIterator<Item = &'a Vec<DbEvent>>,
     child_results: Vec<ChildT>,
     event_id_for_child: impl Fn(&ChildT) -> i64,
 ) -> Vec<Vec<Vec<ChildT>>> {
     let mut child_results_iter = child_results.into_iter().peekable();
-    
+
     let results = games_events
         .into_iter()
         .map(|game_events| {
@@ -421,7 +436,7 @@ pub fn group_child_table_results<'a, ChildT>(
         .collect_vec();
 
     assert_eq!(child_results_iter.count(), 0);
-    
+
     results
 }
 
@@ -433,12 +448,12 @@ pub fn events_for_games(
     Vec<(i64, Vec<Result<EventDetail<String>, RowToEventError>>)>,
     EventsForGameTimings,
 )> {
+    use crate::data_schema::data::aurora_photos::dsl as aurora_photo_dsl;
+    use crate::data_schema::data::door_prize_items::dsl as door_prize_item_dsl;
+    use crate::data_schema::data::door_prizes::dsl as door_prize_dsl;
+    use crate::data_schema::data::ejections::dsl as ejection_dsl;
     use crate::data_schema::data::event_baserunners::dsl as runner_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielder_dsl;
-    use crate::data_schema::data::aurora_photos::dsl as aurora_photo_dsl;
-    use crate::data_schema::data::ejections::dsl as ejection_dsl;
-    use crate::data_schema::data::door_prizes::dsl as door_prize_dsl;
-    use crate::data_schema::data::door_prize_items::dsl as door_prize_item_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
 
@@ -504,15 +519,19 @@ pub fn events_for_games(
     let get_aurora_photos_start = Utc::now();
     let db_aurora_photos = aurora_photo_dsl::aurora_photos
         .filter(aurora_photo_dsl::event_id.eq_any(&all_event_ids))
-        .order_by((aurora_photo_dsl::event_id, aurora_photo_dsl::is_listed_first.desc()))
+        .order_by((
+            aurora_photo_dsl::event_id,
+            aurora_photo_dsl::is_listed_first.desc(),
+        ))
         .select(DbAuroraPhoto::as_select())
         .load(conn)?;
     let _get_aurora_photos_duration = (Utc::now() - get_aurora_photos_start).as_seconds_f64();
 
     let group_aurora_photos_start = Utc::now();
-    let db_aurora_photos = group_child_table_results(&db_games_events, db_aurora_photos, |r| r.event_id);
+    let db_aurora_photos =
+        group_child_table_results(&db_games_events, db_aurora_photos, |r| r.event_id);
     let _group_aurora_photos_duration = (Utc::now() - group_aurora_photos_start).as_seconds_f64();
-    
+
     let get_ejections_start = Utc::now();
     let db_ejections = ejection_dsl::ejections
         .filter(ejection_dsl::event_id.eq_any(&all_event_ids))
@@ -524,7 +543,7 @@ pub fn events_for_games(
     let group_ejections_start = Utc::now();
     let db_ejections = group_child_table_results(&db_games_events, db_ejections, |r| r.event_id);
     let _group_ejections_duration = (Utc::now() - group_ejections_start).as_seconds_f64();
-    
+
     let get_door_prizes_start = Utc::now();
     let db_door_prizes = door_prize_dsl::door_prizes
         .filter(door_prize_dsl::event_id.eq_any(&all_event_ids))
@@ -534,34 +553,88 @@ pub fn events_for_games(
     let _get_door_prizes_duration = (Utc::now() - get_door_prizes_start).as_seconds_f64();
 
     let group_door_prizes_start = Utc::now();
-    let db_door_prizes = group_child_table_results(&db_games_events, db_door_prizes, |r| r.event_id);
+    let db_door_prizes =
+        group_child_table_results(&db_games_events, db_door_prizes, |r| r.event_id);
     let _group_door_prizes_duration = (Utc::now() - group_door_prizes_start).as_seconds_f64();
-    
+
     let get_door_prize_items_start = Utc::now();
     let db_door_prize_items = door_prize_item_dsl::door_prize_items
         .filter(door_prize_item_dsl::event_id.eq_any(&all_event_ids))
-        .order_by((door_prize_item_dsl::event_id, door_prize_item_dsl::door_prize_index, door_prize_item_dsl::item_index))
+        .order_by((
+            door_prize_item_dsl::event_id,
+            door_prize_item_dsl::door_prize_index,
+            door_prize_item_dsl::item_index,
+        ))
         .select(DbDoorPrizeItem::as_select())
         .load(conn)?;
     let _get_door_prize_items_duration = (Utc::now() - get_door_prize_items_start).as_seconds_f64();
 
     let group_door_prize_items_start = Utc::now();
-    let db_door_prize_items = group_child_table_results(&db_games_events, db_door_prize_items, |r| r.event_id);
-    let _group_door_prize_items_duration = (Utc::now() - group_door_prize_items_start).as_seconds_f64();
-    
+    let db_door_prize_items =
+        group_child_table_results(&db_games_events, db_door_prize_items, |r| r.event_id);
+    let _group_door_prize_items_duration =
+        (Utc::now() - group_door_prize_items_start).as_seconds_f64();
+
     let post_process_start = Utc::now();
-    let result = itertools::izip!(game_ids, db_games_events, db_runners, db_fielders, db_aurora_photos, db_ejections, db_door_prizes, db_door_prize_items)
-        .map(|(game_id, events, runners, fielders, aurora_photos, ejections, door_prizes, door_prize_items)| {
+    let result = itertools::izip!(
+        game_ids,
+        db_games_events,
+        db_runners,
+        db_fielders,
+        db_aurora_photos,
+        db_ejections,
+        db_door_prizes,
+        db_door_prize_items
+    )
+    .map(
+        |(
+            game_id,
+            events,
+            runners,
+            fielders,
+            aurora_photos,
+            ejections,
+            door_prizes,
+            door_prize_items,
+        )| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
-            let detail_events = itertools::izip!(events, runners, fielders, aurora_photos, ejections, door_prizes, door_prize_items)
-                .map(|(event, runners, fielders, aurora_photo, ejection, door_prizes, door_prize_items)| {
-                    to_db_format::row_to_event(taxa, event, runners, fielders, aurora_photo, ejection, door_prizes, door_prize_items)
-                })
-                .collect_vec();
+            let detail_events = itertools::izip!(
+                events,
+                runners,
+                fielders,
+                aurora_photos,
+                ejections,
+                door_prizes,
+                door_prize_items
+            )
+            .map(
+                |(
+                    event,
+                    runners,
+                    fielders,
+                    aurora_photo,
+                    ejection,
+                    door_prizes,
+                    door_prize_items,
+                )| {
+                    to_db_format::row_to_event(
+                        taxa,
+                        event,
+                        runners,
+                        fielders,
+                        aurora_photo,
+                        ejection,
+                        door_prizes,
+                        door_prize_items,
+                    )
+                },
+            )
+            .collect_vec();
             (game_id, detail_events)
-        })
-        .collect_vec();
+        },
+    )
+    .collect_vec();
     let post_process_duration = (Utc::now() - post_process_start).as_seconds_f64();
 
     Ok((
@@ -695,18 +768,18 @@ fn insert_games_internal<'e>(
     ingest_id: i64,
     games: &[GameForDb],
 ) -> QueryResult<InsertGamesTimings> {
+    use crate::data_schema::data::aurora_photos::dsl as aurora_photos_dsl;
+    use crate::data_schema::data::door_prize_items::dsl as door_prize_items_dsl;
+    use crate::data_schema::data::door_prizes::dsl as door_prizes_dsl;
+    use crate::data_schema::data::ejections::dsl as ejections_dsl;
     use crate::data_schema::data::event_baserunners::dsl as baserunners_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielders_dsl;
-    use crate::data_schema::data::aurora_photos::dsl as aurora_photos_dsl;
-    use crate::data_schema::data::ejections::dsl as ejections_dsl;
-    use crate::data_schema::data::door_prizes::dsl as door_prizes_dsl;
-    use crate::data_schema::data::door_prize_items::dsl as door_prize_items_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
+    use crate::data_schema::data::parties::dsl as parties_dsl;
+    use crate::data_schema::data::pitcher_changes::dsl as pitcher_changes_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
     use crate::info_schema::info::raw_events::dsl as raw_events_dsl;
-    use crate::data_schema::data::pitcher_changes::dsl as pitcher_changes_dsl;
-    use crate::data_schema::data::parties::dsl as parties_dsl;
 
     // First delete all games. If particular debug settings are turned on this may happen for every
     // game, but even in release mode we may need to delete partial games and replace them with
@@ -759,7 +832,10 @@ fn insert_games_internal<'e>(
             };
 
             match game {
-                GameForDb::Completed { game: completed_game, .. } => NewGame {
+                GameForDb::Completed {
+                    game: completed_game,
+                    ..
+                } => NewGame {
                     ingest: ingest_id,
                     mmolb_game_id: game_id,
                     season: raw_game.season as i32,
@@ -779,9 +855,11 @@ fn insert_games_internal<'e>(
                     from_version: from_version.naive_utc(),
                     home_team_earned_coins: completed_game.home_team_earned_coins,
                     away_team_earned_coins: completed_game.away_team_earned_coins,
-                    home_team_photo_contest_top_scorer: completed_game.home_team_photo_contest_top_scorer,
+                    home_team_photo_contest_top_scorer: completed_game
+                        .home_team_photo_contest_top_scorer,
                     home_team_photo_contest_score: completed_game.home_team_photo_contest_score,
-                    away_team_photo_contest_top_scorer: completed_game.away_team_photo_contest_top_scorer,
+                    away_team_photo_contest_top_scorer: completed_game
+                        .away_team_photo_contest_top_scorer,
                     away_team_photo_contest_score: completed_game.away_team_photo_contest_score,
                 },
                 _ => NewGame {
@@ -1116,15 +1194,16 @@ fn insert_games_internal<'e>(
         n_door_prize_items_to_insert,
         n_door_prize_items_inserted,
     );
-    let _insert_door_prize_items_duration = (Utc::now() - insert_door_prize_items_start).as_seconds_f64();
+    let _insert_door_prize_items_duration =
+        (Utc::now() - insert_door_prize_items_start).as_seconds_f64();
 
     let insert_pitcher_changes_start = Utc::now();
     let new_pitcher_changes: Vec<_> = completed_games
         .iter()
         .flat_map(|(game_id, game)| {
-            game.pitcher_changes
-                .iter()
-                .map(|pitcher_change| to_db_format::pitcher_change_to_row(taxa, *game_id, pitcher_change))
+            game.pitcher_changes.iter().map(|pitcher_change| {
+                to_db_format::pitcher_change_to_row(taxa, *game_id, pitcher_change)
+            })
         })
         .collect();
 
@@ -1139,7 +1218,8 @@ fn insert_games_internal<'e>(
         n_pitcher_changes_to_insert,
         n_pitcher_changes_inserted,
     );
-    let insert_pitcher_changes_duration = (Utc::now() - insert_pitcher_changes_start).as_seconds_f64();
+    let _insert_pitcher_changes_duration =
+        (Utc::now() - insert_pitcher_changes_start).as_seconds_f64();
 
     let insert_parties_start = Utc::now();
     let new_parties: Vec<_> = completed_games
@@ -1162,7 +1242,7 @@ fn insert_games_internal<'e>(
         n_parties_to_insert,
         n_parties_inserted,
     );
-    let insert_parties_duration = (Utc::now() - insert_parties_start).as_seconds_f64();
+    let _insert_parties_duration = (Utc::now() - insert_parties_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,
@@ -1534,24 +1614,29 @@ pub fn get_player_ingest_start_cursor(
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {
     use crate::schema::data_schema::data as schema;
 
-    let player_version_with_embedded_feed_cutoff = DateTime::parse_from_rfc3339("2025-07-28 12:00:00.000000Z").unwrap().naive_utc();
+    let player_version_with_embedded_feed_cutoff =
+        DateTime::parse_from_rfc3339("2025-07-28 12:00:00.000000Z")
+            .unwrap()
+            .naive_utc();
 
     // This must list all tables that have a valid_from derived from the `player` kind.
     let cursor: Option<(NaiveDateTime, String)> = [
         player_cursor_from_table!(conn, schema, player_versions)?,
-        player_cursor_from_table!(conn, schema, player_feed_versions)?
-            .map(|(dt, id)| (
+        player_cursor_from_table!(conn, schema, player_feed_versions)?.map(|(dt, id)| {
+            (
                 std::cmp::min(player_version_with_embedded_feed_cutoff, dt),
                 id,
-            )),
+            )
+        }),
         player_cursor_from_table!(conn, schema, player_modification_versions)?,
         player_cursor_from_table!(conn, schema, player_equipment_versions)?,
         player_cursor_from_table!(conn, schema, player_equipment_effect_versions)?,
         player_cursor_from_table!(conn, schema, player_report_versions)?,
         player_cursor_from_table!(conn, schema, player_report_attribute_versions)?,
-    ].into_iter()
-        // Compute the latest of all cursors
-        .fold(None, max_of_options);
+    ]
+    .into_iter()
+    // Compute the latest of all cursors
+    .fold(None, max_of_options);
 
     Ok(cursor)
 }
@@ -1579,9 +1664,10 @@ pub fn get_team_ingest_start_cursor(
     let cursor: Option<(NaiveDateTime, String)> = [
         team_cursor_from_table!(conn, schema, team_versions)?,
         team_cursor_from_table!(conn, schema, team_player_versions)?,
-    ].into_iter()
-        // Compute the latest of all cursors
-        .fold(None, max_of_options);
+    ]
+    .into_iter()
+    // Compute the latest of all cursors
+    .fold(None, max_of_options);
 
     Ok(cursor)
 }
@@ -1592,7 +1678,10 @@ pub fn get_player_feed_ingest_start_cursor(
     use crate::schema::data_schema::data::player_feed_versions::dsl as player_feed_dsl;
 
     player_feed_dsl::player_feed_versions
-        .select((player_feed_dsl::valid_from, player_feed_dsl::mmolb_player_id))
+        .select((
+            player_feed_dsl::valid_from,
+            player_feed_dsl::mmolb_player_id,
+        ))
         .order_by((
             player_feed_dsl::valid_from.desc(),
             player_feed_dsl::mmolb_player_id.desc(),
@@ -1760,17 +1849,13 @@ fn insert_player_report_attribute_versions(
 
 fn insert_player_report_versions(
     conn: &mut PgConnection,
-    new_player_report_versions: Vec<Vec<(
-        NewPlayerReportVersion,
-        Vec<NewPlayerReportAttributeVersion>,
-    )>>,
+    new_player_report_versions: Vec<
+        Vec<(NewPlayerReportVersion, Vec<NewPlayerReportAttributeVersion>)>,
+    >,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_report_versions::dsl as prv_dsl;
 
-    let (
-        new_player_report_versions,
-        new_player_report_attribute_versions,
-    ): (
+    let (new_player_report_versions, new_player_report_attribute_versions): (
         Vec<NewPlayerReportVersion>,
         Vec<Vec<NewPlayerReportAttributeVersion>>,
     ) = itertools::multiunzip(new_player_report_versions.into_iter().flatten());
@@ -1804,17 +1889,16 @@ fn insert_player_equipment_effects(
 
 fn insert_player_equipment(
     conn: &mut PgConnection,
-    new_player_equipment: Vec<Vec<(
-        NewPlayerEquipmentVersion,
-        Vec<NewPlayerEquipmentEffectVersion>,
-    )>>,
+    new_player_equipment: Vec<
+        Vec<(
+            NewPlayerEquipmentVersion,
+            Vec<NewPlayerEquipmentEffectVersion>,
+        )>,
+    >,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_equipment_versions::dsl as pev_dsl;
 
-    let (
-        new_player_equipment_versions,
-        new_player_equipment_effect_versions,
-    ): (
+    let (new_player_equipment_versions, new_player_equipment_effect_versions): (
         Vec<NewPlayerEquipmentVersion>,
         Vec<Vec<NewPlayerEquipmentEffectVersion>>,
     ) = itertools::multiunzip(new_player_equipment.into_iter().flatten());
@@ -1828,7 +1912,8 @@ fn insert_player_equipment(
 
     let insert_effect_versions_start = Utc::now();
     insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
-    let insert_effect_versions_duration = (Utc::now() - insert_effect_versions_start).as_seconds_f64();
+    let insert_effect_versions_duration =
+        (Utc::now() - insert_effect_versions_start).as_seconds_f64();
     info!(
         "insert_equipment_versions_duration: {insert_versions_duration:.2}, \
         insert_equipment_effect_versions_duration: {insert_effect_versions_duration:.2}"
@@ -1851,10 +1936,10 @@ pub fn insert_player_feed_versions<'a>(
         ingest_logs,
     ): (
         Vec<NewPlayerFeedVersion>,
-        Vec<Vec<NewPlayerAttributeAugment>,>,
-        Vec<Vec<NewPlayerParadigmShift>,>,
-        Vec<Vec<NewPlayerRecomposition>,>,
-        Vec<Vec<NewVersionIngestLog>,>,
+        Vec<Vec<NewPlayerAttributeAugment>>,
+        Vec<Vec<NewPlayerParadigmShift>>,
+        Vec<Vec<NewPlayerRecomposition>>,
+        Vec<Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_feed_versions.into_iter());
 
     // Insert new records
@@ -1891,10 +1976,7 @@ fn insert_ingest_logs(
     new_logs: Vec<Vec<NewVersionIngestLog>>,
 ) -> QueryResult<usize> {
     use crate::info_schema::info::version_ingest_log::dsl as vil_dsl;
-    let new_logs = new_logs
-        .into_iter()
-        .flatten()
-        .collect_vec();
+    let new_logs = new_logs.into_iter().flatten().collect_vec();
 
     // Insert new records
     diesel::copy_from(vil_dsl::version_ingest_log)
@@ -1998,14 +2080,13 @@ pub fn insert_player_versions(
         Vec<NewPlayerVersion>,
         Vec<Vec<NewPlayerModificationVersion>>,
         Vec<Option<NewPlayerFeedVersionExt>>,
-        Vec<Vec<(
-            NewPlayerReportVersion,
-            Vec<NewPlayerReportAttributeVersion>,
-        )>>,
-        Vec<Vec<(
-            NewPlayerEquipmentVersion,
-            Vec<NewPlayerEquipmentEffectVersion>,
-        )>>,
+        Vec<Vec<(NewPlayerReportVersion, Vec<NewPlayerReportAttributeVersion>)>>,
+        Vec<
+            Vec<(
+                NewPlayerEquipmentVersion,
+                Vec<NewPlayerEquipmentEffectVersion>,
+            )>,
+        >,
         Vec<Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
@@ -2015,23 +2096,28 @@ pub fn insert_player_versions(
     let num_player_insertions = diesel::copy_from(pv_dsl::player_versions)
         .from_insertable(new_player_versions)
         .execute(conn)?;
-    let insert_player_version_duration = (Utc::now() - insert_player_version_start).as_seconds_f64();
+    let insert_player_version_duration =
+        (Utc::now() - insert_player_version_start).as_seconds_f64();
 
     let insert_player_modifications_start = Utc::now();
     insert_player_modifications(conn, new_player_modification_versions)?;
-    let insert_player_modifications_duration = (Utc::now() - insert_player_modifications_start).as_seconds_f64();
+    let insert_player_modifications_duration =
+        (Utc::now() - insert_player_modifications_start).as_seconds_f64();
 
     let insert_player_feed_versions_start = Utc::now();
     insert_player_feed_versions(conn, new_player_feed_versions.into_iter().flatten())?;
-    let insert_player_feed_versions_duration = (Utc::now() - insert_player_feed_versions_start).as_seconds_f64();
+    let insert_player_feed_versions_duration =
+        (Utc::now() - insert_player_feed_versions_start).as_seconds_f64();
 
     let insert_player_reports_start = Utc::now();
     insert_player_report_versions(conn, new_player_report_attributes)?;
-    let insert_player_reports_duration = (Utc::now() - insert_player_reports_start).as_seconds_f64();
+    let insert_player_reports_duration =
+        (Utc::now() - insert_player_reports_start).as_seconds_f64();
 
     let insert_player_equipment_start = Utc::now();
     insert_player_equipment(conn, new_player_equipment)?;
-    let insert_player_equipment_duration = (Utc::now() - insert_player_equipment_start).as_seconds_f64();
+    let insert_player_equipment_duration =
+        (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
     let insert_ingest_logs_start = Utc::now();
     insert_ingest_logs(conn, new_ingest_logs)?;
@@ -2050,7 +2136,10 @@ pub fn insert_player_versions(
     Ok(num_player_insertions)
 }
 
-pub fn get_player_versions(conn: &mut PgConnection, player_id: &str) -> QueryResult<Vec<DbPlayerVersion>> {
+pub fn get_player_versions(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerVersion>> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
     pv_dsl::player_versions
@@ -2060,7 +2149,10 @@ pub fn get_player_versions(conn: &mut PgConnection, player_id: &str) -> QueryRes
         .get_results(conn)
 }
 
-pub fn get_player_modification_versions(conn: &mut PgConnection, player_id: &str) -> QueryResult<Vec<DbPlayerModificationVersion>> {
+pub fn get_player_modification_versions(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerModificationVersion>> {
     use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
 
     pmv_dsl::player_modification_versions
@@ -2070,7 +2162,10 @@ pub fn get_player_modification_versions(conn: &mut PgConnection, player_id: &str
         .get_results(conn)
 }
 
-pub fn get_player_equipment_versions(conn: &mut PgConnection, player_id: &str) -> QueryResult<Vec<DbPlayerEquipmentVersion>> {
+pub fn get_player_equipment_versions(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerEquipmentVersion>> {
     use crate::data_schema::data::player_equipment_versions::dsl as pev_dsl;
 
     pev_dsl::player_equipment_versions
@@ -2080,7 +2175,10 @@ pub fn get_player_equipment_versions(conn: &mut PgConnection, player_id: &str) -
         .get_results(conn)
 }
 
-pub fn get_player_equipment_effect_versions(conn: &mut PgConnection, player_id: &str) -> QueryResult<Vec<DbPlayerEquipmentEffectVersion>> {
+pub fn get_player_equipment_effect_versions(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerEquipmentEffectVersion>> {
     use crate::data_schema::data::player_equipment_effect_versions::dsl as peev_dsl;
 
     peev_dsl::player_equipment_effect_versions
@@ -2147,34 +2245,46 @@ pub struct PitchTypeInfo {
     pub count: i64,
 }
 
-pub fn player_all(conn: &mut PgConnection, player_id: &str) -> QueryResult<(DbPlayerVersion, Option<Vec<PitchTypeInfo>>)> {
-    use diesel::dsl::{max, min};
-    use crate::schema::data_schema::data::player_versions::dsl as pv_dsl;
+pub fn player_all(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<(DbPlayerVersion, Option<Vec<PitchTypeInfo>>)> {
     use crate::schema::data_schema::data::events::dsl as event_dsl;
     use crate::schema::data_schema::data::games::dsl as game_dsl;
+    use crate::schema::data_schema::data::player_versions::dsl as pv_dsl;
+    use diesel::dsl::{max, min};
 
     let player = pv_dsl::player_versions
-            .filter(pv_dsl::mmolb_player_id.eq(player_id))
-            .filter(pv_dsl::valid_until.is_null())
-            .select(DbPlayerVersion::as_select())
-            .get_result(conn)?;
+        .filter(pv_dsl::mmolb_player_id.eq(player_id))
+        .filter(pv_dsl::valid_until.is_null())
+        .select(DbPlayerVersion::as_select())
+        .get_result(conn)?;
 
     let full_name = format!("{} {}", player.first_name, player.last_name);
     let pitches = if let Some(team_id) = &player.mmolb_team_id {
         let q = event_dsl::events
             .inner_join(game_dsl::games)
-            .filter(event_dsl::top_of_inning.and(game_dsl::home_team_mmolb_id.eq(team_id))
-                .or(diesel::dsl::not(event_dsl::top_of_inning).and(game_dsl::away_team_mmolb_id.eq(team_id))))
+            .filter(
+                event_dsl::top_of_inning
+                    .and(game_dsl::home_team_mmolb_id.eq(team_id))
+                    .or(diesel::dsl::not(event_dsl::top_of_inning)
+                        .and(game_dsl::away_team_mmolb_id.eq(team_id))),
+            )
             .filter(event_dsl::pitcher_name.eq(&full_name))
             .group_by((event_dsl::pitch_type, event_dsl::event_type))
             .order_by((event_dsl::pitch_type.asc(), event_dsl::event_type.asc()))
-            .select((event_dsl::pitch_type, event_dsl::event_type, min(event_dsl::pitch_speed), max(event_dsl::pitch_speed), count(event_dsl::id)));
+            .select((
+                event_dsl::pitch_type,
+                event_dsl::event_type,
+                min(event_dsl::pitch_speed),
+                max(event_dsl::pitch_speed),
+                count(event_dsl::id),
+            ));
         println!("query: {}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
         Some(q.get_results::<PitchTypeInfo>(conn)?)
     } else {
         None
     };
-
 
     Ok((player, pitches))
 }
@@ -2191,10 +2301,7 @@ fn insert_team_player_versions(
 ) -> QueryResult<usize> {
     use crate::data_schema::data::team_player_versions::dsl as tpv_dsl;
 
-    let new_team_player_versions = new_team_player_versions
-        .into_iter()
-        .flatten()
-        .collect_vec();
+    let new_team_player_versions = new_team_player_versions.into_iter().flatten().collect_vec();
 
     // Insert new records
     diesel::copy_from(tpv_dsl::team_player_versions)
@@ -2208,11 +2315,7 @@ pub fn insert_team_versions(
 ) -> QueryResult<usize> {
     use crate::data_schema::data::team_versions::dsl as tv_dsl;
 
-    let (
-        new_team_versions,
-        new_team_player_versions,
-        new_ingest_logs,
-    ): (
+    let (new_team_versions, new_team_player_versions, new_ingest_logs): (
         Vec<NewTeamVersion>,
         Vec<Vec<NewTeamPlayerVersion>>,
         Vec<Vec<NewVersionIngestLog>>,
@@ -2227,7 +2330,8 @@ pub fn insert_team_versions(
 
     let insert_team_player_versions_start = Utc::now();
     insert_team_player_versions(conn, new_team_player_versions)?;
-    let insert_team_player_versions_duration = (Utc::now() - insert_team_player_versions_start).as_seconds_f64();
+    let insert_team_player_versions_duration =
+        (Utc::now() - insert_team_player_versions_start).as_seconds_f64();
 
     let insert_ingest_logs_start = Utc::now();
     insert_ingest_logs(conn, new_ingest_logs)?;
@@ -2242,7 +2346,12 @@ pub fn insert_team_versions(
     Ok(num_team_insertions)
 }
 
-pub fn update_num_ingested(conn: &mut PgConnection, ingest_id: i64, name: &str, count: i32) -> QueryResult<()> {
+pub fn update_num_ingested(
+    conn: &mut PgConnection,
+    ingest_id: i64,
+    name: &str,
+    count: i32,
+) -> QueryResult<()> {
     use crate::info_schema::info::ingest_counts::dsl as ic_dsl;
 
     let new = NewIngestCount {

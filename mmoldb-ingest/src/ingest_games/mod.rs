@@ -221,8 +221,8 @@ fn process_games_internal(
                         .map(|(d, i)| (d.naive_utc(), i.as_str())),
                     PROCESS_GAME_BATCH_SIZE,
                 )
-                    .into_diagnostic()?
-                    .map(|(dt, id)| (dt.and_utc(), id));
+                .into_diagnostic()?
+                .map(|(dt, id)| (dt.and_utc(), id));
                 if let Some(cursor) = next_cursor {
                     *ingest_cursor = Some(cursor);
                     debug!("Worker {worker_id} set cursor to {:?}", ingest_cursor);
@@ -245,7 +245,7 @@ fn process_games_internal(
                     .as_ref()
                     .map(|(d, i)| (d.naive_utc(), i.as_str())),
             )
-                .into_diagnostic()?;
+            .into_diagnostic()?;
 
             {
                 let mut dupe_tracker = dupe_tracker.lock().unwrap();
@@ -283,7 +283,7 @@ fn process_games_internal(
                 &mut conn,
                 worker_id,
             )
-                .into_diagnostic()?;
+            .into_diagnostic()?;
             info!(
                 "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
                 progress, skipped {} unsupported games, and skipped {} bugged games on worker {}.",

@@ -1,20 +1,23 @@
-use std::any::Any;
-use std::iter;
 use chron::{Chron, ChronEntity};
-use futures::{StreamExt, TryStreamExt, pin_mut};
-use log::{debug, error, info};
-use miette::{Diagnostic, IntoDiagnostic, WrapErr};
-use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{AsyncConnection, AsyncPgConnection, Connection, PgConnection, async_db, db, QueryResult, QueryError};
-use std::sync::Arc;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use futures::{StreamExt, TryStreamExt, pin_mut};
 use hashbrown::hash_map::{Entry, EntryRef};
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
+use log::{debug, error, info};
+use miette::{Diagnostic, IntoDiagnostic, WrapErr};
+use mmoldb_db::models::NewVersionIngestLog;
+use mmoldb_db::taxa::Taxa;
+use mmoldb_db::{
+    AsyncConnection, AsyncPgConnection, Connection, PgConnection, QueryError, QueryResult,
+    async_db, db,
+};
+use std::any::Any;
+use std::iter;
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
-use mmoldb_db::models::NewVersionIngestLog;
 
 // const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = Some("2025-07-16 04:07:42.699296Z");
 const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = None;
@@ -37,7 +40,12 @@ pub struct VersionIngestLogs<'a> {
 
 impl<'a> VersionIngestLogs<'a> {
     pub fn new(kind: &'a str, entity_id: &'a str, valid_from: DateTime<Utc>) -> Self {
-        Self { kind, entity_id, valid_from: valid_from.naive_utc(), logs: Vec::new() }
+        Self {
+            kind,
+            entity_id,
+            valid_from: valid_from.naive_utc(),
+            logs: Vec::new(),
+        }
     }
 
     pub fn add_log(&mut self, log_level: i32, s: impl Into<String>) {
@@ -86,7 +94,6 @@ impl<'a> VersionIngestLogs<'a> {
         self.logs
     }
 }
-
 
 pub async fn ingest(
     ingest_id: i64,
@@ -138,7 +145,7 @@ pub async fn ingest(
                     trim_version,
                     get_start_cursor,
                     ingest_versions_page,
-            ))
+                ))
         })
         .collect::<Result<Vec<_>, _>>()
         .into_diagnostic()?;
@@ -271,7 +278,20 @@ async fn ingest_stage_2(
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>,
     ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32>,
 ) -> miette::Result<()> {
-    let result = ingest_stage_2_internal(ingest_id, kind, stage_2_chunks_page_size, &url, abort, notify, finish, worker_id, trim_version, get_start_cursor, ingest_versions_page).await;
+    let result = ingest_stage_2_internal(
+        ingest_id,
+        kind,
+        stage_2_chunks_page_size,
+        &url,
+        abort,
+        notify,
+        finish,
+        worker_id,
+        trim_version,
+        get_start_cursor,
+        ingest_versions_page,
+    )
+    .await;
     if let Err(err) = &result {
         error!("Error in {kind} Stage 2 ingest: {}. ", err);
     }
@@ -347,66 +367,61 @@ async fn ingest_stage_2_internal(
                 .as_ref()
                 .map(|(dt, id)| (*dt, id.as_str())),
         )
-            .await
-            .into_diagnostic()
-            .context("Getting versions at cursor")?
-            .filter(|result| {
-                futures::future::ready(match result {
-                    Ok(entity) => {
-                        let now = Utc::now();
-                        if next_duplicates_print < now {
-                            debug!(
-                                "{num_skipped} duplicate {kind} versions skipped so far. \
+        .await
+        .into_diagnostic()
+        .context("Getting versions at cursor")?
+        .filter(|result| {
+            futures::future::ready(match result {
+                Ok(entity) => {
+                    let now = Utc::now();
+                    if next_duplicates_print < now {
+                        debug!(
+                            "{num_skipped} duplicate {kind} versions skipped so far. \
                                 {} entities in the cache.",
-                                entity_cache.len(),
-                            );
+                            entity_cache.len(),
+                        );
 
-                            next_duplicates_print += chrono::Duration::seconds(5);
-                            if next_duplicates_print > now {
-                                next_duplicates_print = now + chrono::Duration::seconds(5);
-                            }
-                        }
-                        let data_trimmed = trim_version(&entity.data);
-                        match entity_cache.entry_ref(&entity.entity_id) {
-                            EntryRef::Occupied(mut entry) => {
-                                if entry.get() == &data_trimmed {
-                                    num_skipped += 1;
-                                    false // Skip
-                                } else {
-                                    entry.insert(data_trimmed);
-                                    true // This was a changed version; don't skip
-                                }
-                            }
-                            EntryRef::Vacant(entry) => {
-                                entry.insert(data_trimmed);
-                                true // This was a new version, don't skip
-                            }
+                        next_duplicates_print += chrono::Duration::seconds(5);
+                        if next_duplicates_print > now {
+                            next_duplicates_print = now + chrono::Duration::seconds(5);
                         }
                     }
-                    Err(_) => true, // This was an error, don't skip
-                })
+                    let data_trimmed = trim_version(&entity.data);
+                    match entity_cache.entry_ref(&entity.entity_id) {
+                        EntryRef::Occupied(mut entry) => {
+                            if entry.get() == &data_trimmed {
+                                num_skipped += 1;
+                                false // Skip
+                            } else {
+                                entry.insert(data_trimmed);
+                                true // This was a changed version; don't skip
+                            }
+                        }
+                        EntryRef::Vacant(entry) => {
+                            entry.insert(data_trimmed);
+                            true // This was a new version, don't skip
+                        }
+                    }
+                }
+                Err(_) => true, // This was an error, don't skip
             })
-            .try_chunks(stage_2_chunks_page_size)
-            .map(|raw_versions| {
-                // when an error occurs, try_chunks gives us the successful portion of the chunk
-                // and then the error. we could ingest the successful part, but we don't (yet).
-                let raw_versions = raw_versions.map_err(|err| err.1).into_diagnostic()?;
+        })
+        .try_chunks(stage_2_chunks_page_size)
+        .map(|raw_versions| {
+            // when an error occurs, try_chunks gives us the successful portion of the chunk
+            // and then the error. we could ingest the successful part, but we don't (yet).
+            let raw_versions = raw_versions.map_err(|err| err.1).into_diagnostic()?;
 
-                info!(
-                    "Processing batch of {} {kind} on worker {worker_id}",
-                    raw_versions.len()
-                );
-                num_ingested += ingest_versions_page(
-                    &taxa,
-                    raw_versions,
-                    &mut conn,
-                    worker_id,
-                )?;
-                
-                db::update_num_ingested(&mut conn, ingest_id, kind, num_ingested).into_diagnostic()?;
-                
-                Ok::<_, miette::Report>(())
-            });
+            info!(
+                "Processing batch of {} {kind} on worker {worker_id}",
+                raw_versions.len()
+            );
+            num_ingested += ingest_versions_page(&taxa, raw_versions, &mut conn, worker_id)?;
+
+            db::update_num_ingested(&mut conn, ingest_id, kind, num_ingested).into_diagnostic()?;
+
+            Ok::<_, miette::Report>(())
+        });
         pin_mut!(versions_stream);
 
         // Consume the stream and abort on error while handling abort
@@ -428,11 +443,14 @@ async fn ingest_stage_2_internal(
     Ok(())
 }
 
-pub fn batch_by_entity<T>(versions: Vec<T>, get_id: impl Fn(&T) -> &str + 'static) -> impl Iterator<Item=Vec<T>> {
+pub fn batch_by_entity<T>(
+    versions: Vec<T>,
+    get_id: impl Fn(&T) -> &str + 'static,
+) -> impl Iterator<Item = Vec<T>> {
     let mut pending_versions = versions;
     iter::from_fn(move || {
         if pending_versions.is_empty() {
-            return None;  // End iteration
+            return None; // End iteration
         }
 
         let mut this_batch = HashMap::new();

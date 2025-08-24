@@ -2,14 +2,24 @@ use itertools::{EitherOrBoth, Itertools, PeekingNext};
 use log::warn;
 use miette::Diagnostic;
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, StrikeType, TopBottom};
+use mmolb_parsing::enums::{
+    Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType,
+    GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, StrikeType, TopBottom,
+};
 use mmolb_parsing::game::MaybePlayer;
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher};
+use mmolb_parsing::parsed_event::{
+    BaseSteal, Cheer, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome,
+    FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance,
+    RunnerOut, SnappedPhotos, StartOfInningPitcher,
+};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
 };
-use mmoldb_db::{BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner, IngestLog, PartyEvent, PitcherChange};
+use mmoldb_db::{
+    BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner,
+    IngestLog, PartyEvent, PitcherChange,
+};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::fmt::Write;
@@ -725,7 +735,12 @@ impl<'g> EventDetailBuilder<'g> {
         ingest_logs: &mut IngestLogs,
         type_detail: TaxaEventType,
     ) -> Option<EventForTable<&'g str>> {
-        Some(EventForTable::EventDetail(self.build(game, ingest_logs, type_detail, batter_name)))
+        Some(EventForTable::EventDetail(self.build(
+            game,
+            ingest_logs,
+            type_detail,
+            batter_name,
+        )))
     }
 
     pub fn build(
@@ -1537,7 +1552,7 @@ impl<'g> Game<'g> {
             if self.game_id == "686662b85f5db4ab9490048d" {
                 ingest_logs.info(
                     "This is the bugged walk-off balk game. The game should have ended at this \
-                    event, but it didn't. Instead it ended when the PA ended."
+                    event, but it didn't. Instead it ended when the PA ended.",
                 );
             } else {
                 self.end_game();
@@ -1960,7 +1975,11 @@ impl<'g> Game<'g> {
         };
     }
 
-    fn handle_ejection(&mut self, ejection: &Option<Ejection<&'g str>>, ingest_logs: &mut IngestLogs) {
+    fn handle_ejection(
+        &mut self,
+        ejection: &Option<Ejection<&'g str>>,
+        ingest_logs: &mut IngestLogs,
+    ) {
         if let Some(ejection) = ejection {
             Game::handle_ejection_for_team(self.defending_team_mut(), ejection, ingest_logs);
             // The batting team's pitcher could get ejected too
@@ -1972,18 +1991,26 @@ impl<'g> Game<'g> {
         }
     }
 
-    fn handle_ejection_for_team(team: &mut TeamInGame<'g>, ejection: &Ejection<&'g str>, ingest_logs: &mut IngestLogs) {
+    fn handle_ejection_for_team(
+        team: &mut TeamInGame<'g>,
+        ejection: &Ejection<&'g str>,
+        ingest_logs: &mut IngestLogs,
+    ) {
         if team.team_emoji == ejection.team.emoji &&
                 team.team_name == ejection.team.name &&
                 team.active_pitcher.name == ejection.ejected_player.name &&
                 // I checked that the slots do match for all true ejections, even
                 // down to e.g. SP vs SP5
-                team.active_pitcher.slot == ejection.ejected_player.place.into() {
+                team.active_pitcher.slot == ejection.ejected_player.place.into()
+        {
             // Assume the active pitcher was replaced
             ingest_logs.info(format!(
                 "A player who matches the active pitcher's team, name, and slot was ejected. \
                 Assuming it was the active pitcher and replacing {} {}'s {} with {}.",
-                team.team_emoji, team.team_name, team.active_pitcher, match ejection.replacement {
+                team.team_emoji,
+                team.team_name,
+                team.active_pitcher,
+                match ejection.replacement {
                     EjectionReplacement::BenchPlayer { player_name } => {
                         format!("bench player {}", player_name)
                     }
@@ -2994,7 +3021,10 @@ impl<'g> Game<'g> {
                     None
                 },
             ),
-            EventContext::ExpectMoundVisitOutcome { context_after, mound_visit_type } => game_event!(
+            EventContext::ExpectMoundVisitOutcome {
+                context_after,
+                mound_visit_type,
+            } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::PitcherRemains]
                 ParsedEventMessage::PitcherRemains { remaining_pitcher } => {

@@ -743,7 +743,6 @@ pub struct NewEjection<'a> {
     pub reason: String,
     pub replacement_player_name: &'a str,
     pub replacement_player_slot: Option<i64>,
-
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]

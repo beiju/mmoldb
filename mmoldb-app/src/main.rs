@@ -1,6 +1,7 @@
-mod web;
 mod api;
+mod web;
 
+use mmoldb_db::taxa::Taxa;
 use num_format::{Locale, ToFormattedString};
 use rocket::fairing::AdHoc;
 use rocket::figment::map;
@@ -10,7 +11,6 @@ use rocket_dyn_templates::tera::Value;
 use rocket_sync_db_pools::database;
 use rocket_sync_db_pools::diesel::{PgConnection, prelude::*};
 use std::collections::HashMap;
-use mmoldb_db::taxa::Taxa;
 
 #[database("mmoldb")]
 struct Db(PgConnection);
@@ -49,12 +49,10 @@ async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
         conn.run_pending_migrations(MIGRATIONS)
             .expect("Failed to apply migrations");
 
-        Taxa::new(&mut conn)
-            .expect("Error creating Taxa")
+        Taxa::new(&mut conn).expect("Error creating Taxa")
     })
     .await
     .expect("Error joining migrations task");
-
 
     rocket.manage(taxa)
 }
@@ -66,7 +64,8 @@ fn get_figment_with_constructed_db_url() -> figment::Figment {
 
 #[launch]
 fn rocket() -> _ {
-    let cors = rocket_cors::CorsOptions::default().to_cors()
+    let cors = rocket_cors::CorsOptions::default()
+        .to_cors()
         .expect("CORS specification should be valid");
     rocket::custom(get_figment_with_constructed_db_url())
         .attach(cors)

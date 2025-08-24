@@ -1,13 +1,13 @@
+use crate::Db;
+use crate::api::error::ApiError;
 use chrono::{DateTime, Utc};
+use hashbrown::HashMap;
 use itertools::Itertools;
 use log::warn;
-use rocket::serde::json::Json;
-use rocket::{get, State};
-use rocket::serde::Serialize;
 use mmoldb_db::taxa::{Taxa, TaxaAttribute, TaxaDayType, TaxaEffectType, TaxaHandedness, TaxaSlot};
-use hashbrown::HashMap;
-use crate::api::error::ApiError;
-use crate::Db;
+use rocket::serde::Serialize;
+use rocket::serde::json::Json;
+use rocket::{State, get};
 
 #[derive(Clone, Serialize)]
 pub struct ApiModification {
@@ -63,7 +63,6 @@ pub struct ApiPlayerVersion {
     pub equipment: HashMap<String, Option<ApiEquipment>>,
 }
 
-
 #[derive(Serialize)]
 pub struct ApiPlayerVersions<'a> {
     pub player_id: &'a str,
@@ -99,38 +98,58 @@ impl NextChangeTime {
 }
 
 #[get("/player_versions/<player_id>")]
-pub async fn player_versions<'a>(player_id: &'a str, db: Db, taxa: &State<Taxa>) -> Result<Json<ApiPlayerVersions<'a>>, ApiError> {
+pub async fn player_versions<'a>(
+    player_id: &'a str,
+    db: Db,
+    taxa: &State<Taxa>,
+) -> Result<Json<ApiPlayerVersions<'a>>, ApiError> {
     let mmolb_player_id = player_id.to_string();
-    let (player_versions, player_modification_versions, player_equipment_versions, player_equipment_effects, modifications) = db.run(move |conn| {
-        let players = mmoldb_db::db::get_player_versions(conn, &mmolb_player_id)?;
-        let player_modifications = mmoldb_db::db::get_player_modification_versions(conn, &mmolb_player_id)?;
-        let player_equipment = mmoldb_db::db::get_player_equipment_versions(conn, &mmolb_player_id)?;
-        let player_equipment_effects = mmoldb_db::db::get_player_equipment_effect_versions(conn, &mmolb_player_id)?;
+    let (
+        player_versions,
+        player_modification_versions,
+        player_equipment_versions,
+        player_equipment_effects,
+        modifications,
+    ) = db
+        .run(move |conn| {
+            let players = mmoldb_db::db::get_player_versions(conn, &mmolb_player_id)?;
+            let player_modifications =
+                mmoldb_db::db::get_player_modification_versions(conn, &mmolb_player_id)?;
+            let player_equipment =
+                mmoldb_db::db::get_player_equipment_versions(conn, &mmolb_player_id)?;
+            let player_equipment_effects =
+                mmoldb_db::db::get_player_equipment_effect_versions(conn, &mmolb_player_id)?;
 
-        let mod_ids = player_modifications.iter()
-            .map(|pm| pm.modification_id)
-            .chain(
-                players.iter()
-                    .map(|pm| pm.greater_boon)
-                    .flatten()
+            let mod_ids = player_modifications
+                .iter()
+                .map(|pm| pm.modification_id)
+                .chain(players.iter().map(|pm| pm.greater_boon).flatten())
+                .chain(players.iter().map(|pm| pm.lesser_boon).flatten())
+                .collect_vec();
+            let modifications = mmoldb_db::db::get_modifications(conn, &mod_ids)?;
+
+            Ok::<_, ApiError>((
+                players,
+                player_modifications,
+                player_equipment,
+                player_equipment_effects,
+                modifications,
+            ))
+        })
+        .await?;
+
+    let modifications_table: HashMap<_, _> = modifications
+        .into_iter()
+        .map(|m| {
+            (
+                m.id,
+                ApiModification {
+                    name: m.name,
+                    emoji: m.emoji,
+                    description: m.description,
+                },
             )
-            .chain(
-                players.iter()
-                    .map(|pm| pm.lesser_boon)
-                    .flatten()
-            )
-            .collect_vec();
-        let modifications = mmoldb_db::db::get_modifications(conn, &mod_ids)?;
-
-        Ok::<_, ApiError>((players, player_modifications, player_equipment, player_equipment_effects, modifications))
-    }).await?;
-
-    let modifications_table: HashMap<_, _> = modifications.into_iter()
-        .map(|m| (m.id, ApiModification {
-            name: m.name,
-            emoji: m.emoji,
-            description: m.description,
-        }))
+        })
         .collect();
 
     let mut next_player_version = player_versions.into_iter().peekable();
@@ -144,10 +163,23 @@ pub async fn player_versions<'a>(player_id: &'a str, db: Db, taxa: &State<Taxa>)
     let mut equipment: HashMap<String, Option<ApiEquipment>> = Default::default();
     loop {
         let mut next_change_time = NextChangeTime::new();
-        next_change_time.with_possible_change(next_player_version.peek().map(|v| v.valid_from.and_utc()));
-        next_change_time.with_possible_change(next_player_modification_version.peek().map(|v| v.valid_from.and_utc()));
-        next_change_time.with_possible_change(next_player_equipment_version.peek().map(|v| v.valid_from.and_utc()));
-        next_change_time.with_possible_change(next_player_equipment_effect_version.peek().map(|v| v.valid_from.and_utc()));
+        next_change_time
+            .with_possible_change(next_player_version.peek().map(|v| v.valid_from.and_utc()));
+        next_change_time.with_possible_change(
+            next_player_modification_version
+                .peek()
+                .map(|v| v.valid_from.and_utc()),
+        );
+        next_change_time.with_possible_change(
+            next_player_equipment_version
+                .peek()
+                .map(|v| v.valid_from.and_utc()),
+        );
+        next_change_time.with_possible_change(
+            next_player_equipment_effect_version
+                .peek()
+                .map(|v| v.valid_from.and_utc()),
+        );
 
         let Some(time) = next_change_time.into_inner() else {
             break;
@@ -167,7 +199,9 @@ pub async fn player_versions<'a>(player_id: &'a str, db: Db, taxa: &State<Taxa>)
         };
 
         modifications.resize(player.num_modifications as usize, None);
-        while let Some(modif) = next_player_modification_version.next_if(|p| p.valid_from.and_utc() == time) {
+        while let Some(modif) =
+            next_player_modification_version.next_if(|p| p.valid_from.and_utc() == time)
+        {
             if let Some(elem) = modifications.get_mut(modif.modification_index as usize) {
                 if let Some(api_mod) = modifications_table.get(&modif.modification_id) {
                     *elem = Some(api_mod.clone());
@@ -185,7 +219,8 @@ pub async fn player_versions<'a>(player_id: &'a str, db: Db, taxa: &State<Taxa>)
 
         // There might be a more efficient way to do this
         // This step is the hashmap equivalent to modifications.resize()
-        equipment = player.occupied_equipment_slots
+        equipment = player
+            .occupied_equipment_slots
             .iter()
             .map(|slot| {
                 let Some(slot) = slot else {
@@ -209,7 +244,9 @@ pub async fn player_versions<'a>(player_id: &'a str, db: Db, taxa: &State<Taxa>)
                 }
             })
             .collect();
-        while let Some(eq) = next_player_equipment_version.next_if(|e| e.valid_from.and_utc() == time) {
+        while let Some(eq) =
+            next_player_equipment_version.next_if(|e| e.valid_from.and_utc() == time)
+        {
             if let Some(elem) = equipment.get_mut(&eq.equipment_slot) {
                 // Updated and new effects will be filled in by the next step
                 let effects = if let Some(mut elem) = elem.take() {
@@ -238,7 +275,9 @@ pub async fn player_versions<'a>(player_id: &'a str, db: Db, taxa: &State<Taxa>)
                 );
             }
         }
-        while let Some(effect) = next_player_equipment_effect_version.next_if(|e| e.valid_from.and_utc() == time) {
+        while let Some(effect) =
+            next_player_equipment_effect_version.next_if(|e| e.valid_from.and_utc() == time)
+        {
             if let Some(eq) = equipment.get_mut(&effect.equipment_slot) {
                 if let Some(eq) = eq {
                     if let Some(effect_slot) = eq.effects.get_mut(effect.effect_index as usize) {
@@ -276,8 +315,12 @@ pub async fn player_versions<'a>(player_id: &'a str, db: Db, taxa: &State<Taxa>)
             valid_until: None, // Will be retroactively populated by the next version
             first_name: player.first_name.clone(),
             last_name: player.last_name.clone(),
-            batting_handedness: player.batting_handedness.map(|h| taxa.handedness_from_id(h)),
-            pitching_handedness: player.pitching_handedness.map(|h| taxa.handedness_from_id(h)),
+            batting_handedness: player
+                .batting_handedness
+                .map(|h| taxa.handedness_from_id(h)),
+            pitching_handedness: player
+                .pitching_handedness
+                .map(|h| taxa.handedness_from_id(h)),
             home: player.home.clone(),
             birthseason: player.birthseason,
             birthday_type: player.birthday_type.map(|d| taxa.day_type_from_id(d)),

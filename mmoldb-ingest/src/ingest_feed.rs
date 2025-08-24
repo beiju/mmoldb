@@ -1,24 +1,27 @@
 // TODO Rename this file ingest_player_feed
 
-use rayon::iter::ParallelIterator;
-use std::fmt::{Display, Formatter};
+use crate::ingest::{VersionIngestLogs, batch_by_entity};
+use crate::ingest_players::day_to_db;
+use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use hashbrown::{HashSet, HashMap};
+use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use log::{debug, error, info};
 use miette::IntoDiagnostic;
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
-use rayon::iter::IntoParallelIterator;
-use serde::Deserialize;
-use mmoldb_db::{db, PgConnection};
-use tokio_util::sync::CancellationToken;
-use chron::ChronEntity;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewVersionIngestLog};
+use mmoldb_db::models::{
+    NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift,
+    NewPlayerRecomposition, NewVersionIngestLog,
+};
 use mmoldb_db::taxa::Taxa;
-use crate::ingest::{batch_by_entity, VersionIngestLogs};
-use crate::ingest_players::day_to_db;
+use mmoldb_db::{PgConnection, db};
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
+use serde::Deserialize;
+use std::fmt::{Display, Formatter};
+use tokio_util::sync::CancellationToken;
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
@@ -27,7 +30,11 @@ const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_PLAYER_FEED_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_PLAYER_FEED_BATCH_SIZE: usize = 1000;
 
-pub async fn ingest_player_feeds(ingest_id: i64, pg_url: String, abort: CancellationToken) -> miette::Result<()> {
+pub async fn ingest_player_feeds(
+    ingest_id: i64,
+    pg_url: String,
+    abort: CancellationToken,
+) -> miette::Result<()> {
     crate::ingest::ingest(
         ingest_id,
         PLAYER_FEED_KIND,
@@ -39,7 +46,8 @@ pub async fn ingest_player_feeds(ingest_id: i64, pg_url: String, abort: Cancella
         |version| version.clone(),
         db::get_player_feed_ingest_start_cursor,
         ingest_page_of_player_feeds,
-    ).await
+    )
+    .await
 }
 
 pub fn ingest_page_of_player_feeds(
@@ -72,11 +80,14 @@ pub fn ingest_page_of_player_feeds(
                 data: serde_json::from_value(game_json.data)?,
             })
         })
-        .collect::<Result<Vec<_>, _>>().into_diagnostic()?;
+        .collect::<Result<Vec<_>, _>>()
+        .into_diagnostic()?;
     let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} player feeds in {:.2} seconds on worker {}",
-        player_feeds.len(), deserialize_duration, worker_id
+        player_feeds.len(),
+        deserialize_duration,
+        worker_id
     );
 
     let latest_time = player_feeds
@@ -101,8 +112,7 @@ pub fn ingest_page_of_player_feeds(
         let to_insert = batch.len();
         info!(
             "Sent {} new player feed versions out of {} to the database.",
-            to_insert,
-            new_player_feeds_len,
+            to_insert, new_player_feeds_len,
         );
 
         let inserted = db::insert_player_feed_versions(conn, batch).into_diagnostic()?;
@@ -126,7 +136,6 @@ pub fn ingest_page_of_player_feeds(
 
     Ok(total_inserted)
 }
-
 
 fn process_paradigm_shift<'e>(
     changing_attribute: Attribute,
@@ -430,7 +439,10 @@ pub fn chron_player_feed_as_new<'a>(
     }
     impl<'a> CheckPlayerName<'a> {
         pub fn new() -> Self {
-            Self { known_name: None, temporary_name_override: None }
+            Self {
+                known_name: None,
+                temporary_name_override: None,
+            }
         }
 
         pub fn check_or_set_name(&mut self, name: &'a str, ingest_logs: &mut VersionIngestLogs) {
@@ -487,8 +499,12 @@ pub fn chron_player_feed_as_new<'a>(
     impl Display for CheckPlayerName<'_> {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
             match self.known_name {
-                None => { write!(f, "unknown player name") }
-                Some(name) => { write!(f, "'{name}'") }
+                None => {
+                    write!(f, "unknown player name")
+                }
+                Some(name) => {
+                    write!(f, "'{name}'")
+                }
             }
         }
     }
@@ -510,7 +526,9 @@ pub fn chron_player_feed_as_new<'a>(
     let mut paradigm_shifts = Vec::new();
     let mut recompositions = Vec::new();
 
-    let mut pending_inferred_recompositions = inferred_recompositions.get_mut(player_id).map(|r| r.into_iter().peekable());
+    let mut pending_inferred_recompositions = inferred_recompositions
+        .get_mut(player_id)
+        .map(|r| r.into_iter().peekable());
 
     // This will *almost* always be equal to feed_items.len(), but not
     // when there is an impermanent event
@@ -576,104 +594,108 @@ pub fn chron_player_feed_as_new<'a>(
         };
 
         let parsed_event = mmolb_parsing::player_feed::parse_player_feed_event(event);
-        let skip_this_event = if let Some(info) = overwritten_recompositions.get(&(player_id, feed_event_index)) {
-            let (player_name_before, player_name_after, recompose_time, season, day) = info;
+        let skip_this_event =
+            if let Some(info) = overwritten_recompositions.get(&(player_id, feed_event_index)) {
+                let (player_name_before, player_name_after, recompose_time, season, day) = info;
 
-            check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
-            // There shouldn't be any subsequent events, but there is still
-            // the player_final_name check so we do have to update the name
-            check_player_name.set_known_name(player_name_after);
-            ingest_logs.debug(format!("Set expected player name to {player_name_after}"));
+                check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
+                // There shouldn't be any subsequent events, but there is still
+                // the player_final_name check so we do have to update the name
+                check_player_name.set_known_name(player_name_after);
+                ingest_logs.debug(format!("Set expected player name to {player_name_after}"));
 
-            ingest_logs.debug(format!(
-                "Inserting implied Recomposed event for overwritten Recompose from \
-                {player_name_before} to {player_name_after}",
-            ));
-            let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
-            recompositions.push(NewPlayerRecomposition {
-                mmolb_player_id: player_id,
-                feed_event_index,
-                inferred_event_index: Some(inferred_event_index),
-                time: *recompose_time,
-                season: *season,
-                day_type,
-                day,
-                superstar_day,
-                player_name_before,
-                player_name_after,
-                reverts_recomposition: None,
-            });
-            inferred_event_index += 1;
-
-            if let ParsedPlayerFeedEventText::Recomposed { new, previous } = &parsed_event {
-                // The first time we hit one of these, it'll be a Recompose event
                 ingest_logs.debug(format!(
-                    "Checking and skipping overwritten Recomposed event from {previous} to {new}",
+                    "Inserting implied Recomposed event for overwritten Recompose from \
+                    {player_name_before} to {player_name_after}",
                 ));
-                // This is a real event now, but it's marked as overwritten,
-                // which means it's about to be deleted and become implied.
-                // So we ignore the real version and insert the inferred version
-                if new != player_name_after {
-                    ingest_logs.error(format!(
-                        "The overwritten Recomposed event new player name didn't match: expected \
-                        {player_name_after}, but observed {new}.",
-                    ));
-                }
-                if previous != player_name_before {
-                    ingest_logs.error(format!(
-                        "The overwritten Recomposed event previous player name didn't match: \
-                        expected {player_name_before}, but observed {previous}.",
-                    ));
-                }
-                if *recompose_time != time {
-                    ingest_logs.error(format!(
-                        "The overwritten Recomposed event timestamp didn't match: \
-                        expected {recompose_time}, but observed {}.",
-                        event.timestamp.naive_utc(),
-                    ));
-                }
-                true
-            } else {
-                ingest_logs.debug(format!(
-                    "Inserting unrecompose event to reset {player_name_after}'s attributes",
-                ));
-                // If the event in question is *not* a recompose event, that means this is the
-                // event that reverted the recompose. We need to insert the unrecompose event.
+                let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
                 recompositions.push(NewPlayerRecomposition {
                     mmolb_player_id: player_id,
                     feed_event_index,
                     inferred_event_index: Some(inferred_event_index),
-                    // This very event is our first observation of the unrecompose
-                    time,
-                    // Due to the nature of this particular bug, the seasonday is the same for the
-                    // original recompose and the unrecompose.
+                    time: *recompose_time,
                     season: *season,
                     day_type,
                     day,
                     superstar_day,
-                    // Player name doesn't change
-                    player_name_before: player_name_after,
+                    player_name_before,
                     player_name_after,
-                    reverts_recomposition: Some(*recompose_time),
+                    reverts_recomposition: None,
                 });
-                // I want to make sure inferred_event_index is correct if another use of it is added
-                #[allow(unused_assignments)]
-                { inferred_event_index += 1 };
+                inferred_event_index += 1;
 
-                // The long-term name will be player_name_after...
-                check_player_name.set_known_name(player_name_after);
-                // ...but for this feed event, it will be player_name_before
-                check_player_name.set_temporary_name_override(player_name_before);
+                if let ParsedPlayerFeedEventText::Recomposed { new, previous } = &parsed_event {
+                    // The first time we hit one of these, it'll be a Recompose event
+                    ingest_logs.debug(format!(
+                        "Checking and skipping overwritten Recomposed event from {previous} to {new}",
+                    ));
+                    // This is a real event now, but it's marked as overwritten,
+                    // which means it's about to be deleted and become implied.
+                    // So we ignore the real version and insert the inferred version
+                    if new != player_name_after {
+                        ingest_logs.error(format!(
+                            "The overwritten Recomposed event new player name didn't match: expected \
+                            {player_name_after}, but observed {new}.",
+                        ));
+                    }
+                    if previous != player_name_before {
+                        ingest_logs.error(format!(
+                            "The overwritten Recomposed event previous player name didn't match: \
+                            expected {player_name_before}, but observed {previous}.",
+                        ));
+                    }
+                    if *recompose_time != time {
+                        ingest_logs.error(format!(
+                            "The overwritten Recomposed event timestamp didn't match: \
+                            expected {recompose_time}, but observed {}.",
+                            event.timestamp.naive_utc(),
+                        ));
+                    }
+                    true
+                } else {
+                    ingest_logs.debug(format!(
+                        "Inserting unrecompose event to reset {player_name_after}'s attributes",
+                    ));
+                    // If the event in question is *not* a recompose event, that means this is the
+                    // event that reverted the recompose. We need to insert the unrecompose event.
+                    recompositions.push(NewPlayerRecomposition {
+                        mmolb_player_id: player_id,
+                        feed_event_index,
+                        inferred_event_index: Some(inferred_event_index),
+                        // This very event is our first observation of the unrecompose
+                        time,
+                        // Due to the nature of this particular bug, the seasonday is the same for the
+                        // original recompose and the unrecompose.
+                        season: *season,
+                        day_type,
+                        day,
+                        superstar_day,
+                        // Player name doesn't change
+                        player_name_before: player_name_after,
+                        player_name_after,
+                        reverts_recomposition: Some(*recompose_time),
+                    });
+                    // I want to make sure inferred_event_index is correct if another use of it is added
+                    #[allow(unused_assignments)]
+                    {
+                        inferred_event_index += 1
+                    };
 
+                    // The long-term name will be player_name_after...
+                    check_player_name.set_known_name(player_name_after);
+                    // ...but for this feed event, it will be player_name_before
+                    check_player_name.set_temporary_name_override(player_name_before);
+
+                    false
+                }
+            } else {
                 false
-            }
-        } else {
-            false
-        };
+            };
 
         if skip_this_event {
             ingest_logs.debug(format!(
-                "Skipping event \"{}\" because `skip_this_event` told us to", event.text,
+                "Skipping event \"{}\" because `skip_this_event` told us to",
+                event.text,
             ));
             continue;
         }
@@ -700,7 +722,11 @@ pub fn chron_player_feed_as_new<'a>(
             ParsedPlayerFeedEventText::SpecialDelivery { .. } => {
                 // See comment on Delivery
             }
-            ParsedPlayerFeedEventText::AttributeChanges { player_name, attribute, amount } => {
+            ParsedPlayerFeedEventText::AttributeChanges {
+                player_name,
+                attribute,
+                amount,
+            } => {
                 let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
 
                 check_player_name.check_or_set_name(player_name, &mut ingest_logs);
@@ -803,10 +829,10 @@ pub fn chron_player_feed_as_new<'a>(
                         feed_items.len(),
                     ));
                 }
-            },
+            }
             ParsedPlayerFeedEventText::Modification { .. } => {
                 // See comment on HitByFallingStar
-            },
+            }
         }
     }
 

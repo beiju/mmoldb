@@ -10,8 +10,8 @@ use diesel::prelude::*;
 use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
 use log::{error, warn};
-use std::collections::HashSet;
 use serde::Serialize;
+use std::collections::HashSet;
 use taxa_macro::*;
 
 taxa! {
@@ -702,7 +702,7 @@ impl From<mmolb_parsing::enums::Place> for TaxaSlot {
             mmolb_parsing::enums::Place::StartingPitcher(other) => {
                 warn!("Unexpected starting pitcher number {:?}", other);
                 TaxaSlot::StartingPitcher
-            },
+            }
             mmolb_parsing::enums::Place::ReliefPitcher(None) => TaxaSlot::ReliefPitcher,
             mmolb_parsing::enums::Place::ReliefPitcher(Some(1)) => TaxaSlot::ReliefPitcher1,
             mmolb_parsing::enums::Place::ReliefPitcher(Some(2)) => TaxaSlot::ReliefPitcher2,
@@ -710,7 +710,7 @@ impl From<mmolb_parsing::enums::Place> for TaxaSlot {
             mmolb_parsing::enums::Place::ReliefPitcher(other) => {
                 warn!("Unexpected relief pitcher number {:?}", other);
                 TaxaSlot::ReliefPitcher
-            },
+            }
             mmolb_parsing::enums::Place::Closer => TaxaSlot::Closer,
             mmolb_parsing::enums::Place::Pitcher => TaxaSlot::Pitcher,
         }
@@ -1280,9 +1280,7 @@ taxa! {
 impl From<mmolb_parsing::enums::EquipmentEffectType> for TaxaEffectType {
     fn from(value: mmolb_parsing::enums::EquipmentEffectType) -> Self {
         match value {
-            mmolb_parsing::enums::EquipmentEffectType::FlatBonus => {
-                TaxaEffectType::Flat
-            }
+            mmolb_parsing::enums::EquipmentEffectType::FlatBonus => TaxaEffectType::Flat,
         }
     }
 }
@@ -1308,7 +1306,9 @@ impl From<mmolb_parsing::enums::MoundVisitType> for TaxaPitcherChangeSource {
     fn from(value: mmolb_parsing::enums::MoundVisitType) -> Self {
         match value {
             mmolb_parsing::enums::MoundVisitType::MoundVisit => TaxaPitcherChangeSource::MoundVisit,
-            mmolb_parsing::enums::MoundVisitType::PitchingChange => TaxaPitcherChangeSource::PitchingChange,
+            mmolb_parsing::enums::MoundVisitType::PitchingChange => {
+                TaxaPitcherChangeSource::PitchingChange
+            }
         }
     }
 }

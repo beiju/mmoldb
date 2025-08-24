@@ -1,14 +1,21 @@
-use std::str::FromStr;
-use itertools::Itertools;
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent, NewFielder, NewParty, NewPitcherChange};
+use crate::models::{
+    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner,
+    NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent,
+    NewFielder, NewParty, NewPitcherChange,
+};
 use crate::taxa::Taxa;
+use crate::{PartyEvent, PitcherChange};
+use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
-use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, PlacedPlayer, Prize, SnappedPhotos, ViolationType};
+use mmolb_parsing::parsed_event::{
+    Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes,
+    PlacedPlayer, Prize, SnappedPhotos, ViolationType,
+};
+use std::str::FromStr;
 use strum::ParseError;
 use thiserror::Error;
-use crate::{PartyEvent, PitcherChange};
 
 pub fn event_to_row<'e>(
     taxa: &Taxa,
@@ -101,7 +108,6 @@ pub fn event_to_aurora_photos<'e>(
     event_id: i64,
     event: &'e EventDetail<&'e str>,
 ) -> Vec<NewAuroraPhoto<'e>> {
-
     match &event.aurora_photos {
         None => Vec::new(),
         Some(photos) => vec![
@@ -118,8 +124,8 @@ pub fn event_to_aurora_photos<'e>(
                 team_emoji: photos.second_team_emoji,
                 player_slot: taxa.slot_id(photos.second_player.place.into()),
                 player_name: photos.second_player.name,
-            }
-        ]
+            },
+        ],
     }
 }
 
@@ -128,35 +134,32 @@ pub fn event_to_ejection<'e>(
     event_id: i64,
     event: &'e EventDetail<&'e str>,
 ) -> Vec<NewEjection<'e>> {
-
     match &event.ejection {
         None => Vec::new(),
-        Some(photos) => vec![
-            match photos.replacement {
-                EjectionReplacement::BenchPlayer { player_name } => NewEjection {
-                    event_id,
-                    team_emoji: photos.team.emoji,
-                    team_name: photos.team.name,
-                    ejected_player_name: photos.ejected_player.name,
-                    ejected_player_slot: taxa.slot_id(photos.ejected_player.place.into()),
-                    violation_type: photos.violation_type.to_string(),
-                    reason: photos.reason.to_string(),
-                    replacement_player_name: player_name,
-                    replacement_player_slot: None,
-                },
-                EjectionReplacement::RosterPlayer { player } => NewEjection {
-                    event_id,
-                    team_emoji: photos.team.emoji,
-                    team_name: photos.team.name,
-                    ejected_player_name: photos.ejected_player.name,
-                    ejected_player_slot: taxa.slot_id(photos.ejected_player.place.into()),
-                    violation_type: photos.violation_type.to_string(),
-                    reason: photos.reason.to_string(),
-                    replacement_player_name: player.name,
-                    replacement_player_slot: Some(taxa.slot_id(player.place.into())),
-                }
-            }
-        ]
+        Some(photos) => vec![match photos.replacement {
+            EjectionReplacement::BenchPlayer { player_name } => NewEjection {
+                event_id,
+                team_emoji: photos.team.emoji,
+                team_name: photos.team.name,
+                ejected_player_name: photos.ejected_player.name,
+                ejected_player_slot: taxa.slot_id(photos.ejected_player.place.into()),
+                violation_type: photos.violation_type.to_string(),
+                reason: photos.reason.to_string(),
+                replacement_player_name: player_name,
+                replacement_player_slot: None,
+            },
+            EjectionReplacement::RosterPlayer { player } => NewEjection {
+                event_id,
+                team_emoji: photos.team.emoji,
+                team_name: photos.team.name,
+                ejected_player_name: photos.ejected_player.name,
+                ejected_player_slot: taxa.slot_id(photos.ejected_player.place.into()),
+                violation_type: photos.violation_type.to_string(),
+                reason: photos.reason.to_string(),
+                replacement_player_name: player.name,
+                replacement_player_slot: Some(taxa.slot_id(player.place.into())),
+            },
+        }],
     }
 }
 
@@ -164,20 +167,19 @@ pub fn event_to_door_prize<'e>(
     event_id: i64,
     event: &'e EventDetail<&'e str>,
 ) -> Vec<NewDoorPrize<'e>> {
-    event.door_prizes
+    event
+        .door_prizes
         .iter()
         .enumerate()
-        .map(|(door_prize_index, prize)| {
-            NewDoorPrize {
-                event_id,
-                door_prize_index: door_prize_index as i32,
-                player_name: prize.player,
-                tokens: match prize.prize {
-                    None => None,
-                    Some(Prize::Tokens(num)) => Some(num as i32),
-                    Some(Prize::Items(_)) => None,
-                },
-            }
+        .map(|(door_prize_index, prize)| NewDoorPrize {
+            event_id,
+            door_prize_index: door_prize_index as i32,
+            player_name: prize.player,
+            tokens: match prize.prize {
+                None => None,
+                Some(Prize::Tokens(num)) => Some(num as i32),
+                Some(Prize::Items(_)) => None,
+            },
         })
         .collect()
 }
@@ -186,34 +188,34 @@ pub fn event_to_door_prize_items<'e>(
     event_id: i64,
     event: &'e EventDetail<&'e str>,
 ) -> Vec<NewDoorPrizeItem<'e>> {
-    event.door_prizes
+    event
+        .door_prizes
         .iter()
         .enumerate()
-        .flat_map(|(door_prize_index, prize)| {
-            match &prize.prize {
-                None | Some(Prize::Tokens(_)) => Vec::new(),
-                Some(Prize::Items(items)) => items.iter()
-                    .enumerate()
-                    .map(|(item_index, item)| {
-                        let (prefix, suffix, rare_name) = match item.affixes {
-                            ItemAffixes::None => (None, None, None),
-                            ItemAffixes::PrefixSuffix(prefix, suffix) => (prefix, suffix, None),
-                            ItemAffixes::RareName(rare_name) => (None, None, Some(rare_name)),
-                        };
+        .flat_map(|(door_prize_index, prize)| match &prize.prize {
+            None | Some(Prize::Tokens(_)) => Vec::new(),
+            Some(Prize::Items(items)) => items
+                .iter()
+                .enumerate()
+                .map(|(item_index, item)| {
+                    let (prefix, suffix, rare_name) = match item.affixes {
+                        ItemAffixes::None => (None, None, None),
+                        ItemAffixes::PrefixSuffix(prefix, suffix) => (prefix, suffix, None),
+                        ItemAffixes::RareName(rare_name) => (None, None, Some(rare_name)),
+                    };
 
-                        NewDoorPrizeItem {
-                            event_id,
-                            door_prize_index: door_prize_index as i32,
-                            item_index: item_index as i32,
-                            emoji: item.item_emoji,
-                            name: item.item.into(),
-                            rare_name,
-                            prefix: prefix.map(Into::into),
-                            suffix: suffix.map(Into::into),
-                        }
-                    })
-                    .collect(),
-            }
+                    NewDoorPrizeItem {
+                        event_id,
+                        door_prize_index: door_prize_index as i32,
+                        item_index: item_index as i32,
+                        emoji: item.item_emoji,
+                        name: item.item.into(),
+                        rare_name,
+                        prefix: prefix.map(Into::into),
+                        suffix: suffix.map(Into::into),
+                    }
+                })
+                .collect(),
         })
         .collect()
 }
@@ -276,10 +278,13 @@ pub enum RowToEventError {
     #[error("invalid number of ejections on a single event (expected 0 or 1, not {0})")]
     InvalidNumberOfEjections(usize),
 
-    #[error("{item_index}th prize {door_prize_index} for {player_name} failed to parse item name: {parse_error}")]
+    #[error(
+        "{item_index}th prize {door_prize_index} for {player_name} failed to parse item name: \
+        {parse_error}"
+    )]
     InvalidItemNameInPrize {
         door_prize_index: i32, // index of this prize within the event
-        item_index: i32, // index of this item within the prize
+        item_index: i32,       // index of this item within the prize
         player_name: String,
         parse_error: ParseError,
     },
@@ -287,36 +292,44 @@ pub enum RowToEventError {
     #[error("{item_index}th prize {door_prize_index} for {player_name} prefix was null")]
     NullPrizeItemPrefix {
         door_prize_index: i32, // index of this prize within the event
-        item_index: i32, // index of this item within the prize
+        item_index: i32,       // index of this item within the prize
         player_name: String,
     },
 
-    #[error("{item_index}th prize {door_prize_index} for {player_name} prefix failed to parse: {parse_error}")]
+    #[error(
+        "{item_index}th prize {door_prize_index} for {player_name} prefix failed to parse: \
+        {parse_error}"
+    )]
     InvalidPrizeItemPrefix {
         door_prize_index: i32, // index of this prize within the event
-        item_index: i32, // index of this item within the prize
+        item_index: i32,       // index of this item within the prize
         player_name: String,
         parse_error: ParseError,
     },
 
-    #[error("{item_index}th prize {door_prize_index} for {player_name} suffix failed to parse: {parse_error}")]
+    #[error(
+        "{item_index}th prize {door_prize_index} for {player_name} suffix failed to parse: \
+        {parse_error}"
+    )]
     InvalidPrizeItemSuffix {
         door_prize_index: i32, // index of this prize within the event
-        item_index: i32, // index of this item within the prize
+        item_index: i32,       // index of this item within the prize
         player_name: String,
         parse_error: ParseError,
     },
 
-    #[error("{item_index}th prize {door_prize_index} for {player_name} had both {num_tokens} tokens and items {items:?}")]
+    #[error(
+        "{item_index}th prize {door_prize_index} for {player_name} had both {num_tokens} tokens \
+        and items {items:?}"
+    )]
     SamePrizeHadTokensAndItems {
         door_prize_index: i32, // index of this prize within the event
-        item_index: i32, // index of this item within the prize
+        item_index: i32,       // index of this item within the prize
         player_name: String,
         num_tokens: i32,
-        items: Vec<String>
+        items: Vec<String>,
     },
 }
-
 
 pub fn row_to_event<'e>(
     taxa: &Taxa,
@@ -326,7 +339,7 @@ pub fn row_to_event<'e>(
     aurora_photo: Vec<DbAuroraPhoto>,
     ejection: Vec<DbEjection>,
     door_prizes: Vec<DbDoorPrize>,
-    door_prize_items: Vec<DbDoorPrizeItem>
+    door_prize_items: Vec<DbDoorPrizeItem>,
 ) -> Result<EventDetail<String>, RowToEventError> {
     let baserunners = runners
         .into_iter()
@@ -374,7 +387,7 @@ pub fn row_to_event<'e>(
                     place: taxa.slot_from_id(second.player_slot).into(),
                 },
             })
-        },
+        }
         other => {
             return Err(RowToEventError::InvalidNumberOfAuroraPhotos(other));
         }
@@ -404,10 +417,10 @@ pub fn row_to_event<'e>(
                             name: ejection.replacement_player_name,
                             place: taxa.slot_from_id(replacement_player_slot).into(),
                         },
-                    }
+                    },
                 },
             })
-        },
+        }
         other => {
             return Err(RowToEventError::InvalidNumberOfEjections(other));
         }
@@ -415,63 +428,81 @@ pub fn row_to_event<'e>(
 
     let mut door_prize_items_iter = door_prize_items.into_iter().peekable();
 
-    let door_prizes = door_prizes.into_iter()
+    let door_prizes = door_prizes
+        .into_iter()
         .map(|door_prize| {
             let mut prize_items = Vec::new();
-            while let Some(item_prize) = door_prize_items_iter.next_if(|i| i.door_prize_index == door_prize.door_prize_index) {
+            while let Some(item_prize) =
+                door_prize_items_iter.next_if(|i| i.door_prize_index == door_prize.door_prize_index)
+            {
                 prize_items.push(item_prize);
             }
 
             let prize = match (door_prize.tokens, prize_items) {
-                (None, prize_items) if prize_items.is_empty() => {
-                    None
-                }
+                (None, prize_items) if prize_items.is_empty() => None,
                 (None, prize_items) => {
                     Some(Ok(Prize::Items(
-                        prize_items.into_iter()
-                            .map(|prize_item| Ok(Item {
-                                item_emoji: prize_item.emoji,
-                                item: match ItemName::from_str(&prize_item.name) {
-                                    Ok(name) => name,
-                                    Err(parse_error) => {
-                                        return Err(RowToEventError::InvalidItemNameInPrize {
-                                            door_prize_index: prize_item.door_prize_index,
-                                            item_index: prize_item.item_index,
-                                            player_name: door_prize.player_name.clone(),
-                                            parse_error,
-                                        })
-                                    }
-                                },
-                                affixes: if let Some(rare_name) = prize_item.rare_name {
-                                    // TODO Warn if there's also prefixes and suffixes
-                                    ItemAffixes::RareName(rare_name)
-                                } else {
-                                    match (prize_item.prefix, prize_item.suffix) {
-                                        (None, None) => ItemAffixes::None,
-                                        (prefix, suffix) => {
-                                            let prefix: Option<ItemPrefix> = prefix.as_deref().map(ItemPrefix::from_str)
-                                                .transpose()
-                                                .map_err(|parse_error| RowToEventError::InvalidPrizeItemPrefix {
-                                                    door_prize_index: prize_item.door_prize_index,
-                                                    item_index: prize_item.item_index,
-                                                    player_name: door_prize.player_name.clone(),
-                                                    parse_error,
-                                                })?;
-
-                                            let suffix: Option<ItemSuffix> = suffix.as_deref().map(ItemSuffix::from_str)
-                                                .transpose()
-                                                .map_err(|parse_error| RowToEventError::InvalidPrizeItemSuffix {
-                                                    door_prize_index: prize_item.door_prize_index,
-                                                    item_index: prize_item.item_index,
-                                                    player_name: door_prize.player_name.clone(),
-                                                    parse_error,
-                                                })?;
-
-                                            ItemAffixes::PrefixSuffix(prefix, suffix)
+                        prize_items
+                            .into_iter()
+                            .map(|prize_item| {
+                                Ok(Item {
+                                    item_emoji: prize_item.emoji,
+                                    item: match ItemName::from_str(&prize_item.name) {
+                                        Ok(name) => name,
+                                        Err(parse_error) => {
+                                            return Err(RowToEventError::InvalidItemNameInPrize {
+                                                door_prize_index: prize_item.door_prize_index,
+                                                item_index: prize_item.item_index,
+                                                player_name: door_prize.player_name.clone(),
+                                                parse_error,
+                                            });
                                         }
-                                    }
-                                },
-                            }))
+                                    },
+                                    affixes: if let Some(rare_name) = prize_item.rare_name {
+                                        // TODO Warn if there's also prefixes and suffixes
+                                        ItemAffixes::RareName(rare_name)
+                                    } else {
+                                        match (prize_item.prefix, prize_item.suffix) {
+                                            (None, None) => ItemAffixes::None,
+                                            (prefix, suffix) => {
+                                                let prefix: Option<ItemPrefix> = prefix
+                                                    .as_deref()
+                                                    .map(ItemPrefix::from_str)
+                                                    .transpose()
+                                                    .map_err(|parse_error| {
+                                                        RowToEventError::InvalidPrizeItemPrefix {
+                                                            door_prize_index: prize_item
+                                                                .door_prize_index,
+                                                            item_index: prize_item.item_index,
+                                                            player_name: door_prize
+                                                                .player_name
+                                                                .clone(),
+                                                            parse_error,
+                                                        }
+                                                    })?;
+
+                                                let suffix: Option<ItemSuffix> = suffix
+                                                    .as_deref()
+                                                    .map(ItemSuffix::from_str)
+                                                    .transpose()
+                                                    .map_err(|parse_error| {
+                                                        RowToEventError::InvalidPrizeItemSuffix {
+                                                            door_prize_index: prize_item
+                                                                .door_prize_index,
+                                                            item_index: prize_item.item_index,
+                                                            player_name: door_prize
+                                                                .player_name
+                                                                .clone(),
+                                                            parse_error,
+                                                        }
+                                                    })?;
+
+                                                ItemAffixes::PrefixSuffix(prefix, suffix)
+                                            }
+                                        }
+                                    },
+                                })
+                            })
                             .collect::<Result<Vec<_>, _>>()?,
                     )))
                 }
@@ -484,16 +515,19 @@ pub fn row_to_event<'e>(
                         item_index: 0,
                         player_name: door_prize.player_name.clone(),
                         num_tokens: tokens,
-                        items: prize_items.into_iter()
-                            .map(|prize_item| format!(
-                                "{:?}",
-                                prize_item // TODO Print prettily
-                            ))
+                        items: prize_items
+                            .into_iter()
+                            .map(|prize_item| {
+                                format!(
+                                    "{:?}",
+                                    prize_item // TODO Print prettily
+                                )
+                            })
                             .collect(),
                     }))
                 }
             }
-                .transpose()?;
+            .transpose()?;
 
             Ok(DoorPrize {
                 player: door_prize.player_name,

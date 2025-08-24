@@ -1,9 +1,18 @@
-use crate::taxa::{AsInsertable, TaxaAttribute, TaxaBase, TaxaBaseDescriptionFormat, TaxaBaseWithDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaPitchType, TaxaPitcherChangeSource, TaxaSlot};
+use crate::taxa::{
+    AsInsertable, TaxaAttribute, TaxaBase, TaxaBaseDescriptionFormat,
+    TaxaBaseWithDescriptionFormat, TaxaEventType, TaxaFairBallType, TaxaFielderLocation,
+    TaxaFieldingErrorType, TaxaPitchType, TaxaPitcherChangeSource, TaxaSlot,
+};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType};
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos};
+use mmolb_parsing::enums::{
+    Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
+};
+use mmolb_parsing::parsed_event::{
+    BaseSteal, Cheer, DoorPrize, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance,
+    RunnerOut, SnappedPhotos,
+};
 use std::fmt::Formatter;
 use thiserror::Error;
 
@@ -754,5 +763,4 @@ pub struct PartyEvent<StrT: Clone> {
     pub batter_name: StrT,
     pub batter_amount_gained: i32,
     pub batter_attribute: TaxaAttribute,
-
 }

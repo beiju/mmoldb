@@ -1,9 +1,9 @@
 mod ingest;
+mod ingest_feed;
 mod ingest_games;
 mod ingest_players;
-mod ingest_feed;
-mod signal;
 mod ingest_teams;
+mod signal;
 
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};

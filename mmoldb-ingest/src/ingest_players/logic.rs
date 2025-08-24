@@ -1,22 +1,30 @@
-use std::fmt::Display;
+use crate::ingest::{VersionIngestLogs, batch_by_entity};
+use crate::ingest_feed::chron_player_feed_as_new;
+use crate::ingest_players::PLAYER_KIND;
 use chron::ChronEntity;
 use chrono::{NaiveDateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use miette::IntoDiagnostic;
-use mmolb_parsing::{AddedLater, RemovedLater, NotRecognized, MaybeRecognizedResult, RemovedLaterResult, AddedLaterResult};
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
+use mmolb_parsing::{
+    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater,
+    RemovedLaterResult,
+};
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportVersion, NewPlayerReportAttributeVersion, NewPlayerVersion, NewVersionIngestLog};
+use mmoldb_db::models::{
+    NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion,
+    NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift,
+    NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion,
+    NewPlayerVersion, NewVersionIngestLog,
+};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaSlot};
 use mmoldb_db::{PgConnection, QueryResult, db};
 use rayon::prelude::*;
+use std::fmt::Display;
 use thiserror::Error;
-use crate::ingest::{batch_by_entity, VersionIngestLogs};
-use crate::ingest_feed::chron_player_feed_as_new;
-use crate::ingest_players::PLAYER_KIND;
 
 pub fn ingest_page_of_players(
     taxa: &Taxa,
@@ -43,7 +51,8 @@ pub fn ingest_page_of_players(
                 data: serde_json::from_value(game_json.data)?,
             })
         })
-        .collect::<Result<Vec<_>, _>>().into_diagnostic()?;
+        .collect::<Result<Vec<_>, _>>()
+        .into_diagnostic()?;
     let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} players in {deserialize_duration:.2} seconds on worker {worker_id}",
@@ -81,7 +90,8 @@ pub fn ingest_page_of_players(
         .unique()
         .collect_vec();
 
-    let modifications = get_filled_modifications_map(conn, &unique_modifications).into_diagnostic()?;
+    let modifications =
+        get_filled_modifications_map(conn, &unique_modifications).into_diagnostic()?;
 
     // Convert to Insertable type
     let new_players = players
@@ -118,14 +128,14 @@ pub fn ingest_page_of_players(
         total_inserted += inserted as i32;
 
         for (player, err) in errs {
-            let (
-                version,
-                _modification_version,
-                _feed_version,
-                _report,
-                _equipment,
-                _logs,
-            ): &(NewPlayerVersion, _, _, _, _, _) = player;
+            let (version, _modification_version, _feed_version, _report, _equipment, _logs): &(
+                NewPlayerVersion,
+                _,
+                _,
+                _,
+                _,
+                _,
+            ) = player;
             error!(
                 "Error {err} ingesting player {} at {}",
                 version.mmolb_player_id, version.valid_from,
@@ -254,19 +264,22 @@ pub fn day_to_db(
     }
 }
 
-fn maybe_recognized_str<T: Display>(val: Result<T, NotRecognized>) -> Result<String, serde_json::Value> {
+fn maybe_recognized_str<T: Display>(
+    val: Result<T, NotRecognized>,
+) -> Result<String, serde_json::Value> {
     match val {
-        Ok(v) => {
-            Ok(v.to_string())
-        }
+        Ok(v) => Ok(v.to_string()),
         Err(NotRecognized(value)) => match value.as_str() {
             None => Err(value),
             Some(str) => Ok(str.to_string()),
-        }
+        },
     }
 }
 
-fn equipment_affixes<T: Display>(affixes: impl IntoIterator<Item=Result<T, NotRecognized>>, affix_type: &str) -> Vec<String> {
+fn equipment_affixes<T: Display>(
+    affixes: impl IntoIterator<Item = Result<T, NotRecognized>>,
+    affix_type: &str,
+) -> Vec<String> {
     affixes
         .into_iter()
         .flat_map(|p| match maybe_recognized_str(p) {
@@ -283,10 +296,9 @@ fn equipment_affixes<T: Display>(affixes: impl IntoIterator<Item=Result<T, NotRe
         .collect_vec()
 }
 
-
 fn equipment_affix_plural_or_singular<T: Display>(
     affix_singular: RemovedLaterResult<Option<MaybeRecognizedResult<T>>>,
-    affix_plural: AddedLaterResult<Vec<MaybeRecognizedResult<T>>>, 
+    affix_plural: AddedLaterResult<Vec<MaybeRecognizedResult<T>>>,
     affix_type_singular: &str,
     affix_type_plural: &str,
 ) -> Vec<String> {
@@ -296,12 +308,8 @@ fn equipment_affix_plural_or_singular<T: Display>(
             // issue a warning for it
             Vec::new()
         }
-        (Err(RemovedLater), Ok(affixes)) => {
-            equipment_affixes(affixes, affix_type_plural)
-        }
-        (Ok(prefix), Err(AddedLater)) => {
-            equipment_affixes(prefix, affix_type_singular)
-        }
+        (Err(RemovedLater), Ok(affixes)) => equipment_affixes(affixes, affix_type_plural),
+        (Ok(prefix), Err(AddedLater)) => equipment_affixes(prefix, affix_type_singular),
         (Ok(_), Ok(prefixes)) => {
             // TODO Expose this warning on the web interface
             warn!(
@@ -317,15 +325,16 @@ fn equipment_affix_plural_or_singular<T: Display>(
 #[error("Expected a string but got {0}")]
 struct NonStringTypeError(serde_json::Value);
 
-fn equipment_slot_to_str(slot: &Result<EquipmentSlot, NotRecognized>) -> Result<&str, NonStringTypeError> {
+fn equipment_slot_to_str(
+    slot: &Result<EquipmentSlot, NotRecognized>,
+) -> Result<&str, NonStringTypeError> {
     Ok(match slot {
-        Ok(EquipmentSlot::Accessory) => { "Accessory" }
-        Ok(EquipmentSlot::Head) => { "Head" }
-        Ok(EquipmentSlot::Feet) => { "Feet" }
-        Ok(EquipmentSlot::Hands) => { "Hands" }
-        Ok(EquipmentSlot::Body) => { "Body" }
-        Err(NotRecognized(value)) => value.as_str()
-            .ok_or(NonStringTypeError(value.clone()))?
+        Ok(EquipmentSlot::Accessory) => "Accessory",
+        Ok(EquipmentSlot::Head) => "Head",
+        Ok(EquipmentSlot::Feet) => "Feet",
+        Ok(EquipmentSlot::Hands) => "Hands",
+        Ok(EquipmentSlot::Body) => "Body",
+        Err(NotRecognized(value)) => value.as_str().ok_or(NonStringTypeError(value.clone()))?,
     })
 }
 
@@ -367,11 +376,14 @@ fn chron_player_as_new<'a>(
             .expect("All modifications should have been added to the modifications table")
     };
 
-    let get_handedness_id = |handedness: &Result<Handedness, NotRecognized>, ingest_logs: &mut VersionIngestLogs| match handedness {
-        Ok(handedness) => Some(taxa.handedness_id((*handedness).into())),
-        Err(err) => {
-            ingest_logs.error(format!("Player had unexpected batting handedness {err}"));
-            None
+    let get_handedness_id = |handedness: &Result<Handedness, NotRecognized>,
+                             ingest_logs: &mut VersionIngestLogs| {
+        match handedness {
+            Ok(handedness) => Some(taxa.handedness_id((*handedness).into())),
+            Err(err) => {
+                ingest_logs.error(format!("Player had unexpected batting handedness {err}"));
+                None
+            }
         }
     };
 
@@ -438,18 +450,23 @@ fn chron_player_as_new<'a>(
     occupied_equipment_slots.sort();
 
     // No sort necessary because order is hard-coded
-    let included_report_categories = entity.data.talk.as_ref().map(|t| {
-        [
-            if t.batting.is_some() { Some(TaxaAttributeCategory::Batting) } else { None },
-            if t.pitching.is_some() { Some(TaxaAttributeCategory::Pitching) } else { None },
-            if t.defense.is_some() { Some(TaxaAttributeCategory::Defense) } else { None },
-            if t.baserunning.is_some() { Some(TaxaAttributeCategory::Baserunning) } else { None },
-        ]
+    let included_report_categories = entity
+        .data
+        .talk
+        .as_ref()
+        .map(|t| {
+            [
+                t.batting.as_ref().map(|_| TaxaAttributeCategory::Batting),
+                t.pitching.as_ref().map(|_| TaxaAttributeCategory::Pitching),
+                t.defense.as_ref().map(|_| TaxaAttributeCategory::Defense),
+                t.baserunning.as_ref().map(|_| TaxaAttributeCategory::Baserunning),
+            ]
             .into_iter()
             .flatten()
             .map(|category| taxa.attribute_category_id(category))
             .collect_vec()
-    }).unwrap_or_default();
+        })
+        .unwrap_or_default();
 
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
@@ -479,23 +496,49 @@ fn chron_player_as_new<'a>(
 
     let player_full_name = format!("{} {}", player.first_name, player.last_name);
     let feed_as_new = match &entity.data.feed {
-        Ok(entries) => Some(chron_player_feed_as_new(taxa, &entity.entity_id, entity.valid_from, entries, Some(&player_full_name))),
+        Ok(entries) => Some(chron_player_feed_as_new(
+            taxa,
+            &entity.entity_id,
+            entity.valid_from,
+            entries,
+            Some(&player_full_name),
+        )),
         Err(_) => None,
     };
 
     let mut report_versions = Vec::new();
     if let Some(talk) = &entity.data.talk {
         if let Some(report) = &talk.batting {
-            report_versions.push(report_as_new(TaxaAttributeCategory::Batting, report, entity, taxa));
+            report_versions.push(report_as_new(
+                TaxaAttributeCategory::Batting,
+                report,
+                entity,
+                taxa,
+            ));
         }
         if let Some(report) = &talk.pitching {
-            report_versions.push(report_as_new(TaxaAttributeCategory::Pitching, report, entity, taxa));
+            report_versions.push(report_as_new(
+                TaxaAttributeCategory::Pitching,
+                report,
+                entity,
+                taxa,
+            ));
         }
         if let Some(report) = &talk.defense {
-            report_versions.push(report_as_new(TaxaAttributeCategory::Defense, report, entity, taxa));
+            report_versions.push(report_as_new(
+                TaxaAttributeCategory::Defense,
+                report,
+                entity,
+                taxa,
+            ));
         }
         if let Some(report) = &talk.baserunning {
-            report_versions.push(report_as_new(TaxaAttributeCategory::Baserunning, report, entity, taxa));
+            report_versions.push(report_as_new(
+                TaxaAttributeCategory::Baserunning,
+                report,
+                entity,
+                taxa,
+            ));
         }
     }
 
@@ -503,118 +546,131 @@ fn chron_player_as_new<'a>(
         Ok(equipment) => {
             // TODO I've requested a way to do this without clone(). Switch to
             //   that once it's implemented in mmolb_parsing
-            let map: std::collections::HashMap<Result<EquipmentSlot, NotRecognized>, Option<PlayerEquipment>> = equipment.clone().into();
+            let map: std::collections::HashMap<
+                Result<EquipmentSlot, NotRecognized>,
+                Option<PlayerEquipment>,
+            > = equipment.clone().into();
             map.into_iter()
-                .filter_map(|(slot, equipment)| equipment.and_then(|equipment| {
-                    let equipment_slot = match maybe_recognized_str(slot) {
-                        Ok(equipment_slot) => equipment_slot,
-                        Err(non_string_value) => {
-                            ingest_logs.error(format!(
-                                "Ignoring equipment with non-string slot {non_string_value:?}",
-                            ));
-                            return None;
-                        }
-                    };
-
-                    let name = match maybe_recognized_str(equipment.name) {
-                        Ok(name) => name,
-                        Err(non_string_value) => {
-                            ingest_logs.error(format!(
-                                "Ignoring equipment with non-string name {non_string_value:?}",
-                            ));
-                            return None;
-                        }
-                    };
-
-                    let rarity = match equipment.rarity {
-                        Ok(rarity) => match maybe_recognized_str(rarity) {
-                            Ok(rarity) => Some(rarity),
+                .filter_map(|(slot, equipment)| {
+                    equipment.and_then(|equipment| {
+                        let equipment_slot = match maybe_recognized_str(slot) {
+                            Ok(equipment_slot) => equipment_slot,
                             Err(non_string_value) => {
                                 ingest_logs.error(format!(
-                                    "Ignoring non-string equipment rarity {non_string_value:?}",
+                                    "Ignoring equipment with non-string slot {non_string_value:?}",
                                 ));
-                                None
+                                return None;
                             }
-                        }
-                        Err(AddedLater) => {
-                            None
-                        }
-                    };
+                        };
 
-                    let new_equipment = NewPlayerEquipmentVersion {
-                        mmolb_player_id: &entity.entity_id,
-                        equipment_slot: equipment_slot.clone(),
-                        valid_from: entity.valid_from.naive_utc(),
-                        valid_until: None,
-                        emoji: equipment.emoji.clone(),
-                        name,
-                        special_type: equipment.special_type.map(|t| t.to_string()),
-                        description: equipment.description.clone(),
-                        rare_name: equipment.rare_name.clone(),
-                        cost: equipment.cost.map(|v| v as i32),
-                        prefixes: equipment_affix_plural_or_singular(equipment.prefix, equipment.prefixes, "prefix", "prefixes"),
-                        suffixes: equipment_affix_plural_or_singular(equipment.suffix, equipment.suffixes, "suffix", "suffixes"),
-                        rarity,
-                        num_effects: equipment.effects.as_ref().map_or(0, |e| e.len() as i32),
-                    };
+                        let name = match maybe_recognized_str(equipment.name) {
+                            Ok(name) => name,
+                            Err(non_string_value) => {
+                                ingest_logs.error(format!(
+                                    "Ignoring equipment with non-string name {non_string_value:?}",
+                                ));
+                                return None;
+                            }
+                        };
 
-                    let effects = match equipment.effects {
-                        None => {
-                            // Presumably None effects is the same as empty list of effects
-                            Vec::new()
-                        }
-                        Some(effects) => effects
-                            .into_iter()
-                            .enumerate()
-                            .filter_map(|(index, effect)| {
-                                let effect = match effect {
-                                    Ok(effect) => effect,
-                                    Err(NotRecognized(value)) => {
-                                        ingest_logs.error(format!(
-                                            "Skipping unrecognized equipment effect {value:?}",
-                                        ));
-                                        return None;
-                                    }
-                                };
+                        let rarity = match equipment.rarity {
+                            Ok(rarity) => match maybe_recognized_str(rarity) {
+                                Ok(rarity) => Some(rarity),
+                                Err(non_string_value) => {
+                                    ingest_logs.error(format!(
+                                        "Ignoring non-string equipment rarity {non_string_value:?}",
+                                    ));
+                                    None
+                                }
+                            },
+                            Err(AddedLater) => None,
+                        };
 
-                                let attribute = match effect.attribute {
-                                    Ok(attribute) => attribute,
-                                    Err(NotRecognized(value)) => {
-                                        ingest_logs.error(format!(
+                        let new_equipment = NewPlayerEquipmentVersion {
+                            mmolb_player_id: &entity.entity_id,
+                            equipment_slot: equipment_slot.clone(),
+                            valid_from: entity.valid_from.naive_utc(),
+                            valid_until: None,
+                            emoji: equipment.emoji.clone(),
+                            name,
+                            special_type: equipment.special_type.map(|t| t.to_string()),
+                            description: equipment.description.clone(),
+                            rare_name: equipment.rare_name.clone(),
+                            cost: equipment.cost.map(|v| v as i32),
+                            prefixes: equipment_affix_plural_or_singular(
+                                equipment.prefix,
+                                equipment.prefixes,
+                                "prefix",
+                                "prefixes",
+                            ),
+                            suffixes: equipment_affix_plural_or_singular(
+                                equipment.suffix,
+                                equipment.suffixes,
+                                "suffix",
+                                "suffixes",
+                            ),
+                            rarity,
+                            num_effects: equipment.effects.as_ref().map_or(0, |e| e.len() as i32),
+                        };
+
+                        let effects = match equipment.effects {
+                            None => {
+                                // Presumably None effects is the same as empty list of effects
+                                Vec::new()
+                            }
+                            Some(effects) => effects
+                                .into_iter()
+                                .enumerate()
+                                .filter_map(|(index, effect)| {
+                                    let effect = match effect {
+                                        Ok(effect) => effect,
+                                        Err(NotRecognized(value)) => {
+                                            ingest_logs.error(format!(
+                                                "Skipping unrecognized equipment effect {value:?}",
+                                            ));
+                                            return None;
+                                        }
+                                    };
+
+                                    let attribute = match effect.attribute {
+                                        Ok(attribute) => attribute,
+                                        Err(NotRecognized(value)) => {
+                                            ingest_logs.error(format!(
                                             "Skipping unrecognized equipment effect attribute {:?}",
                                             value,
                                         ));
-                                        return None;
-                                    }
-                                };
+                                            return None;
+                                        }
+                                    };
 
-                                let effect_type = match effect.effect_type {
-                                    Ok(effect_type) => effect_type,
-                                    Err(NotRecognized(value)) => {
-                                        ingest_logs.error(format!(
-                                            "Skipping unrecognized equipment effect type {:?}",
-                                            value,
-                                        ));
-                                        return None;
-                                    }
-                                };
+                                    let effect_type = match effect.effect_type {
+                                        Ok(effect_type) => effect_type,
+                                        Err(NotRecognized(value)) => {
+                                            ingest_logs.error(format!(
+                                                "Skipping unrecognized equipment effect type {:?}",
+                                                value,
+                                            ));
+                                            return None;
+                                        }
+                                    };
 
-                                Some(NewPlayerEquipmentEffectVersion {
-                                    mmolb_player_id: &entity.entity_id,
-                                    equipment_slot: equipment_slot.clone(),
-                                    effect_index: index as i32,
-                                    valid_from: entity.valid_from.naive_utc(),
-                                    valid_until: None,
-                                    attribute: taxa.attribute_id(attribute.into()),
-                                    effect_type: taxa.effect_type_id(effect_type.into()),
-                                    value: effect.value,
+                                    Some(NewPlayerEquipmentEffectVersion {
+                                        mmolb_player_id: &entity.entity_id,
+                                        equipment_slot: equipment_slot.clone(),
+                                        effect_index: index as i32,
+                                        valid_from: entity.valid_from.naive_utc(),
+                                        valid_until: None,
+                                        attribute: taxa.attribute_id(attribute.into()),
+                                        effect_type: taxa.effect_type_id(effect_type.into()),
+                                        value: effect.value,
+                                    })
                                 })
-                            })
-                            .collect_vec()
-                    };
+                                .collect_vec(),
+                        };
 
-                    Some((new_equipment, effects))
-                }))
+                        Some((new_equipment, effects))
+                    })
+                })
                 .collect_vec()
         }
         Err(AddedLater) => Vec::new(), // No equipment
@@ -635,7 +691,10 @@ fn report_as_new<'e>(
     report: &'e TalkCategory,
     entity: &'e ChronEntity<mmolb_parsing::player::Player>,
     taxa: &Taxa,
-) -> (NewPlayerReportVersion<'e>, Vec<NewPlayerReportAttributeVersion<'e>>) {
+) -> (
+    NewPlayerReportVersion<'e>,
+    Vec<NewPlayerReportAttributeVersion<'e>>,
+) {
     let season = match report.season {
         Ok(season) => Some(season as i32),
         Err(AddedLater) => None,
@@ -646,7 +705,9 @@ fn report_as_new<'e>(
         Err(AddedLater) => (None, None, None),
     };
 
-    let mut included_attributes = report.stars.iter()
+    let mut included_attributes = report
+        .stars
+        .iter()
         .map(|(attribute, _)| taxa.attribute_id((*attribute).into()))
         .collect_vec();
     // This is meant to be a set. Sort it to make sure that order
@@ -666,7 +727,9 @@ fn report_as_new<'e>(
         included_attributes,
     };
 
-    let report_attribute_versions = report.stars.iter()
+    let report_attribute_versions = report
+        .stars
+        .iter()
         .map(|(attribute, stars)| NewPlayerReportAttributeVersion {
             mmolb_player_id: &entity.entity_id,
             category: taxa.attribute_category_id(category),

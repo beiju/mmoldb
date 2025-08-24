@@ -14,7 +14,7 @@ impl BestEffortSlot {
     pub fn from_slot(slot: Slot) -> Self {
         Self::Slot(slot)
     }
-    
+
     pub fn from_position(position: Position) -> Self {
         match position {
             Position::Pitcher => Self::GenericPitcher,

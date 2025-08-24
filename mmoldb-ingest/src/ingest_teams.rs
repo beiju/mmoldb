@@ -1,4 +1,4 @@
-use crate::ingest::{batch_by_entity, VersionIngestLogs};
+use crate::ingest::{VersionIngestLogs, batch_by_entity};
 use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -7,7 +7,7 @@ use miette::{Context, IntoDiagnostic};
 use mmolb_parsing::{AddedLater, NotRecognized};
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{db, BestEffortSlot, PgConnection};
+use mmoldb_db::{BestEffortSlot, PgConnection, db};
 use rayon::prelude::*;
 use tokio_util::sync::CancellationToken;
 
@@ -18,7 +18,11 @@ const CHRON_FETCH_PAGE_SIZE: usize = 1000;
 const RAW_TEAM_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_TEAM_BATCH_SIZE: usize = 1000;
 
-pub async fn ingest_teams(ingest_id: i64, pg_url: String, abort: CancellationToken) -> miette::Result<()> {
+pub async fn ingest_teams(
+    ingest_id: i64,
+    pg_url: String,
+    abort: CancellationToken,
+) -> miette::Result<()> {
     crate::ingest::ingest(
         ingest_id,
         TEAM_KIND,
@@ -35,24 +39,33 @@ pub async fn ingest_teams(ingest_id: i64, pg_url: String, abort: CancellationTok
                         // versions created with an integrated feed, and (2) the Feed is persistent,
                         // so we can ignore hundreds of versions and then the first standalone feed
                         // version will capture all the backlog
-                        if k == "SeasonStats" || k == "Record" || k == "Feed" || k == "Augments" || k == "MotesUsed" || k == "SeasonRecords" || k == "Inventory" {
+                        if k == "SeasonStats"
+                            || k == "Record"
+                            || k == "Feed"
+                            || k == "Augments"
+                            || k == "MotesUsed"
+                            || k == "SeasonRecords"
+                            || k == "Inventory"
+                        {
                             None
                         } else if k == "Players" {
                             let new_v = match v {
                                 serde_json::Value::Array(arr) => serde_json::Value::Array({
                                     arr.iter()
                                         .map(|pl| match pl {
-                                            serde_json::Value::Object(pobj) => serde_json::Value::Object({
-                                                pobj.iter()
-                                                    .flat_map(|(pk, pv)| {
-                                                        if pk == "Stats" {
-                                                            None
-                                                        } else {
-                                                            Some((pk.clone(), pv.clone()))
-                                                        }
-                                                    })
-                                                    .collect()
-                                            }),
+                                            serde_json::Value::Object(pobj) => {
+                                                serde_json::Value::Object({
+                                                    pobj.iter()
+                                                        .flat_map(|(pk, pv)| {
+                                                            if pk == "Stats" {
+                                                                None
+                                                            } else {
+                                                                Some((pk.clone(), pv.clone()))
+                                                            }
+                                                        })
+                                                        .collect()
+                                                })
+                                            }
                                             other => other.clone(),
                                         })
                                         .collect()
@@ -66,11 +79,12 @@ pub async fn ingest_teams(ingest_id: i64, pg_url: String, abort: CancellationTok
                     })
                     .collect()
             }),
-            other => other.clone()
+            other => other.clone(),
         },
         db::get_team_ingest_start_cursor,
         ingest_page_of_teams,
-    ).await
+    )
+    .await
 }
 
 pub fn ingest_page_of_teams(
@@ -92,9 +106,12 @@ pub fn ingest_page_of_teams(
         .map(|entity| {
             let data = serde_json::from_value(entity.data)
                 .into_diagnostic()
-                .with_context(|| format!(
-                    "Error deserializing team {} at {}", entity.entity_id, entity.valid_from,
-                ))?;
+                .with_context(|| {
+                    format!(
+                        "Error deserializing team {} at {}",
+                        entity.entity_id, entity.valid_from,
+                    )
+                })?;
 
             Ok::<ChronEntity<mmolb_parsing::team::Team>, miette::Report>(ChronEntity {
                 kind: entity.kind,
@@ -108,7 +125,9 @@ pub fn ingest_page_of_teams(
     let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} teams in {:.2} seconds on worker {}",
-        teams.len(), deserialize_duration, worker_id
+        teams.len(),
+        deserialize_duration,
+        worker_id
     );
 
     let latest_time = teams
@@ -133,8 +152,7 @@ pub fn ingest_page_of_teams(
         let to_insert = batch.len();
         info!(
             "Sent {} new team versions out of {} to the database.",
-            to_insert,
-            new_teams_len,
+            to_insert, new_teams_len,
         );
 
         let inserted = db::insert_team_versions(conn, batch).into_diagnostic()?;
@@ -167,11 +185,12 @@ pub fn chron_team_as_new<'a>(
 ) -> (
     NewTeamVersion<'a>,
     Vec<NewTeamPlayerVersion<'a>>,
-    Vec<NewVersionIngestLog<'a>>
+    Vec<NewVersionIngestLog<'a>>,
 ) {
     let mut ingest_logs = VersionIngestLogs::new(TEAM_KIND, team_id, valid_from);
 
-    let new_team_players = team.players
+    let new_team_players = team
+        .players
         .iter()
         .enumerate()
         .map(|(idx, pl)| {
@@ -193,9 +212,10 @@ pub fn chron_team_as_new<'a>(
                             pl.first_name, pl.last_name
                         ));
                         None
-                    },
+                    }
                     Err(AddedLater) => None,
-                }.or_else(|| match &pl.position {
+                }
+                .or_else(|| match &pl.position {
                     Some(Ok(position)) => {
                         Some(taxa.slot_id(BestEffortSlot::from_position(*position).into()))
                     }

@@ -1,15 +1,15 @@
+use crate::ingest_games::sim::{EventForTable, Game, SimStartupError};
+use crate::ingest_games::{check_round_trip, sim};
 use chron::ChronEntity;
 use chrono::Utc;
 use itertools::{Itertools, izip};
 use log::{debug, error, info};
 use miette::{Context, Diagnostic};
 use mmolb_parsing::enums::EventType;
-use thiserror::Error;
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{IngestLog, PgConnection, db, QueryError};
-use crate::ingest_games::{check_round_trip, sim};
-use crate::ingest_games::sim::{EventForTable, Game, SimStartupError};
+use mmoldb_db::{IngestLog, PgConnection, QueryError, db};
+use thiserror::Error;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -307,7 +307,13 @@ fn prepare_game_for_db(
         }
     } else if entity.data.is_completed() {
         // If theres a HrcLiveNow event in the first 10 events, it's a home run challenge
-        if entity.data.event_log.iter().take(10).any(|e| e.event == Ok(EventType::HrcLiveNow)) {
+        if entity
+            .data
+            .event_log
+            .iter()
+            .take(10)
+            .any(|e| e.event == Ok(EventType::HrcLiveNow))
+        {
             GameForDb::NotSupported {
                 game_id: &entity.entity_id,
                 from_version: entity.valid_from,
@@ -315,8 +321,9 @@ fn prepare_game_for_db(
                 reason: "Home Run Challenge is not supported".to_string(),
             }
         } else {
-            let game_result = prepare_completed_game_for_db(entity)
-                .wrap_err("Error constructing the initial state. This entire game will be skipped.");
+            let game_result = prepare_completed_game_for_db(entity).wrap_err(
+                "Error constructing the initial state. This entire game will be skipped.",
+            );
             match game_result {
                 Ok(game) => GameForDb::Completed {
                     game,
@@ -403,7 +410,9 @@ fn prepare_completed_game_for_db(
         if let Some(event) = event {
             match event {
                 EventForTable::EventDetail(event_detail) => events.push(event_detail),
-                EventForTable::PitcherChange(pitcher_change) => pitcher_changes.push(pitcher_change),
+                EventForTable::PitcherChange(pitcher_change) => {
+                    pitcher_changes.push(pitcher_change)
+                }
                 EventForTable::Party(party) => parties.push(party),
             }
         }

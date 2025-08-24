@@ -1,12 +1,12 @@
 use super::pages::*;
-use crate::web::error::AppError;
 use crate::Db;
+use crate::web::error::AppError;
 use itertools::Itertools;
 use mmoldb_db::db;
 use mmoldb_db::models::DbPlayerVersion;
 use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType, TaxaEventType};
-use rocket::{get, uri, State};
-use rocket_dyn_templates::{context, Template};
+use rocket::{State, get, uri};
+use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -25,7 +25,7 @@ pub struct PlayerContext<'r, 't> {
 impl<'r, 't> PlayerContext<'r, 't> {
     fn from_db(raw: &'r DbPlayerVersion, taxa: &'t Taxa) -> PlayerContext<'r, 't> {
         let birthday_day = match raw.birthday_type {
-            None => { "Error storing player's birthday".to_string() }
+            None => "Error storing player's birthday".to_string(),
             Some(birthday_type) => match taxa.day_type_from_id(birthday_type) {
                 TaxaDayType::Preseason => "Preseason".to_string(),
                 TaxaDayType::RegularDay => match raw.birthday_day {
@@ -46,7 +46,7 @@ impl<'r, 't> PlayerContext<'r, 't> {
                 TaxaDayType::Holiday => "Holiday".to_string(),
                 TaxaDayType::Event => "Event".to_string(),
                 TaxaDayType::SpecialEvent => "Special Event".to_string(),
-            }
+            },
         };
 
         Self {
@@ -54,8 +54,12 @@ impl<'r, 't> PlayerContext<'r, 't> {
             first_name: &raw.first_name,
             last_name: &raw.last_name,
             birthday: format!("Season {} {}", raw.birthseason, birthday_day),
-            batting_handedness: raw.batting_handedness.map(|h| taxa.handedness_from_id(h).as_insertable().name),
-            pitching_handedness: raw.pitching_handedness.map(|h| taxa.handedness_from_id(h).as_insertable().name),
+            batting_handedness: raw
+                .batting_handedness
+                .map(|h| taxa.handedness_from_id(h).as_insertable().name),
+            pitching_handedness: raw
+                .pitching_handedness
+                .map(|h| taxa.handedness_from_id(h).as_insertable().name),
             likes: &raw.likes,
             dislikes: &raw.dislikes,
             durability: raw.durability,
@@ -63,49 +67,81 @@ impl<'r, 't> PlayerContext<'r, 't> {
     }
 }
 
-
 // TODO Add `at` support, which requires figuring out chrono deserialize from rocket
 #[get("/player/<player_id>")]
 pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Template, AppError> {
-    let (player_raw, pitches) = db.run(move |conn| {
-        db::player_all(conn, &player_id)
-    }).await?;
+    let (player_raw, pitches) = db.run(move |conn| db::player_all(conn, &player_id)).await?;
 
     let raw_clone = player_raw.clone();
     let player = PlayerContext::from_db(&player_raw, &taxa);
 
-    let total_events = pitches.as_ref().map(|pitches| pitches.iter()
-        .map(|info| info.count)
-        .sum::<i64>()
-    );
+    let total_events = pitches
+        .as_ref()
+        .map(|pitches| pitches.iter().map(|info| info.count).sum::<i64>());
 
-    let total_pitches = pitches.as_ref().map(|pitches| pitches.iter()
-        .map(|info| if info.pitch_type.is_some() { info.count } else { 0 })
-        .sum::<i64>()
-    );
+    let total_pitches = pitches.as_ref().map(|pitches| {
+        pitches
+            .iter()
+            .map(|info| {
+                if info.pitch_type.is_some() {
+                    info.count
+                } else {
+                    0
+                }
+            })
+            .sum::<i64>()
+    });
 
     let balk_id = taxa.event_type_id(TaxaEventType::Balk);
-    let total_balks = pitches.as_ref().map(|pitches| pitches.iter()
-        .map(|info| if info.event_type == balk_id { info.count } else { 0 })
-        .sum::<i64>()
-    );
-    let unexpected_non_pitch_events = total_events.unwrap_or(0) - total_pitches.unwrap_or(0) - total_balks.unwrap_or(0);
+    let total_balks = pitches.as_ref().map(|pitches| {
+        pitches
+            .iter()
+            .map(|info| {
+                if info.event_type == balk_id {
+                    info.count
+                } else {
+                    0
+                }
+            })
+            .sum::<i64>()
+    });
+    let unexpected_non_pitch_events =
+        total_events.unwrap_or(0) - total_pitches.unwrap_or(0) - total_balks.unwrap_or(0);
 
     let pitch_types = pitches.as_ref().map(|pitches| {
-        let chunks = pitches.iter()
-            .filter_map(|info| info.pitch_type.map(|ty| (taxa.pitch_type_from_id(ty), info.min_speed, info.max_speed, info.count)))
+        let chunks = pitches
+            .iter()
+            .filter_map(|info| {
+                info.pitch_type.map(|ty| {
+                    (
+                        taxa.pitch_type_from_id(ty),
+                        info.min_speed,
+                        info.max_speed,
+                        info.count,
+                    )
+                })
+            })
             .chunk_by(|(ty, _, _, _)| *ty);
         chunks
             .into_iter()
             .map(|(ty, chunk)| {
-                chunk
-                    .into_iter()
-                    .reduce(|(_, acc_min_speed, acc_max_speed, acc_count), (_, min_speed, max_speed, count)| (
-                        ty,
-                        [acc_min_speed, min_speed].into_iter().flatten().reduce(f64::min),
-                        [acc_max_speed, max_speed].into_iter().flatten().reduce(f64::max),
-                        acc_count + count,
-                    ))
+                chunk.into_iter().reduce(
+                    |(_, acc_min_speed, acc_max_speed, acc_count),
+                     (_, min_speed, max_speed, count)| {
+                        (
+                            ty,
+                            [acc_min_speed, min_speed]
+                                .into_iter()
+                                .flatten()
+                                .reduce(f64::min),
+                            [acc_max_speed, max_speed]
+                                .into_iter()
+                                .flatten()
+                                .reduce(f64::max),
+                            acc_count + count,
+                        )
+                    },
+                )
             })
             .collect_vec()
     });

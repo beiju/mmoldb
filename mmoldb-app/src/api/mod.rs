@@ -1,5 +1,5 @@
-mod player;
 mod error;
+mod player;
 
 #[rocket::get("/")]
 pub async fn index() -> &'static str {
@@ -7,8 +7,5 @@ pub async fn index() -> &'static str {
 }
 
 pub fn routes() -> Vec<rocket::Route> {
-    rocket::routes![
-        index,
-        player::player_versions,
-    ]
+    rocket::routes![index, player::player_versions,]
 }
