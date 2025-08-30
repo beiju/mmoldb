@@ -14,6 +14,8 @@ Upcoming
   supported)
 - Add special handling for [the bugged walkoff balk game][balkoff], so it also
   no longer shows as an error
+- Fix parsing errors for players with last name Jr. (thanks WoofyJack)
+- Stop incorrectly adding an automatic runner in the superstar game
 
 [balkoff]: https://mmolb.com/watch/686662b85f5db4ab9490048d?event=402
 

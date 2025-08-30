@@ -1302,12 +1302,11 @@ impl<'g> Game<'g> {
             240
         };
 
-        // Superstar game does have the automatic runner rule as confirmed by Danny.
+        // Danny told me the superstar game doesn't have the automatic runner but he lied.
         // The other special types of day shouldn't have any games.
         match self.day {
             Day::Day(day) => day <= day_threshold,
-            Day::SuperstarDay(_) => true,
-            Day::PostseasonRound(_) => false,
+            Day::SuperstarDay(_) | Day::PostseasonRound(_) => false,
             _ => true,
         }
     }
@@ -2180,7 +2179,7 @@ impl<'g> Game<'g> {
                     // This way they will just show up on base without having an event that put
                     // them there, which I think is the correct interpretation.
                     if *number > 9 && self.automatic_runner_rule_is_active() {
-                        // Before a certain point the automatic runner  wasn't announced
+                        // Before a certain point the automatic runner wasn't announced
                         // in the event. You just had to figure out who it was based on the
                         // lineup. There were two events in this period where mote timing
                         // means we predict the wrong automatic runner. Since it's only two,
@@ -2207,6 +2206,14 @@ impl<'g> Game<'g> {
                             // that happened before the automatic runner was announced.
                             runner_name
                         } else {
+                            // Automatic runner announcements were added partway through season
+                            // 0 or 1, I can't remember.
+                            if self.season > 1 {
+                                ingest_logs.warn(
+                                    "Adding an inferred automatic runner after season 1. This is \
+                                    probably incorrect."
+                                );
+                            }
                             stored_automatic_runner
                         };
 
