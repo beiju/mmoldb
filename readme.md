@@ -49,18 +49,20 @@ pull request but are not experienced in development or Docker.
 
 #### Updating MMOLDB for the pure docker-compose setup
 
-Updating typically requires rebuilding your database, which is currently a
-manual process:
-
 1. `git pull` to fetch the changes
-2. `docker compose down` to stop the running containers. Do _not_ add the `-v`
-   flag as was previously recommended -- that will remove the HTTP cache as
-   well as the database itself, and will make your database rebuild
-   significantly slower.
+2. `docker compose down` to stop the running containers.
 3. `docker compose build` to rebuild the container. If you don't do this you
    won't see the changes.
-4. `docker volume rm mmoldb_postgres-data` to remove the database volume.
-5. Run the app again using the "Running" instructions.
+4. Optional: To delete all derived data (i.e. to have the database rebuild 
+   itself from the cache), first ensure the `db` container is running but
+   not the `ingest` container (`docker compose up db -d`). Then run 
+   `docker compose exec -T db psql -U postgres -d mmoldb < ./delete_derived.sql`.
+   This may fail if there are pending migrations (if you've pulled a new 
+   version but not yet run it). If this happens, run the app using the 
+   "Running" instructions, then quit it and redo this step. 
+5. Run the app again using the "Running" instructions. Certain updates will
+   rebuild some or all of the database even if you didn't delete the derived
+   data.
 
 ### Option 2: Devcontainer
 
@@ -84,7 +86,10 @@ devcontainers.
 
 1. Open the devcontainer from `.devcontainer/devcontainer.json`. This should
    start the db container and the app devcontainer.
-2. Within the app devcontainer, run the mmmodb `cargo` target.
+2. Within the app devcontainer, run the `mmmodb-app` target within the 
+   `mmoldb-app` package. This starts the web front-end.
+3. Within the app devcontainer, run the `mmmodb-ingest` target within the 
+   `mmoldb-ingest` package. This starts the ingest task.
 
 #### Updating MMOLDB for the pure docker-compose setup
 
@@ -92,12 +97,15 @@ Updating typically requires rebuilding your database, which is currently a
 manual process:
 
 1. `git pull` to fetch the changes
-2. `diesel database reset` to delete and recreate (as empty) the database.
-   This will also update the Diesel schema files if applicable. The intent is 
-   that running `diesel database reset` on `main` will never result in any 
-   changes to any schema file -- if that's untrue, please report it as a
-   bug.
-3. Run the app again using the "Running MMOLDB for the devcontainer setup" 
+2. Stop both `mmoldb-app` and `mmoldb-ingest`.
+3. Optional: To delete all derived data (i.e. to have the database rebuild
+   itself from the cache), run the `./delete_derived.sql` on the `mmoldb` 
+   database using your preferred SQL client.
+   This may fail if there are pending migrations (if you've pulled a new
+   version but not yet run it). If this happens, run the app using the
+   "Running MMOLDB for the devcontainer setup" instructions, then quit it 
+   and redo this step.
+4. Run the app again using the "Running MMOLDB for the devcontainer setup" 
    instructions.
 
 ### Option 3: Double-buffered docker-compose
@@ -111,7 +119,7 @@ and .env files to follow these instructions.
 
 1. Install Docker following the instructions from step 1 of option 1.
 2. Check out this repo _twice_ using git, in two different locations. These
-   two checkouts must have different competed project names -- you can check
+   two checkouts must have different computed project names -- you can check
    their project names by running `docker compose config` and looking for the
    top-level `name`. By default the project name is the name of the containing 
    directory, but it can be overridden by the `COMPOSE_PROJECT_NAME` variable 
@@ -146,10 +154,9 @@ and .env files to follow these instructions.
    buffer. Ensure your back buffer is configured to use different ports from
    your front buffer (which should be currently running).
 2. From within your back buffer's directory, follow the instructions from 
-   "Updating MMOLDB for the pure docker-compose setup", except in the 
-   `docker volume rm` step replace the `mmoldb` in `mmoldb_postgres-data` with
-   your back buffer container's name. During this step and the next, your front
-   buffer and back buffer will be running at the same time.
+   "Updating MMOLDB for the pure docker-compose setup". During this step and 
+   the next, your front buffer and back buffer will be running at the same 
+   time.
 3. Wait for the first ingest to complete. This can take some time. You can
    monitor progress using `docker compose logs`.
 4. Once the first ingest is complete, swap your buffers. You may choose to
@@ -186,10 +193,11 @@ preference:
 2. [Increase Docker Desktop's memory and/or swap limit][docker-desktop-limits].
    Allowing up to 16GB of swap should be sufficient to avoid OOM errors, but
    will be slower than if you allowed Docker to use more memory. 
-3. Reduce the amount of parallelism in MMOLDB's ingest process. Uncomment the
+3. ~~Reduce the amount of parallelism in MMOLDB's ingest process. Uncomment the
    `ingest_parallelism` setting in `Rocket.toml` and set it to a lower value
    than its default, which is the number of CPU cores that Docker is configured
-   to use. Lower values for `ingest_parallelism` will result in slower ingests.
+   to use. Lower values for `ingest_parallelism` will result in slower ingests.~~
+   Currently unavailable.
 
 Debug
 -----
@@ -206,12 +214,7 @@ Exiting/Resetting
 
 Docker will continue running the db and app containers until you quit them. 
 Depending on the docker configuration, it may even relaunch them after a 
-reboot. To stop running them, run 
-`docker compose -f docker-compose-prod.yml down`.
-
-If you want to stop running the containers *and* delete the database, add the
-`-v` flag:
-`docker compose -f docker-compose-prod.yml down -v`
+reboot. To stop running them, run `docker compose down`.
 
 mmoldb is not designed to be a primary source for MMOLB data, so it should 
 always be safe to delete the database. All that's required to rebuild it is
@@ -223,17 +226,6 @@ Contributing
 Contributions are very welcome! There are guides on how to contribute specific
 things in the `contributing` folder. Contributions that contribute additional
 guides are also welcome.
-
-### Desired contributions
-
-Some contributions that are particularly desired are:
-
-1. Improve the startup performance and memory usage of the HTTP cache used by
-   `src/ingest/chron.rs`. This may involve replacing the key-value store 
-   library.
-2. Add another config file that allows overriding config values from 
-   `Rocket.toml` and isn't checked into git. We're already customizing the
-   Rocket configuration in `get_figment_with_constructed_db_url`.
 
 [mmolb]: https://mmolb.com/
 [mmoldb]: https://mmoldb.beiju.me/
