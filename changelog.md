@@ -8,7 +8,7 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
+2025-08-30
 ----------
 - Home run challenge games no longer show as errors (they still aren't 
   supported)
