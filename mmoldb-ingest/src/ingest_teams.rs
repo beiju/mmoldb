@@ -1,13 +1,15 @@
+use std::str::FromStr;
 use crate::ingest::{VersionIngestLogs, batch_by_entity};
 use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use log::{debug, info};
 use miette::{Context, IntoDiagnostic};
-use mmolb_parsing::{AddedLater, NotRecognized};
+use mmolb_parsing::{AddedLater, NotRecognized, team::TeamPlayerCollection, MaybeRecognizedResult, AddedLaterResult};
+use mmolb_parsing::enums::Slot;
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{BestEffortSlot, PgConnection, db};
+use mmoldb_db::{BestEffortSlot, PgConnection, db, IngestLog};
 use rayon::prelude::*;
 use tokio_util::sync::CancellationToken;
 
@@ -177,6 +179,65 @@ pub fn ingest_page_of_teams(
     Ok(total_inserted)
 }
 
+pub fn chron_team_player_as_new<'a>(
+    taxa: &Taxa,
+    team_id: &'a str,
+    valid_from: DateTime<Utc>,
+    idx: usize,
+    pl: &'a mmolb_parsing::team::TeamPlayer,
+    slot: &AddedLaterResult<MaybeRecognizedResult<Slot>>, // note this is NOT 'a
+    ingest_logs: &mut VersionIngestLogs
+) -> NewTeamPlayerVersion<'a> {
+    // Note: I have to include undrafted players because the closeout
+    // logic otherwise doesn't handle full team redraft properly
+    NewTeamPlayerVersion {
+        mmolb_team_id: team_id,
+        team_player_index: idx as i32,
+        valid_from: valid_from.naive_utc(),
+        valid_until: None,
+        first_name: &pl.first_name,
+        last_name: &pl.last_name,
+        number: pl.number as i32,
+        slot: match slot {
+            Ok(Ok(slot)) => Some(taxa.slot_id(BestEffortSlot::from_slot(*slot).into())),
+            Ok(Err(NotRecognized(other))) => {
+                ingest_logs.error(format!(
+                    "Failed to parse {} {}'s slot ({other:?}",
+                    pl.first_name, pl.last_name
+                ));
+                None
+            }
+            Err(AddedLater) => None,
+        }
+            .or_else(|| match &pl.position {
+                Some(Ok(position)) => {
+                    Some(taxa.slot_id(BestEffortSlot::from_position(*position).into()))
+                }
+                Some(Err(NotRecognized(other))) => {
+                    ingest_logs.error(format!(
+                        "Failed to parse {} {}'s position ({other:?}",
+                        pl.first_name, pl.last_name
+                    ));
+                    None
+                }
+                None => None,
+            }),
+        // MMOLB uses "#" for undrafted players
+        mmolb_player_id: if pl.player_id == "#" {
+            None
+        } else {
+            Some(&pl.player_id)
+        },
+    }
+}
+
+// copied out of mmolb_parsing
+pub(crate) fn maybe_recognized_from_str<T: FromStr>(value: &str) -> MaybeRecognizedResult<T> {
+    T::from_str(value).map_err(|_| {
+        NotRecognized(serde_json::Value::String(value.to_string()))
+    })
+}
+
 pub fn chron_team_as_new<'a>(
     taxa: &Taxa,
     team_id: &'a str,
@@ -189,54 +250,25 @@ pub fn chron_team_as_new<'a>(
 ) {
     let mut ingest_logs = VersionIngestLogs::new(TEAM_KIND, team_id, valid_from);
 
-    let new_team_players = team
-        .players
-        .iter()
-        .enumerate()
-        .map(|(idx, pl)| {
-            // Note: I have to include undrafted players because the closeout
-            // logic otherwise doesn't handle full team redraft properly
-            NewTeamPlayerVersion {
-                mmolb_team_id: team_id,
-                team_player_index: idx as i32,
-                valid_from: valid_from.naive_utc(),
-                valid_until: None,
-                first_name: &pl.first_name,
-                last_name: &pl.last_name,
-                number: pl.number as i32,
-                slot: match &pl.slot {
-                    Ok(Ok(slot)) => Some(taxa.slot_id(BestEffortSlot::from_slot(*slot).into())),
-                    Ok(Err(NotRecognized(other))) => {
-                        ingest_logs.error(format!(
-                            "Failed to parse {} {}'s slot ({other:?}",
-                            pl.first_name, pl.last_name
-                        ));
-                        None
-                    }
-                    Err(AddedLater) => None,
-                }
-                .or_else(|| match &pl.position {
-                    Some(Ok(position)) => {
-                        Some(taxa.slot_id(BestEffortSlot::from_position(*position).into()))
-                    }
-                    Some(Err(NotRecognized(other))) => {
-                        ingest_logs.error(format!(
-                            "Failed to parse {} {}'s position ({other:?}",
-                            pl.first_name, pl.last_name
-                        ));
-                        None
-                    }
-                    None => None,
-                }),
-                // MMOLB uses "#" for undrafted players
-                mmolb_player_id: if pl.player_id == "#" {
-                    None
-                } else {
-                    Some(&pl.player_id)
-                },
-            }
-        })
-        .collect_vec();
+    let new_team_players = match &team.players {
+        TeamPlayerCollection::Vec(v) => {
+            v.iter()
+                .enumerate()
+                .map(|(idx, pl)| {
+                    chron_team_player_as_new(taxa, team_id, valid_from, idx, pl, &pl.slot, &mut ingest_logs)
+                })
+                .collect_vec()
+        }
+        TeamPlayerCollection::Map(m) => {
+            m.iter()
+                .enumerate()
+                .map(|(idx, (slot_str, pl))| {
+                    let slot = Ok(maybe_recognized_from_str(&slot_str));
+                    chron_team_player_as_new(taxa, team_id, valid_from, idx, pl, &slot, &mut ingest_logs)
+                })
+                .collect_vec()
+        }
+    };
 
     let new_team = NewTeamVersion {
         mmolb_team_id: team_id,
