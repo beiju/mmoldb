@@ -33,7 +33,7 @@ pub fn event_to_row<'e>(
         fair_ball_type: event.fair_ball_type.map(|ty| taxa.fair_ball_type_id(ty)),
         fair_ball_direction: event
             .fair_ball_direction
-            .map(|ty| taxa.fielder_location(ty)),
+            .map(|ty| taxa.fielder_location_id(ty)),
         fair_ball_fielder_name: event.fair_ball_fielder_name,
         fielding_error_type: event
             .fielding_error_type

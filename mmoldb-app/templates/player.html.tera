@@ -22,7 +22,7 @@
             <br />Throws: {{ player.pitching_handedness }}
             <br />Likes: {{ player.likes }}
             <br />Dislikes: {{ player.dislikes }}
-            <br />Durability: {{ player.durability * 20 | round }}/20 hits remaining ({{ player.durability | round(precision=2) }})
+            <br />Durability: {{ player.durability | round(precision=2) }}
             {% if total_balks and total_events %}
                 <br />Balks: {{ total_balks }} balks in {{ total_events }} events ({{ total_balks / total_events * 100 | round(precision=3) }}%)
             {% elif total_events %}
@@ -55,20 +55,34 @@
                     {% for outcome in batting_outcomes %}
                         <li>
                             {{ outcome[0] }}:
-                            {{ outcome[1] }} / {{ total_batting_outcomes }}
-                            ({{ outcome[1] / total_batting_outcomes * 100 | round(precision=1) }}%)
+                            {{ outcome[2] }} / {{ total_batting_outcomes }}
+                            ({{ outcome[2] / total_batting_outcomes * 100 | round(precision=1) }}%,
+                            {% set pp_diff = outcome[2] / total_batting_outcomes - outcome[1] / total_batting_outcomes_all %}
+                            {% if pp_diff < -0.001 %}
+                                {{ pp_diff * -100 | round(precision=1) }} points below average{% elif pp_diff < 0 %}
+                                <0.1 points below average{% elif pp_diff > 0.001 %}
+                                {{ pp_diff * 100 | round(precision=1) }} points above average{% elif pp_diff > 0 %}
+                                <0.1 points above average{% else %})
+                                exactly average{% endif %})
                         </li>
                     {% endfor %}
                 </ul>
             {% endif %}
             {% if fielding_outcomes %}
-            <br />Fielding outcomes:
+            <br />Fielding outcomes ({{ player.slot }} only):
                 <ul>
                     {% for outcome in fielding_outcomes %}
                         <li>
                             {{ outcome[0] }}:
-                            {{ outcome[1] }} / {{ total_fielding_outcomes }}
-                            ({{ outcome[1] / total_fielding_outcomes * 100 | round(precision=1) }}%)
+                            {{ outcome[2] }} / {{ total_fielding_outcomes }}
+                            ({{ outcome[2] / total_fielding_outcomes * 100 | round(precision=1) }}%,
+                            {% set pp_diff = outcome[2] / total_fielding_outcomes - outcome[1] / total_fielding_outcomes_all %}
+                            {% if pp_diff < -0.001 %}
+                                {{ pp_diff * -100 | round(precision=1) }} points below average{% elif pp_diff < 0 %}
+                                <0.1 points below average{% elif pp_diff > 0.001 %}
+                                {{ pp_diff * 100 | round(precision=1) }} points above average{% elif pp_diff > 0 %}
+                                <0.1 points above average{% else %})
+                                exactly average{% endif %})
                         </li>
                     {% endfor %}
                 </ul>

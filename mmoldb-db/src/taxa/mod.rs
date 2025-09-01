@@ -755,6 +755,36 @@ impl From<mmolb_parsing::enums::Place> for TaxaSlot {
     }
 }
 
+impl TryInto<TaxaFielderLocation> for TaxaSlot {
+    type Error = ();
+
+    fn try_into(self) -> Result<TaxaFielderLocation, Self::Error> {
+        match self {
+            TaxaSlot::Catcher => Ok(TaxaFielderLocation::Catcher),
+            TaxaSlot::FirstBase => Ok(TaxaFielderLocation::FirstBase),
+            TaxaSlot::SecondBase => Ok(TaxaFielderLocation::SecondBase),
+            TaxaSlot::ThirdBase => Ok(TaxaFielderLocation::ThirdBase),
+            TaxaSlot::Shortstop => Ok(TaxaFielderLocation::Shortstop),
+            TaxaSlot::LeftField => Ok(TaxaFielderLocation::LeftField),
+            TaxaSlot::CenterField => Ok(TaxaFielderLocation::CenterField),
+            TaxaSlot::RightField => Ok(TaxaFielderLocation::RightField),
+            TaxaSlot::DesignatedHitter => Err(()),
+            TaxaSlot::StartingPitcher1 => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::StartingPitcher2 => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::StartingPitcher3 => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::StartingPitcher4 => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::StartingPitcher5 => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::ReliefPitcher1 => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::ReliefPitcher2 => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::ReliefPitcher3 => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::Closer => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::StartingPitcher => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::ReliefPitcher => Ok(TaxaFielderLocation::Pitcher),
+            TaxaSlot::Pitcher => Ok(TaxaFielderLocation::Pitcher),
+        }
+    }
+}
+
 taxa! {
     #[
         schema = crate::taxa_schema::taxa::fair_ball_type,
@@ -1404,7 +1434,7 @@ impl Taxa {
         self.event_type_mapping[ty]
     }
 
-    pub fn fielder_location(&self, ty: TaxaFielderLocation) -> i64 {
+    pub fn fielder_location_id(&self, ty: TaxaFielderLocation) -> i64 {
         self.fielder_location_mapping[ty]
     }
 

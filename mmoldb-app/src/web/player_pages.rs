@@ -8,6 +8,7 @@ use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType, TaxaEventType};
 use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
+use bigdecimal::{BigDecimal, ToPrimitive};
 
 #[derive(Serialize)]
 pub struct PlayerContext<'r, 't> {
@@ -20,6 +21,7 @@ pub struct PlayerContext<'r, 't> {
     likes: &'r str,
     dislikes: &'r str,
     durability: f64,
+    slot: Option<&'r str>,
 }
 
 impl<'r, 't> PlayerContext<'r, 't> {
@@ -63,6 +65,7 @@ impl<'r, 't> PlayerContext<'r, 't> {
             likes: &raw.likes,
             dislikes: &raw.dislikes,
             durability: raw.durability,
+            slot: raw.slot.map(|id| taxa.slot_from_id(id).as_insertable().display_name),
         }
     }
 }
@@ -70,7 +73,10 @@ impl<'r, 't> PlayerContext<'r, 't> {
 // TODO Add `at` support, which requires figuring out chrono deserialize from rocket
 #[get("/player/<player_id>")]
 pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Template, AppError> {
-    let (player_raw, pitches, batting_outcomes, fielding_outcomes) = db.run(move |conn| db::player_all(conn, &player_id)).await?;
+    let taxa_for_db = (*taxa).clone();
+    let (player_raw, pitches, batting_outcomes, fielding_outcomes) = db.run(move |conn|
+        db::player_all(conn, &player_id, &taxa_for_db)
+    ).await?;
 
     let raw_clone = player_raw.clone();
     let player = PlayerContext::from_db(&player_raw, &taxa);
@@ -149,40 +155,50 @@ pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Tem
     let batting_outcomes = batting_outcomes
         .unwrap_or(Vec::new())
         .into_iter()
-        .filter_map(|(et_id, count)| {
+        .filter_map(|(et_id, all_count, player_count)| {
+            let player_count = player_count.map_or(0, |count| count.to_i64().unwrap());
             let et = taxa.event_type_from_id(et_id);
             if let Some(et) = et {
                 let et_info = et.as_insertable();
                 if !et_info.ends_plate_appearance {
                     return None;
                 }
-                Some((et_info.display_name, count))
+                Some((et_info.display_name, all_count, player_count))
             } else {
-                Some(("Unrecognized event type", count))
+                Some(("Unrecognized event type", all_count, player_count))
             }
         })
         .collect_vec();
     let total_batting_outcomes = batting_outcomes
         .iter()
-        .map(|(_, count)| *count)
+        .map(|(_, _, count)| *count)
+        .sum::<i64>();
+    let total_batting_outcomes_all = batting_outcomes
+        .iter()
+        .map(|(_, count_all, _)| *count_all)
         .sum::<i64>();
 
     let fielding_outcomes = fielding_outcomes
         .unwrap_or(Vec::new())
         .into_iter()
-        .map(|(et_id, count)| {
+        .map(|(et_id, all_count, player_count)| {
+            let player_count = player_count.map_or(0, |count| count.to_i64().unwrap());
             let et = taxa.event_type_from_id(et_id);
             if let Some(et) = et {
                 let et_info = et.as_insertable();
-                (et_info.display_name, count)
+                (et_info.display_name, all_count, player_count)
             } else {
-                ("Unrecognized event type", count)
+                ("Unrecognized event type", all_count, player_count)
             }
         })
         .collect_vec();
     let total_fielding_outcomes = fielding_outcomes
         .iter()
-        .map(|(_, count)| *count)
+        .map(|(_, _, count)| *count)
+        .sum::<i64>();
+    let total_fielding_outcomes_all = fielding_outcomes
+        .iter()
+        .map(|(_, count_all, _)| *count_all)
         .sum::<i64>();
 
     Ok(Template::render(
@@ -197,8 +213,10 @@ pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Tem
             unexpected_non_pitch_events,
             pitch_types,
             total_batting_outcomes,
+            total_batting_outcomes_all,
             batting_outcomes,
             total_fielding_outcomes,
+            total_fielding_outcomes_all,
             fielding_outcomes,
         },
     ))
