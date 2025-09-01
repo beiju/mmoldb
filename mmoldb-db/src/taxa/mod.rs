@@ -386,6 +386,44 @@ impl From<mmolb_parsing::enums::FairBallDestination> for TaxaFielderLocation {
     }
 }
 
+impl Into<mmolb_parsing::enums::Place> for TaxaFielderLocation {
+    fn into(self) -> mmolb_parsing::enums::Place {
+        match self {
+            TaxaFielderLocation::Pitcher => mmolb_parsing::enums::Place::Pitcher,
+            TaxaFielderLocation::Catcher => mmolb_parsing::enums::Place::Catcher,
+            TaxaFielderLocation::FirstBase => mmolb_parsing::enums::Place::FirstBaseman,
+            TaxaFielderLocation::SecondBase => mmolb_parsing::enums::Place::SecondBaseman,
+            TaxaFielderLocation::ThirdBase => mmolb_parsing::enums::Place::ThirdBaseman,
+            TaxaFielderLocation::Shortstop => mmolb_parsing::enums::Place::ShortStop,
+            TaxaFielderLocation::LeftField => mmolb_parsing::enums::Place::LeftField,
+            TaxaFielderLocation::CenterField => mmolb_parsing::enums::Place::CenterField,
+            TaxaFielderLocation::RightField => mmolb_parsing::enums::Place::RightField,
+        }
+    }
+}
+
+impl TryFrom<mmolb_parsing::enums::Place> for TaxaFielderLocation {
+    type Error = ();
+
+    fn try_from(value: mmolb_parsing::enums::Place) -> Result<Self, Self::Error> {
+        match value {
+            mmolb_parsing::enums::Place::Pitcher => Ok(TaxaFielderLocation::Pitcher),
+            mmolb_parsing::enums::Place::Catcher => Ok(TaxaFielderLocation::Catcher),
+            mmolb_parsing::enums::Place::FirstBaseman => Ok(TaxaFielderLocation::FirstBase),
+            mmolb_parsing::enums::Place::SecondBaseman => Ok(TaxaFielderLocation::SecondBase),
+            mmolb_parsing::enums::Place::ThirdBaseman => Ok(TaxaFielderLocation::ThirdBase),
+            mmolb_parsing::enums::Place::ShortStop => Ok(TaxaFielderLocation::Shortstop),
+            mmolb_parsing::enums::Place::LeftField => Ok(TaxaFielderLocation::LeftField),
+            mmolb_parsing::enums::Place::CenterField => Ok(TaxaFielderLocation::CenterField),
+            mmolb_parsing::enums::Place::RightField => Ok(TaxaFielderLocation::RightField),
+            mmolb_parsing::enums::Place::StartingPitcher(_) => Ok(TaxaFielderLocation::Pitcher),
+            mmolb_parsing::enums::Place::ReliefPitcher(_) => Ok(TaxaFielderLocation::Pitcher),
+            mmolb_parsing::enums::Place::Closer => Ok(TaxaFielderLocation::Pitcher),
+            mmolb_parsing::enums::Place::DesignatedHitter => Err(())
+        }
+    }
+}
+
 taxa! {
     #[
         schema = crate::taxa_schema::taxa::slot,

@@ -58,6 +58,7 @@ pub struct EventDetail<StrT: Clone> {
     pub hit_base: Option<TaxaBase>,
     pub fair_ball_type: Option<TaxaFairBallType>,
     pub fair_ball_direction: Option<TaxaFielderLocation>,
+    pub fair_ball_fielder_name: Option<StrT>,
     pub fielding_error_type: Option<TaxaFieldingErrorType>,
     pub pitch_type: Option<TaxaPitchType>,
     pub pitch_speed: Option<f64>,

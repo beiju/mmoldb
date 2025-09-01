@@ -31,8 +31,8 @@
             {% if unexpected_non_pitch_events > 0 %}
             <br />{{ unexpected_non_pitch_events }} unexplained non-pitch events
             {% endif %}
-            <br />Pitch types:
             {% if pitch_types %}
+            <br />Pitch types:
                 <ul>
                     {% for pitch_type in pitch_types %}
                         <li>
@@ -45,6 +45,30 @@
                                     {{ pitch_type[1] | round(precision=1) }}&ndash;{{ pitch_type[2] | round(precision=1) }} MPH
                                 {% endif %}
                             {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+            {% if batting_outcomes %}
+            <br />Batting outcomes:
+                <ul>
+                    {% for outcome in batting_outcomes %}
+                        <li>
+                            {{ outcome[0] }}:
+                            {{ outcome[1] }} / {{ total_batting_outcomes }}
+                            ({{ outcome[1] / total_batting_outcomes * 100 | round(precision=1) }}%)
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+            {% if fielding_outcomes %}
+            <br />Fielding outcomes:
+                <ul>
+                    {% for outcome in fielding_outcomes %}
+                        <li>
+                            {{ outcome[0] }}:
+                            {{ outcome[1] }} / {{ total_fielding_outcomes }}
+                            ({{ outcome[1] / total_fielding_outcomes * 100 | round(precision=1) }}%)
                         </li>
                     {% endfor %}
                 </ul>

@@ -280,11 +280,21 @@ pub struct TeamInGame<'g> {
     // errors.
     active_pitcher: BestEffortSlottedPlayer<&'g str>,
     batter_stats: HashMap<&'g str, BatterStats>,
+    fielder_locations: HashMap<TaxaFielderLocation, &'g str>,
     pitcher_count: i32,
     batter_count: i32,
     batter_subcount: i32,
     advance_to_next_batter: bool,
     has_seen_first_batter: bool,
+}
+
+impl<'g> TeamInGame<'g> {
+    pub fn fielder_at(&self, loc: TaxaFielderLocation) -> Option<&'g str> {
+        match loc {
+            TaxaFielderLocation::Pitcher => Some(self.active_pitcher.name),
+            other => self.fielder_locations.get(&other).map(|v| *v)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -497,6 +507,7 @@ struct EventDetailBuilder<'g> {
     pitcher: BestEffortSlottedPlayer<&'g str>,
     fair_ball_type: Option<TaxaFairBallType>,
     fair_ball_direction: Option<TaxaFielderLocation>,
+    fair_ball_fielder_name: Option<&'g str>,
     hit_base: Option<TaxaBase>,
     fielding_error_type: Option<TaxaFieldingErrorType>,
     pitch: Option<Pitch>,
@@ -516,11 +527,13 @@ struct EventDetailBuilder<'g> {
 }
 
 impl<'g> EventDetailBuilder<'g> {
-    fn fair_ball(mut self, fair_ball: FairBall<'g>) -> Self {
+    fn fair_ball(mut self, fair_ball: FairBall<'g>, team: &TeamInGame<'g>) -> Self {
         self = self.pitch(fair_ball.pitch);
         self.fair_ball_event_index = Some(fair_ball.game_event_index);
         self.fair_ball_type = Some(fair_ball.fair_ball_type.into());
-        self.fair_ball_direction = Some(fair_ball.fair_ball_destination.into());
+        let fielder_location = fair_ball.fair_ball_destination.into();
+        self.fair_ball_direction = Some(fielder_location);
+        self.fair_ball_fielder_name = team.fielder_at(fielder_location);
         // Cheer and aurora photos can't happen on a FairBallOutcome,
         // so it's ok to use the same fields
         self = self.cheer(fair_ball.cheer);
@@ -1008,6 +1021,7 @@ impl<'g> EventDetailBuilder<'g> {
             hit_base: self.hit_base,
             fair_ball_type: self.fair_ball_type,
             fair_ball_direction: self.fair_ball_direction,
+            fair_ball_fielder_name: self.fair_ball_fielder_name,
             fielding_error_type: self.fielding_error_type,
             pitch_type: self.pitch.map(|pitch| pitch.pitch_type.into()),
             pitch_speed: self.pitch.map(|pitch| pitch.pitch_speed as f64),
@@ -1052,6 +1066,58 @@ pub enum EventForTable<StrT: Clone> {
     EventDetail(EventDetail<StrT>),
     PitcherChange(PitcherChange<StrT>),
     Party(PartyEvent<StrT>),
+}
+
+fn map_fielder_location(place: Place) -> Option<TaxaFielderLocation> {
+    match place {
+        Place::Pitcher => { None }
+        Place::Catcher => { Some(TaxaFielderLocation::Catcher) }
+        Place::FirstBaseman => { Some(TaxaFielderLocation::FirstBase) }
+        Place::SecondBaseman => { Some(TaxaFielderLocation::SecondBase) }
+        Place::ThirdBaseman => { Some(TaxaFielderLocation::ThirdBase) }
+        Place::ShortStop => { Some(TaxaFielderLocation::Shortstop) }
+        Place::LeftField => { Some(TaxaFielderLocation::LeftField) }
+        Place::CenterField => { Some(TaxaFielderLocation::CenterField) }
+        Place::RightField => { Some(TaxaFielderLocation::RightField) }
+        Place::StartingPitcher(_) => { None }
+        Place::ReliefPitcher(_) => { None }
+        Place::Closer => { None }
+        Place::DesignatedHitter => { None }
+    }
+}
+
+
+// Returns true if the second Place is a possibly-more-general version than the first.
+// Note this will _not_ return true if the first is more general than the second.
+fn place_is_compatible(canonical_place: Place, test_place: Place) -> bool {
+    if canonical_place == test_place {
+        return true;
+    }
+
+    match test_place {
+        Place::Pitcher => match canonical_place {
+            Place::StartingPitcher(_) |
+            Place::ReliefPitcher(_) |
+            Place::Closer => true,
+            _ => false,
+        }
+        Place::StartingPitcher(_) => match canonical_place {
+            Place::StartingPitcher(_) => true,
+            _ => false,
+        }
+        Place::ReliefPitcher(_) => match canonical_place {
+            Place::ReliefPitcher(_) => true,
+            _ => false,
+        }
+
+        Place::Closer => match canonical_place {
+            Place::Closer => true,
+            _ => false,
+        }
+        // Any other match should be covered by the equality check, so if we
+        // got this far it's false
+        _ => false,
+    }
 }
 
 impl<'g> Game<'g> {
@@ -1188,6 +1254,10 @@ impl<'g> Game<'g> {
             .iter()
             .map(|player| (player.name, BatterStats::new()))
             .collect();
+        let away_fielder_locations = away_lineup
+            .iter()
+            .filter_map(|player| map_fielder_location(player.place).map(|loc| (loc, player.name)))
+            .collect();
 
         game_event_index += 1;
         let home_lineup = extract_next_game_event!(
@@ -1206,6 +1276,10 @@ impl<'g> Game<'g> {
         let home_batter_stats = home_lineup
             .iter()
             .map(|player| (player.name, BatterStats::new()))
+            .collect();
+        let home_fielder_locations = home_lineup
+            .iter()
+            .filter_map(|player| map_fielder_location(player.place).map(|loc| (loc, player.name)))
             .collect();
 
         #[allow(unused)] // I want this to still be correct if I have to add more startup events
@@ -1251,6 +1325,7 @@ impl<'g> Game<'g> {
                     })?,
                 },
                 batter_stats: away_batter_stats,
+                fielder_locations: away_fielder_locations,
                 pitcher_count: 0,
                 batter_count: 0,
                 batter_subcount: 0,
@@ -1268,6 +1343,7 @@ impl<'g> Game<'g> {
                     })?,
                 },
                 batter_stats: home_batter_stats,
+                fielder_locations: home_fielder_locations,
                 pitcher_count: 0,
                 batter_count: 0,
                 batter_subcount: 0,
@@ -1291,6 +1367,7 @@ impl<'g> Game<'g> {
         };
         Ok((game, ingest_logs))
     }
+
 
     pub fn automatic_runner_rule_is_active(&self) -> bool {
         let day_threshold = if self.season == 0 {
@@ -1439,6 +1516,116 @@ impl<'g> Game<'g> {
         }
     }
 
+    fn check_fielder(
+        &self,
+        fair_ball_from_previous_event: &FairBall,
+        fielders: &Vec<PlacedPlayer<&str>>,
+        event_type: ParsedEventMessageDiscriminants,
+        ingest_logs: &mut IngestLogs,
+    ) {
+        if let Some(fielder) = fielders.first() {
+            self.check_placed_fielder(fair_ball_from_previous_event, fielder, ingest_logs);
+        } else {
+            ingest_logs.warn(format!(
+                "Expected at least one fielder in {event_type} event",
+            ))
+        }
+    }
+
+    fn check_placed_fielder(
+        &self,
+        fair_ball_from_previous_event: &FairBall,
+        fielder: &PlacedPlayer<&str>,
+        ingest_logs: &mut IngestLogs,
+    ) {
+        let mut warn = |mut message| {
+            if self.season == 0 {
+                message += "\n\nThis warning is downgraded to info for Season 0 because mid-game \
+                    augments often cause fielder errors.";
+                ingest_logs.info(message);
+            } else {
+                ingest_logs.warn(message)
+            }
+        };
+
+        let loc = fair_ball_from_previous_event.fair_ball_destination.into();
+        let expected_fielder = self.defending_team().fielder_at(loc);
+        if let Some(expected_fielder) = expected_fielder {
+            if expected_fielder != fielder.name {
+                warn(format!(
+                    "Unexpected fielder name: Expected {}, but saw {}",
+                    expected_fielder, fielder.name,
+                ));
+            } else if loc == TaxaFielderLocation::Pitcher {
+                // This error is technically separate from the name one, but if the names
+                // mismatch it's not useful to know that this mismatches too
+                let pitcher_slot = self.defending_team().active_pitcher.slot;
+                if !(
+                    place_is_compatible(pitcher_slot.into(), fielder.place) ||
+                    // Some ways of getting a pitcher (I think just pre-s3 ones) just
+                    // identify the pitcher as P, so we have to allow that too
+                    // TODO Remove this, and instead update the stored pitcher slot
+                    //   with the additional specificity (or just do player IDs and
+                    //   get it that way)
+                    pitcher_slot == BestEffortSlot::GenericPitcher ||
+                    // Sometimes (possibly just in historical games), the pitcher is
+                    // identified as "P" when acting as a fielder. Most of the time this
+                    // is accepted by the place_is_compatible call, but not when a
+                    // position player is pitching.
+                    fielder.place == Place::Pitcher
+                ) {
+                    warn(format!(
+                        "Expected ball hit to {} to be fielded by {} (the current pitcher), \
+                        but it was fielded by {}.",
+                        fair_ball_from_previous_event.fair_ball_destination,
+                        pitcher_slot,
+                        fielder.place,
+                    ));
+                }
+            } else if Ok(loc) != fielder.place.try_into() {
+                // This error also is technically separate from the name one, etc. etc.
+                warn(format!(
+                    "Expected ball hit to {} to be fielded by {}, but it was fielded by {}",
+                    fair_ball_from_previous_event.fair_ball_destination,
+                    loc,
+                    fielder.place,
+                ));
+            }
+        } else {
+            warn(format!("Couldn't get fielder at {loc}"))
+        }
+    }
+
+    fn check_named_fielder(
+        &self,
+        fair_ball_from_previous_event: &FairBall,
+        fielder_name: &str,
+        ingest_logs: &mut IngestLogs,
+    ) {
+        let mut warn = |mut message| {
+            if self.season == 0 {
+                message += " This warning is downgraded to info for Season 0 because mid-game \
+                    augments often cause fielder errors.";
+                ingest_logs.info(message);
+            } else {
+                ingest_logs.warn(message)
+            }
+        };
+
+        let loc = fair_ball_from_previous_event.fair_ball_destination.into();
+        let expected_fielder = self.defending_team().fielder_at(loc);
+        if let Some(expected_fielder) = expected_fielder {
+            if expected_fielder != fielder_name {
+                warn(format!(
+                    "Unexpected fielder name: Expected {}, but saw {}",
+                    expected_fielder, fielder_name,
+                ));
+            }
+        } else {
+            warn(format!("Couldn't get fielder at {loc}"))
+        }
+    }
+
     fn detail_builder(
         &self,
         prev_game_state: GameState<'g>,
@@ -1456,6 +1643,7 @@ impl<'g> Game<'g> {
             hit_base: None,
             fair_ball_type: None,
             fair_ball_direction: None,
+            fair_ball_fielder_name: None,
             fielding_error_type: None,
             pitch: None,
             described_as_sacrifice: None,
@@ -1981,12 +2169,7 @@ impl<'g> Game<'g> {
     ) {
         if let Some(ejection) = ejection {
             Game::handle_ejection_for_team(self.defending_team_mut(), ejection, ingest_logs);
-            // The batting team's pitcher could get ejected too
             Game::handle_ejection_for_team(self.batting_team_mut(), ejection, ingest_logs);
-            // Ejections always happen at the end of a PA (I think) so no
-            // need to do anything about batter swaps. They also don't
-            // affect the runner -- an ejected player gets to stay on the
-            // bases until they get out/home/stranded.
         }
     }
 
@@ -1996,34 +2179,75 @@ impl<'g> Game<'g> {
         ingest_logs: &mut IngestLogs,
     ) {
         if team.team_emoji == ejection.team.emoji &&
-                team.team_name == ejection.team.name &&
-                team.active_pitcher.name == ejection.ejected_player.name &&
+                team.team_name == ejection.team.name {
+            if team.active_pitcher.name == ejection.ejected_player.name &&
                 // I checked that the slots do match for all true ejections, even
                 // down to e.g. SP vs SP5
                 team.active_pitcher.slot == ejection.ejected_player.place.into()
-        {
-            // Assume the active pitcher was replaced
-            ingest_logs.info(format!(
-                "A player who matches the active pitcher's team, name, and slot was ejected. \
-                Assuming it was the active pitcher and replacing {} {}'s {} with {}.",
-                team.team_emoji,
-                team.team_name,
-                team.active_pitcher,
-                match ejection.replacement {
-                    EjectionReplacement::BenchPlayer { player_name } => {
-                        format!("bench player {}", player_name)
+            {
+                // Assume the active pitcher was replaced
+                ingest_logs.info(format!(
+                    "A player who matches the active pitcher's team, name, and slot was ejected. \
+                    Assuming it was the active pitcher and replacing {} {}'s {} with {}.",
+                    team.team_emoji,
+                    team.team_name,
+                    team.active_pitcher,
+                    match ejection.replacement {
+                        EjectionReplacement::BenchPlayer { player_name } => {
+                            format!("bench player {}", player_name)
+                        }
+                        EjectionReplacement::RosterPlayer { player } => player.to_string(),
                     }
-                    EjectionReplacement::RosterPlayer { player } => player.to_string(),
-                }
-            ));
+                ));
 
-            match &ejection.replacement {
-                EjectionReplacement::BenchPlayer { player_name } => {
-                    // Assuming for now that the bench player always assumes the same slot
-                    team.active_pitcher.name = player_name;
+                match &ejection.replacement {
+                    EjectionReplacement::BenchPlayer { player_name } => {
+                        // Assuming for now that the bench player always assumes the same slot
+                        team.active_pitcher.name = player_name;
+                    }
+                    EjectionReplacement::RosterPlayer { player } => {
+                        team.active_pitcher = (*player).into();
+                    }
                 }
-                EjectionReplacement::RosterPlayer { player } => {
-                    team.active_pitcher = (*player).into();
+            }
+            // We need to allow the pitcher and fielder to be replaced in the same event:
+            // https://mmolb.com/watch/68aa0ff1f2bc4821eed4aa29?event=447
+            let maybe_loc = match ejection.ejected_player.place {
+                Place::Pitcher => None,
+                Place::Catcher => Some(TaxaFielderLocation::Catcher),
+                Place::FirstBaseman => Some(TaxaFielderLocation::FirstBase),
+                Place::SecondBaseman => Some(TaxaFielderLocation::SecondBase),
+                Place::ThirdBaseman => Some(TaxaFielderLocation::ThirdBase),
+                Place::ShortStop => Some(TaxaFielderLocation::Shortstop),
+                Place::LeftField => Some(TaxaFielderLocation::LeftField),
+                Place::CenterField => Some(TaxaFielderLocation::CenterField),
+                Place::RightField => Some(TaxaFielderLocation::RightField),
+                Place::StartingPitcher(_) => None,
+                Place::ReliefPitcher(_) => None,
+                Place::Closer => None,
+                Place::DesignatedHitter => None,
+            };
+            if let Some(loc) = maybe_loc {
+                if let Some(old_name) = team.fielder_locations.get_mut(&loc) {
+                    if *old_name == ejection.ejected_player.name {
+                        ingest_logs.info(format!(
+                            "A player who matches the active {}'s team, name, and slot was \
+                            ejected. Assuming it was the active {} and replacing {} {}'s {} \
+                            with {}.",
+                            loc,
+                            loc,
+                            team.team_emoji,
+                            team.team_name,
+                            loc,
+                            match ejection.replacement {
+                                EjectionReplacement::BenchPlayer { player_name } => {
+                                    format!("bench player {}", player_name)
+                                }
+                                EjectionReplacement::RosterPlayer { player } => player.to_string(),
+                            }
+                        ));
+                        *old_name = ejection.replacement.player_name();
+                    }
                 }
             }
         }
@@ -2516,7 +2740,7 @@ impl<'g> Game<'g> {
                     if self.batter_stats(batter).is_none() {
                         ingest_logs.info(format!(
                             "Batter {batter} is new to this game. Assuming they were swapped in \
-                            using a mote.",
+                            by an augment.",
                         ));
                     }
 
@@ -2553,6 +2777,7 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::CaughtOut { batter, fair_ball_type, caught_by, advances, scores, sacrifice, perfect, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
+                    self.check_placed_fielder(&fair_ball, caught_by, ingest_logs);
 
                     self.update_runners(
                         game_event_index,
@@ -2569,7 +2794,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .described_as_sacrifice(*sacrifice)
                         .is_toasty(*perfect)
@@ -2580,6 +2805,7 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::GroundedOut]
                 ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, amazing, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
+                    self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
 
                     self.update_runners(
                         game_event_index,
@@ -2596,7 +2822,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .is_toasty(*amazing)
                         .fielders(fielders.clone(), ingest_logs)?
@@ -2607,6 +2833,7 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::BatterToBase { batter, distance, fair_ball_type, fielder, advances, scores, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
+                    self.check_placed_fielder(&fair_ball, fielder, ingest_logs);
 
                     self.update_runners(
                         game_event_index,
@@ -2624,7 +2851,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .hit_base((*distance).into())
                         .fielder(*fielder, ingest_logs)?
@@ -2635,6 +2862,7 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::ReachOnFieldingError]
                 ParsedEventMessage::ReachOnFieldingError { batter, fielder, error, scores, advances, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
+                    self.check_placed_fielder(&fair_ball, fielder, ingest_logs);
 
                     self.update_runners(
                         game_event_index,
@@ -2652,7 +2880,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .fielding_error_type((*error).into())
                         .fielder(*fielder, ingest_logs)?
@@ -2694,7 +2922,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .hit_base(TaxaBase::Home)
                         .runner_changes(Vec::new(), scores.clone())
@@ -2705,6 +2933,7 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::DoublePlayCaught { batter, advances, scores, out_two, fair_ball_type, fielders, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
+                    self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
 
                     self.update_runners(
                         game_event_index,
@@ -2722,7 +2951,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .runner_changes(advances.clone(), scores.clone())
                         .add_out(*out_two)
@@ -2732,6 +2961,7 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::DoublePlayGrounded]
                 ParsedEventMessage::DoublePlayGrounded { batter, advances, scores, out_one, out_two, fielders, sacrifice, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
+                    self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
 
                     self.update_runners(
                         game_event_index,
@@ -2750,7 +2980,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .described_as_sacrifice(*sacrifice)
                         .runner_changes(advances.clone(), scores.clone())
@@ -2763,6 +2993,7 @@ impl<'g> Game<'g> {
                 ParsedEventMessage::ForceOut { batter, out, fielders, scores, advances, fair_ball_type, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
+                    self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
 
                     self.update_runners(
                         game_event_index,
@@ -2782,7 +3013,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     let detail_builder = detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .runner_changes(advances.clone(), scores.clone())
                         .add_out(*out);
@@ -2805,6 +3036,7 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::ReachOnFieldersChoice]
                 ParsedEventMessage::ReachOnFieldersChoice { batter, fielders, result, scores, advances, ejection } => {
                     self.check_batter(batter_name, batter, ingest_logs);
+                    self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
 
                     match result {
                         FieldingAttempt::Out { out } => {
@@ -2826,7 +3058,7 @@ impl<'g> Game<'g> {
                             self.handle_ejection(ejection, ingest_logs);
 
                             detail_builder
-                                .fair_ball(fair_ball)
+                                .fair_ball(fair_ball, self.defending_team())
                                 .ejection(ejection.clone())
                                 .runner_changes(advances.clone(), scores.clone())
                                 .add_runner(batter, TaxaBase::First)
@@ -2835,6 +3067,7 @@ impl<'g> Game<'g> {
                                 .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
                         }
                         FieldingAttempt::Error { fielder, error } => {
+                            self.check_named_fielder(&fair_ball, fielder, ingest_logs);
                             self.update_runners(
                                 game_event_index,
                                 true,
@@ -2861,7 +3094,7 @@ impl<'g> Game<'g> {
                             self.handle_ejection(ejection, ingest_logs);
 
                             detail_builder
-                                .fair_ball(fair_ball)
+                                .fair_ball(fair_ball, self.defending_team())
                                 .ejection(ejection.clone())
                                 .runner_changes(advances.clone(), scores.clone())
                                 .add_runner(batter, TaxaBase::First)
@@ -2876,8 +3109,8 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::KnownBug]
                 ParsedEventMessage::KnownBug { bug: KnownBug::FirstBasemanChoosesAGhost { batter, first_baseman } } => {
                     self.check_batter(batter_name, batter, ingest_logs);
+                    self.check_named_fielder(&fair_ball, first_baseman, ingest_logs);
                     ingest_logs.debug("Known bug: FirstBasemanChoosesAGhost");
-
 
                     // This is a Weird Event:tm: that puts the batter on first and
                     // adds an out, even though no runner actually got out. It's only
@@ -2905,7 +3138,7 @@ impl<'g> Game<'g> {
                     }];
 
                     detail_builder
-                        .fair_ball(fair_ball)
+                        .fair_ball(fair_ball, self.defending_team())
                         .add_runner(batter, TaxaBase::First)
                         .fielders(fielders, ingest_logs)?
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)

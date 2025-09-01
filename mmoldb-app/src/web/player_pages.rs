@@ -70,7 +70,7 @@ impl<'r, 't> PlayerContext<'r, 't> {
 // TODO Add `at` support, which requires figuring out chrono deserialize from rocket
 #[get("/player/<player_id>")]
 pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Template, AppError> {
-    let (player_raw, pitches) = db.run(move |conn| db::player_all(conn, &player_id)).await?;
+    let (player_raw, pitches, batting_outcomes, fielding_outcomes) = db.run(move |conn| db::player_all(conn, &player_id)).await?;
 
     let raw_clone = player_raw.clone();
     let player = PlayerContext::from_db(&player_raw, &taxa);
@@ -146,6 +146,45 @@ pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Tem
             .collect_vec()
     });
 
+    let batting_outcomes = batting_outcomes
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .filter_map(|(et_id, count)| {
+            let et = taxa.event_type_from_id(et_id);
+            if let Some(et) = et {
+                let et_info = et.as_insertable();
+                if !et_info.ends_plate_appearance {
+                    return None;
+                }
+                Some((et_info.display_name, count))
+            } else {
+                Some(("Unrecognized event type", count))
+            }
+        })
+        .collect_vec();
+    let total_batting_outcomes = batting_outcomes
+        .iter()
+        .map(|(_, count)| *count)
+        .sum::<i64>();
+
+    let fielding_outcomes = fielding_outcomes
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .map(|(et_id, count)| {
+            let et = taxa.event_type_from_id(et_id);
+            if let Some(et) = et {
+                let et_info = et.as_insertable();
+                (et_info.display_name, count)
+            } else {
+                ("Unrecognized event type", count)
+            }
+        })
+        .collect_vec();
+    let total_fielding_outcomes = fielding_outcomes
+        .iter()
+        .map(|(_, count)| *count)
+        .sum::<i64>();
+
     Ok(Template::render(
         "player",
         context! {
@@ -157,6 +196,10 @@ pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Tem
             total_balks,
             unexpected_non_pitch_events,
             pitch_types,
+            total_batting_outcomes,
+            batting_outcomes,
+            total_fielding_outcomes,
+            fielding_outcomes,
         },
     ))
 }

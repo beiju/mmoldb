@@ -212,7 +212,7 @@ fn downgrade_place_to_match(
             game_event_index,
             format!(
                 "Not downgrading parsed Place at {log_loc} because the reconstructed player's name \
-            ({}) didn't match the original's ({})",
+                ({}) didn't match the original's ({})",
                 ours.name, original.name,
             ),
         );

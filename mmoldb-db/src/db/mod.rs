@@ -2248,7 +2248,12 @@ pub struct PitchTypeInfo {
 pub fn player_all(
     conn: &mut PgConnection,
     player_id: &str,
-) -> QueryResult<(DbPlayerVersion, Option<Vec<PitchTypeInfo>>)> {
+) -> QueryResult<(
+    DbPlayerVersion,
+    Option<Vec<PitchTypeInfo>>,
+    Option<Vec<(i64, i64)>>,
+    Option<Vec<(i64, i64)>>,
+)> {
     use crate::schema::data_schema::data::events::dsl as event_dsl;
     use crate::schema::data_schema::data::games::dsl as game_dsl;
     use crate::schema::data_schema::data::player_versions::dsl as pv_dsl;
@@ -2280,13 +2285,56 @@ pub fn player_all(
                 max(event_dsl::pitch_speed),
                 count(event_dsl::id),
             ));
-        println!("query: {}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
         Some(q.get_results::<PitchTypeInfo>(conn)?)
     } else {
         None
     };
 
-    Ok((player, pitches))
+    let batting_outcomes = if let Some(team_id) = &player.mmolb_team_id {
+        let outcomes = event_dsl::events
+            .inner_join(game_dsl::games)
+            .filter(
+                event_dsl::top_of_inning
+                    .and(game_dsl::away_team_mmolb_id.eq(team_id))
+                    .or(diesel::dsl::not(event_dsl::top_of_inning)
+                        .and(game_dsl::home_team_mmolb_id.eq(team_id))),
+            )
+            .filter(event_dsl::batter_name.eq(&full_name))
+            .group_by(event_dsl::event_type)
+            .order_by(count(event_dsl::id).desc())
+            .select((
+                event_dsl::event_type,
+                count(event_dsl::id),
+            ))
+            .get_results::<(i64, i64)>(conn)?;
+        Some(outcomes)
+    } else {
+        None
+    };
+
+    let fielding_outcomes = if let Some(team_id) = &player.mmolb_team_id {
+        let outcomes = event_dsl::events
+            .inner_join(game_dsl::games)
+            .filter(
+                event_dsl::top_of_inning
+                    .and(game_dsl::home_team_mmolb_id.eq(team_id))
+                    .or(diesel::dsl::not(event_dsl::top_of_inning)
+                        .and(game_dsl::away_team_mmolb_id.eq(team_id))),
+            )
+            .filter(event_dsl::fair_ball_fielder_name.eq(&full_name))
+            .group_by(event_dsl::event_type)
+            .order_by(count(event_dsl::id).desc())
+            .select((
+                event_dsl::event_type,
+                count(event_dsl::id),
+            ))
+            .get_results::<(i64, i64)>(conn)?;
+        Some(outcomes)
+    } else {
+        None
+    };
+
+    Ok((player, pitches, batting_outcomes, fielding_outcomes))
 }
 
 type NewTeamVersionExt<'a> = (

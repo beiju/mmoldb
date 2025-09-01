@@ -70,6 +70,46 @@ impl From<Place> for BestEffortSlot {
     }
 }
 
+impl Into<Place> for BestEffortSlot {
+    fn into(self) -> Place {
+        match self {
+            BestEffortSlot::Slot(s) => {
+                match s {
+                    Slot::Catcher => Place::Catcher,
+                    Slot::FirstBaseman => Place::FirstBaseman,
+                    Slot::SecondBaseman => Place::SecondBaseman,
+                    Slot::ThirdBaseman => Place::ThirdBaseman,
+                    Slot::ShortStop => Place::ShortStop,
+                    Slot::LeftField => Place::LeftField,
+                    Slot::CenterField => Place::CenterField,
+                    Slot::RightField => Place::RightField,
+                    Slot::StartingPitcher(n) => Place::StartingPitcher(Some(n)),
+                    Slot::ReliefPitcher(n) => Place::ReliefPitcher(Some(n)),
+                    Slot::Closer => Place::Closer,
+                    Slot::DesignatedHitter => Place::DesignatedHitter,
+                }
+            }
+            BestEffortSlot::SlotType(t) => {
+                match t {
+                    SlotDiscriminants::Catcher => Place::Catcher,
+                    SlotDiscriminants::FirstBaseman => Place::FirstBaseman,
+                    SlotDiscriminants::SecondBaseman => Place::SecondBaseman,
+                    SlotDiscriminants::ThirdBaseman => Place::ThirdBaseman,
+                    SlotDiscriminants::ShortStop => Place::ShortStop,
+                    SlotDiscriminants::LeftField => Place::LeftField,
+                    SlotDiscriminants::CenterField => Place::CenterField,
+                    SlotDiscriminants::RightField => Place::RightField,
+                    SlotDiscriminants::StartingPitcher => Place::StartingPitcher(None),
+                    SlotDiscriminants::ReliefPitcher => Place::ReliefPitcher(None),
+                    SlotDiscriminants::Closer => Place::Closer,
+                    SlotDiscriminants::DesignatedHitter => Place::DesignatedHitter,
+                }
+            }
+            BestEffortSlot::GenericPitcher => Place::Pitcher,
+        }
+    }
+}
+
 impl FromStr for BestEffortSlot {
     type Err = <Slot as FromStr>::Err;
 

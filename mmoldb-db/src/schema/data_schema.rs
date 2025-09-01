@@ -119,6 +119,7 @@ pub mod data {
             errors_before -> Int4,
             errors_after -> Int4,
             cheer -> Nullable<Text>,
+            fair_ball_fielder_name -> Nullable<Text>,
         }
     }
 
