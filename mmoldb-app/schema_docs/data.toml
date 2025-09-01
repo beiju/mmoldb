@@ -454,6 +454,21 @@ nullable_explanation = """
 """
 
 [[table.column]]
+name = "fair_ball_fielder_name"
+type = "text"
+description = """
+If this event is a fair ball, the name of the fielder that ball was
+heading towards.
+
+This is inferred by cross-referencing fair_ball_direction with the team's
+current lineup. If the lineup changes during the game in a way we can't detect,
+such as an augment firing during the game, this may be incorrect.
+"""
+nullable_explanation = """
+`null` if this event is not a fair ball.
+"""
+
+[[table.column]]
 name = "fielding_error_type"
 type = "bigint"
 description = """

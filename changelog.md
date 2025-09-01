@@ -8,6 +8,13 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+2025-09-01
+----------
+- Add `fair_ball_fielder_name` to `data.events`
+- Add more info to the player pages. This also makes them load very slowly, 
+  for now. I have ideas on how to speed this up.
+- Add season filtering to the player page. Append `?season=`season to the URL.
+
 2025-08-30
 ----------
 - Home run challenge games no longer show as errors (they still aren't 
