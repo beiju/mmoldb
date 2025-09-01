@@ -71,11 +71,11 @@ impl<'r, 't> PlayerContext<'r, 't> {
 }
 
 // TODO Add `at` support, which requires figuring out chrono deserialize from rocket
-#[get("/player/<player_id>")]
-pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Template, AppError> {
+#[get("/player/<player_id>?<season>")]
+pub async fn player(player_id: String, season: Option<i32>, db: Db, taxa: &State<Taxa>) -> Result<Template, AppError> {
     let taxa_for_db = (*taxa).clone();
     let (player_raw, pitches, batting_outcomes, fielding_outcomes) = db.run(move |conn|
-        db::player_all(conn, &player_id, &taxa_for_db)
+        db::player_all(conn, &player_id, &taxa_for_db, season)
     ).await?;
 
     let raw_clone = player_raw.clone();
@@ -205,6 +205,7 @@ pub async fn player(player_id: String, db: Db, taxa: &State<Taxa>) -> Result<Tem
         "player",
         context! {
             index_url: uri!(index_page()),
+            season,
             player,
             player_raw: raw_clone,
             total_events,
