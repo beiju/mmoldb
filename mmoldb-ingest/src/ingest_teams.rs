@@ -9,7 +9,7 @@ use mmolb_parsing::{AddedLater, NotRecognized, team::TeamPlayerCollection, Maybe
 use mmolb_parsing::enums::Slot;
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{BestEffortSlot, PgConnection, db, IngestLog};
+use mmoldb_db::{BestEffortSlot, PgConnection, db};
 use rayon::prelude::*;
 use tokio_util::sync::CancellationToken;
 

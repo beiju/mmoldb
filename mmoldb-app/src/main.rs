@@ -8,11 +8,16 @@ use rocket::figment::map;
 use rocket::{Build, Rocket, figment, launch};
 use rocket_dyn_templates::Template;
 use rocket_dyn_templates::tera::Value;
-use rocket_sync_db_pools::database;
+use rocket_db_pools::{Database, deadpool_redis};
+use rocket_sync_db_pools::database as sync_database;
 use rocket_sync_db_pools::diesel::{PgConnection, prelude::*};
 use std::collections::HashMap;
 
-#[database("mmoldb")]
+#[derive(Database)]
+#[database("stats-cache")]
+struct StatsCache(deadpool_redis::Pool);
+
+#[sync_database("mmoldb")]
 struct Db(PgConnection);
 
 struct NumFormat;
@@ -76,6 +81,7 @@ fn rocket() -> _ {
             engines.tera.register_filter("num_format", NumFormat);
         }))
         .attach(Db::fairing())
+        .attach(StatsCache::init())
         .attach(AdHoc::on_ignite("Migrations", run_migrations))
 }
 

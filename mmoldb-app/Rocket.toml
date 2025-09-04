@@ -80,3 +80,6 @@ url = "NOTE: This URL will be overridden by one computed from postgres' environm
 # See note on pool_size under [default.databases.mmoldb]
 pool_size = 50
 timeout = 5
+
+[default.databases.stats-cache]
+url = "redis://127.0.0.1"

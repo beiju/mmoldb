@@ -1,5 +1,5 @@
 use super::pages::*;
-use crate::Db;
+use crate::{Db, StatsCache};
 use crate::web::error::AppError;
 use itertools::Itertools;
 use mmoldb_db::db;
@@ -8,7 +8,11 @@ use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType, TaxaEventType};
 use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
-use bigdecimal::{BigDecimal, ToPrimitive};
+use std::collections::HashMap;
+use log::error;
+use rocket_db_pools::Connection;
+use rocket_db_pools::deadpool_redis::redis::AsyncCommands;
+use mmoldb_db::db::Outcome;
 
 #[derive(Serialize)]
 pub struct PlayerContext<'r, 't> {
@@ -70,22 +74,92 @@ impl<'r, 't> PlayerContext<'r, 't> {
     }
 }
 
+#[derive(Serialize)]
+struct OutcomeStats {
+    outcome: &'static str,
+    player_count: i64,
+    everyone_count: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct OutcomesSummary {
+    outcomes: Vec<OutcomeStats>,
+    player_total: i64,
+    everyone_total: i64,
+}
+
+fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa) -> OutcomesSummary {
+    let outcomes = outcomes
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .filter_map(|outcome| {
+            let et = taxa.event_type_from_id(outcome.event_type);
+            if let Some(et) = et {
+                let et_info = et.as_insertable();
+                if !et_info.ends_plate_appearance {
+                    return None;
+                }
+                Some(OutcomeStats {
+                    outcome: et_info.display_name,
+                    player_count: outcome.count,
+                    everyone_count: None,
+                })
+            } else {
+                Some(OutcomeStats {
+                    outcome: "Unrecognized event type",
+                    player_count: outcome.count,
+                    everyone_count: None,
+                })
+            }
+        })
+        .collect_vec();
+    let player_total = outcomes
+        .iter()
+        .map(|stats| stats.player_count)
+        .sum();
+    let everyone_total = outcomes
+        .iter()
+        .filter_map(|stats| stats.everyone_count)
+        .sum();
+
+    OutcomesSummary {
+        outcomes,
+        player_total,
+        everyone_total,
+    }
+}
+
+type SeasonStats = HashMap<String, i64>;
+type Stats = HashMap<Option<i64>, SeasonStats>;
+
 // TODO Add `at` support, which requires figuring out chrono deserialize from rocket
 #[get("/player/<player_id>?<season>")]
-pub async fn player(player_id: String, season: Option<i32>, db: Db, taxa: &State<Taxa>) -> Result<Template, AppError> {
+pub async fn player(
+    player_id: String,
+    season: Option<i32>,
+    db: Db,
+    // mut stats_cache: Connection<StatsCache>,
+    taxa: &State<Taxa>,
+) -> Result<Template, AppError> {
     let taxa_for_db = (*taxa).clone();
-    let (player_raw, pitches, batting_outcomes, fielding_outcomes) = db.run(move |conn|
+    let player_all = db.run(move |conn|
         db::player_all(conn, &player_id, &taxa_for_db, season)
     ).await?;
 
-    let raw_clone = player_raw.clone();
-    let player = PlayerContext::from_db(&player_raw, &taxa);
+    // let combo_stats: Option<Stats> = stats_cache.get("breakdowns").await
+    //     .map_err(|err| {
+    //         error!("Failed to get breakdowns: {}", err);
+    //     })
+    //     .ok();
 
-    let total_events = pitches
+    let raw_clone = player_all.player.clone();
+    let player = PlayerContext::from_db(&raw_clone, &taxa);
+
+    let total_events = player_all.pitch_types
         .as_ref()
         .map(|pitches| pitches.iter().map(|info| info.count).sum::<i64>());
 
-    let total_pitches = pitches.as_ref().map(|pitches| {
+    let total_pitches = player_all.pitch_types.as_ref().map(|pitches| {
         pitches
             .iter()
             .map(|info| {
@@ -99,7 +173,7 @@ pub async fn player(player_id: String, season: Option<i32>, db: Db, taxa: &State
     });
 
     let balk_id = taxa.event_type_id(TaxaEventType::Balk);
-    let total_balks = pitches.as_ref().map(|pitches| {
+    let total_balks = player_all.pitch_types.as_ref().map(|pitches| {
         pitches
             .iter()
             .map(|info| {
@@ -114,7 +188,7 @@ pub async fn player(player_id: String, season: Option<i32>, db: Db, taxa: &State
     let unexpected_non_pitch_events =
         total_events.unwrap_or(0) - total_pitches.unwrap_or(0) - total_balks.unwrap_or(0);
 
-    let pitch_types = pitches.as_ref().map(|pitches| {
+    let pitch_types = player_all.pitch_types.as_ref().map(|pitches| {
         let chunks = pitches
             .iter()
             .filter_map(|info| {
@@ -152,54 +226,9 @@ pub async fn player(player_id: String, season: Option<i32>, db: Db, taxa: &State
             .collect_vec()
     });
 
-    let batting_outcomes = batting_outcomes
-        .unwrap_or(Vec::new())
-        .into_iter()
-        .filter_map(|(et_id, all_count, player_count)| {
-            let player_count = player_count.map_or(0, |count| count.to_i64().unwrap());
-            let et = taxa.event_type_from_id(et_id);
-            if let Some(et) = et {
-                let et_info = et.as_insertable();
-                if !et_info.ends_plate_appearance {
-                    return None;
-                }
-                Some((et_info.display_name, all_count, player_count))
-            } else {
-                Some(("Unrecognized event type", all_count, player_count))
-            }
-        })
-        .collect_vec();
-    let total_batting_outcomes = batting_outcomes
-        .iter()
-        .map(|(_, _, count)| *count)
-        .sum::<i64>();
-    let total_batting_outcomes_all = batting_outcomes
-        .iter()
-        .map(|(_, count_all, _)| *count_all)
-        .sum::<i64>();
-
-    let fielding_outcomes = fielding_outcomes
-        .unwrap_or(Vec::new())
-        .into_iter()
-        .map(|(et_id, all_count, player_count)| {
-            let player_count = player_count.map_or(0, |count| count.to_i64().unwrap());
-            let et = taxa.event_type_from_id(et_id);
-            if let Some(et) = et {
-                let et_info = et.as_insertable();
-                (et_info.display_name, all_count, player_count)
-            } else {
-                ("Unrecognized event type", all_count, player_count)
-            }
-        })
-        .collect_vec();
-    let total_fielding_outcomes = fielding_outcomes
-        .iter()
-        .map(|(_, _, count)| *count)
-        .sum::<i64>();
-    let total_fielding_outcomes_all = fielding_outcomes
-        .iter()
-        .map(|(_, count_all, _)| *count_all)
-        .sum::<i64>();
+    let pitching_outcomes = outcomes(player_all.pitching_outcomes, taxa);
+    let fielding_outcomes = outcomes(player_all.fielding_outcomes, taxa);
+    let batting_outcomes = outcomes(player_all.batting_outcomes, taxa);
 
     Ok(Template::render(
         "player",
@@ -207,18 +236,15 @@ pub async fn player(player_id: String, season: Option<i32>, db: Db, taxa: &State
             index_url: uri!(index_page()),
             season,
             player,
-            player_raw: raw_clone,
+            player_raw: player_all.player,
             total_events,
             total_pitches,
             total_balks,
             unexpected_non_pitch_events,
             pitch_types,
-            total_batting_outcomes,
-            total_batting_outcomes_all,
-            batting_outcomes,
-            total_fielding_outcomes,
-            total_fielding_outcomes_all,
+            pitching_outcomes,
             fielding_outcomes,
+            batting_outcomes,
         },
     ))
 }

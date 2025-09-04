@@ -11,7 +11,7 @@ pub use versions::*;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::dsl::count;
+use diesel::dsl::{count, max, min};
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
@@ -21,7 +21,6 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
-use bigdecimal::BigDecimal;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
@@ -2246,21 +2245,97 @@ pub struct PitchTypeInfo {
     pub count: i64,
 }
 
+#[derive(Queryable)]
+pub struct Outcome {
+    pub event_type: i64,
+    pub count: i64,
+}
+
+pub struct PlayerAll {
+    pub player: DbPlayerVersion,
+    pub pitch_types: Option<Vec<PitchTypeInfo>>,
+    pub batting_outcomes: Option<Vec<Outcome>>,
+    pub fielding_outcomes: Option<Vec<Outcome>>,
+    pub pitching_outcomes: Option<Vec<Outcome>>,
+}
+
+use crate::schema::data_schema::data::events::dsl as event_dsl;
+use crate::schema::data_schema::data::games::dsl as game_dsl;
+use diesel::helper_types as d;
+
+type PlayerFilter<'q, Field> = d::And<
+    d::Eq<Field, &'q str>,
+    d::Or<
+        d::And<
+            d::Eq<event_dsl::top_of_inning, bool>,
+            d::Eq<game_dsl::home_team_mmolb_id, &'q str>,
+        >,
+        d::And<
+            d::Eq<event_dsl::top_of_inning, bool>,
+            d::Eq<game_dsl::away_team_mmolb_id, &'q str>,
+        >
+    >
+>;
+
+fn filter_pitcher<'q>(pitcher_name: &'q str, team_id: &'q str) -> PlayerFilter<'q, event_dsl::pitcher_name> {
+    event_dsl::pitcher_name.eq(pitcher_name)
+        .and(
+            event_dsl::top_of_inning.eq(true)
+                .and(game_dsl::home_team_mmolb_id.eq(team_id))
+                .or(event_dsl::top_of_inning.eq(false)
+                    .and(game_dsl::away_team_mmolb_id.eq(team_id)))
+        )
+}
+
+fn filter_fielder<'q>(pitcher_name: &'q str, team_id: &'q str) -> PlayerFilter<'q, event_dsl::fair_ball_fielder_name> {
+    event_dsl::fair_ball_fielder_name.eq(pitcher_name)
+        .and(
+            event_dsl::top_of_inning.eq(true)
+                .and(game_dsl::home_team_mmolb_id.eq(team_id))
+                .or(event_dsl::top_of_inning.eq(false)
+                    .and(game_dsl::away_team_mmolb_id.eq(team_id)))
+        )
+}
+
+fn filter_batter<'q>(batter_name: &'q str, team_id: &'q str) -> PlayerFilter<'q, event_dsl::batter_name> {
+    event_dsl::batter_name.eq(batter_name)
+        .and(
+            event_dsl::top_of_inning.eq(false)
+                .and(game_dsl::home_team_mmolb_id.eq(team_id))
+                .or(event_dsl::top_of_inning.eq(true)
+                    .and(game_dsl::away_team_mmolb_id.eq(team_id)))
+        )
+}
+
+// I want this to be a function, but I cannot figure out the Diesel
+// types involved
+macro_rules! outcomes {
+    ($player_filter:expr, $season:expr, $conn:expr) => {
+        event_dsl::events
+            .inner_join(game_dsl::games)
+            .filter($player_filter)
+            // Filter by season if it's provided
+            .filter(game_dsl::season.eq($season.unwrap_or(-1)).or::<bool, Bool>($season.is_none()))
+            .group_by(event_dsl::event_type)
+            .order_by(count(event_dsl::id).desc())
+            .select((
+                event_dsl::event_type,
+                count(event_dsl::id),
+            ))
+            .get_results::<Outcome>($conn)
+
+    };
+}
+
 pub fn player_all(
     conn: &mut PgConnection,
     player_id: &str,
     taxa: &Taxa,
     season: Option<i32>,
-) -> QueryResult<(
-    DbPlayerVersion,
-    Option<Vec<PitchTypeInfo>>,
-    Option<Vec<(i64, i64, Option<BigDecimal>)>>,
-    Option<Vec<(i64, i64, Option<BigDecimal>)>>,
-)> {
+) -> QueryResult<PlayerAll> {
     use crate::schema::data_schema::data::events::dsl as event_dsl;
     use crate::schema::data_schema::data::games::dsl as game_dsl;
     use crate::schema::data_schema::data::player_versions::dsl as pv_dsl;
-    use diesel::dsl::{max, min, sum, case_when};
 
     let player = pv_dsl::player_versions
         .filter(pv_dsl::mmolb_player_id.eq(player_id))
@@ -2269,165 +2344,51 @@ pub fn player_all(
         .get_result(conn)?;
 
     let full_name = format!("{} {}", player.first_name, player.last_name);
-    let pitches = if let Some(team_id) = &player.mmolb_team_id {
-        let q = event_dsl::events
+
+    // TODO Extract a function
+    let pitch_types = if let Some(team_id) = &player.mmolb_team_id {
+        let result = event_dsl::events
             .inner_join(game_dsl::games)
-            .filter(
-                event_dsl::top_of_inning
-                    .and(game_dsl::home_team_mmolb_id.eq(team_id))
-                    .or(diesel::dsl::not(event_dsl::top_of_inning)
-                        .and(game_dsl::away_team_mmolb_id.eq(team_id))),
-            )
-            .filter(event_dsl::pitcher_name.eq(&full_name));
+            .filter(filter_pitcher(&full_name, team_id))
+            // This is a workaround to conditionally apply the season filter iff
+            // season is set. Diesel makes it really difficult to conditionally add
+            // a filter to a query that uses group_by.
+            .filter(game_dsl::season.eq(season.unwrap_or(-1)).or::<bool, Bool>(season.is_none()))
+            .group_by((event_dsl::pitch_type, event_dsl::event_type))
+            .order_by((event_dsl::pitch_type.asc(), event_dsl::event_type.asc()))
+            .select((
+                event_dsl::pitch_type,
+                event_dsl::event_type,
+                min(event_dsl::pitch_speed),
+                max(event_dsl::pitch_speed),
+                count(event_dsl::id),
+            ))
+            .get_results::<PitchTypeInfo>(conn)?;
 
-        Some(if let Some(season) = season {
-            q
-                .filter(game_dsl::season.eq(season))
-                .group_by((event_dsl::pitch_type, event_dsl::event_type))
-                .order_by((event_dsl::pitch_type.asc(), event_dsl::event_type.asc()))
-                .select((
-                    event_dsl::pitch_type,
-                    event_dsl::event_type,
-                    min(event_dsl::pitch_speed),
-                    max(event_dsl::pitch_speed),
-                    count(event_dsl::id),
-                ))
-                .get_results::<PitchTypeInfo>(conn)?
-        } else {
-            q
-                .group_by((event_dsl::pitch_type, event_dsl::event_type))
-                .order_by((event_dsl::pitch_type.asc(), event_dsl::event_type.asc()))
-                .select((
-                    event_dsl::pitch_type,
-                    event_dsl::event_type,
-                    min(event_dsl::pitch_speed),
-                    max(event_dsl::pitch_speed),
-                    count(event_dsl::id),
-                ))
-                .get_results::<PitchTypeInfo>(conn)?
-        })
+        Some(result)
     } else {
         None
     };
 
-    let batting_outcomes = if let Some(team_id) = &player.mmolb_team_id {
-        let q = event_dsl::events
-            .inner_join(game_dsl::games);
+    let batting_outcomes = player.mmolb_team_id.as_ref()
+        .map(|team_id| outcomes!(filter_batter(&full_name, team_id), season, conn))
+        .transpose()?;
 
-        Some(if let Some(season) = season {
-            q
-                .filter(game_dsl::season.eq(season))
-                .group_by(event_dsl::event_type)
-                .order_by(count(event_dsl::id).desc())
-                .select((
-                    event_dsl::event_type,
-                    count(event_dsl::id),
-                    sum::<BigInt, _>(
-                        case_when::<_, _, BigInt>(
-                            event_dsl::batter_name.eq(&full_name)
-                                .and(
-                                    event_dsl::top_of_inning
-                                        .and(game_dsl::away_team_mmolb_id.eq(team_id))
-                                        .or(diesel::dsl::not(event_dsl::top_of_inning)
-                                            .and(game_dsl::home_team_mmolb_id.eq(team_id))),
-                                ),
-                            1
-                        ).otherwise(0)
-                    )
-                ))
-                .get_results::<(i64, i64, Option<BigDecimal>)>(conn)?
-        } else {
-            q
-                .group_by(event_dsl::event_type)
-                .order_by(count(event_dsl::id).desc())
-                .select((
-                    event_dsl::event_type,
-                    count(event_dsl::id),
-                    sum::<BigInt, _>(
-                        case_when::<_, _, BigInt>(
-                            event_dsl::batter_name.eq(&full_name)
-                                .and(
-                                    event_dsl::top_of_inning
-                                        .and(game_dsl::away_team_mmolb_id.eq(team_id))
-                                        .or(diesel::dsl::not(event_dsl::top_of_inning)
-                                            .and(game_dsl::home_team_mmolb_id.eq(team_id))),
-                                ),
-                            1
-                        ).otherwise(0)
-                    )
-                ))
-                .get_results::<(i64, i64, Option<BigDecimal>)>(conn)?
-        })
-    } else {
-        None
-    };
+    let fielding_outcomes = player.mmolb_team_id.as_ref()
+        .map(|team_id| outcomes!(filter_fielder(&full_name, team_id), season, conn))
+        .transpose()?;
 
+    let pitching_outcomes = player.mmolb_team_id.as_ref()
+        .map(|team_id| outcomes!(filter_pitcher(&full_name, team_id), season, conn))
+        .transpose()?;
 
-    let fielding_outcomes = if let Some(slot_id) = player.slot {
-        if let Ok(loc) = taxa.slot_from_id(slot_id).try_into() {
-            if let Some(team_id) = &player.mmolb_team_id {
-                let q = event_dsl::events
-                    .inner_join(game_dsl::games)
-                    .filter(event_dsl::fair_ball_fielder_name.is_not_null())
-                    .filter(event_dsl::fair_ball_direction.eq(taxa.fielder_location_id(loc)));
-
-                Some(if let Some(season) = season {
-                    q
-                        .filter(game_dsl::season.eq(season))
-                        .group_by(event_dsl::event_type)
-                        .group_by(event_dsl::event_type)
-                        .order_by(count(event_dsl::id).desc())
-                        .select((
-                            event_dsl::event_type,
-                            count(event_dsl::id),
-                            sum::<BigInt, _>(
-                                case_when::<_, _, BigInt>(
-                                    event_dsl::fair_ball_fielder_name.eq(&full_name)
-                                        .and(
-                                            event_dsl::top_of_inning
-                                                .and(game_dsl::home_team_mmolb_id.eq(team_id))
-                                                .or(diesel::dsl::not(event_dsl::top_of_inning)
-                                                    .and(game_dsl::away_team_mmolb_id.eq(team_id))),
-                                        ),
-                                    1
-                                ).otherwise(0)
-                            )
-                        ))
-                        .get_results::<(i64, i64, Option<BigDecimal>)>(conn)?
-                } else {
-                    q
-                        .group_by(event_dsl::event_type)
-                        .group_by(event_dsl::event_type)
-                        .order_by(count(event_dsl::id).desc())
-                        .select((
-                            event_dsl::event_type,
-                            count(event_dsl::id),
-                            sum::<BigInt, _>(
-                                case_when::<_, _, BigInt>(
-                                    event_dsl::fair_ball_fielder_name.eq(&full_name)
-                                        .and(
-                                            event_dsl::top_of_inning
-                                                .and(game_dsl::home_team_mmolb_id.eq(team_id))
-                                                .or(diesel::dsl::not(event_dsl::top_of_inning)
-                                                    .and(game_dsl::away_team_mmolb_id.eq(team_id))),
-                                        ),
-                                    1
-                                ).otherwise(0)
-                            )
-                        ))
-                        .get_results::<(i64, i64, Option<BigDecimal>)>(conn)?
-                })
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    Ok((player, pitches, batting_outcomes, fielding_outcomes))
+    Ok(PlayerAll {
+        player,
+        pitch_types,
+        batting_outcomes,
+        fielding_outcomes,
+        pitching_outcomes,
+    })
 }
 
 type NewTeamVersionExt<'a> = (

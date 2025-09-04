@@ -1,5 +1,44 @@
 {% import "macros" as macros %}
 
+{% macro format_outcomes(outcomes, label, season, only_slot="") %}
+    {% if outcomes.outcomes %}
+        <br />
+        {% if season %}
+            {% if only_slot %}
+                {{ label }} outcomes (season {{ season }}, {{ only_slot }} only):
+            {% else %}
+                {{ label }} outcomes (season {{ season }}):
+            {% endif %}
+        {% else %}
+            {% if only_slot %}
+                {{ label }} outcomes ({{ only_slot }} only):
+            {% else %}
+                {{ label }} outcomes:
+            {% endif %}
+        {% endif %}
+        <ul>
+            {% for outcome in outcomes.outcomes %}
+                {% if outcomes.player_total > 0 %}
+                    <li>
+                        {{ outcome.outcome }}:
+                        {{ outcome.player_count }} / {{ outcomes.player_total }}
+                        ({{ outcome.player_count / outcomes.player_total * 100 | round(precision=1) }}%{%
+                        if outcome.everyone_count and outcomes.everyone_total > 0 %},
+                            {% set pp_diff = outcome.player_count / outcomes.player_total - outcome.everyone_count / outcomes.everyone_total %}
+                            {% if pp_diff < -0.001 %}
+                            {{ pp_diff * -100 | round(precision=1) }} points below average{% elif pp_diff < 0 %}
+                            <0.1 points below average{% elif pp_diff > 0.001 %}
+                            {{ pp_diff * 100 | round(precision=1) }} points above average{% elif pp_diff > 0 %}
+                            <0.1 points above average{% else %})
+                            exactly average{% endif %}{%
+                        endif %})
+                    </li>
+                {% endif %}
+            {% endfor %}
+        </ul>
+    {% endif %}
+{% endmacro display_logs %}
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -49,44 +88,9 @@
                     {% endfor %}
                 </ul>
             {% endif %}
-            {% if batting_outcomes %}
-            <br />{% if season %}Batting outcomes (season {{ season }}):{% else %}Batting outcomes:{% endif %}
-                <ul>
-                    {% for outcome in batting_outcomes %}
-                        <li>
-                            {{ outcome[0] }}:
-                            {{ outcome[2] }} / {{ total_batting_outcomes }}
-                            ({{ outcome[2] / total_batting_outcomes * 100 | round(precision=1) }}%,
-                            {% set pp_diff = outcome[2] / total_batting_outcomes - outcome[1] / total_batting_outcomes_all %}
-                            {% if pp_diff < -0.001 %}
-                                {{ pp_diff * -100 | round(precision=1) }} points below average{% elif pp_diff < 0 %}
-                                <0.1 points below average{% elif pp_diff > 0.001 %}
-                                {{ pp_diff * 100 | round(precision=1) }} points above average{% elif pp_diff > 0 %}
-                                <0.1 points above average{% else %})
-                                exactly average{% endif %})
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
-            {% if fielding_outcomes %}
-            <br />{% if season %}Fielding outcomes (season {{ season }}, {{ player.slot }} only):{% else %}Fielding outcomes ({{ player.slot }} only):{% endif %}
-                <ul>
-                    {% for outcome in fielding_outcomes %}
-                        <li>
-                            {{ outcome[0] }}:
-                            {{ outcome[2] }} / {{ total_fielding_outcomes }}
-                            ({{ outcome[2] / total_fielding_outcomes * 100 | round(precision=1) }}%,
-                            {% set pp_diff = outcome[2] / total_fielding_outcomes - outcome[1] / total_fielding_outcomes_all %}
-                            {% if pp_diff < -0.001 %}
-                                {{ pp_diff * -100 | round(precision=1) }} points below average{% elif pp_diff < 0 %}
-                                <0.1 points below average{% elif pp_diff > 0.001 %}
-                                {{ pp_diff * 100 | round(precision=1) }} points above average{% elif pp_diff > 0 %}
-                                <0.1 points above average{% else %})
-                                exactly average{% endif %})
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
+            {{ self::format_outcomes(outcomes=pitching_outcomes, label="Pitching", season=season) }}
+            {{ self::format_outcomes(outcomes=fielding_outcomes, label="Fielding", season=season, only_slot=player.slot) }}
+            {{ self::format_outcomes(outcomes=batting_outcomes, label="Batting", season=season) }}
             <br />If there's anything else you want to see, request it in the MMOLDB
             <a href="https://github.com/beiju/mmoldb/issues">Github</a> or
             <a href="https://discord.com/channels/1136709081319604324/1366497767090028554">Discord channel</a>.

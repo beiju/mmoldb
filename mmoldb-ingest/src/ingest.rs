@@ -2,7 +2,7 @@ use chron::{Chron, ChronEntity};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
 use hashbrown::hash_map::{Entry, EntryRef};
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info};
 use miette::{Diagnostic, IntoDiagnostic, WrapErr};
@@ -12,7 +12,6 @@ use mmoldb_db::{
     AsyncConnection, AsyncPgConnection, Connection, PgConnection, QueryError, QueryResult,
     async_db, db,
 };
-use std::any::Any;
 use std::iter;
 use std::sync::Arc;
 use thiserror::Error;
@@ -296,17 +295,6 @@ async fn ingest_stage_2(
         error!("Error in {kind} Stage 2 ingest: {}. ", err);
     }
     result
-}
-
-fn json_variant(value: &serde_json::Value) -> &'static str {
-    match value {
-        serde_json::Value::Null => "Null",
-        serde_json::Value::Bool(_) => "Bool",
-        serde_json::Value::Number(_) => "Number",
-        serde_json::Value::String(_) => "String",
-        serde_json::Value::Array(_) => "Array",
-        serde_json::Value::Object(_) => "Object",
-    }
 }
 
 // 2025-08-11T04:50:48Z DEBUG
