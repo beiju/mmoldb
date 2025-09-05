@@ -1,5 +1,5 @@
 use super::pages::*;
-use crate::{Db, StatsCache};
+use crate::Db;
 use crate::web::error::AppError;
 use itertools::Itertools;
 use mmoldb_db::db;
@@ -9,9 +9,6 @@ use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 use std::collections::HashMap;
-use log::error;
-use rocket_db_pools::Connection;
-use rocket_db_pools::deadpool_redis::redis::AsyncCommands;
 use mmoldb_db::db::Outcome;
 
 #[derive(Serialize)]

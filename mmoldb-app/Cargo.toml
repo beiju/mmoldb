@@ -10,7 +10,6 @@ path = "src/main.rs"
 [dependencies]
 mmoldb-db = { path = "../mmoldb-db" }
 rocket = { version = "0.5.1", features = ["json"] }
-rocket_db_pools = { version = "0.2.0", features = ["deadpool_redis"] }
 rocket_sync_db_pools = { version = "0.1.0", features = ["diesel_postgres_pool"] }
 rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
 rocket_cors = "0.6.0"
