@@ -11,7 +11,7 @@ pub use versions::*;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::dsl::{count, max, min};
+use diesel::dsl::{count, count_distinct, count_star, max, min};
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
@@ -2317,7 +2317,7 @@ pub struct PlayerAll {
 use crate::schema::data_schema::data::events::dsl as event_dsl;
 use crate::schema::data_schema::data::games::dsl as game_dsl;
 use diesel::helper_types as d;
-use hashbrown::hash_map::Entry;
+use crate::schema::data_schema::data::parties::dsl::parties;
 
 type PlayerFilter<'q, Field> = d::And<
     d::Eq<Field, &'q str>,
@@ -2531,6 +2531,150 @@ pub fn update_num_ingested(
 pub fn refresh_matviews(conn: &mut PgConnection) -> QueryResult<()> {
     sql_query("refresh materialized view data.offense_outcomes").execute(conn)?;
     sql_query("refresh materialized view data.defense_outcomes").execute(conn)?;
-    
+
     Ok(())
+}
+
+pub struct GamesStats {
+    pub num_games: i64,
+    pub num_events: i64,
+    pub num_baserunners: i64,
+    pub num_fielders: i64,
+    pub num_pitcher_changes: i64,
+    pub num_aurora_photos: i64,
+    pub num_ejections: i64,
+    pub num_parties: i64,
+    pub num_games_with_issues: i64,
+}
+pub fn games_stats(conn: &mut PgConnection) -> QueryResult<GamesStats> {
+    use crate::data_schema::data::*;
+    use crate::info_schema::info::*;
+
+    let num_games = games::dsl::games.select(count_star())
+        .get_result(conn)?;
+    let num_events = events::dsl::events.select(count_star())
+        .get_result(conn)?;
+    let num_baserunners = event_baserunners::dsl::event_baserunners.select(count_star())
+        .get_result(conn)?;
+    let num_fielders = event_fielders::dsl::event_fielders.select(count_star())
+        .get_result(conn)?;
+    let num_pitcher_changes = pitcher_changes::dsl::pitcher_changes.select(count_star())
+        .get_result(conn)?;
+    let num_aurora_photos = aurora_photos::dsl::aurora_photos.select(count_star())
+        .get_result(conn)?;
+    let num_ejections = ejections::dsl::ejections.select(count_star())
+        .get_result(conn)?;
+    let num_parties = parties::dsl::parties.select(count_star())
+        .get_result(conn)?;
+
+    let num_games_with_issues = event_ingest_log::dsl::event_ingest_log
+        .select(count_distinct(event_ingest_log::dsl::game_id))
+        .filter(event_ingest_log::dsl::log_level.le(2))
+        .get_result(conn)?;
+
+    Ok(GamesStats {
+        num_games,
+        num_events,
+        num_baserunners,
+        num_fielders,
+        num_pitcher_changes,
+        num_aurora_photos,
+        num_ejections,
+        num_parties,
+        num_games_with_issues,
+    })
+}
+
+pub struct PlayersStats {
+    pub num_player_versions: i64,
+    pub num_player_modification_versions: i64,
+    pub num_player_equipment_versions: i64,
+    pub num_player_equipment_effect_versions: i64,
+    pub num_player_report_versions: i64,
+    pub num_player_report_attribute_versions: i64,
+    pub num_player_attribute_augments: i64,
+    pub num_player_paradigm_shifts: i64,
+    pub num_player_recompositions: i64,
+    pub num_player_feed_versions: i64,
+    pub num_players_with_issues: i64,
+}
+pub fn players_stats(conn: &mut PgConnection) -> QueryResult<PlayersStats> {
+    use crate::data_schema::data::*;
+    use crate::info_schema::info::*;
+
+    let num_player_versions = player_versions::dsl::player_versions.select(count_star())
+        .get_result(conn)?;
+    let num_player_modification_versions = player_modification_versions::dsl::player_modification_versions.select(count_star())
+        .get_result(conn)?;
+    let num_player_equipment_versions = player_equipment_versions::dsl::player_equipment_versions.select(count_star())
+        .get_result(conn)?;
+    let num_player_equipment_effect_versions = player_equipment_effect_versions::dsl::player_equipment_effect_versions.select(count_star())
+        .get_result(conn)?;
+    let num_player_report_versions = player_report_versions::dsl::player_report_versions.select(count_star())
+        .get_result(conn)?;
+    let num_player_report_attribute_versions = player_report_attribute_versions::dsl::player_report_attribute_versions.select(count_star())
+        .get_result(conn)?;
+    let num_player_attribute_augments = player_attribute_augments::dsl::player_attribute_augments.select(count_star())
+        .get_result(conn)?;
+    let num_player_paradigm_shifts = player_paradigm_shifts::dsl::player_paradigm_shifts.select(count_star())
+        .get_result(conn)?;
+    let num_player_recompositions = player_recompositions::dsl::player_recompositions.select(count_star())
+        .get_result(conn)?;
+    let num_player_feed_versions = player_feed_versions::dsl::player_feed_versions.select(count_star())
+        .get_result(conn)?;
+
+    let num_players_with_issues = version_ingest_log::dsl::version_ingest_log
+        .select(count_distinct(version_ingest_log::dsl::entity_id))
+        .filter(version_ingest_log::dsl::kind.eq("player"))
+        .filter(version_ingest_log::dsl::log_level.le(2))
+        .get_result(conn)?;
+
+    Ok(PlayersStats {
+        num_player_versions,
+        num_player_modification_versions,
+        num_player_equipment_versions,
+        num_player_equipment_effect_versions,
+        num_player_report_versions,
+        num_player_report_attribute_versions,
+        num_player_attribute_augments,
+        num_player_paradigm_shifts,
+        num_player_recompositions,
+        num_player_feed_versions,
+        num_players_with_issues,
+    })
+}
+
+pub struct TeamsStats {
+    pub num_team_versions: i64,
+    pub num_team_player_versions: i64,
+    pub num_team_games_played: i64,
+    pub num_team_feed_versions: i64,
+    pub num_teams_with_issues: i64,
+}
+pub fn teams_stats(conn: &mut PgConnection) -> QueryResult<TeamsStats> {
+    use crate::data_schema::data::*;
+    use crate::info_schema::info::*;
+
+    let num_team_versions = team_versions::dsl::team_versions.select(count_star())
+        .get_result(conn)?;
+    let num_team_player_versions = team_player_versions::dsl::team_player_versions.select(count_star())
+        .get_result(conn)?;
+    let num_team_games_played = team_games_played::dsl::team_games_played.select(count_star())
+        .get_result(conn)?;
+    let num_team_feed_versions = team_feed_versions::dsl::team_feed_versions.select(count_star())
+        .get_result(conn)?;
+
+    let num_teams_with_issues = version_ingest_log::dsl::version_ingest_log
+        .select(count_distinct(version_ingest_log::dsl::entity_id))
+        .filter(version_ingest_log::dsl::kind.eq("team"))
+        .filter(version_ingest_log::dsl::log_level.le(2))
+        .get_result(conn)?;
+
+    Ok(TeamsStats {
+        num_team_versions,
+        num_team_player_versions,
+        num_team_games_played,
+        num_team_feed_versions,
+        num_teams_with_issues,
+    })
 }

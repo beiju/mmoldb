@@ -1,0 +1,37 @@
+{% import "macros" as macros %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MMOLDB &mdash; Health</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/health.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
+</head>
+<body>
+    <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
+
+    <section class="card nav">
+        <a class="nav-item" href="{{ status_url }}">Status</a>
+        <a class="nav-item current" href="{{ health_url }}">Health</a>
+        <a class="nav-item" href="{{ docs_url }}">Docs</a>
+    </section>
+
+    <section class="card health-stats">
+        {% for stat_category in stat_categories %}
+        <section class="health-stats">
+            <h1>{{ stat_category.title }}</h1>
+            <div class="health-stat-items">
+                {% for stat in stat_category.stats %}
+                <div class="health-stat">
+                    <h1>{{ stat.title }}</h1>
+                    <p>{{ stat.number }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endfor %}
+    </section>
+</body>
+</html>

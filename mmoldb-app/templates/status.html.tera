@@ -14,6 +14,7 @@
 
     <section class="card nav">
         <a class="nav-item current" href="{{ status_url }}">Status</a>
+        <a class="nav-item" href="{{ health_url }}">Health</a>
         <a class="nav-item" href="{{ docs_url }}">Docs</a>
     </section>
 

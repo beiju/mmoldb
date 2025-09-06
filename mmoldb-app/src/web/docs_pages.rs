@@ -111,6 +111,7 @@ pub async fn docs_page() -> Result<Template, AppError> {
         context! {
             index_url: uri!(index_page()),
             status_url: uri!(status_page()),
+            health_url: uri!(health_page()),
             docs_url: uri!(docs_page()),
             schemata: schemata,
         },

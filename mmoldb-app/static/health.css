@@ -1,0 +1,16 @@
+.health-stat-items {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.health-stat {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 10px;
+    margin: 10px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.health-stat h1 {
+    font-size: 1.1em;
+}

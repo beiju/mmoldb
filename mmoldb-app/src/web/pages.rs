@@ -1,10 +1,11 @@
-use diesel::Connection;
+use diesel::{Connection, PgConnection, QueryResult};
+use num_format::{Locale, ToFormattedString};
 use mmoldb_db::db;
 use mmoldb_db::models::DbEventIngestLog;
 use rocket::{get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
-
+use mmoldb_db::db::{GamesStats, PlayersStats, TeamsStats};
 use super::docs_pages::*;
 use crate::Db;
 use crate::web::error::AppError;
@@ -339,6 +340,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         context! {
             index_url: uri!(index_page()),
             status_url: uri!(status_page()),
+            health_url: uri!(health_page()),
             docs_url: uri!(docs_page()),
             games_page_url: uri!(games_page()),
             total_games: total_games,
@@ -352,6 +354,130 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
     ))
 }
 
+#[derive(Serialize)]
+struct Stat {
+    title: &'static str,
+    number: String,
+}
+
+impl Stat {
+    pub fn new(title: &'static str, number: i64) -> Self {
+        Self {
+            title,
+            number: number.to_formatted_string(&Locale::en),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct StatCategory {
+    title: &'static str,
+    stats: Vec<Stat>,
+}
+
+fn games_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
+    let GamesStats {
+        num_games,
+        num_events,
+        num_baserunners,
+        num_fielders,
+        num_pitcher_changes,
+        num_aurora_photos,
+        num_ejections,
+        num_parties,
+        num_games_with_issues,
+    } = db::games_stats(conn)?;
+
+    Ok(StatCategory {
+        title: "Games",
+        stats: vec![
+            Stat::new("Games", num_games),
+            Stat::new("Events", num_events),
+            Stat::new("Baserunners", num_baserunners),
+            Stat::new("Fielders", num_fielders),
+            Stat::new("Pitcher changes", num_pitcher_changes),
+            Stat::new("Aurora photos", num_aurora_photos),
+            Stat::new("Ejections", num_ejections),
+            Stat::new("Parties", num_parties),
+            Stat::new("Games with issues", num_games_with_issues),
+        ],
+    })
+}
+
+fn players_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
+    let PlayersStats {
+        num_player_versions,
+        num_player_modification_versions,
+        num_player_equipment_versions,
+        num_player_equipment_effect_versions,
+        num_player_report_versions,
+        num_player_report_attribute_versions,
+        num_player_attribute_augments,
+        num_player_paradigm_shifts,
+        num_player_recompositions,
+        num_player_feed_versions,
+        num_players_with_issues,
+    } = db::players_stats(conn)?;
+
+    Ok(StatCategory {
+        title: "Players",
+        stats: vec![
+            Stat::new("Player versions", num_player_versions),
+            Stat::new("Player mod versions", num_player_modification_versions),
+            Stat::new("Player equipment versions", num_player_equipment_versions),
+            Stat::new("Player equipment effect versions", num_player_equipment_effect_versions),
+            Stat::new("Player report versions", num_player_report_versions),
+            Stat::new("Player report attribute version", num_player_report_attribute_versions),
+            Stat::new("Player attribute augments", num_player_attribute_augments),
+            Stat::new("Player attribute paradigm shifts", num_player_paradigm_shifts),
+            Stat::new("Player recompositions", num_player_recompositions),
+            Stat::new("player feed versions", num_player_feed_versions),
+            Stat::new("Players with issues", num_players_with_issues),
+        ],
+    })
+}
+
+fn teams_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
+    let TeamsStats {
+        num_team_versions,
+        num_team_player_versions,
+        num_team_games_played,
+        num_team_feed_versions,
+        num_teams_with_issues,
+    } = db::teams_stats(conn)?;
+
+    Ok(StatCategory {
+        title: "Teams",
+        stats: vec![
+            Stat::new("Team versions", num_team_versions),
+            Stat::new("Team player versions", num_team_player_versions),
+            Stat::new("Team games played", num_team_games_played),
+            Stat::new("Team feed versions", num_team_feed_versions),
+            Stat::new("Teams with issues", num_teams_with_issues),
+        ],
+    })
+}
+
+#[get("/health")]
+pub async fn health_page(db: Db) -> Result<Template, AppError> {
+    let stat_categories = db.run(|mut conn| Ok::<_, AppError>(vec![
+        games_health(&mut conn)?,
+        players_health(&mut conn)?,
+        teams_health(&mut conn)?,
+    ])).await?;
+
+    Ok(Template::render(
+        "health",
+        context! {
+            index_url: uri!(index_page()),
+            status_url: uri!(status_page()),
+            health_url: uri!(health_page()),
+            docs_url: uri!(docs_page()),
+            stat_categories: stat_categories,
+        },
+    ))
+}
+
 #[get("/")]
 pub async fn index_page() -> Template {
     Template::render(
@@ -359,6 +485,7 @@ pub async fn index_page() -> Template {
         context! {
             index_url: uri!(index_page()),
             status_url: uri!(status_page()),
+            health_url: uri!(health_page()),
             docs_url: uri!(docs_page()),
             // This markdown conversion could be cached
             changelog: markdown::to_html(
