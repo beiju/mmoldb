@@ -9,7 +9,7 @@ use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 use std::collections::HashMap;
-use mmoldb_db::db::Outcome;
+use mmoldb_db::db::{Outcome};
 
 #[derive(Serialize)]
 pub struct PlayerContext<'r, 't> {
@@ -85,7 +85,7 @@ struct OutcomesSummary {
     everyone_total: i64,
 }
 
-fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa) -> OutcomesSummary {
+fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa, m: &HashMap<i64, i64>) -> OutcomesSummary {
     let outcomes = outcomes
         .unwrap_or(Vec::new())
         .into_iter()
@@ -99,13 +99,13 @@ fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa) -> OutcomesSummary {
                 Some(OutcomeStats {
                     outcome: et_info.display_name,
                     player_count: outcome.count,
-                    everyone_count: None,
+                    everyone_count: m.get(&outcome.event_type).copied(),
                 })
             } else {
                 Some(OutcomeStats {
                     outcome: "Unrecognized event type",
                     player_count: outcome.count,
-                    everyone_count: None,
+                    everyone_count: m.get(&outcome.event_type).copied(),
                 })
             }
         })
@@ -139,15 +139,15 @@ pub async fn player(
     taxa: &State<Taxa>,
 ) -> Result<Template, AppError> {
     let taxa_for_db = (*taxa).clone();
-    let player_all = db.run(move |conn|
-        db::player_all(conn, &player_id, &taxa_for_db, season)
-    ).await?;
+    let (player_all, averages) = db.run(move |conn| {
+        let player_all = db::player_all(conn, &player_id, &taxa_for_db, season)?;
+        let averages = db::season_averages(conn, season)?;
+        Ok::<_, AppError>((player_all, averages))
+    }).await?;
 
-    // let combo_stats: Option<Stats> = stats_cache.get("breakdowns").await
-    //     .map_err(|err| {
-    //         error!("Failed to get breakdowns: {}", err);
-    //     })
-    //     .ok();
+    let averages: HashMap<_, _> = averages.into_iter()
+        .map(|stat| (stat.event_type, stat.count))
+        .collect();
 
     let raw_clone = player_all.player.clone();
     let player = PlayerContext::from_db(&raw_clone, &taxa);
@@ -223,9 +223,9 @@ pub async fn player(
             .collect_vec()
     });
 
-    let pitching_outcomes = outcomes(player_all.pitching_outcomes, taxa);
-    let fielding_outcomes = outcomes(player_all.fielding_outcomes, taxa);
-    let batting_outcomes = outcomes(player_all.batting_outcomes, taxa);
+    let pitching_outcomes = outcomes(player_all.pitching_outcomes, taxa, &averages);
+    let fielding_outcomes = outcomes(player_all.fielding_outcomes, taxa, &averages);
+    let batting_outcomes = outcomes(player_all.batting_outcomes, taxa, &averages);
 
     Ok(Template::render(
         "player",

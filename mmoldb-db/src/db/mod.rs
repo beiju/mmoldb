@@ -2678,3 +2678,38 @@ pub fn teams_stats(conn: &mut PgConnection) -> QueryResult<TeamsStats> {
         num_teams_with_issues,
     })
 }
+
+#[derive(QueryableByName, PartialEq, Debug)]
+pub struct SummaryStat {
+    #[diesel(sql_type = BigInt)]
+    pub count: i64,
+    #[diesel(sql_type = BigInt)]
+    pub event_type: i64,
+}
+
+pub fn season_averages(
+    conn: &mut PgConnection,
+    season: Option<i32>,
+) -> QueryResult<Vec<SummaryStat>> {
+    if let Some(season) = season {
+        let q = sql_query("\
+            select sum(count)::int8 as count, event_type
+            from data.offense_outcomes
+            where season=$1
+            group by event_type
+            order by event_type
+        ")
+            .bind::<Integer, _>(season);
+        println!("{:?}", diesel::debug_query(&q));
+        q
+            .get_results::<SummaryStat>(conn)
+    } else {
+        sql_query("\
+            select sum(count)::int8 as count, event_type
+            from data.offense_outcomes
+            group by event_type
+            order by event_type
+        ")
+            .get_results::<SummaryStat>(conn)
+    }
+}
