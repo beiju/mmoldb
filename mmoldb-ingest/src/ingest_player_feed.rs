@@ -1,5 +1,3 @@
-// TODO Rename this file ingest_player_feed
-
 use crate::ingest::{VersionIngestLogs, batch_by_entity};
 use crate::ingest_players::day_to_db;
 use chron::ChronEntity;

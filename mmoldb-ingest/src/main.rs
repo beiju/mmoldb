@@ -1,5 +1,6 @@
 mod ingest;
-mod ingest_feed;
+mod ingest_player_feed;
+mod ingest_team_feed;
 mod ingest_games;
 mod ingest_players;
 mod ingest_teams;
@@ -159,11 +160,14 @@ async fn ingest_everything(
 ) -> miette::Result<()> {
     if ENABLE_TEAM_INGEST {
         ingest_teams::ingest_teams(ingest_id, pg_url.clone(), abort.clone()).await?;
+        // This could be parallelized with ingest_teams, since we never
+        // process the embedded feeds in team objects
+        ingest_team_feed::ingest_team_feeds(ingest_id, pg_url.clone(), abort.clone()).await?;
     }
     if ENABLE_PLAYER_INGEST {
         ingest_players::ingest_players(ingest_id, pg_url.clone(), abort.clone()).await?;
         // Player feed ingest has to start after all players with inbuilt feeds are processed
-        ingest_feed::ingest_player_feeds(ingest_id, pg_url.clone(), abort.clone()).await?;
+        ingest_player_feed::ingest_player_feeds(ingest_id, pg_url.clone(), abort.clone()).await?;
     }
     ingest_games::ingest_games(pg_url, ingest_id, abort).await
 }

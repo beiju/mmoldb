@@ -986,10 +986,30 @@ pub struct NewParty<'a> {
 pub struct DbParty {
     pub id: i64,
     pub game_id: i64,
-    pub game_event_index: i32,
+    pub game_event_index: i32, 
     pub is_pitcher: bool,
     pub top_of_inning: bool,
     pub player_name: String,
     pub attribute: i64,
     pub value: i32,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::team_feed_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewTeamFeedVersion<'a> {
+    pub mmolb_team_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub num_entries: i32,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::team_games_played)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewTeamGamePlayed<'a> {
+    pub mmolb_team_id: &'a str,
+    pub feed_event_index: i32,
+    pub time: NaiveDateTime,
+    pub mmolb_game_id: &'a str,
 }

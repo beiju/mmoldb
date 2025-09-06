@@ -355,6 +355,27 @@ pub mod data {
     }
 
     diesel::table! {
+        data.team_feed_versions (id) {
+            id -> Int8,
+            mmolb_team_id -> Text,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            num_entries -> Int4,
+        }
+    }
+
+    diesel::table! {
+        data.team_games_played (id) {
+            id -> Int8,
+            mmolb_team_id -> Text,
+            feed_event_index -> Int4,
+            time -> Timestamp,
+            mmolb_game_id -> Text,
+        }
+    }
+
+    diesel::table! {
         data.team_player_versions (id) {
             id -> Int8,
             mmolb_team_id -> Text,
@@ -444,6 +465,8 @@ pub mod data {
         player_report_attribute_versions,
         player_report_versions,
         player_versions,
+        team_feed_versions,
+        team_games_played,
         team_player_versions,
         team_versions,
         versions,

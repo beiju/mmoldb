@@ -24,16 +24,7 @@ use std::iter;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{
-    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder,
-    DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion,
-    DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame,
-    NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment,
-    NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion,
-    NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition,
-    NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent,
-    NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable,
-};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 use crate::{PartyEvent, PitcherChange, QueryError};
 
@@ -1691,6 +1682,25 @@ pub fn get_player_feed_ingest_start_cursor(
         .optional()
 }
 
+pub fn get_team_feed_ingest_start_cursor(
+    conn: &mut PgConnection,
+) -> QueryResult<Option<(NaiveDateTime, String)>> {
+    use crate::schema::data_schema::data::team_feed_versions::dsl as team_feed_dsl;
+
+    team_feed_dsl::team_feed_versions
+        .select((
+            team_feed_dsl::valid_from,
+            team_feed_dsl::mmolb_team_id,
+        ))
+        .order_by((
+            team_feed_dsl::valid_from.desc(),
+            team_feed_dsl::mmolb_team_id.desc(),
+        ))
+        .limit(1)
+        .get_result(conn)
+        .optional()
+}
+
 pub fn get_modifications_table(
     conn: &mut PgConnection,
 ) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
@@ -1950,6 +1960,51 @@ pub fn insert_player_feed_versions<'a>(
     insert_player_attribute_augments(conn, new_player_attribute_augments)?;
     insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
     insert_player_recompositions(conn, new_player_recompositions)?;
+    insert_ingest_logs(conn, ingest_logs)?;
+
+    Ok(num_inserted)
+}
+
+type NewTeamFeedVersionExt<'a> = (
+    NewTeamFeedVersion<'a>,
+    Vec<NewTeamGamePlayed<'a>>,
+    Vec<NewVersionIngestLog<'a>>,
+);
+
+fn insert_new_team_games_played(
+    conn: &mut PgConnection,
+    new_team_games_played: Vec<Vec<NewTeamGamePlayed>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::team_games_played::dsl as get_dsl;
+    let new_team_games_played = new_team_games_played.into_iter().flatten().collect_vec();
+
+    // Insert new records
+    diesel::copy_from(get_dsl::team_games_played)
+        .from_insertable(new_team_games_played)
+        .execute(conn)
+}
+pub fn insert_team_feed_versions<'a>(
+    conn: &mut PgConnection,
+    new_team_feed_versions: impl IntoIterator<Item = NewTeamFeedVersionExt<'a>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::team_feed_versions::dsl as tfv_dsl;
+
+    let (
+        new_team_feed_versions,
+        new_team_games_played,
+        ingest_logs,
+    ): (
+        Vec<NewTeamFeedVersion>,
+        Vec<Vec<NewTeamGamePlayed>>,
+        Vec<Vec<NewVersionIngestLog>>,
+    ) = itertools::multiunzip(new_team_feed_versions.into_iter());
+
+    // Insert new records
+    let num_inserted = diesel::copy_from(tfv_dsl::team_feed_versions)
+        .from_insertable(new_team_feed_versions)
+        .execute(conn)?;
+
+    insert_new_team_games_played(conn, new_team_games_played)?;
     insert_ingest_logs(conn, ingest_logs)?;
 
     Ok(num_inserted)
@@ -2262,6 +2317,7 @@ pub struct PlayerAll {
 use crate::schema::data_schema::data::events::dsl as event_dsl;
 use crate::schema::data_schema::data::games::dsl as game_dsl;
 use diesel::helper_types as d;
+use hashbrown::hash_map::Entry;
 
 type PlayerFilter<'q, Field> = d::And<
     d::Eq<Field, &'q str>,

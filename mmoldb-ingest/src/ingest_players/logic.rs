@@ -1,5 +1,5 @@
 use crate::ingest::{VersionIngestLogs, batch_by_entity};
-use crate::ingest_feed::chron_player_feed_as_new;
+use crate::ingest_player_feed::chron_player_feed_as_new;
 use crate::ingest_players::PLAYER_KIND;
 use chron::ChronEntity;
 use chrono::{NaiveDateTime, Utc};
