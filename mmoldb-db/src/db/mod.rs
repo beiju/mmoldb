@@ -2527,3 +2527,10 @@ pub fn update_num_ingested(
 
     Ok(())
 }
+
+pub fn refresh_matviews(conn: &mut PgConnection) -> QueryResult<()> {
+    sql_query("refresh materialized view data.offense_outcomes").execute(conn)?;
+    sql_query("refresh materialized view data.defense_outcomes").execute(conn)?;
+    
+    Ok(())
+}

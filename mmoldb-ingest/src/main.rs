@@ -153,6 +153,11 @@ async fn run_one_ingest(url: String) -> miette::Result<()> {
     result
 }
 
+fn refresh_matviews(pg_url: String) -> miette::Result<()> {
+    let mut conn = PgConnection::establish(&pg_url).into_diagnostic()?;
+    db::refresh_matviews(&mut conn).into_diagnostic()
+}
+
 async fn ingest_everything(
     pg_url: String,
     ingest_id: i64,
@@ -169,5 +174,9 @@ async fn ingest_everything(
         // Player feed ingest has to start after all players with inbuilt feeds are processed
         ingest_player_feed::ingest_player_feeds(ingest_id, pg_url.clone(), abort.clone()).await?;
     }
-    ingest_games::ingest_games(pg_url, ingest_id, abort).await
+    ingest_games::ingest_games(pg_url.clone(), ingest_id, abort).await?;
+
+    refresh_matviews(pg_url)?;
+
+    Ok(())
 }
