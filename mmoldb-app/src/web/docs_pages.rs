@@ -159,6 +159,8 @@ pub struct ColumnDocs {
     pub description: String,
     #[serde(default)]
     pub nullable_explanation: Option<String>,
+    #[serde(default)]
+    pub is_non_nullable_view_field: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -297,7 +299,7 @@ mod tests {
                 schema.name, table.name
             );
             assert_eq!(
-                schema.is_nullable,
+                schema.is_nullable && !docs.is_non_nullable_view_field,
                 docs.nullable_explanation.is_some(),
                 "Nullability mismatch for column {} in {schema_name}.{}",
                 schema.name,

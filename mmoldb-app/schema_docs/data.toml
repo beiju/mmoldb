@@ -1086,6 +1086,53 @@ See the documentation of `id` for more.
 """
 
 [[table]]
+name = "events_extended"
+description = """
+A view into `data.events` pre-joined with `data.games` with some additional
+fields added.
+
+In addition to the fields below, it has all the fields of `data.events` and
+all the fields of `data.games` except `id`.
+"""
+allow_undocumented = true
+
+[[table.column]]
+name = "batting_team_mmolb_id"
+type = "text"
+description = """
+The batting team's MMOLB ID. Equal to `away_team_mmolb_id` during the top of
+the inning and `home_team_mmolb_id` during the bottom.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "defending_team_mmolb_id"
+type = "text"
+description = """
+The defending team's MMOLB ID. Equal to `home_team_mmolb_id` during the top of
+the inning and `away_team_mmolb_id` during the bottom.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "game_end_time"
+type = "timestamp without time zone"
+description = """
+The time that this game ended, as derived from the game outcome message in the
+participant teams' feeds.
+
+The game appears in the feeds of both teams
+([sometimes more than once per team][dupe-feed-entry-bug]), and with slightly
+different timestamps. `game_end_time` takes the earliest timestamp.
+
+[dupe-feed-entry-bug]: https://discord.com/channels/1136709081319604324/1390907914176168076
+"""
+nullable_explanation = """
+`null` if the game doesn't appear in any team feeds. There are quite a few
+games where this is `null` and I haven't looked into why.
+"""
+
+[[table]]
 name = "entities"
 description = """
 A mirror of Chron's `entities` endpoint for selected `kind`s. Currently only
