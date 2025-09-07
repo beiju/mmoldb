@@ -48,7 +48,10 @@
             {% for ingest in ingests %}
                 <li class="ingest">
                     {# All one line to avoid newlines being turned into spaces by HTML whitespace collapse. #}
-                    <a href="{{ ingest.uri }}">Ingest of {{ ingest.num_games }} games</a> started {{ self::date_format(date=ingest.started_at) }}{% if ingest.finished_at %} and finished {{ self::date_format(date=ingest.finished_at) }}{% endif %}{% if ingest.aborted_at %} and aborted {{ self::date_format(date=ingest.aborted_at) }}{% endif %}.
+                    <a href="{{ ingest.uri }}">Ingest of {{ ingest.num_games }} games</a> started {{ self::date_format(date=ingest.started_at) }}{% if ingest.finished_at %} and finished {{ self::date_format(date=ingest.finished_at) }}{% endif %}{% if ingest.aborted_at %} and aborted {{ self::date_format(date=ingest.aborted_at) }}{% endif %}{% if ingest.message %} with message:{% else %}.{% endif %}
+                    {% if ingest.message %}
+                    <p>{{ ingest.message }}</p>
+                    {% endif %}
                 </li>
             {% endfor %}
         </ul>

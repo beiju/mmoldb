@@ -8,7 +8,7 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-2025-10-06
+2025-10-07
 ----------
 - Add `data.team_games_played` with the feed events for games ending. This is
   primarily useful for the timestamp. It can be used to find the proper team 
@@ -23,6 +23,8 @@ Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
   MMOLB has been inconsistent about how days are notated so that will require 
   some special care. These are currently not documented on the Docs page.
 - Speed up player pages
+- Fix ingest to not crash when it aborts, and to report the error on the status
+  page.
 
 - 2025-09-01
 ----------

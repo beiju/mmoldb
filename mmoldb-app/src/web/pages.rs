@@ -296,6 +296,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         started_at: FormattedDateContext,
         finished_at: Option<FormattedDateContext>,
         aborted_at: Option<FormattedDateContext>,
+        message: Option<String>,
     }
 
     // A transaction is probably overkill for this, but it's
@@ -328,6 +329,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             started_at: (&ingest.started_at).into(),
             finished_at: ingest.finished_at.as_ref().map(Into::into),
             aborted_at: ingest.aborted_at.as_ref().map(Into::into),
+            message: ingest.message,
         })
         .collect();
 

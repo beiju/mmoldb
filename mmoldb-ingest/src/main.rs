@@ -10,7 +10,7 @@ use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::pin_mut;
 use log::{debug, info};
-use miette::{Diagnostic, IntoDiagnostic};
+use miette::{Context, Diagnostic, IntoDiagnostic};
 use mmoldb_db::{Connection, PgConnection, db};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -129,28 +129,33 @@ async fn run_one_ingest(url: String) -> miette::Result<()> {
     // is also True if the task finished with a Result::Err(). We don't want to
     // await it in this case.
     if abort.is_cancelled() {
-        debug!("Waiting for ingest task to shut down after abort");
-        ingest_task.await?;
+        debug!("Waiting for ingest task to shut down after abort signal");
+        ingest_task.await
+            .wrap_err("While waiting for ingest task to shut down after abort signal")?;
     }
+
+    let err_message = result.err().map(|err| format!("{:?}", err));
 
     let ingest_end_time = Utc::now();
     let duration = HumanTime::from(ingest_end_time - ingest_start_time);
     if is_aborted {
-        db::mark_ingest_aborted(&mut conn, ingest_id, ingest_end_time).into_diagnostic()?;
+        db::mark_ingest_aborted(&mut conn, ingest_id, ingest_end_time, err_message.as_deref()).into_diagnostic()?;
         info!(
             "Aborted ingest in {}",
             duration.to_text_en(Accuracy::Precise, Tense::Present)
         );
     } else {
         // TODO Remove the start_next_ingest_at_page column from ingests
-        db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, None).into_diagnostic()?;
+        db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, None, err_message.as_deref()).into_diagnostic()?;
         info!(
             "Finished ingest in {}",
             duration.to_text_en(Accuracy::Precise, Tense::Present)
         );
     }
 
-    result
+    // Don't return `result` -- we already handled it, and returning it will
+    // make the process exit
+    Ok(())
 }
 
 fn refresh_matviews(pg_url: String) -> miette::Result<()> {

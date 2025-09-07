@@ -17,6 +17,7 @@ pub struct DbIngest {
     pub finished_at: Option<NaiveDateTime>,
     pub aborted_at: Option<NaiveDateTime>,
     pub start_next_ingest_at_page: Option<String>,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Insertable)]

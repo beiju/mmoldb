@@ -119,6 +119,8 @@ pub struct IngestWithGameCount {
     pub finished_at: Option<NaiveDateTime>,
     #[diesel(sql_type = Nullable<Timestamp>)]
     pub aborted_at: Option<NaiveDateTime>,
+    #[diesel(sql_type = Nullable<Text>)]
+    pub message: Option<String>,
     #[diesel(sql_type = Int8)]
     pub num_games: i64,
 }
@@ -126,7 +128,7 @@ pub struct IngestWithGameCount {
 pub fn latest_ingests(conn: &mut PgConnection) -> QueryResult<Vec<IngestWithGameCount>> {
     sql_query(
         "
-        select i.id, i.started_at, i.finished_at, i.aborted_at, count(g.mmolb_game_id) as num_games
+        select i.id, i.started_at, i.finished_at, i.aborted_at, i.message, count(g.mmolb_game_id) as num_games
         from info.ingests i
              left join data.games g on g.ingest = i.id
         group by i.id, i.started_at
@@ -153,6 +155,7 @@ pub fn mark_ingest_finished(
     ingest_id: i64,
     at: DateTime<Utc>,
     start_next_ingest_at_page: Option<&str>,
+    set_message: Option<&str>
 ) -> QueryResult<()> {
     use crate::info_schema::info::ingests::dsl;
 
@@ -160,6 +163,7 @@ pub fn mark_ingest_finished(
         .set((
             dsl::finished_at.eq(at.naive_utc()),
             dsl::start_next_ingest_at_page.eq(start_next_ingest_at_page),
+            dsl::message.eq(set_message)
         ))
         .execute(conn)
         .map(|_| ())
@@ -189,11 +193,15 @@ pub fn mark_ingest_aborted(
     conn: &mut PgConnection,
     ingest_id: i64,
     at: DateTime<Utc>,
+    set_message: Option<&str>,
 ) -> QueryResult<()> {
     use crate::info_schema::info::ingests::dsl::*;
 
     diesel::update(ingests.filter(id.eq(ingest_id)))
-        .set(aborted_at.eq(at.naive_utc()))
+        .set((
+            aborted_at.eq(at.naive_utc()),
+            message.eq(set_message),
+        ))
         .execute(conn)
         .map(|_| ())
 }
