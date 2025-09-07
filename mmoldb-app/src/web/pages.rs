@@ -1,4 +1,4 @@
-use diesel::{Connection, PgConnection, QueryResult};
+use diesel::{Connection, PgConnection};
 use num_format::{Locale, ToFormattedString};
 use mmoldb_db::db;
 use mmoldb_db::models::DbEventIngestLog;

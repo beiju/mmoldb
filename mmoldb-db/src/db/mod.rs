@@ -2317,7 +2317,6 @@ pub struct PlayerAll {
 use crate::schema::data_schema::data::events::dsl as event_dsl;
 use crate::schema::data_schema::data::games::dsl as game_dsl;
 use diesel::helper_types as d;
-use crate::schema::data_schema::data::parties::dsl::parties;
 
 type PlayerFilter<'q, Field> = d::And<
     d::Eq<Field, &'q str>,
@@ -2343,8 +2342,8 @@ fn filter_pitcher<'q>(pitcher_name: &'q str, team_id: &'q str) -> PlayerFilter<'
         )
 }
 
-fn filter_fielder<'q>(pitcher_name: &'q str, team_id: &'q str) -> PlayerFilter<'q, event_dsl::fair_ball_fielder_name> {
-    event_dsl::fair_ball_fielder_name.eq(pitcher_name)
+fn filter_fielder<'q>(fielder_name: &'q str, team_id: &'q str) -> PlayerFilter<'q, event_dsl::fair_ball_fielder_name> {
+    event_dsl::fair_ball_fielder_name.eq(fielder_name)
         .and(
             event_dsl::top_of_inning.eq(true)
                 .and(game_dsl::home_team_mmolb_id.eq(team_id))
@@ -2386,7 +2385,6 @@ macro_rules! outcomes {
 pub fn player_all(
     conn: &mut PgConnection,
     player_id: &str,
-    taxa: &Taxa,
     season: Option<i32>,
 ) -> QueryResult<PlayerAll> {
     use crate::schema::data_schema::data::events::dsl as event_dsl;
@@ -2685,6 +2683,8 @@ pub struct SummaryStat {
     pub count: i64,
     #[diesel(sql_type = BigInt)]
     pub event_type: i64,
+    #[diesel(sql_type = Nullable<BigInt>)]
+    pub fair_ball_direction: Option<i64>,
 }
 
 pub fn season_averages(
@@ -2693,11 +2693,11 @@ pub fn season_averages(
 ) -> QueryResult<Vec<SummaryStat>> {
     if let Some(season) = season {
         let q = sql_query("\
-            select sum(count)::int8 as count, event_type
+            select coalesce(sum(count)::int8, 0) as count, event_type, fair_ball_direction
             from data.offense_outcomes
             where season=$1
-            group by event_type
-            order by event_type
+            group by event_type, fair_ball_direction
+            order by event_type, fair_ball_direction
         ")
             .bind::<Integer, _>(season);
         println!("{:?}", diesel::debug_query(&q));
@@ -2705,10 +2705,10 @@ pub fn season_averages(
             .get_results::<SummaryStat>(conn)
     } else {
         sql_query("\
-            select sum(count)::int8 as count, event_type
+            select coalesce(sum(count)::int8, 0) as count, event_type, fair_ball_direction
             from data.offense_outcomes
-            group by event_type
-            order by event_type
+            group by event_type, fair_ball_direction
+            order by event_type, fair_ball_direction
         ")
             .get_results::<SummaryStat>(conn)
     }

@@ -4,7 +4,7 @@ use crate::web::error::AppError;
 use itertools::Itertools;
 use mmoldb_db::db;
 use mmoldb_db::models::DbPlayerVersion;
-use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType, TaxaEventType};
+use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType, TaxaEventType, TaxaSlot};
 use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
@@ -85,12 +85,29 @@ struct OutcomesSummary {
     everyone_total: i64,
 }
 
-fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa, m: &HashMap<i64, i64>) -> OutcomesSummary {
+fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa, summary: &HashMap<i64, HashMap<Option<i64>, i64>>, filter_to_fielder: Option<TaxaSlot>) -> OutcomesSummary {
     let outcomes = outcomes
         .unwrap_or(Vec::new())
         .into_iter()
         .filter_map(|outcome| {
             let et = taxa.event_type_from_id(outcome.event_type);
+            let everyone_count = summary.get(&outcome.event_type)
+                .and_then(|event_summary| if let Some(filter_slot) = filter_to_fielder {
+                    let filter_location = filter_slot.as_insertable().location;
+                    if let Some(location) = filter_location {
+                        event_summary.get(&Some(location)).cloned()
+                    } else {
+                        // filter_location == None means we're filtering to a slot that is not
+                        // a fielder slot, so the count should always be None. Note this is *not*
+                        // the same as event_summary.get(&None).
+                        None
+                    }
+                } else if event_summary.is_empty() {
+                    // TODO Does there need to be a distinction between 0 and None?
+                    None
+                } else {
+                    Some(event_summary.iter().map(|(_, count)| *count).sum())
+                });
             if let Some(et) = et {
                 let et_info = et.as_insertable();
                 if !et_info.ends_plate_appearance {
@@ -99,13 +116,13 @@ fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa, m: &HashMap<i64, i64>) 
                 Some(OutcomeStats {
                     outcome: et_info.display_name,
                     player_count: outcome.count,
-                    everyone_count: m.get(&outcome.event_type).copied(),
+                    everyone_count,
                 })
             } else {
                 Some(OutcomeStats {
                     outcome: "Unrecognized event type",
                     player_count: outcome.count,
-                    everyone_count: m.get(&outcome.event_type).copied(),
+                    everyone_count,
                 })
             }
         })
@@ -126,27 +143,29 @@ fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa, m: &HashMap<i64, i64>) 
     }
 }
 
-type SeasonStats = HashMap<String, i64>;
-type Stats = HashMap<Option<i64>, SeasonStats>;
-
-// TODO Add `at` support, which requires figuring out chrono deserialize from rocket
 #[get("/player/<player_id>?<season>")]
 pub async fn player(
     player_id: String,
     season: Option<i32>,
     db: Db,
-    // mut stats_cache: Connection<StatsCache>,
     taxa: &State<Taxa>,
 ) -> Result<Template, AppError> {
-    let taxa_for_db = (*taxa).clone();
     let (player_all, averages) = db.run(move |conn| {
-        let player_all = db::player_all(conn, &player_id, &taxa_for_db, season)?;
+        let player_all = db::player_all(conn, &player_id, season)?;
         let averages = db::season_averages(conn, season)?;
         Ok::<_, AppError>((player_all, averages))
     }).await?;
 
-    let averages: HashMap<_, _> = averages.into_iter()
-        .map(|stat| (stat.event_type, stat.count))
+    let averages: HashMap<_, HashMap<_, _>> = averages.into_iter()
+        .chunk_by(|stat| stat.event_type)
+        .into_iter()
+        .map(|(event_type, stat_group)| {
+            let inner_map = stat_group.into_iter()
+                .map(|stat| (stat.fair_ball_direction, stat.count))
+                .collect();
+
+            (event_type, inner_map)
+        })
         .collect();
 
     let raw_clone = player_all.player.clone();
@@ -223,9 +242,10 @@ pub async fn player(
             .collect_vec()
     });
 
-    let pitching_outcomes = outcomes(player_all.pitching_outcomes, taxa, &averages);
-    let fielding_outcomes = outcomes(player_all.fielding_outcomes, taxa, &averages);
-    let batting_outcomes = outcomes(player_all.batting_outcomes, taxa, &averages);
+    let pitching_outcomes = outcomes(player_all.pitching_outcomes, taxa, &averages, None);
+    let fielding_outcomes = outcomes(player_all.fielding_outcomes, taxa, &averages,
+                                     player_all.player.slot.map(|id| taxa.slot_from_id(id)));
+    let batting_outcomes = outcomes(player_all.batting_outcomes, taxa, &averages, None);
 
     Ok(Template::render(
         "player",

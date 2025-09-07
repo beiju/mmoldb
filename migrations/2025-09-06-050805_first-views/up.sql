@@ -42,6 +42,7 @@ select
     count(1) as count,
     ee.season,
     bt.mmolb_league_id,
+    ee.fair_ball_direction,
     ee.event_type,
     ee.hit_base,
     ee.fielding_error_type
@@ -51,6 +52,7 @@ from data.events_extended ee
 group by
     ee.season,
     bt.mmolb_league_id,
+    ee.fair_ball_direction,
     ee.event_type,
     ee.hit_base,
     ee.fielding_error_type;
@@ -60,6 +62,7 @@ select
     count(1) as count,
     ee.season,
     bt.mmolb_league_id,
+    ee.fair_ball_direction,
     ee.event_type,
     ee.hit_base,
     ee.fielding_error_type
@@ -69,6 +72,7 @@ from data.events_extended ee
 group by
     ee.season,
     bt.mmolb_league_id,
+    ee.fair_ball_direction,
     ee.event_type,
     ee.hit_base,
     ee.fielding_error_type;
