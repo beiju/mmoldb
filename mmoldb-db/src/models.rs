@@ -549,6 +549,7 @@ pub struct DbPlayerRecomposition {
     pub superstar_day: Option<i32>,
     pub player_name_before: String,
     pub player_name_after: String,
+    pub reverts_recomposition: Option<NaiveDateTime>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]

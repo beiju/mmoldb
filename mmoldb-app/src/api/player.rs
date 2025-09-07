@@ -61,6 +61,18 @@ pub struct ApiPlayerVersion {
     pub lesser_boon: Option<ApiModification>,
     pub modifications: Vec<Option<ApiModification>>,
     pub equipment: HashMap<String, Option<ApiEquipment>>,
+    pub events: Vec<ApiPlayerEvent>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "event_type")]
+pub enum ApiPlayerEvent {
+    Recomposition {
+        time: DateTime<Utc>,
+        new_name: String,
+        reverts_recomposition: Option<DateTime<Utc>>,
+    }
+
 }
 
 #[derive(Serialize)]
@@ -110,6 +122,7 @@ pub async fn player_versions<'a>(
         player_equipment_versions,
         player_equipment_effects,
         modifications,
+        mut recompositions,
     ) = db
         .run(move |conn| {
             let players = mmoldb_db::db::get_player_versions(conn, &mmolb_player_id)?;
@@ -128,12 +141,15 @@ pub async fn player_versions<'a>(
                 .collect_vec();
             let modifications = mmoldb_db::db::get_modifications(conn, &mod_ids)?;
 
+            let recompositions = mmoldb_db::db::get_recomposition(conn, &mmolb_player_id)?;
+
             Ok::<_, ApiError>((
                 players,
                 player_modifications,
                 player_equipment,
                 player_equipment_effects,
                 modifications,
+                recompositions,
             ))
         })
         .await?;
@@ -306,6 +322,23 @@ pub async fn player_versions<'a>(
             }
         }
 
+        let mut events = Vec::new();
+        // Handle the unlikely event of getting multiple recomposes between one player version
+        let player_name = format!("{} {}", player.first_name, player.last_name);
+        // Scan forward to find a recomposition into this player name
+        // I don't yet do anything to ensure the time is appropriate given the versions times
+        let recomposition_split = recompositions.iter()
+            .position(|r| r.player_name_after == player_name);
+        if let Some(split) = recomposition_split {
+            for recomposition in recompositions.splice(0..=split, None) {
+                events.push(ApiPlayerEvent::Recomposition {
+                    time: recomposition.time.and_utc(),
+                    new_name: recomposition.player_name_after.clone(),
+                    reverts_recomposition: recomposition.reverts_recomposition.map(|dt| dt.and_utc()),
+                });
+            }
+        }
+
         if let Some(last_version) = versions.last_mut() {
             last_version.valid_until = Some(time);
         }
@@ -350,6 +383,7 @@ pub async fn player_versions<'a>(
             }),
             modifications: modifications.clone(),
             equipment: equipment.clone(),
+            events,
         });
     }
 

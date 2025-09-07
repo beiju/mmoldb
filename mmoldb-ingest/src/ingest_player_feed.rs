@@ -186,6 +186,7 @@ pub fn chron_player_feed_as_new<'a>(
     // TODO make this static, or at least global
     // Some feed events were accidentally reverted (by caching issues I think), and we want to
     // pretend they never happened
+    // TODO No we don't, we want to make them into a recompose-unrecompose pair
     let impermanent_feed_events = {
         let mut hashes = HashSet::new();
         #[rustfmt::skip]
@@ -348,39 +349,40 @@ pub fn chron_player_feed_as_new<'a>(
                 ("684128b38ba62cf2ce8d91f8", [
                     ("2025-07-23T05:09:54.563711Z", (3, Day::Day(194), "Harmon Matsui", "Myra Tomlinson"))
                 ]),
-                ("6879d391762fe1c1e4769883", [
-                    ("2025-07-26T00:42:41.224451Z", (3, Day::PostseasonPreview, "Han-Soo van der Meer", "Tommy van den Berg"))
-                ]),
-                ("6840feff8ba62cf2ce8d8e41", [
-                    ("2025-07-25T18:14:08.672137Z", (3, Day::PostseasonPreview, "Asher Boyd", "Algernon Welch"))
-                ]),
-                ("684339118ba62cf2ce8d9620", [
-                    ("2025-07-26T09:50:09.471896Z", (3, Day::PostseasonPreview, "Dilly-Dally Sarkar", "July Shah"))
-                ]),
-                ("687e44b6a18a39dc5d280cb8", [
-                    ("2025-07-26T06:06:08.474301Z", (3, Day::PostseasonPreview, "Hobble Schulz", "Chorby Schneider"))
-                ]),
-                ("687c4009af79e504eb851455", [
-                    ("2025-07-25T21:24:49.851079Z", (3, Day::PostseasonPreview, "Neptune Grgić", "Boyfriend Otsuka"))
-                ]),
-                ("68412307896f631e9d6892c8", [
-                    ("2025-07-26T01:33:02.907220Z", (3, Day::PostseasonPreview, "Ahmed Nunes", "Francisco Langston"))
-                ]),
-                ("6847d0c44a488309816676d6", [
-                    ("2025-07-25T22:21:19.095142Z", (3, Day::PostseasonPreview, "Dawn Injury", "Georgia Dracula"))
-                ]),
-                ("684102fa183c892d88a0fd3a", [
-                    ("2025-07-25T20:05:23.830022Z", (3, Day::PostseasonPreview, "Esther Carlington", "Ally Mashaba"))
-                ]),
-                ("68751f7fc1f9dc22d3a8f267", [
-                    ("2025-07-26T00:44:53.626041Z", (3, Day::PostseasonPreview, "Hitchcock Whitaker", "Mamie Ling"))
-                ]),
-                ("6875b958fa3eb3ff9c319ec4", [
-                    ("2025-07-25T19:43:36.410787Z", (3, Day::PostseasonPreview, "Pogo-Stick Curran", "Maybelline Lehtinen"))
-                ]),
-                ("68410cb088056169e0078998", [
-                    ("2025-07-26T05:03:28.822305Z", (3, Day::PostseasonPreview, "Chloe Alfonso", "Fannie Oconnor"))
-                ]),
+                // The ones below appear to be in the feed just fine, not sure where I got them from
+                // ("6879d391762fe1c1e4769883", [
+                //     ("2025-07-26T00:42:41.224451Z", (3, Day::PostseasonPreview, "Han-Soo van der Meer", "Tommy van den Berg"))
+                // ]),
+                // ("6840feff8ba62cf2ce8d8e41", [
+                //     ("2025-07-25T18:14:08.672137Z", (3, Day::PostseasonPreview, "Asher Boyd", "Algernon Welch"))
+                // ]),
+                // ("684339118ba62cf2ce8d9620", [
+                //     ("2025-07-26T09:50:09.471896Z", (3, Day::PostseasonPreview, "Dilly-Dally Sarkar", "July Shah"))
+                // ]),
+                // ("687e44b6a18a39dc5d280cb8", [
+                //     ("2025-07-26T06:06:08.474301Z", (3, Day::PostseasonPreview, "Hobble Schulz", "Chorby Schneider"))
+                // ]),
+                // ("687c4009af79e504eb851455", [
+                //     ("2025-07-25T21:24:49.851079Z", (3, Day::PostseasonPreview, "Neptune Grgić", "Boyfriend Otsuka"))
+                // ]),
+                // ("68412307896f631e9d6892c8", [
+                //     ("2025-07-26T01:33:02.907220Z", (3, Day::PostseasonPreview, "Ahmed Nunes", "Francisco Langston"))
+                // ]),
+                // ("6847d0c44a488309816676d6", [
+                //     ("2025-07-25T22:21:19.095142Z", (3, Day::PostseasonPreview, "Dawn Injury", "Georgia Dracula"))
+                // ]),
+                // ("684102fa183c892d88a0fd3a", [
+                //     ("2025-07-25T20:05:23.830022Z", (3, Day::PostseasonPreview, "Esther Carlington", "Ally Mashaba"))
+                // ]),
+                // ("68751f7fc1f9dc22d3a8f267", [
+                //     ("2025-07-26T00:44:53.626041Z", (3, Day::PostseasonPreview, "Hitchcock Whitaker", "Mamie Ling"))
+                // ]),
+                // ("6875b958fa3eb3ff9c319ec4", [
+                //     ("2025-07-25T19:43:36.410787Z", (3, Day::PostseasonPreview, "Pogo-Stick Curran", "Maybelline Lehtinen"))
+                // ]),
+                // ("68410cb088056169e0078998", [
+                //     ("2025-07-26T05:03:28.822305Z", (3, Day::PostseasonPreview, "Chloe Alfonso", "Fannie Oconnor"))
+                // ]),
             ]
                 .into_iter()
                 .map(|(id, recompositions)| {

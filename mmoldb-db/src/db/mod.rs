@@ -24,7 +24,7 @@ use std::iter;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition};
 use crate::taxa::Taxa;
 use crate::{PartyEvent, PitcherChange, QueryError};
 
@@ -2282,6 +2282,19 @@ macro_rules! rollback_table {
             .set(&Update { valid_until: None })
             .execute($conn)?;
     }};
+}
+
+pub fn get_recomposition(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerRecomposition>> {
+    use crate::data_schema::data::player_recompositions::dsl as pr_dsl;
+
+    pr_dsl::player_recompositions
+        .filter(pr_dsl::mmolb_player_id.eq(player_id))
+        .order((pr_dsl::feed_event_index.asc(), pr_dsl::inferred_event_index.asc().nulls_last()))
+        .select(DbPlayerRecomposition::as_select())
+        .get_results(conn)
 }
 
 pub fn roll_back_ingest_to_date(conn: &mut PgConnection, dt: NaiveDateTime) -> QueryResult<()> {

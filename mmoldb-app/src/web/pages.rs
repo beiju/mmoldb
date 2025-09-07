@@ -431,7 +431,7 @@ fn players_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
             Stat::new("Player report versions", num_player_report_versions),
             Stat::new("Player report attribute version", num_player_report_attribute_versions),
             Stat::new("Player attribute augments", num_player_attribute_augments),
-            Stat::new("Player attribute paradigm shifts", num_player_paradigm_shifts),
+            Stat::new("Player paradigm shifts", num_player_paradigm_shifts),
             Stat::new("Player recompositions", num_player_recompositions),
             Stat::new("player feed versions", num_player_feed_versions),
             Stat::new("Players with issues", num_players_with_issues),

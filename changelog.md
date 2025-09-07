@@ -8,6 +8,12 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+----------
+- Add recomposes to player API
+- Remove a lot of erroneous inferred recomposes (probably false positives 
+  caused by the player feed moving outside player objects)
+
 2025-10-07
 ----------
 - Add `data.team_games_played` with the feed events for games ending. This is
