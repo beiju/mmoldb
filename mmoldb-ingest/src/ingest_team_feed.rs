@@ -1,20 +1,16 @@
 use crate::ingest::{VersionIngestLogs, batch_by_entity};
 use chron::ChronEntity;
-use chrono::{DateTime, NaiveDateTime, Utc};
-use hashbrown::{HashMap, HashSet};
-use itertools::{ExactlyOneError, Itertools};
-use log::{debug, error, info};
+use chrono::{DateTime, Utc};
+use itertools::{Itertools};
+use log::{debug, info};
 use miette::IntoDiagnostic;
-use mmolb_parsing::enums::{Attribute, Day, FeedEventType, LinkType};
+use mmolb_parsing::enums::{LinkType};
 use mmolb_parsing::feed_event::{FeedEvent, ParsedFeedEventText};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{PgConnection, db};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use serde::Deserialize;
-use std::fmt::{Display, Formatter};
-use std::iter::Filter;
-use std::slice::Iter;
 use tokio_util::sync::CancellationToken;
 use mmoldb_db::models::{NewTeamFeedVersion, NewTeamGamePlayed, NewVersionIngestLog};
 
@@ -46,7 +42,7 @@ pub async fn ingest_team_feeds(
 }
 
 pub fn ingest_page_of_team_feeds(
-    taxa: &Taxa,
+    _taxa: &Taxa,
     raw_team_feeds: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
     worker_id: usize,
