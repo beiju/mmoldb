@@ -10,7 +10,8 @@ Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
 Upcoming
 ----------
-- Add recomposes to player API
+- Add recomposes to the player API
+- Add reports to the player API
 - Remove a lot of erroneous inferred recomposes (probably false positives 
   caused by the player feed moving outside player objects)
 
@@ -32,7 +33,7 @@ Upcoming
 - Fix ingest to not crash when it aborts, and to report the error on the status
   page.
 
-- 2025-09-01
+2025-09-01
 ----------
 - Add `fair_ball_fielder_name` to `data.events`
 - Add more info to the player pages. This also makes them load very slowly, 
