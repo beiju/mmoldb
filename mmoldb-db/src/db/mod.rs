@@ -24,7 +24,7 @@ use std::iter;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion};
 use crate::taxa::Taxa;
 use crate::{PartyEvent, PitcherChange, QueryError};
 
@@ -2248,6 +2248,32 @@ pub fn get_player_equipment_effect_versions(
         .filter(peev_dsl::mmolb_player_id.eq(player_id))
         .order(peev_dsl::valid_from.asc())
         .select(DbPlayerEquipmentEffectVersion::as_select())
+        .get_results(conn)
+}
+
+pub fn get_player_report_versions(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerReportVersion>> {
+    use crate::data_schema::data::player_report_versions::dsl as prv_dsl;
+
+    prv_dsl::player_report_versions
+        .filter(prv_dsl::mmolb_player_id.eq(player_id))
+        .order(prv_dsl::valid_from.asc())
+        .select(DbPlayerReportVersion::as_select())
+        .get_results(conn)
+}
+
+pub fn get_player_report_attribute_versions(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerReportAttributeVersion>> {
+    use crate::data_schema::data::player_report_attribute_versions::dsl as prav_dsl;
+
+    prav_dsl::player_report_attribute_versions
+        .filter(prav_dsl::mmolb_player_id.eq(player_id))
+        .order(prav_dsl::valid_from.asc())
+        .select(DbPlayerReportAttributeVersion::as_select())
         .get_results(conn)
 }
 

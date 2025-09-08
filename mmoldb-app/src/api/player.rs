@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::warn;
-use mmoldb_db::taxa::{Taxa, TaxaAttribute, TaxaDayType, TaxaEffectType, TaxaHandedness, TaxaSlot};
+use mmoldb_db::taxa::{Taxa, TaxaAttribute, TaxaAttributeCategory, TaxaDayType, TaxaEffectType, TaxaHandedness, TaxaSlot};
 use rocket::serde::Serialize;
 use rocket::serde::json::Json;
 use rocket::{State, get};
@@ -38,6 +38,21 @@ pub struct ApiEquipment {
 }
 
 #[derive(Clone, Serialize)]
+pub struct ApiReportAttribute {
+    pub stars: i32,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ApiReport {
+    pub season: Option<i32>,
+    pub day_type: Option<TaxaDayType>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
+    pub quote: String,
+    pub attributes: HashMap<TaxaAttribute, Option<ApiReportAttribute>>,
+}
+
+#[derive(Clone, Serialize)]
 pub struct ApiPlayerVersion {
     pub id: String,
     pub valid_from: DateTime<Utc>,
@@ -61,6 +76,7 @@ pub struct ApiPlayerVersion {
     pub lesser_boon: Option<ApiModification>,
     pub modifications: Vec<Option<ApiModification>>,
     pub equipment: HashMap<String, Option<ApiEquipment>>,
+    pub reports: HashMap<TaxaAttributeCategory, Option<ApiReport>>,
     pub events: Vec<ApiPlayerEvent>,
 }
 
@@ -120,7 +136,9 @@ pub async fn player_versions<'a>(
         player_versions,
         player_modification_versions,
         player_equipment_versions,
-        player_equipment_effects,
+        player_equipment_effect_versions,
+        player_report_versions,
+        player_report_attribute_versions,
         modifications,
         mut recompositions,
     ) = db
@@ -132,6 +150,10 @@ pub async fn player_versions<'a>(
                 mmoldb_db::db::get_player_equipment_versions(conn, &mmolb_player_id)?;
             let player_equipment_effects =
                 mmoldb_db::db::get_player_equipment_effect_versions(conn, &mmolb_player_id)?;
+            let player_reports =
+                mmoldb_db::db::get_player_report_versions(conn, &mmolb_player_id)?;
+            let player_report_attributes =
+                mmoldb_db::db::get_player_report_attribute_versions(conn, &mmolb_player_id)?;
 
             let mod_ids = player_modifications
                 .iter()
@@ -148,6 +170,8 @@ pub async fn player_versions<'a>(
                 player_modifications,
                 player_equipment,
                 player_equipment_effects,
+                player_reports,
+                player_report_attributes,
                 modifications,
                 recompositions,
             ))
@@ -171,12 +195,15 @@ pub async fn player_versions<'a>(
     let mut next_player_version = player_versions.into_iter().peekable();
     let mut next_player_modification_version = player_modification_versions.into_iter().peekable();
     let mut next_player_equipment_version = player_equipment_versions.into_iter().peekable();
-    let mut next_player_equipment_effect_version = player_equipment_effects.into_iter().peekable();
+    let mut next_player_equipment_effect_version = player_equipment_effect_versions.into_iter().peekable();
+    let mut next_player_report_version = player_report_versions.into_iter().peekable();
+    let mut next_player_report_attribute_version = player_report_attribute_versions.into_iter().peekable();
 
     let mut versions: Vec<ApiPlayerVersion> = Default::default();
     let mut active_player = None;
     let mut modifications: Vec<Option<ApiModification>> = Default::default();
     let mut equipment: HashMap<String, Option<ApiEquipment>> = Default::default();
+    let mut reports: HashMap<TaxaAttributeCategory, Option<ApiReport>> = Default::default();
     loop {
         let mut next_change_time = NextChangeTime::new();
         next_change_time
@@ -193,6 +220,16 @@ pub async fn player_versions<'a>(
         );
         next_change_time.with_possible_change(
             next_player_equipment_effect_version
+                .peek()
+                .map(|v| v.valid_from.and_utc()),
+        );
+        next_change_time.with_possible_change(
+            next_player_report_version
+                .peek()
+                .map(|v| v.valid_from.and_utc()),
+        );
+        next_change_time.with_possible_change(
+            next_player_report_attribute_version
                 .peek()
                 .map(|v| v.valid_from.and_utc()),
         );
@@ -260,6 +297,7 @@ pub async fn player_versions<'a>(
                 }
             })
             .collect();
+
         while let Some(eq) =
             next_player_equipment_version.next_if(|e| e.valid_from.and_utc() == time)
         {
@@ -304,7 +342,7 @@ pub async fn player_versions<'a>(
                         })
                     } else {
                         warn!(
-                            "player_equipment_effect_versions table had more effects than  \
+                            "player_equipment_effect_versions table had more effects than \
                             player_equipment_versions indicated"
                         );
                     }
@@ -318,6 +356,131 @@ pub async fn player_versions<'a>(
                 warn!(
                     "player_equipment_effect_versions table had an equipment effect for a slot not \
                     present in occupied_equipment_slots"
+                );
+            }
+        }
+
+        // There might be a more efficient way to do this
+        // This step is the hashmap equivalent to modifications.resize()
+        reports = player
+            .included_report_categories
+            .iter()
+            .map(|category| {
+                let Some(category) = category else {
+                    // category is Option here because of a limitation of the Postgres api: it can't
+                    // guarantee non-nullability of array elements. There's no valid reason for
+                    // category to be null, including if there's invalid input data.
+                    panic!("Included category should never be None");
+                };
+
+                let category = taxa.attribute_category_from_id(*category);
+                match reports.remove_entry(&category) {
+                    None => {
+                        // This is a new category, populate it with None and it will get overwritten
+                        // in the next step
+                        (category, None)
+                    }
+                    Some((category, equipment)) => {
+                        // This is a previously occupied category, carry over its value and it may
+                        // get overwritten in the next step
+                        (category, equipment)
+                    }
+                }
+            })
+            .collect();
+
+        while let Some(report) =
+            next_player_report_version.next_if(|e| e.valid_from.and_utc() == time)
+        {
+            let category = taxa.attribute_category_from_id(report.category);
+            if let Some(elem) = reports.get_mut(&category) {
+                // Updated and new attributes will be filled in by the next step
+                let attributes = if let Some(mut elem) = elem.take() {
+                    report.included_attributes
+                        .iter()
+                        .map(|attr| {
+                            let Some(attr) = attr else {
+                                // attr is Option here because of a limitation of the Postgres api: it can't
+                                // guarantee non-nullability of array elements. There's no valid reason for
+                                // attr to be null, including if there's invalid input data.
+                                panic!("Included attribute should never be None");
+                            };
+
+                            let attr = taxa.attribute_from_id(*attr);
+                            match elem.attributes.remove_entry(&attr) {
+                                None => {
+                                    // This is a new attribute, populate it with None and it will get overwritten
+                                    // in the next step
+                                    (attr, None)
+                                }
+                                Some((attr, value)) => {
+                                    // This is a previously occupied attribute, carry over its value and it may
+                                    // get overwritten in the next step
+                                    (attr, value)
+                                }
+                            }
+                        })
+                        .collect()
+                } else {
+                    report.included_attributes
+                        .iter()
+                        .map(|attr| {
+                            let Some(attr) = attr else {
+                                // attr is Option here because of a limitation of the Postgres api: it can't
+                                // guarantee non-nullability of array elements. There's no valid reason for
+                                // attr to be null, including if there's invalid input data.
+                                panic!("Included attribute should never be None");
+                            };
+
+                            let attr = taxa.attribute_from_id(*attr);
+                            // This is a new attribute because there is no previous report
+                            (attr, None)
+                        })
+                        .collect()
+                };
+
+                *elem = Some(ApiReport {
+                    season: report.season,
+                    day_type: report.day_type.map(|d| taxa.day_type_from_id(d)),
+                    day: report.day,
+                    superstar_day: report.superstar_day,
+                    quote: report.quote,
+                    attributes,
+                })
+            } else {
+                warn!(
+                    "player_report_versions table had equipment for a slot not present in \
+                    included_attributes"
+                );
+            }
+        }
+        while let Some(attribute) =
+            next_player_report_attribute_version.next_if(|e| e.valid_from.and_utc() == time)
+        {
+            let category = taxa.attribute_category_from_id(attribute.category);
+            let attr = taxa.attribute_from_id(attribute.attribute);
+            if let Some(report) = reports.get_mut(&category) {
+                if let Some(report) = report {
+                    if let Some(effect_slot) = report.attributes.get_mut(&attr) {
+                        *effect_slot = Some(ApiReportAttribute {
+                            stars: attribute.stars,
+                        })
+                    } else {
+                        warn!(
+                            "player_report_attribute_versions table had an entry for an attribute \
+                            not present in included_attributes"
+                        );
+                    }
+                } else {
+                    warn!(
+                        "player_report_attribute_versions table had an entry for an attribute \
+                        category not present in player_report_versions"
+                    );
+                }
+            } else {
+                warn!(
+                    "player_report_attribute_versions table had an entry for an attribute category \
+                    not present in included_report_categories"
                 );
             }
         }
@@ -383,6 +546,7 @@ pub async fn player_versions<'a>(
             }),
             modifications: modifications.clone(),
             equipment: equipment.clone(),
+            reports: reports.clone(),
             events,
         });
     }

@@ -1182,6 +1182,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::attribute_category,
         table = crate::taxa_schema::taxa::attribute_category::dsl::attribute_category,
         id_column = crate::taxa_schema::taxa::attribute_category::dsl::id,
+        derive = (Serialize)
     ]
     pub enum TaxaAttributeCategory {
         Generic = 0,
