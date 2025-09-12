@@ -36,4 +36,6 @@ truncate table
 
     -- team
     data.team_versions,
-    data.team_player_versions;
+    data.team_player_versions,
+    data.team_feed_versions,
+    data.team_games_played;

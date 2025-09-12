@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::warn;
-use mmoldb_db::taxa::{Taxa, TaxaAttribute, TaxaAttributeCategory, TaxaDayType, TaxaEffectType, TaxaHandedness, TaxaSlot};
+use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaAttribute, TaxaAttributeCategory, TaxaDayType, TaxaEffectType, TaxaHandedness, TaxaSlot};
 use rocket::serde::Serialize;
 use rocket::serde::json::Json;
 use rocket::{State, get};
@@ -87,8 +87,18 @@ pub enum ApiPlayerEvent {
         time: DateTime<Utc>,
         new_name: String,
         reverts_recomposition: Option<DateTime<Utc>>,
+    },
+    AttributeAugment {
+        time: DateTime<Utc>,
+        category: TaxaAttributeCategory,
+        attribute: TaxaAttribute,
+        value: i32,
+    },
+    Party {
+        category: TaxaAttributeCategory,
+        attribute: TaxaAttribute,
+        value: i32,
     }
-
 }
 
 #[derive(Serialize)]
@@ -140,7 +150,9 @@ pub async fn player_versions<'a>(
         player_report_versions,
         player_report_attribute_versions,
         modifications,
-        mut recompositions,
+        mut player_recompositions,
+        attribute_augments,
+        player_parties,
     ) = db
         .run(move |conn| {
             let players = mmoldb_db::db::get_player_versions(conn, &mmolb_player_id)?;
@@ -163,7 +175,9 @@ pub async fn player_versions<'a>(
                 .collect_vec();
             let modifications = mmoldb_db::db::get_modifications(conn, &mod_ids)?;
 
-            let recompositions = mmoldb_db::db::get_recomposition(conn, &mmolb_player_id)?;
+            let player_recompositions = mmoldb_db::db::get_player_recompositions(conn, &mmolb_player_id)?;
+            let player_attribute_augments = mmoldb_db::db::get_player_attribute_augments(conn, &mmolb_player_id)?;
+            let player_parties = mmoldb_db::db::get_player_parties(conn, &mmolb_player_id)?;
 
             Ok::<_, ApiError>((
                 players,
@@ -173,7 +187,9 @@ pub async fn player_versions<'a>(
                 player_reports,
                 player_report_attributes,
                 modifications,
-                recompositions,
+                player_recompositions,
+                player_attribute_augments,
+                player_parties,
             ))
         })
         .await?;
@@ -198,6 +214,8 @@ pub async fn player_versions<'a>(
     let mut next_player_equipment_effect_version = player_equipment_effect_versions.into_iter().peekable();
     let mut next_player_report_version = player_report_versions.into_iter().peekable();
     let mut next_player_report_attribute_version = player_report_attribute_versions.into_iter().peekable();
+    let mut next_attribute_augment = attribute_augments.into_iter().peekable();
+    let mut next_player_party = player_parties.into_iter().peekable();
 
     let mut versions: Vec<ApiPlayerVersion> = Default::default();
     let mut active_player = None;
@@ -380,10 +398,10 @@ pub async fn player_versions<'a>(
                         // in the next step
                         (category, None)
                     }
-                    Some((category, equipment)) => {
+                    Some((category, report)) => {
                         // This is a previously occupied category, carry over its value and it may
                         // get overwritten in the next step
-                        (category, equipment)
+                        (category, report)
                     }
                 }
             })
@@ -490,16 +508,40 @@ pub async fn player_versions<'a>(
         let player_name = format!("{} {}", player.first_name, player.last_name);
         // Scan forward to find a recomposition into this player name
         // I don't yet do anything to ensure the time is appropriate given the versions times
-        let recomposition_split = recompositions.iter()
+        let recomposition_split = player_recompositions.iter()
             .position(|r| r.player_name_after == player_name);
         if let Some(split) = recomposition_split {
-            for recomposition in recompositions.splice(0..=split, None) {
+            for recomposition in player_recompositions.splice(0..=split, None) {
                 events.push(ApiPlayerEvent::Recomposition {
                     time: recomposition.time.and_utc(),
                     new_name: recomposition.player_name_after.clone(),
                     reverts_recomposition: recomposition.reverts_recomposition.map(|dt| dt.and_utc()),
                 });
             }
+        }
+
+        // For now, assume that events belong to the earliest version whose valid_until
+        // is after they occurred
+        while let Some(augment) = next_attribute_augment.next_if(|e| e.time.and_utc() <= time) {
+            let attribute = taxa.attribute_from_id(augment.attribute);
+            events.push(ApiPlayerEvent::AttributeAugment {
+                time: augment.time.and_utc(),
+                category: taxa.attribute_category_from_id(attribute.as_insertable().category),
+                attribute,
+                value: augment.value,
+            })
+        }
+
+        // For now, assume that parties belong to the earliest version whose valid_until
+        // is after their game started. I think this still might be accurate enough because
+        // players can't change in any other way during party weather.
+        while let Some(party) = next_player_party.next_if(|p| p.game_start_time.and_utc() <= time) {
+            let attribute = taxa.attribute_from_id(party.attribute);
+            events.push(ApiPlayerEvent::Party {
+                category: taxa.attribute_category_from_id(attribute.as_insertable().category),
+                attribute,
+                value: party.value,
+            })
         }
 
         if let Some(last_version) = versions.last_mut() {

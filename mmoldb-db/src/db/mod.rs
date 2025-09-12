@@ -24,7 +24,7 @@ use std::iter;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment};
 use crate::taxa::Taxa;
 use crate::{PartyEvent, PitcherChange, QueryError};
 
@@ -2310,7 +2310,7 @@ macro_rules! rollback_table {
     }};
 }
 
-pub fn get_recomposition(
+pub fn get_player_recompositions(
     conn: &mut PgConnection,
     player_id: &str,
 ) -> QueryResult<Vec<DbPlayerRecomposition>> {
@@ -2320,6 +2320,70 @@ pub fn get_recomposition(
         .filter(pr_dsl::mmolb_player_id.eq(player_id))
         .order((pr_dsl::feed_event_index.asc(), pr_dsl::inferred_event_index.asc().nulls_last()))
         .select(DbPlayerRecomposition::as_select())
+        .get_results(conn)
+}
+
+pub fn get_player_attribute_augments(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerAttributeAugment>> {
+    use crate::data_schema::data::player_attribute_augments::dsl as paa_dsl;
+
+    paa_dsl::player_attribute_augments
+        .filter(paa_dsl::mmolb_player_id.eq(player_id))
+        .order(paa_dsl::feed_event_index.asc())
+        .select(DbPlayerAttributeAugment::as_select())
+        .get_results(conn)
+}
+
+#[derive(QueryableByName)]
+pub struct DbPlayerParty {
+    #[diesel(sql_type = Text)]
+    pub mmolb_game_id: String,
+    #[diesel(sql_type = Timestamp)]
+    pub game_start_time: NaiveDateTime,
+    #[diesel(sql_type = Timestamp)]
+    pub game_end_time: NaiveDateTime,
+    #[diesel(sql_type = Int8)]
+    pub attribute: i64,
+    #[diesel(sql_type = Integer)]
+    pub value: i32,
+}
+
+pub fn get_player_parties(
+    conn: &mut PgConnection,
+    player_id: &str,
+) -> QueryResult<Vec<DbPlayerParty>> {
+    let q = sql_query("
+        with game_end_times as (
+            select min(tgp.time) as time, mmolb_game_id
+            from data.team_games_played tgp
+            group by mmolb_game_id
+        ), parties_extended as (select
+            g.mmolb_game_id,
+            case when p.is_pitcher=p.top_of_inning then g.home_team_mmolb_id else g.away_team_mmolb_id end as mmolb_team_id,
+            p.player_name,
+            p.attribute,
+            p.value
+        from data.parties p
+        left join data.games g on g.id=p.game_id)
+        select
+            pe.mmolb_game_id,
+            to_timestamp(('0x'||substr(pe.mmolb_game_id, 1, 8))::numeric) as game_start_time,
+            gt.time as game_end_time,
+            pe.attribute,
+            pe.value
+        from parties_extended pe
+        left join game_end_times gt on gt.mmolb_game_id=pe.mmolb_game_id
+        left join data.team_player_versions tpv on pe.mmolb_team_id=tpv.mmolb_team_id
+            and pe.player_name=(tpv.first_name || ' ' || tpv.last_name)
+            and (gt.time >= tpv.valid_from and gt.time < coalesce(tpv.valid_until, 'infinity'))
+        where tpv.mmolb_player_id=$1
+        order by game_start_time asc
+    ");
+
+    q
+        .bind::<Text, _>(player_id)
         .get_results(conn)
 }
 
