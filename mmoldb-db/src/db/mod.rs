@@ -1659,7 +1659,7 @@ pub fn get_team_ingest_start_cursor(
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {
     use crate::schema::data_schema::data as schema;
 
-    // This must list all tables that have a valid_from derived from the `player` kind.
+    // This must list all tables that have a valid_from derived from the `team` kind.
     let cursor: Option<(NaiveDateTime, String)> = [
         team_cursor_from_table!(conn, schema, team_versions)?,
         team_cursor_from_table!(conn, schema, team_player_versions)?,
