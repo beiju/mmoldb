@@ -1128,6 +1128,8 @@ taxa! {
         Event = 13,
         #[display_name: &'a str = "Special Event"]
         SpecialEvent = 14,
+        #[display_name: &'a str = "Offseason"]
+        Offseason = 15,
     }
 }
 

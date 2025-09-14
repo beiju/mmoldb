@@ -28,5 +28,4 @@ toml = "0.9.0"
 include_dir = "0.7.4"
 markdown = "1.0.0"
 openport = { version = "0.1.1", features = ["rand"] }
-hashbrown = { version = "0.15.4", features = ["serde"] }
-bigdecimal = "0.4.8"
+hashbrown = { version = "0.16.0", features = ["serde"] }

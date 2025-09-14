@@ -257,6 +257,11 @@ pub fn day_to_db(
             None,
             None,
         ),
+        Ok(Day::Offseason) => (
+            Some(taxa.day_type_id(TaxaDayType::Offseason)),
+            None,
+            None,  // In this context, offseason day isn't available
+        ),
         Err(err) => {
             error!("Unrecognized day {err}");
             (None, None, None)

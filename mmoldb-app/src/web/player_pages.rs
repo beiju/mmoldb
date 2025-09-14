@@ -49,6 +49,7 @@ impl<'r, 't> PlayerContext<'r, 't> {
                 TaxaDayType::Holiday => "Holiday".to_string(),
                 TaxaDayType::Event => "Event".to_string(),
                 TaxaDayType::SpecialEvent => "Special Event".to_string(),
+                TaxaDayType::Offseason => "Offseason".to_string(),
             },
         };
 

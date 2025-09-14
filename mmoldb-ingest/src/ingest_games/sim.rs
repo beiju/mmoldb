@@ -2322,7 +2322,14 @@ impl<'g> Game<'g> {
                     }
 
                     let picher_swap_result = match pitcher_status {
-                        StartOfInningPitcher::Same { emoji, name } => {
+                        None => {
+                            ingest_logs.info(
+                                "Not incrementing pitcher_count because pitcher isn't mentioned in \
+                                the start of inning event"
+                            );
+                            None
+                        }
+                        Some(StartOfInningPitcher::Same { emoji, name }) => {
                             ingest_logs.info(format!(
                                 "Not incrementing pitcher_count on returning pitcher {} {}",
                                 emoji, name
@@ -2360,7 +2367,7 @@ impl<'g> Game<'g> {
                             }
                             None
                         }
-                        StartOfInningPitcher::Different { leaving_emoji: _, leaving_pitcher, arriving_emoji: _, arriving_pitcher } => {
+                        Some(StartOfInningPitcher::Different { leaving_emoji: _, leaving_pitcher, arriving_emoji: _, arriving_pitcher }) => {
                             let defending_team = self.defending_team();
                             // The pitcher_count we report should be before the change
                             let pitcher_count = defending_team.pitcher_count;
