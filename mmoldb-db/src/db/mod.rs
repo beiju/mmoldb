@@ -16,7 +16,7 @@ use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use log::{info, warn};
+use log::{debug, info, warn};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
@@ -1851,7 +1851,7 @@ type NewPlayerVersionExt<'a> = (
 
 fn insert_player_report_attribute_versions(
     conn: &mut PgConnection,
-    new_player_report_attribute_versions: Vec<Vec<NewPlayerReportAttributeVersion>>,
+    new_player_report_attribute_versions: Vec<&Vec<NewPlayerReportAttributeVersion>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_report_attribute_versions::dsl as prav_dsl;
     let new_player_report_attribute_versions = new_player_report_attribute_versions
@@ -1868,15 +1868,20 @@ fn insert_player_report_attribute_versions(
 fn insert_player_report_versions(
     conn: &mut PgConnection,
     new_player_report_versions: Vec<
-        Vec<(NewPlayerReportVersion, Vec<NewPlayerReportAttributeVersion>)>,
+        &Vec<(NewPlayerReportVersion, Vec<NewPlayerReportAttributeVersion>)>,
     >,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_report_versions::dsl as prv_dsl;
 
+    // Flatten and convert reference to tuple to tuple of references
+    let new_player_report_versions = new_player_report_versions.into_iter()
+        .flatten()
+        .map(|(a, b)| (a, b));
+
     let (new_player_report_versions, new_player_report_attribute_versions): (
-        Vec<NewPlayerReportVersion>,
-        Vec<Vec<NewPlayerReportAttributeVersion>>,
-    ) = itertools::multiunzip(new_player_report_versions.into_iter().flatten());
+        Vec<&NewPlayerReportVersion>,
+        Vec<&Vec<NewPlayerReportAttributeVersion>>,
+    ) = itertools::multiunzip(new_player_report_versions);
 
     // Insert new records
     let num_inserted = diesel::copy_from(prv_dsl::player_report_versions)
@@ -1890,7 +1895,7 @@ fn insert_player_report_versions(
 
 fn insert_player_equipment_effects(
     conn: &mut PgConnection,
-    new_player_equipment_effects: Vec<Vec<NewPlayerEquipmentEffectVersion>>,
+    new_player_equipment_effects: Vec<&Vec<NewPlayerEquipmentEffectVersion>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_equipment_effect_versions::dsl as peev_dsl;
 
@@ -1908,7 +1913,7 @@ fn insert_player_equipment_effects(
 fn insert_player_equipment(
     conn: &mut PgConnection,
     new_player_equipment: Vec<
-        Vec<(
+        &Vec<(
             NewPlayerEquipmentVersion,
             Vec<NewPlayerEquipmentEffectVersion>,
         )>,
@@ -1916,10 +1921,15 @@ fn insert_player_equipment(
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_equipment_versions::dsl as pev_dsl;
 
+    // Flatten and convert reference to tuple to tuple of references
+    let new_player_equipment = new_player_equipment.into_iter()
+        .flatten()
+        .map(|(a, b)| (a, b));
+
     let (new_player_equipment_versions, new_player_equipment_effect_versions): (
-        Vec<NewPlayerEquipmentVersion>,
-        Vec<Vec<NewPlayerEquipmentEffectVersion>>,
-    ) = itertools::multiunzip(new_player_equipment.into_iter().flatten());
+        Vec<&NewPlayerEquipmentVersion>,
+        Vec<&Vec<NewPlayerEquipmentEffectVersion>>,
+    ) = itertools::multiunzip(new_player_equipment);
 
     // Insert new records
     let insert_versions_start = Utc::now();
@@ -1940,11 +1950,61 @@ fn insert_player_equipment(
     Ok(num_inserted)
 }
 
-pub fn insert_player_feed_versions<'a>(
+pub fn insert_to_error<'container, InsertableT: 'container>(
+    f: impl Fn(&mut PgConnection, &'container [InsertableT]) -> QueryResult<usize> + Copy,
     conn: &mut PgConnection,
-    new_player_feed_versions: impl IntoIterator<Item = NewPlayerFeedVersionExt<'a>>,
+    items: &'container [InsertableT],
+) -> Result<usize, (usize, QueryError)> {
+    insert_to_error_internal(f, conn, items, 0)
+}
+
+fn insert_to_error_internal<'container, InsertableT: 'container>(
+    f: impl Fn(&mut PgConnection, &'container [InsertableT]) -> QueryResult<usize> + Copy,
+    conn: &mut PgConnection,
+    items: &'container [InsertableT],
+    previously_inserted: usize
+) -> Result<usize, (usize, QueryError)> {
+    if items.len() <= 1 {
+        return match f(conn, items) {
+            Ok(newly_inserted) => Ok(previously_inserted + newly_inserted),
+            Err(err) => Err((previously_inserted, err)),
+        };
+    }
+
+    match f(conn, items) {
+        Ok(count) => Ok(count),
+        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)) |
+        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::ForeignKeyViolation, _)) |
+        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::NotNullViolation, _)) |
+        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::CheckViolation, _)) => {
+            let halfway = items.len() / 2;
+            debug!(
+                "Constraint violation error inserting {} items. Trying again with the first {}.",
+                items.len(), halfway,
+            );
+            let inserted_first_half = insert_to_error_internal(f, conn, &items[..halfway], previously_inserted)
+                .map_err(|(inserted, err)| (previously_inserted + inserted, err))?;
+            
+            debug!(
+                "No error in the first {} items. Trying the next {}.", 
+                halfway, items.len() - halfway
+            );
+            insert_to_error_internal(f, conn, &items[halfway..], previously_inserted)
+                .map_err(|(inserted, err)| (previously_inserted + inserted_first_half + inserted, err))
+        }
+        Err(err) => Err((previously_inserted, err)),
+    }
+}
+
+pub fn insert_player_feed_versions<'container, 'game: 'container>(
+    conn: &mut PgConnection,
+    new_player_feed_versions: impl IntoIterator<Item = &'container NewPlayerFeedVersionExt<'game>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_feed_versions::dsl as pfv_dsl;
+
+    // Convert reference to tuple into tuple of references
+    let new_player_feed_versions = new_player_feed_versions.into_iter()
+        .map(|(a, b, c, d, e)| (a, b, c, d, e));
 
     let (
         new_player_feed_versions,
@@ -1953,12 +2013,12 @@ pub fn insert_player_feed_versions<'a>(
         new_player_recompositions,
         ingest_logs,
     ): (
-        Vec<NewPlayerFeedVersion>,
-        Vec<Vec<NewPlayerAttributeAugment>>,
-        Vec<Vec<NewPlayerParadigmShift>>,
-        Vec<Vec<NewPlayerRecomposition>>,
-        Vec<Vec<NewVersionIngestLog>>,
-    ) = itertools::multiunzip(new_player_feed_versions.into_iter());
+        Vec<&NewPlayerFeedVersion>,
+        Vec<&Vec<NewPlayerAttributeAugment>>,
+        Vec<&Vec<NewPlayerParadigmShift>>,
+        Vec<&Vec<NewPlayerRecomposition>>,
+        Vec<&Vec<NewVersionIngestLog>>,
+    ) = itertools::multiunzip(new_player_feed_versions);
 
     // Insert new records
     let num_inserted = diesel::copy_from(pfv_dsl::player_feed_versions)
@@ -1981,7 +2041,7 @@ type NewTeamFeedVersionExt<'a> = (
 
 fn insert_new_team_games_played(
     conn: &mut PgConnection,
-    new_team_games_played: Vec<Vec<NewTeamGamePlayed>>,
+    new_team_games_played: Vec<&Vec<NewTeamGamePlayed>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::team_games_played::dsl as get_dsl;
     let new_team_games_played = new_team_games_played.into_iter().flatten().collect_vec();
@@ -1991,21 +2051,24 @@ fn insert_new_team_games_played(
         .from_insertable(new_team_games_played)
         .execute(conn)
 }
-pub fn insert_team_feed_versions<'a>(
+pub fn insert_team_feed_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
-    new_team_feed_versions: impl IntoIterator<Item = NewTeamFeedVersionExt<'a>>,
+    new_team_feed_versions: impl IntoIterator<Item = &'container NewTeamFeedVersionExt<'game>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::team_feed_versions::dsl as tfv_dsl;
+
+    let new_team_feed_versions = new_team_feed_versions.into_iter()
+        .map(|(a, b, c)| (a, b, c));
 
     let (
         new_team_feed_versions,
         new_team_games_played,
         ingest_logs,
     ): (
-        Vec<NewTeamFeedVersion>,
-        Vec<Vec<NewTeamGamePlayed>>,
-        Vec<Vec<NewVersionIngestLog>>,
-    ) = itertools::multiunzip(new_team_feed_versions.into_iter());
+        Vec<&NewTeamFeedVersion>,
+        Vec<&Vec<NewTeamGamePlayed>>,
+        Vec<&Vec<NewVersionIngestLog>>,
+    ) = itertools::multiunzip(new_team_feed_versions);
 
     // Insert new records
     let num_inserted = diesel::copy_from(tfv_dsl::team_feed_versions)
@@ -2020,7 +2083,7 @@ pub fn insert_team_feed_versions<'a>(
 
 fn insert_player_recompositions(
     conn: &mut PgConnection,
-    new_player_recompositions: Vec<Vec<NewPlayerRecomposition>>,
+    new_player_recompositions: Vec<&Vec<NewPlayerRecomposition>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_recompositions::dsl as pr_dsl;
     let player_recompositions = new_player_recompositions
@@ -2036,7 +2099,7 @@ fn insert_player_recompositions(
 
 fn insert_ingest_logs(
     conn: &mut PgConnection,
-    new_logs: Vec<Vec<NewVersionIngestLog>>,
+    new_logs: Vec<&Vec<NewVersionIngestLog>>,
 ) -> QueryResult<usize> {
     use crate::info_schema::info::version_ingest_log::dsl as vil_dsl;
     let new_logs = new_logs.into_iter().flatten().collect_vec();
@@ -2049,7 +2112,7 @@ fn insert_ingest_logs(
 
 fn insert_player_paradigm_shifts(
     conn: &mut PgConnection,
-    new_player_paradigm_shifts: Vec<Vec<NewPlayerParadigmShift>>,
+    new_player_paradigm_shifts: Vec<&Vec<NewPlayerParadigmShift>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_paradigm_shifts::dsl as pps_dsl;
     let player_augments = new_player_paradigm_shifts
@@ -2065,7 +2128,7 @@ fn insert_player_paradigm_shifts(
 
 fn insert_player_attribute_augments(
     conn: &mut PgConnection,
-    new_player_augments: Vec<Vec<NewPlayerAttributeAugment>>,
+    new_player_augments: Vec<&Vec<NewPlayerAttributeAugment>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_attribute_augments::dsl as paa_dsl;
     let player_attribute_augments = new_player_augments.into_iter().flatten().collect_vec();
@@ -2078,7 +2141,7 @@ fn insert_player_attribute_augments(
 
 fn insert_player_modifications(
     conn: &mut PgConnection,
-    new_player_modification_versions: Vec<Vec<NewPlayerModificationVersion>>,
+    new_player_modification_versions: Vec<&Vec<NewPlayerModificationVersion>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
 
@@ -2093,45 +2156,17 @@ fn insert_player_modifications(
         .execute(conn)
 }
 
-pub fn insert_player_versions_with_retry<'v, 'g>(
+pub fn insert_player_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
-    new_player_versions: &'v [NewPlayerVersionExt<'g>],
-) -> (usize, Vec<(&'v NewPlayerVersionExt<'g>, QueryError)>) {
-    let num_versions = new_player_versions.len();
-    if num_versions == 0 {
-        return (0, Vec::new());
-    }
-
-    let res = conn.transaction(|conn| insert_player_versions(conn, new_player_versions));
-
-    match res {
-        Ok(inserted) => (inserted, Vec::new()),
-        Err(e) => {
-            if num_versions == 1 {
-                (0, vec![(&new_player_versions[0], e)])
-            } else {
-                let pivot = num_versions / 2;
-                let (left, right) = new_player_versions.split_at(pivot);
-                let (inserted_a, mut errs_a) = insert_player_versions_with_retry(conn, left);
-                let (inserted_b, errs_b) = insert_player_versions_with_retry(conn, right);
-                errs_a.extend(errs_b);
-                (inserted_a + inserted_b, errs_a)
-            }
-        }
-    }
-}
-
-pub fn insert_player_versions(
-    conn: &mut PgConnection,
-    new_player_versions: &[NewPlayerVersionExt],
+    new_player_versions: impl IntoIterator<Item = &'container NewPlayerVersionExt<'game>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
-    let preprocess_start = Utc::now();
-    let mut new = Vec::new();
-    new.extend_from_slice(new_player_versions);
-    let new_player_versions = new;
+    // Reference to tuple into tuple of references
+    let new_player_versions = new_player_versions.into_iter()
+        .map(|(a, b, c, d, e, f)| (a, b, c, d, e, f));
 
+    let preprocess_start = Utc::now();
     let (
         new_player_versions,
         new_player_modification_versions,
@@ -2140,17 +2175,17 @@ pub fn insert_player_versions(
         new_player_equipment,
         new_ingest_logs,
     ): (
-        Vec<NewPlayerVersion>,
-        Vec<Vec<NewPlayerModificationVersion>>,
-        Vec<Option<NewPlayerFeedVersionExt>>,
-        Vec<Vec<(NewPlayerReportVersion, Vec<NewPlayerReportAttributeVersion>)>>,
+        Vec<&NewPlayerVersion>,
+        Vec<&Vec<NewPlayerModificationVersion>>,
+        Vec<&Option<NewPlayerFeedVersionExt>>,
+        Vec<&Vec<(NewPlayerReportVersion, Vec<NewPlayerReportAttributeVersion>)>>,
         Vec<
-            Vec<(
+            &Vec<(
                 NewPlayerEquipmentVersion,
                 Vec<NewPlayerEquipmentEffectVersion>,
             )>,
         >,
-        Vec<Vec<NewVersionIngestLog>>,
+        Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
 
@@ -2564,7 +2599,7 @@ type NewTeamVersionExt<'a> = (
 
 fn insert_team_player_versions(
     conn: &mut PgConnection,
-    new_team_player_versions: Vec<Vec<NewTeamPlayerVersion>>,
+    new_team_player_versions: Vec<&Vec<NewTeamPlayerVersion>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::team_player_versions::dsl as tpv_dsl;
 
@@ -2576,16 +2611,20 @@ fn insert_team_player_versions(
         .execute(conn)
 }
 
-pub fn insert_team_versions(
+pub fn insert_team_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
-    new_team_versions: Vec<NewTeamVersionExt>,
+    new_team_versions: impl IntoIterator<Item = &'container NewTeamVersionExt<'game>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::team_versions::dsl as tv_dsl;
 
+    // Convert reference to tuple to tuple of references
+    let new_team_versions = new_team_versions.into_iter()
+        .map(|(a, b, c)| (a, b, c));
+
     let (new_team_versions, new_team_player_versions, new_ingest_logs): (
-        Vec<NewTeamVersion>,
-        Vec<Vec<NewTeamPlayerVersion>>,
-        Vec<Vec<NewVersionIngestLog>>,
+        Vec<&NewTeamVersion>,
+        Vec<&Vec<NewTeamPlayerVersion>>,
+        Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_team_versions);
 
     // Insert new records

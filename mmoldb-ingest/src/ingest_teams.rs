@@ -157,7 +157,7 @@ pub fn ingest_page_of_teams(
             to_insert, new_teams_len,
         );
 
-        let inserted = db::insert_team_versions(conn, batch).into_diagnostic()?;
+        let inserted = db::insert_team_versions(conn, &batch).into_diagnostic()?;
         total_inserted += inserted as i32;
 
         info!(

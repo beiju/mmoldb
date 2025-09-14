@@ -5,7 +5,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use log::{debug, error, info};
-use miette::IntoDiagnostic;
+use miette::{Context, IntoDiagnostic};
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
@@ -113,7 +113,9 @@ pub fn ingest_page_of_player_feeds(
             to_insert, new_player_feeds_len,
         );
 
-        let inserted = db::insert_player_feed_versions(conn, batch).into_diagnostic()?;
+        let (inserted, maybe_err) = db::insert_to_error(db::insert_player_feed_versions, conn, &batch)
+            .map(|inserted| (inserted, Ok(())))
+            .unwrap_or_else(|(inserted, err)| (inserted, Err(err)));
         total_inserted += inserted as i32;
 
         info!(
@@ -123,6 +125,16 @@ pub fn ingest_page_of_player_feeds(
             to_insert,
             player_feeds.len(),
         );
+
+        maybe_err.into_diagnostic()
+            .with_context(|| {
+                // If there was an error, the item that caused the error should be at index `inserted`
+                if let Some(item) = batch.get(inserted) {
+                    format!("Inserting player feed version {:#?}", item)
+                } else {
+                    format!("After inserting {} of {} player feed versions", inserted, batch.len())
+                }
+            })?;
     }
 
     let save_duration = (Utc::now() - save_start).as_seconds_f64();

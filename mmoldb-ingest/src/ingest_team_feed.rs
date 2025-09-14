@@ -106,7 +106,7 @@ pub fn ingest_page_of_team_feeds(
             to_insert, new_team_feeds_len,
         );
 
-        let inserted = db::insert_team_feed_versions(conn, batch).into_diagnostic()?;
+        let inserted = db::insert_team_feed_versions(conn, &batch).into_diagnostic()?;
         total_inserted += inserted as i32;
 
         info!(

@@ -6,7 +6,7 @@ use chrono::{NaiveDateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
-use miette::IntoDiagnostic;
+use miette::{Context, IntoDiagnostic};
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
 use mmolb_parsing::{
@@ -123,24 +123,10 @@ pub fn ingest_page_of_players(
             to_insert,
             players.len(),
         );
-
-        let (inserted, errs) = db::insert_player_versions_with_retry(conn, &batch);
+        let (inserted, maybe_err) = db::insert_to_error(db::insert_player_versions, conn, &batch)
+            .map(|inserted| (inserted, Ok(())))
+            .unwrap_or_else(|(inserted, err)| (inserted, Err(err)));
         total_inserted += inserted as i32;
-
-        for (player, err) in errs {
-            let (version, _modification_version, _feed_version, _report, _equipment, _logs): &(
-                NewPlayerVersion,
-                _,
-                _,
-                _,
-                _,
-                _,
-            ) = player;
-            error!(
-                "Error {err} ingesting player {} at {}",
-                version.mmolb_player_id, version.valid_from,
-            );
-        }
 
         info!(
             "Sent {} new player versions out of {} to the database. \
@@ -149,6 +135,17 @@ pub fn ingest_page_of_players(
             to_insert,
             players.len(),
         );
+
+        maybe_err.into_diagnostic()
+            .with_context(|| {
+                // If there was an error, the item that caused the error should be at index `inserted`
+                if let Some(item) = batch.get(inserted) {
+                    format!("Inserting player version {:?}", item)
+                } else {
+                    format!("After inserting {} of {} player versions", inserted, batch.len())
+                }
+            })?;
+
     }
 
     let save_duration = (Utc::now() - save_start).as_seconds_f64();
