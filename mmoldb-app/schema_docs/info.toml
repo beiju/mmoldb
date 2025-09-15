@@ -49,6 +49,16 @@ nullable_explanation = """
 in a way that prevented us from updating the database.
 """
 
+[[table.column]]
+name = "message"
+type = "text"
+description = """
+A message attached to this ingest. Typically an error message.
+"""
+nullable_explanation = """
+`null` if the ingest has no message.
+"""
+
 [[table]]
 name = "raw_events"
 description = """
