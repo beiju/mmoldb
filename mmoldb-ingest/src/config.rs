@@ -1,0 +1,62 @@
+use figment::Figment;
+use figment::providers::{Env, Format, Serialized, Toml};
+use mmolb_parsing::player::Deserialize;
+use serde::Serialize;
+
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub struct IngestibleConfig {
+    pub enable: bool,
+    pub chron_fetch_batch_size: usize,
+    pub insert_raw_entity_batch_size: usize,
+    pub process_batch_size: usize,
+}
+
+impl Default for IngestibleConfig {
+    fn default() -> Self {
+        Self {
+            enable: true,
+            chron_fetch_batch_size: 1000,
+            insert_raw_entity_batch_size: 1000,
+            process_batch_size: 1000,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub struct IngestConfig {
+    pub start_ingest_every_launch: bool,
+    pub ingest_period: i64,
+    pub set_postgres_statement_timeout: Option<i64>,
+    pub team_ingest: IngestibleConfig,
+    pub team_feed_ingest: IngestibleConfig,
+    pub player_ingest: IngestibleConfig,
+    pub player_feed_ingest: IngestibleConfig,
+    pub game_ingest: IngestibleConfig,
+}
+
+impl Default for IngestConfig {
+    fn default() -> Self {
+        Self {
+            start_ingest_every_launch: true,
+            ingest_period: 30 * 60, // 30 minutes in seconds
+            set_postgres_statement_timeout: Some(0), // 0 means no timeout
+            team_ingest: Default::default(),
+            team_feed_ingest: Default::default(),
+            player_ingest: Default::default(),
+            player_feed_ingest: Default::default(),
+            game_ingest: Default::default(),
+        }
+    }
+}
+
+impl IngestConfig {
+    pub fn figment() -> Figment {
+        Figment::from(Serialized::defaults(Self::default()))
+            .merge(Toml::file("MMOLDB.toml"))
+            .merge(Env::prefixed("MMOLDB_"))
+    }
+
+    pub fn config() -> figment::Result<Self> {
+        Self::figment().extract()
+    }
+}

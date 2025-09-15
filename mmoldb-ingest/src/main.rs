@@ -5,30 +5,23 @@ mod ingest_games;
 mod ingest_players;
 mod ingest_teams;
 mod signal;
+mod config;
 
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::pin_mut;
-use log::{debug, info};
-use miette::{Context, Diagnostic, IntoDiagnostic};
-use mmoldb_db::{Connection, PgConnection, db};
-use thiserror::Error;
+use log::{debug, info, warn};
+use miette::{Context, IntoDiagnostic};
+use mmoldb_db::{db, Connection, PgConnection};
 use tokio_util::sync::CancellationToken;
-
-#[derive(Debug, Error, Diagnostic)]
-#[error(transparent)]
-struct BoxedError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>);
-
-const START_INGEST_EVERY_LAUNCH: bool = true;
-const INGEST_PERIOD_SEC: i64 = 30 * 60;
-const STATEMENT_TIMEOUT_SEC: i64 = 0;
-const ENABLE_TEAM_INGEST: bool = true;
-const ENABLE_PLAYER_INGEST: bool = true;
+use config::IngestConfig;
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
     env_logger::init();
     console_subscriber::init();
+
+    let config = IngestConfig::config().into_diagnostic()?;
 
     info!("Waiting 5 seconds for db to launch (temporary)");
     // TODO Some more robust solution for handing db launch delay
@@ -36,8 +29,7 @@ async fn main() -> miette::Result<()> {
 
     let url = mmoldb_db::postgres_url_from_environment();
 
-    debug!("START_INGEST_EVERY_LAUNCH={START_INGEST_EVERY_LAUNCH}");
-    let mut previous_ingest_start_time = if START_INGEST_EVERY_LAUNCH {
+    let mut previous_ingest_start_time = if config.start_ingest_every_launch {
         None
     } else {
         let mut conn = PgConnection::establish(&url).into_diagnostic()?;
@@ -48,7 +40,7 @@ async fn main() -> miette::Result<()> {
 
     loop {
         let (why, ingest_start) = if let Some(prev_start) = previous_ingest_start_time {
-            let next_start = prev_start + chrono::Duration::seconds(INGEST_PERIOD_SEC);
+            let next_start = prev_start + chrono::Duration::seconds(config.ingest_period);
             let wait_duration_chrono = next_start - Utc::now();
 
             // std::time::Duration can't represent negative durations.
@@ -74,6 +66,9 @@ async fn main() -> miette::Result<()> {
                     (why, Utc::now())
                 }
             }
+        } else if config.start_ingest_every_launch {
+            let why = "immediately (start_ingest_every_launch is true)".to_string();
+            (why, Utc::now())
         } else {
             let why = "immediately (this is the first ingest)".to_string();
             (why, Utc::now())
@@ -84,34 +79,36 @@ async fn main() -> miette::Result<()> {
         info!("Starting ingest {why}");
         previous_ingest_start_time = Some(ingest_start);
 
-        run_one_ingest(url.clone()).await?;
+        run_one_ingest(url.clone(), &config).await?;
     }
 
     Ok(())
 }
 
-async fn run_one_ingest(url: String) -> miette::Result<()> {
+async fn run_one_ingest(url: String, config: &IngestConfig) -> miette::Result<()> {
     let ingest_start_time = Utc::now();
     let mut conn = PgConnection::establish(&url).into_diagnostic()?;
 
-    if STATEMENT_TIMEOUT_SEC < 0 {
-        panic!("Negative STATEMENT_TIMEOUT_SEC not allowed ({STATEMENT_TIMEOUT_SEC})");
-    } else if STATEMENT_TIMEOUT_SEC > 0 {
-        info!(
-            "Setting our account's statement timeout to {STATEMENT_TIMEOUT_SEC} ({})",
-            chrono_humanize::HumanTime::from(chrono::Duration::seconds(STATEMENT_TIMEOUT_SEC))
+    if let Some(statement_timeout) = config.set_postgres_statement_timeout {
+        if statement_timeout < 0 {
+            panic!("Negative STATEMENT_TIMEOUT_SEC not allowed ({statement_timeout})");
+        } else if statement_timeout > 0 {
+            info!(
+            "Setting our account's statement timeout to {statement_timeout} ({})",
+            chrono_humanize::HumanTime::from(chrono::Duration::seconds(statement_timeout))
                 .to_text_en(Accuracy::Precise, Tense::Present),
         );
-    } else {
-        // Postgres interprets 0 as no timeout
-        info!("Setting our account's statement timeout to no timeout");
+        } else {
+            // Postgres interprets 0 as no timeout
+            info!("Setting our account's statement timeout to no timeout");
+        }
+        db::set_current_user_statement_timeout(&mut conn, statement_timeout).into_diagnostic()?;
     }
-    db::set_current_user_statement_timeout(&mut conn, STATEMENT_TIMEOUT_SEC).into_diagnostic()?;
 
     let ingest_id = db::start_ingest(&mut conn, ingest_start_time).into_diagnostic()?;
 
     let abort = CancellationToken::new();
-    let ingest_task = ingest_everything(url.clone(), ingest_id, abort.clone());
+    let ingest_task = ingest_everything(url.clone(), ingest_id, abort.clone(), config);
     pin_mut!(ingest_task);
 
     let (is_aborted, result) = tokio::select! {
@@ -167,21 +164,42 @@ async fn ingest_everything(
     pg_url: String,
     ingest_id: i64,
     abort: CancellationToken,
+    config: &IngestConfig,
 ) -> miette::Result<()> {
-    if ENABLE_TEAM_INGEST {
-        ingest_teams::ingest_teams(ingest_id, pg_url.clone(), abort.clone()).await?;
+    if config.team_ingest.enable {
+        info!("Beginning team ingest");
+        ingest_teams::ingest_teams(ingest_id, pg_url.clone(), abort.clone(), &config.team_ingest).await?;
+    }
+
+    if config.team_feed_ingest.enable {
         // This could be parallelized with ingest_teams, since we never
         // process the embedded feeds in team objects
-        ingest_team_feed::ingest_team_feeds(ingest_id, pg_url.clone(), abort.clone()).await?;
+        info!("Beginning team feed ingest");
+        ingest_team_feed::ingest_team_feeds(ingest_id, pg_url.clone(), abort.clone(), &config.team_feed_ingest).await?;
     }
-    if ENABLE_PLAYER_INGEST {
-        ingest_players::ingest_players(ingest_id, pg_url.clone(), abort.clone()).await?;
-        // Player feed ingest has to start after all players with inbuilt feeds are processed
-        ingest_player_feed::ingest_player_feeds(ingest_id, pg_url.clone(), abort.clone()).await?;
-    }
-    ingest_games::ingest_games(pg_url.clone(), ingest_id, abort).await?;
 
+    if config.player_feed_ingest.enable {
+        info!("Beginning player ingest");
+        ingest_players::ingest_players(ingest_id, pg_url.clone(), abort.clone(), &config.player_feed_ingest).await?;
+
+        // Player feed ingest can't (currently) run without first running player ingest
+        if config.player_feed_ingest.enable {
+            info!("Beginning player feed ingest");
+            // Player feed ingest has to start after all players with inbuilt feeds are processed
+            ingest_player_feed::ingest_player_feeds(ingest_id, pg_url.clone(), abort.clone(), &config.player_feed_ingest).await?;
+        }
+    } else if config.player_feed_ingest.enable {
+        warn!("Can't ingest player feeds without ingesting players");
+    }
+
+    if config.game_ingest.enable {
+        info!("Beginning game ingest");
+        ingest_games::ingest_games(pg_url.clone(), ingest_id, abort).await?;
+    }
+
+    info!("Refreshing materialized views");
     refresh_matviews(pg_url)?;
 
+    info!("Ingest complete");
     Ok(())
 }

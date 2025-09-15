@@ -17,6 +17,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
+use crate::config::IngestibleConfig;
 
 // const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = Some("2025-07-16 04:07:42.699296Z");
 const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = None;
@@ -97,9 +98,7 @@ impl<'a> VersionIngestLogs<'a> {
 pub async fn ingest(
     ingest_id: i64,
     kind: &'static str,
-    chron_fetch_page_size: usize,
-    stage_1_chunks_page_size: usize,
-    stage_2_chunks_page_size: usize,
+    config: &IngestibleConfig,
     pg_url: String,
     abort: CancellationToken,
     trim_version: impl Fn(&serde_json::Value) -> serde_json::Value + Copy + Send + Sync + 'static,
@@ -135,7 +134,7 @@ pub async fn ingest(
                 .spawn(ingest_stage_2(
                     ingest_id,
                     kind,
-                    stage_2_chunks_page_size,
+                    config.insert_raw_entity_batch_size,
                     pg_url,
                     abort,
                     notify,
@@ -155,7 +154,7 @@ pub async fn ingest(
     let ingest_conn = PgConnection::establish(&pg_url).into_diagnostic()?;
 
     tokio::select! {
-        result = ingest_stage_1(kind, chron_fetch_page_size, stage_1_chunks_page_size, ingest_conn, notify) => {
+        result = ingest_stage_1(kind, config.chron_fetch_batch_size, config.process_batch_size, ingest_conn, notify) => {
             result?;
             // Tell process {kind} workers to stop waiting and exit
             finish.cancel();

@@ -13,25 +13,22 @@ use rayon::iter::ParallelIterator;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 use mmoldb_db::models::{NewTeamFeedVersion, NewTeamGamePlayed, NewVersionIngestLog};
+use crate::config::IngestibleConfig;
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
 const TEAM_FEED_KIND: &'static str = "team_feed";
-const CHRON_FETCH_PAGE_SIZE: usize = 1000;
-const RAW_TEAM_FEED_INSERT_BATCH_SIZE: usize = 1000;
-const PROCESS_TEAM_FEED_BATCH_SIZE: usize = 1000;
 
 pub async fn ingest_team_feeds(
     ingest_id: i64,
     pg_url: String,
     abort: CancellationToken,
+    config: &IngestibleConfig,
 ) -> miette::Result<()> {
     crate::ingest::ingest(
         ingest_id,
         TEAM_FEED_KIND,
-        CHRON_FETCH_PAGE_SIZE,
-        RAW_TEAM_FEED_INSERT_BATCH_SIZE,
-        PROCESS_TEAM_FEED_BATCH_SIZE,
+        config,
         pg_url,
         abort,
         |version| version.clone(),

@@ -1999,6 +1999,7 @@ dependencies = [
  "chrono-humanize",
  "console-subscriber",
  "env_logger",
+ "figment",
  "futures",
  "hashbrown 0.16.0",
  "itertools",

@@ -4,25 +4,22 @@ pub use logic::day_to_db;
 
 use mmoldb_db::db;
 use tokio_util::sync::CancellationToken;
+use crate::config::IngestibleConfig;
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
 const PLAYER_KIND: &'static str = "player";
-const CHRON_FETCH_PAGE_SIZE: usize = 1000;
-const RAW_PLAYER_INSERT_BATCH_SIZE: usize = 1000;
-const PROCESS_PLAYER_BATCH_SIZE: usize = 50000;
 
 pub async fn ingest_players(
     ingest_id: i64,
     pg_url: String,
     abort: CancellationToken,
+    config: &IngestibleConfig,
 ) -> miette::Result<()> {
     crate::ingest::ingest(
         ingest_id,
         PLAYER_KIND,
-        CHRON_FETCH_PAGE_SIZE,
-        RAW_PLAYER_INSERT_BATCH_SIZE,
-        PROCESS_PLAYER_BATCH_SIZE,
+        config,
         pg_url,
         abort,
         |version| match version {

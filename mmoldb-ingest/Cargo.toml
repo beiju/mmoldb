@@ -28,3 +28,4 @@ strum = "0.27.1"
 console-subscriber = "0.4.1"
 hashbrown = "0.16.0"
 rayon = "1.10.0"
+figment = { version = "0.10.19", features = ["env", "toml"] }
