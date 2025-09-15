@@ -8,12 +8,16 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
+2025-10-15
 ----------
 - Add recomposes to the player API
 - Add reports to the player API
 - Remove a lot of erroneous inferred recomposes (probably false positives 
   caused by the player feed moving outside player objects)
+- Fix `data.player_report_attribute_versions` and 
+  `data.player_equipment_effect_versions` getting corrupted when the equipment
+  slot is cleared / when the report is removed.
+- Clean up the code
 
 2025-10-07
 ----------
