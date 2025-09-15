@@ -1,7 +1,6 @@
 mod api;
 mod web;
 
-use mmoldb_db::taxa::Taxa;
 use num_format::{Locale, ToFormattedString};
 use rocket::fairing::AdHoc;
 use rocket::figment::map;
@@ -9,7 +8,7 @@ use rocket::{Build, Rocket, figment, launch};
 use rocket_dyn_templates::Template;
 use rocket_dyn_templates::tera::Value;
 use rocket_sync_db_pools::database as sync_database;
-use rocket_sync_db_pools::diesel::{PgConnection, prelude::*};
+use rocket_sync_db_pools::diesel::{PgConnection};
 use std::collections::HashMap;
 
 #[sync_database("mmoldb")]
@@ -34,25 +33,12 @@ impl rocket_dyn_templates::tera::Filter for NumFormat {
 }
 
 async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
-    use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-
-    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
-    let config: rocket_sync_db_pools::Config = rocket
-        .figment()
-        .extract_inner("databases.mmoldb")
-        .expect("mmoldb database connection information was not found in Rocket.toml");
-
     let taxa = tokio::task::spawn_blocking(move || {
-        let mut conn = PgConnection::establish(&config.url)
-            .expect("Failed to connect to mmoldb database during migrations");
-
-        conn.run_pending_migrations(MIGRATIONS)
-            .expect("Failed to apply migrations");
-
-        Taxa::new(&mut conn).expect("Error creating Taxa")
+        mmoldb_db::run_migrations()
     })
-    .await
-    .expect("Error joining migrations task");
+        .await
+        .expect("Error joining migrations task")
+        .expect("Error running migrations");
 
     rocket.manage(taxa)
 }

@@ -25,6 +25,8 @@ async fn main() -> miette::Result<()> {
     let pool = mmoldb_db::get_pool(config.db_pool_size)
         .into_diagnostic()?;
 
+    mmoldb_db::run_migrations().into_diagnostic()?;
+
     let mut previous_ingest_start_time = if config.start_ingest_every_launch {
         None
     } else {
