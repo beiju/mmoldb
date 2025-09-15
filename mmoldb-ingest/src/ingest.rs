@@ -8,10 +8,7 @@ use log::{debug, error, info};
 use miette::{Diagnostic, IntoDiagnostic, WrapErr};
 use mmoldb_db::models::NewVersionIngestLog;
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{
-    AsyncConnection, AsyncPgConnection, Connection, PgConnection, QueryError, QueryResult,
-    async_db, db,
-};
+use mmoldb_db::{AsyncConnection, AsyncPgConnection, PgConnection, QueryError, QueryResult, async_db, db, ConnectionPool};
 use std::iter;
 use std::sync::Arc;
 use thiserror::Error;
@@ -99,7 +96,7 @@ pub async fn ingest(
     ingest_id: i64,
     kind: &'static str,
     config: &IngestibleConfig,
-    pg_url: String,
+    pool: ConnectionPool,
     abort: CancellationToken,
     trim_version: impl Fn(&serde_json::Value) -> serde_json::Value + Copy + Send + Sync + 'static,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> + Copy + Send + Sync + 'static,
@@ -124,7 +121,7 @@ pub async fn ingest(
     let ingest_stage_2_handles = task_names_and_numbers
         .iter()
         .map(|(task_name, n)| {
-            let pg_url = pg_url.clone();
+            let pool = pool.clone();
             let notify = notify.clone();
             let finish = finish.clone();
             let abort = abort.clone();
@@ -135,7 +132,7 @@ pub async fn ingest(
                     ingest_id,
                     kind,
                     config.insert_raw_entity_batch_size,
-                    pg_url,
+                    pool,
                     abort,
                     notify,
                     finish,
@@ -151,10 +148,10 @@ pub async fn ingest(
     info!("Launched Stage 2 {kind} ingest task(s) in the background");
     info!("Beginning Stage 1 {kind} ingest");
 
-    let ingest_conn = PgConnection::establish(&pg_url).into_diagnostic()?;
+    let mut ingest_conn = pool.get().into_diagnostic()?;
 
     tokio::select! {
-        result = ingest_stage_1(kind, config.chron_fetch_batch_size, config.process_batch_size, ingest_conn, notify) => {
+        result = ingest_stage_1(kind, config.chron_fetch_batch_size, config.process_batch_size, &mut ingest_conn, notify) => {
             result?;
             // Tell process {kind} workers to stop waiting and exit
             finish.cancel();
@@ -178,10 +175,10 @@ async fn ingest_stage_1(
     kind: &'static str,
     chron_fetch_page_size: usize,
     stage_1_chunks_page_size: usize,
-    mut conn: PgConnection,
+    conn: &mut PgConnection,
     notify: Arc<Notify>,
 ) -> miette::Result<()> {
-    let start_cursor = db::get_latest_raw_version_cursor(&mut conn, kind)
+    let start_cursor = db::get_latest_raw_version_cursor(conn, kind)
         .into_diagnostic()?
         .map(|(dt, id)| (dt.and_utc(), id));
     let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
@@ -244,7 +241,7 @@ async fn ingest_stage_1(
             chunk.len(),
             num_skipped_at_start.load(std::sync::atomic::Ordering::SeqCst)
         );
-        let inserted = match db::insert_versions(&mut conn, &chunk).into_diagnostic() {
+        let inserted = match db::insert_versions(conn, &chunk).into_diagnostic() {
             Ok(x) => Ok(x),
             Err(err) => {
                 error!("Error in stage 1 ingest write: {err}");
@@ -267,7 +264,7 @@ async fn ingest_stage_2(
     ingest_id: i64,
     kind: &'static str,
     stage_2_chunks_page_size: usize,
-    url: String,
+    pool: ConnectionPool,
     abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
@@ -280,7 +277,7 @@ async fn ingest_stage_2(
         ingest_id,
         kind,
         stage_2_chunks_page_size,
-        &url,
+        pool,
         abort,
         notify,
         finish,
@@ -301,7 +298,7 @@ async fn ingest_stage_2_internal(
     ingest_id: i64,
     kind: &'static str,
     stage_2_chunks_page_size: usize,
-    url: &str,
+    pool: ConnectionPool,
     abort: CancellationToken,
     notify: Arc<Notify>,
     finish: CancellationToken,
@@ -311,8 +308,10 @@ async fn ingest_stage_2_internal(
     ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32>,
 ) -> miette::Result<()> {
     info!("{kind} stage 2 ingest worker launched");
-    let mut async_conn = AsyncPgConnection::establish(url).await.into_diagnostic()?;
-    let mut conn = PgConnection::establish(url).into_diagnostic()?;
+    // TODO Pool this too?
+    let url = mmoldb_db::postgres_url_from_environment();
+    let mut async_conn = AsyncPgConnection::establish(&url).await.into_diagnostic()?;
+    let mut conn = pool.get().into_diagnostic()?;
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
     if let Some(dt) = ROLL_BACK_INGEST_TO_DATE {

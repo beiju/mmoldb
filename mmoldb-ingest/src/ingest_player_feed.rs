@@ -14,7 +14,7 @@ use mmoldb_db::models::{
     NewPlayerRecomposition, NewVersionIngestLog,
 };
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{PgConnection, db};
+use mmoldb_db::{PgConnection, db, ConnectionPool};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use serde::Deserialize;
@@ -28,7 +28,7 @@ const PLAYER_FEED_KIND: &'static str = "player_feed";
 
 pub async fn ingest_player_feeds(
     ingest_id: i64,
-    pg_url: String,
+    pool: ConnectionPool,
     abort: CancellationToken,
     config: &IngestibleConfig
 ) -> miette::Result<()> {
@@ -36,7 +36,7 @@ pub async fn ingest_player_feeds(
         ingest_id,
         PLAYER_FEED_KIND,
         config,
-        pg_url,
+        pool,
         abort,
         |version| version.clone(),
         db::get_player_feed_ingest_start_cursor,

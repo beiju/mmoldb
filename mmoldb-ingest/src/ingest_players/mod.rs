@@ -2,7 +2,7 @@ mod logic;
 
 pub use logic::day_to_db;
 
-use mmoldb_db::db;
+use mmoldb_db::{db, ConnectionPool};
 use tokio_util::sync::CancellationToken;
 use crate::config::IngestibleConfig;
 
@@ -12,7 +12,7 @@ const PLAYER_KIND: &'static str = "player";
 
 pub async fn ingest_players(
     ingest_id: i64,
-    pg_url: String,
+    pool: ConnectionPool,
     abort: CancellationToken,
     config: &IngestibleConfig,
 ) -> miette::Result<()> {
@@ -20,7 +20,7 @@ pub async fn ingest_players(
         ingest_id,
         PLAYER_KIND,
         config,
-        pg_url,
+        pool,
         abort,
         |version| match version {
             serde_json::Value::Object(obj) => obj

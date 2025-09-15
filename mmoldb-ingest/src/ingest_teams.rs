@@ -9,7 +9,7 @@ use mmolb_parsing::{AddedLater, NotRecognized, team::TeamPlayerCollection, Maybe
 use mmolb_parsing::enums::Slot;
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{BestEffortSlot, PgConnection, db};
+use mmoldb_db::{BestEffortSlot, PgConnection, db, ConnectionPool};
 use rayon::prelude::*;
 use tokio_util::sync::CancellationToken;
 use crate::config::IngestibleConfig;
@@ -20,7 +20,7 @@ const TEAM_KIND: &'static str = "team";
 
 pub async fn ingest_teams(
     ingest_id: i64,
-    pg_url: String,
+    pool: ConnectionPool,
     abort: CancellationToken,
     config: &IngestibleConfig,
 ) -> miette::Result<()> {
@@ -28,7 +28,7 @@ pub async fn ingest_teams(
         ingest_id,
         TEAM_KIND,
         config,
-        pg_url,
+        pool,
         abort,
         |version| match version {
             serde_json::Value::Object(obj) => serde_json::Value::Object({

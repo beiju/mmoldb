@@ -7,7 +7,7 @@ use miette::IntoDiagnostic;
 use mmolb_parsing::enums::{LinkType};
 use mmolb_parsing::feed_event::{FeedEvent, ParsedFeedEventText};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{PgConnection, db};
+use mmoldb_db::{PgConnection, db, ConnectionPool};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use serde::Deserialize;
@@ -21,7 +21,7 @@ const TEAM_FEED_KIND: &'static str = "team_feed";
 
 pub async fn ingest_team_feeds(
     ingest_id: i64,
-    pg_url: String,
+    pool: ConnectionPool,
     abort: CancellationToken,
     config: &IngestibleConfig,
 ) -> miette::Result<()> {
@@ -29,7 +29,7 @@ pub async fn ingest_team_feeds(
         ingest_id,
         TEAM_FEED_KIND,
         config,
-        pg_url,
+        pool,
         abort,
         |version| version.clone(),
         db::get_team_feed_ingest_start_cursor,

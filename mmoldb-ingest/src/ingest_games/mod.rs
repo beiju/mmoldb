@@ -12,7 +12,7 @@ use itertools::Itertools;
 use log::{debug, error, info};
 use miette::IntoDiagnostic;
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{Connection, PgConnection, db};
+use mmoldb_db::{PgConnection, db, ConnectionPool};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
@@ -26,11 +26,11 @@ const RAW_GAME_INSERT_BATCH_SIZE: usize = 1000;
 const PROCESS_GAME_BATCH_SIZE: usize = 1000;
 
 pub async fn ingest_games(
-    pg_url: String,
+    pool: ConnectionPool,
     ingest_id: i64,
     abort: CancellationToken,
 ) -> miette::Result<()> {
-    let mut conn = PgConnection::establish(&pg_url).into_diagnostic()?;
+    let mut conn = pool.get().into_diagnostic()?;
     let notify = Arc::new(Notify::new());
     // Finish tells the task "once there are no more games to process, exit", while
     // abort tells the task "exit immediately, even if there are more games to process"
@@ -54,7 +54,7 @@ pub async fn ingest_games(
 
     let process_games_handles = (1..=num_workers)
         .map(|n| {
-            let pg_url = pg_url.clone();
+            let pool = pool.clone();
             let notify = notify.clone();
             let finish = finish.clone();
             let abort = abort.clone();
@@ -65,7 +65,7 @@ pub async fn ingest_games(
                 .name(format!("Ingest worker {n}").leak())
                 .spawn_blocking(move || {
                     process_games(
-                        &pg_url,
+                        pool,
                         ingest_id,
                         ingest_cursor,
                         dupe_tracker,
@@ -83,10 +83,10 @@ pub async fn ingest_games(
     info!("Launched process games task");
     info!("Beginning raw game ingest");
 
-    let ingest_conn = PgConnection::establish(&pg_url).into_diagnostic()?;
+    let mut ingest_conn = pool.get().into_diagnostic()?;
 
     tokio::select! {
-        result = ingest_raw_games(ingest_conn, notify) => {
+        result = ingest_raw_games(&mut ingest_conn, notify) => {
             result?;
             // Tell process games workers to stop waiting and exit
             finish.cancel();
@@ -106,8 +106,8 @@ pub async fn ingest_games(
     Ok(())
 }
 
-async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
-    let start_date = db::get_latest_entity_valid_from(&mut conn, GAME_KIND)
+async fn ingest_raw_games(conn: &mut PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
+    let start_date = db::get_latest_entity_valid_from(conn, GAME_KIND)
         .into_diagnostic()?
         .as_ref()
         .map(NaiveDateTime::and_utc);
@@ -131,7 +131,7 @@ async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette
             Err(err) => (err.0, Some(err.1)),
         };
         info!("Saving {} games", chunk.len());
-        let inserted = db::insert_entities(&mut conn, chunk).into_diagnostic()?;
+        let inserted = db::insert_entities(conn, chunk).into_diagnostic()?;
         info!("Saved {} games", inserted);
 
         notify.notify_one();
@@ -145,7 +145,7 @@ async fn ingest_raw_games(mut conn: PgConnection, notify: Arc<Notify>) -> miette
 }
 
 fn process_games(
-    url: &str,
+    pool: ConnectionPool,
     ingest_id: i64,
     ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
     dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
@@ -156,7 +156,7 @@ fn process_games(
     worker_id: usize,
 ) -> miette::Result<()> {
     let result = process_games_internal(
-        url,
+        pool,
         ingest_id,
         ingest_cursor,
         dupe_tracker,
@@ -173,7 +173,7 @@ fn process_games(
 }
 
 fn process_games_internal(
-    url: &str,
+    pool: ConnectionPool,
     ingest_id: i64,
     ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
     dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
@@ -183,7 +183,7 @@ fn process_games_internal(
     handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
-    let mut conn = PgConnection::establish(url).into_diagnostic()?;
+    let mut conn = pool.get().into_diagnostic()?;
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
     // Permit ourselves to start processing right away, in case there

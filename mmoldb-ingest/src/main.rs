@@ -12,7 +12,7 @@ use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::pin_mut;
 use log::{debug, info, warn};
 use miette::{Context, IntoDiagnostic};
-use mmoldb_db::{db, Connection, PgConnection};
+use mmoldb_db::{db, ConnectionPool};
 use tokio_util::sync::CancellationToken;
 use config::IngestConfig;
 
@@ -22,17 +22,13 @@ async fn main() -> miette::Result<()> {
     console_subscriber::init();
 
     let config = IngestConfig::config().into_diagnostic()?;
-
-    info!("Waiting 5 seconds for db to launch (temporary)");
-    // TODO Some more robust solution for handing db launch delay
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
-    let url = mmoldb_db::postgres_url_from_environment();
+    let pool = mmoldb_db::get_pool(config.db_pool_size)
+        .into_diagnostic()?;
 
     let mut previous_ingest_start_time = if config.start_ingest_every_launch {
         None
     } else {
-        let mut conn = PgConnection::establish(&url).into_diagnostic()?;
+        let mut conn = pool.get().into_diagnostic()?;
         db::latest_ingest_start_time(&mut conn)
             .into_diagnostic()?
             .map(|dt| dt.and_utc())
@@ -79,15 +75,15 @@ async fn main() -> miette::Result<()> {
         info!("Starting ingest {why}");
         previous_ingest_start_time = Some(ingest_start);
 
-        run_one_ingest(url.clone(), &config).await?;
+        run_one_ingest(pool.clone(), &config).await?;
     }
 
     Ok(())
 }
 
-async fn run_one_ingest(url: String, config: &IngestConfig) -> miette::Result<()> {
+async fn run_one_ingest(pool: ConnectionPool, config: &IngestConfig) -> miette::Result<()> {
     let ingest_start_time = Utc::now();
-    let mut conn = PgConnection::establish(&url).into_diagnostic()?;
+    let mut conn = pool.get().into_diagnostic()?;
 
     if let Some(statement_timeout) = config.set_postgres_statement_timeout {
         if statement_timeout < 0 {
@@ -108,7 +104,7 @@ async fn run_one_ingest(url: String, config: &IngestConfig) -> miette::Result<()
     let ingest_id = db::start_ingest(&mut conn, ingest_start_time).into_diagnostic()?;
 
     let abort = CancellationToken::new();
-    let ingest_task = ingest_everything(url.clone(), ingest_id, abort.clone(), config);
+    let ingest_task = ingest_everything(pool.clone(), ingest_id, abort.clone(), config);
     pin_mut!(ingest_task);
 
     let (is_aborted, result) = tokio::select! {
@@ -155,38 +151,38 @@ async fn run_one_ingest(url: String, config: &IngestConfig) -> miette::Result<()
     Ok(())
 }
 
-fn refresh_matviews(pg_url: String) -> miette::Result<()> {
-    let mut conn = PgConnection::establish(&pg_url).into_diagnostic()?;
+fn refresh_matviews(pool: ConnectionPool) -> miette::Result<()> {
+    let mut conn = pool.get().into_diagnostic()?;
     db::refresh_matviews(&mut conn).into_diagnostic()
 }
 
 async fn ingest_everything(
-    pg_url: String,
+    pool: ConnectionPool,
     ingest_id: i64,
     abort: CancellationToken,
     config: &IngestConfig,
 ) -> miette::Result<()> {
     if config.team_ingest.enable {
         info!("Beginning team ingest");
-        ingest_teams::ingest_teams(ingest_id, pg_url.clone(), abort.clone(), &config.team_ingest).await?;
+        ingest_teams::ingest_teams(ingest_id, pool.clone(), abort.clone(), &config.team_ingest).await?;
     }
 
     if config.team_feed_ingest.enable {
         // This could be parallelized with ingest_teams, since we never
         // process the embedded feeds in team objects
         info!("Beginning team feed ingest");
-        ingest_team_feed::ingest_team_feeds(ingest_id, pg_url.clone(), abort.clone(), &config.team_feed_ingest).await?;
+        ingest_team_feed::ingest_team_feeds(ingest_id, pool.clone(), abort.clone(), &config.team_feed_ingest).await?;
     }
 
     if config.player_feed_ingest.enable {
         info!("Beginning player ingest");
-        ingest_players::ingest_players(ingest_id, pg_url.clone(), abort.clone(), &config.player_feed_ingest).await?;
+        ingest_players::ingest_players(ingest_id, pool.clone(), abort.clone(), &config.player_feed_ingest).await?;
 
         // Player feed ingest can't (currently) run without first running player ingest
         if config.player_feed_ingest.enable {
             info!("Beginning player feed ingest");
             // Player feed ingest has to start after all players with inbuilt feeds are processed
-            ingest_player_feed::ingest_player_feeds(ingest_id, pg_url.clone(), abort.clone(), &config.player_feed_ingest).await?;
+            ingest_player_feed::ingest_player_feeds(ingest_id, pool.clone(), abort.clone(), &config.player_feed_ingest).await?;
         }
     } else if config.player_feed_ingest.enable {
         warn!("Can't ingest player feeds without ingesting players");
@@ -194,11 +190,11 @@ async fn ingest_everything(
 
     if config.game_ingest.enable {
         info!("Beginning game ingest");
-        ingest_games::ingest_games(pg_url.clone(), ingest_id, abort).await?;
+        ingest_games::ingest_games(pool.clone(), ingest_id, abort).await?;
     }
 
     info!("Refreshing materialized views");
-    refresh_matviews(pg_url)?;
+    refresh_matviews(pool)?;
 
     info!("Ingest complete");
     Ok(())
