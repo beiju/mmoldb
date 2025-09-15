@@ -49,18 +49,6 @@ nullable_explanation = """
 in a way that prevented us from updating the database.
 """
 
-[[table.column]]
-name = "start_next_ingest_at_page"
-type = "text"
-description = """
-The next_page token that came with the latest Chronicler page that
-we've fully ingested. This is internal bookkeeping for the ingest task
-and is unlikely to be useful to anyone but MMOLDB itself.
-"""
-nullable_explanation = """
-`null` if the first page is not yet fully ingested.
-"""
-
 [[table]]
 name = "raw_events"
 description = """

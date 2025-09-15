@@ -61,7 +61,6 @@ pub mod info {
             started_at -> Timestamp,
             finished_at -> Nullable<Timestamp>,
             aborted_at -> Nullable<Timestamp>,
-            start_next_ingest_at_page -> Nullable<Text>,
             message -> Nullable<Text>,
         }
     }

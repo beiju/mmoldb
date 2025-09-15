@@ -84,31 +84,6 @@ pub fn latest_ingest_start_time(conn: &mut PgConnection) -> QueryResult<Option<N
         .optional()
 }
 
-pub fn next_ingest_start_page(conn: &mut PgConnection) -> QueryResult<Option<String>> {
-    use crate::info_schema::info::ingests::dsl::*;
-
-    ingests
-        .filter(start_next_ingest_at_page.is_not_null())
-        .select(start_next_ingest_at_page)
-        .order_by(started_at.desc())
-        .first(conn)
-        .optional()
-        .map(Option::flatten)
-}
-
-pub fn update_next_ingest_start_page(
-    conn: &mut PgConnection,
-    ingest_id: i64,
-    next_ingest_start_page: Option<String>,
-) -> QueryResult<usize> {
-    use crate::info_schema::info::ingests::dsl as ingests_dsl;
-
-    diesel::update(ingests_dsl::ingests)
-        .filter(ingests_dsl::id.eq(ingest_id))
-        .set(ingests_dsl::start_next_ingest_at_page.eq(next_ingest_start_page))
-        .execute(conn)
-}
-
 #[derive(QueryableByName)]
 pub struct IngestWithGameCount {
     #[diesel(sql_type = Int8)]
@@ -154,7 +129,6 @@ pub fn mark_ingest_finished(
     conn: &mut PgConnection,
     ingest_id: i64,
     at: DateTime<Utc>,
-    start_next_ingest_at_page: Option<&str>,
     set_message: Option<&str>
 ) -> QueryResult<()> {
     use crate::info_schema::info::ingests::dsl;
@@ -162,7 +136,6 @@ pub fn mark_ingest_finished(
     diesel::update(dsl::ingests.filter(dsl::id.eq(ingest_id)))
         .set((
             dsl::finished_at.eq(at.naive_utc()),
-            dsl::start_next_ingest_at_page.eq(start_next_ingest_at_page),
             dsl::message.eq(set_message)
         ))
         .execute(conn)
@@ -1984,9 +1957,9 @@ fn insert_to_error_internal<'container, InsertableT: 'container>(
             );
             let inserted_first_half = insert_to_error_internal(f, conn, &items[..halfway], previously_inserted)
                 .map_err(|(inserted, err)| (previously_inserted + inserted, err))?;
-            
+
             debug!(
-                "No error in the first {} items. Trying the next {}.", 
+                "No error in the first {} items. Trying the next {}.",
                 halfway, items.len() - halfway
             );
             insert_to_error_internal(f, conn, &items[halfway..], previously_inserted)

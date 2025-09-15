@@ -140,8 +140,7 @@ async fn run_one_ingest(pool: ConnectionPool, config: &IngestConfig) -> miette::
             duration.to_text_en(Accuracy::Precise, Tense::Present)
         );
     } else {
-        // TODO Remove the start_next_ingest_at_page column from ingests
-        db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, None, err_message.as_deref()).into_diagnostic()?;
+        db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, err_message.as_deref()).into_diagnostic()?;
         info!(
             "Finished ingest in {}",
             duration.to_text_en(Accuracy::Precise, Tense::Present)
