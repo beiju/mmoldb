@@ -1,4 +1,4 @@
-use crate::ingest::{VersionIngestLogs, batch_by_entity};
+use crate::ingest::{VersionIngestLogs, batch_by_entity, IngestFatalError};
 use crate::ingest_players::day_to_db;
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -31,7 +31,7 @@ pub async fn ingest_player_feeds(
     pool: ConnectionPool,
     abort: CancellationToken,
     config: &IngestibleConfig
-) -> miette::Result<()> {
+) -> Result<(), IngestFatalError> {
     crate::ingest::ingest(
         ingest_id,
         PLAYER_FEED_KIND,
@@ -50,7 +50,7 @@ pub fn ingest_page_of_player_feeds(
     raw_player_feeds: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
     worker_id: usize,
-) -> miette::Result<i32> {
+) -> Result<i32, IngestFatalError> {
     debug!(
         "Starting of {} player feeds on worker {worker_id}",
         raw_player_feeds.len()
@@ -75,8 +75,7 @@ pub fn ingest_page_of_player_feeds(
                 data: serde_json::from_value(game_json.data)?,
             })
         })
-        .collect::<Result<Vec<_>, _>>()
-        .into_diagnostic()?;
+        .collect::<Result<Vec<_>, _>>()?;
     let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} player feeds in {:.2} seconds on worker {}",
@@ -123,15 +122,7 @@ pub fn ingest_page_of_player_feeds(
             player_feeds.len(),
         );
 
-        maybe_err.into_diagnostic()
-            .with_context(|| {
-                // If there was an error, the item that caused the error should be at index `inserted`
-                if let Some(item) = batch.get(inserted) {
-                    format!("Inserting player feed version {:#?}", item)
-                } else {
-                    format!("After inserting {} of {} player feed versions", inserted, batch.len())
-                }
-            })?;
+        maybe_err?;
     }
 
     let save_duration = (Utc::now() - save_start).as_seconds_f64();

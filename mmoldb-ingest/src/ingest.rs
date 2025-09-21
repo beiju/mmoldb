@@ -1,4 +1,4 @@
-use chron::{Chron, ChronEntity};
+use chron::{Chron, ChronEntity, ChronStreamError};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
 use hashbrown::hash_map::{Entry, EntryRef};
@@ -13,19 +13,35 @@ use std::iter;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Notify;
+use tokio::task::JoinError;
 use tokio_util::sync::CancellationToken;
-use crate::config::IngestibleConfig;
+use crate::config::{IngestConfig, IngestibleConfig};
 
 // const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = Some("2025-07-16 04:07:42.699296Z");
 const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = None;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
+    #[error("error in chron stream")]
+    ChronStreamError(#[from] ChronStreamError),
+
     #[error(transparent)]
     DeserializeError(#[from] serde_json::Error),
 
     #[error(transparent)]
     DbError(#[from] QueryError),
+
+    #[error("couldn't spawn task")]
+    TaskSpawnError(#[source] std::io::Error),
+
+    #[error("couldn't get a database connection")]
+    DbPoolError(#[from] mmoldb_db::PoolError),
+
+    #[error("couldn't get an async database connection")]
+    AsyncDbPoolError(#[from] mmoldb_db::ConnectionError),
+
+    #[error("couldn't join ingest task")]
+    JoinError(#[source] JoinError),
 }
 
 pub struct VersionIngestLogs<'a> {
@@ -92,6 +108,113 @@ impl<'a> VersionIngestLogs<'a> {
     }
 }
 
+pub struct Ingestor {
+    pool: ConnectionPool,
+    ingest_id: i64,
+    abort: CancellationToken,
+}
+
+impl Ingestor {
+    pub fn new(
+        pool: ConnectionPool,
+        ingest_id: i64,
+        abort: CancellationToken,
+    ) -> Ingestor {
+        Ingestor {
+            pool,
+            ingest_id,
+            abort,
+        }
+    }
+
+    pub async fn ingest<I: Ingestable + 'static>(self, ingestible: I) -> Result<(), IngestFatalError> {
+        if !ingestible.config().enable {
+            return Ok(());
+        }
+
+        info!("Beginning {} ingest", I::KIND);
+
+        let notify = Arc::new(Notify::new());
+        // Finish tells the task "once there are no more players to process, exit", while
+        // abort tells the task "exit immediately, even if there are more players to process"
+        let finish = CancellationToken::new();
+
+        // Don't increase this past 1 until players are dispatched to tasks by ID. The DB insert
+        // logic requires that the versions for a given player are inserted in order.
+        // Also need to handle NewIngestCounts correctly
+        let num_workers = 1;
+        debug!("Ingesting {} with {num_workers} workers", I::KIND);
+
+        // Names have to outlast tasks, so they're lifted out
+        let task_names_and_numbers = (1..=num_workers)
+            .map(|n| (format!("{} ingest worker {n}", I::KIND), n))
+            .collect_vec();
+
+        let ingest_stage_2_handles = task_names_and_numbers
+            .iter()
+            .map(|(task_name, n)| {
+                let pool = self.pool.clone();
+                let notify = notify.clone();
+                let finish = finish.clone();
+                let abort = self.abort.clone();
+                info!("Spawning stage 2 worker {n} named '{task_name}'");
+                tokio::task::Builder::new()
+                    .name(task_name)
+                    .spawn(ingest_stage_2(
+                        self.ingest_id,
+                        I::KIND,
+                        ingestible.config().insert_raw_entity_batch_size,
+                        pool,
+                        abort,
+                        notify,
+                        finish,
+                        *n,
+                        I::trim_version,
+                        I::get_start_cursor,
+                        I::ingest_versions_page,
+                    ))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(IngestFatalError::TaskSpawnError)?;
+
+        info!("Launched Stage 2 {} ingest task(s) in the background", I::KIND);
+        info!("Beginning Stage 1 {} ingest", I::KIND);
+
+        let mut ingest_conn = self.pool.get()?;
+
+        tokio::select! {
+        result = ingest_stage_1(I::KIND, ingestible.config().chron_fetch_batch_size, ingestible.config().process_batch_size, &mut ingest_conn, notify) => {
+            result?;
+            // Tell process {kind} workers to stop waiting and exit
+            finish.cancel();
+
+            info!("Stage 1 {} ingest finished. Waiting for stage 2 task.", I::KIND);
+        }
+        _ = self.abort.cancelled() => {
+            // No need to set any signals because abort was already set by the caller
+            info!("Stage 1 {} ingest aborted. Waiting for stage 2 task.", I::KIND);
+        }
+    }
+
+        for ingest_stage_2_handle in ingest_stage_2_handles {
+            ingest_stage_2_handle.await
+                .map_err(IngestFatalError::JoinError)??;
+        }
+
+        Ok(())
+    }
+}
+
+pub trait Ingestable {
+    const KIND: &'static str;
+
+    fn config(&self) -> &IngestibleConfig;
+
+    fn trim_version(version: &serde_json::Value) -> serde_json::Value;
+    fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>;
+    fn ingest_versions_page(taxa: &Taxa, raw_versions: Vec<ChronEntity<serde_json::Value>>, conn: &mut PgConnection, worker_id: usize) -> Result<i32, IngestFatalError>;
+}
+
 pub async fn ingest(
     ingest_id: i64,
     kind: &'static str,
@@ -100,8 +223,8 @@ pub async fn ingest(
     abort: CancellationToken,
     trim_version: impl Fn(&serde_json::Value) -> serde_json::Value + Copy + Send + Sync + 'static,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> + Copy + Send + Sync + 'static,
-    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32> + Copy + Send + Sync + 'static,
-) -> miette::Result<()> {
+    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> Result<i32, IngestFatalError> + Copy + Send + Sync + 'static,
+) -> Result<(), IngestFatalError> {
     let notify = Arc::new(Notify::new());
     // Finish tells the task "once there are no more players to process, exit", while
     // abort tells the task "exit immediately, even if there are more players to process"
@@ -143,12 +266,12 @@ pub async fn ingest(
                 ))
         })
         .collect::<Result<Vec<_>, _>>()
-        .into_diagnostic()?;
+        .map_err(IngestFatalError::TaskSpawnError)?;
 
     info!("Launched Stage 2 {kind} ingest task(s) in the background");
     info!("Beginning Stage 1 {kind} ingest");
 
-    let mut ingest_conn = pool.get().into_diagnostic()?;
+    let mut ingest_conn = pool.get()?;
 
     tokio::select! {
         result = ingest_stage_1(kind, config.chron_fetch_batch_size, config.process_batch_size, &mut ingest_conn, notify) => {
@@ -165,7 +288,7 @@ pub async fn ingest(
     }
 
     for ingest_stage_2_handle in ingest_stage_2_handles {
-        ingest_stage_2_handle.await.into_diagnostic()??;
+        ingest_stage_2_handle.await.map_err(IngestFatalError::JoinError)??;
     }
 
     Ok(())
@@ -177,9 +300,8 @@ async fn ingest_stage_1(
     stage_1_chunks_page_size: usize,
     conn: &mut PgConnection,
     notify: Arc<Notify>,
-) -> miette::Result<()> {
-    let start_cursor = db::get_latest_raw_version_cursor(conn, kind)
-        .into_diagnostic()?
+) -> Result<(), IngestFatalError> {
+    let start_cursor = db::get_latest_raw_version_cursor(conn, kind)?
         .map(|(dt, id)| (dt.and_utc(), id));
     let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
 
@@ -241,7 +363,7 @@ async fn ingest_stage_1(
             chunk.len(),
             num_skipped_at_start.load(std::sync::atomic::Ordering::SeqCst)
         );
-        let inserted = match db::insert_versions(conn, &chunk).into_diagnostic() {
+        let inserted = match db::insert_versions(conn, &chunk) {
             Ok(x) => Ok(x),
             Err(err) => {
                 error!("Error in stage 1 ingest write: {err}");
@@ -271,8 +393,8 @@ async fn ingest_stage_2(
     worker_id: usize,
     trim_version: impl Fn(&serde_json::Value) -> serde_json::Value,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>,
-    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32>,
-) -> miette::Result<()> {
+    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> Result<i32, IngestFatalError>,
+) -> Result<(), IngestFatalError> {
     let result = ingest_stage_2_internal(
         ingest_id,
         kind,
@@ -305,19 +427,19 @@ async fn ingest_stage_2_internal(
     worker_id: usize,
     trim_version: impl Fn(&serde_json::Value) -> serde_json::Value,
     get_start_cursor: impl Fn(&mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>,
-    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> miette::Result<i32>,
-) -> miette::Result<()> {
+    ingest_versions_page: impl Fn(&Taxa, Vec<ChronEntity<serde_json::Value>>, &mut PgConnection, usize) -> Result<i32, IngestFatalError>,
+) -> Result<(), IngestFatalError> {
     info!("{kind} stage 2 ingest worker launched");
     // TODO Pool this too?
     let url = mmoldb_db::postgres_url_from_environment();
-    let mut async_conn = AsyncPgConnection::establish(&url).await.into_diagnostic()?;
-    let mut conn = pool.get().into_diagnostic()?;
-    let taxa = Taxa::new(&mut conn).into_diagnostic()?;
+    let mut async_conn = AsyncPgConnection::establish(&url).await?;
+    let mut conn = pool.get()?;
+    let taxa = Taxa::new(&mut conn)?;
 
     if let Some(dt) = ROLL_BACK_INGEST_TO_DATE {
         let dt = DateTime::parse_from_rfc3339(dt).unwrap().naive_utc();
         info!("Rolling back ingest to {}", dt);
-        db::roll_back_ingest_to_date(&mut conn, dt).into_diagnostic()?;
+        db::roll_back_ingest_to_date(&mut conn, dt)?;
     }
 
     // Permit ourselves to start processing right away, in case there
@@ -338,7 +460,7 @@ async fn ingest_stage_2_internal(
 
         // This can be cached, but as it now only runs once per wakeup it probably doesn't
         // need to be
-        let ingest_start_cursor = get_start_cursor(&mut conn).into_diagnostic()?;
+        let ingest_start_cursor = get_start_cursor(&mut conn)?;
 
         info!("{kind} stage 2 ingest starting at {ingest_start_cursor:?}");
 
@@ -353,9 +475,7 @@ async fn ingest_stage_2_internal(
                 .as_ref()
                 .map(|(dt, id)| (*dt, id.as_str())),
         )
-        .await
-        .into_diagnostic()
-        .context("Getting versions at cursor")?
+        .await?
         .filter(|result| {
             futures::future::ready(match result {
                 Ok(entity) => {
@@ -396,7 +516,7 @@ async fn ingest_stage_2_internal(
         .map(|raw_versions| {
             // when an error occurs, try_chunks gives us the successful portion of the chunk
             // and then the error. we could ingest the successful part, but we don't (yet).
-            let raw_versions = raw_versions.map_err(|err| err.1).into_diagnostic()?;
+            let raw_versions = raw_versions.map_err(|err| err.1)?;
 
             info!(
                 "Processing batch of {} {kind} on worker {worker_id}",
@@ -404,9 +524,9 @@ async fn ingest_stage_2_internal(
             );
             num_ingested += ingest_versions_page(&taxa, raw_versions, &mut conn, worker_id)?;
 
-            db::update_num_ingested(&mut conn, ingest_id, kind, num_ingested).into_diagnostic()?;
+            db::update_num_ingested(&mut conn, ingest_id, kind, num_ingested)?;
 
-            Ok::<_, miette::Report>(())
+            Ok::<_, IngestFatalError>(())
         });
         pin_mut!(versions_stream);
 

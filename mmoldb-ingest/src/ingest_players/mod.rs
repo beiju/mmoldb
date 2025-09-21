@@ -5,6 +5,7 @@ pub use logic::day_to_db;
 use mmoldb_db::{db, ConnectionPool};
 use tokio_util::sync::CancellationToken;
 use crate::config::IngestibleConfig;
+use crate::ingest::IngestFatalError;
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
@@ -15,7 +16,7 @@ pub async fn ingest_players(
     pool: ConnectionPool,
     abort: CancellationToken,
     config: &IngestibleConfig,
-) -> miette::Result<()> {
+) -> Result<(), IngestFatalError> {
     crate::ingest::ingest(
         ingest_id,
         PLAYER_KIND,

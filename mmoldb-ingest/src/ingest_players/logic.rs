@@ -1,4 +1,4 @@
-use crate::ingest::{VersionIngestLogs, batch_by_entity};
+use crate::ingest::{VersionIngestLogs, batch_by_entity, IngestFatalError};
 use crate::ingest_player_feed::chron_player_feed_as_new;
 use crate::ingest_players::PLAYER_KIND;
 use chron::ChronEntity;
@@ -31,7 +31,7 @@ pub fn ingest_page_of_players(
     raw_players: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
     worker_id: usize,
-) -> miette::Result<i32> {
+) -> Result<i32, IngestFatalError> {
     debug!(
         "Starting ingest page of {} players on worker {worker_id}",
         raw_players.len()
@@ -51,8 +51,7 @@ pub fn ingest_page_of_players(
                 data: serde_json::from_value(game_json.data)?,
             })
         })
-        .collect::<Result<Vec<_>, _>>()
-        .into_diagnostic()?;
+        .collect::<Result<Vec<_>, _>>()?;
     let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} players in {deserialize_duration:.2} seconds on worker {worker_id}",
@@ -90,8 +89,7 @@ pub fn ingest_page_of_players(
         .unique()
         .collect_vec();
 
-    let modifications =
-        get_filled_modifications_map(conn, &unique_modifications).into_diagnostic()?;
+    let modifications = get_filled_modifications_map(conn, &unique_modifications)?;
 
     // Convert to Insertable type
     let new_players = players
@@ -136,15 +134,7 @@ pub fn ingest_page_of_players(
             players.len(),
         );
 
-        maybe_err.into_diagnostic()
-            .with_context(|| {
-                // If there was an error, the item that caused the error should be at index `inserted`
-                if let Some(item) = batch.get(inserted) {
-                    format!("Inserting player version {:?}", item)
-                } else {
-                    format!("After inserting {} of {} player versions", inserted, batch.len())
-                }
-            })?;
+        maybe_err?;
 
     }
 

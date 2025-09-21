@@ -1,7 +1,7 @@
 use std::str::FromStr;
-use crate::ingest::{VersionIngestLogs, batch_by_entity};
+use crate::ingest::{VersionIngestLogs, batch_by_entity, Ingestable, IngestFatalError};
 use chron::ChronEntity;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use itertools::Itertools;
 use log::{debug, info};
 use miette::{Context, IntoDiagnostic};
@@ -9,28 +9,25 @@ use mmolb_parsing::{AddedLater, NotRecognized, team::TeamPlayerCollection, Maybe
 use mmolb_parsing::enums::Slot;
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{BestEffortSlot, PgConnection, db, ConnectionPool};
+use mmoldb_db::{BestEffortSlot, PgConnection, db, QueryResult};
 use rayon::prelude::*;
-use tokio_util::sync::CancellationToken;
 use crate::config::IngestibleConfig;
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
 const TEAM_KIND: &'static str = "team";
 
-pub async fn ingest_teams(
-    ingest_id: i64,
-    pool: ConnectionPool,
-    abort: CancellationToken,
-    config: &IngestibleConfig,
-) -> miette::Result<()> {
-    crate::ingest::ingest(
-        ingest_id,
-        TEAM_KIND,
-        config,
-        pool,
-        abort,
-        |version| match version {
+pub struct TeamIngest<'a>(pub &'a IngestibleConfig);
+
+impl<'a> Ingestable for TeamIngest<'a> {
+    const KIND: &'static str = "team";
+
+    fn config(&self) -> &IngestibleConfig {
+        &self.0
+    }
+
+    fn trim_version(version: &serde_json::Value) -> serde_json::Value {
+        match version {
             serde_json::Value::Object(obj) => serde_json::Value::Object({
                 obj.iter()
                     .filter_map(|(k, v)| {
@@ -79,101 +76,90 @@ pub async fn ingest_teams(
                     .collect()
             }),
             other => other.clone(),
-        },
-        db::get_team_ingest_start_cursor,
-        ingest_page_of_teams,
-    )
-    .await
-}
+        }
+    }
 
-pub fn ingest_page_of_teams(
-    taxa: &Taxa,
-    raw_teams: Vec<ChronEntity<serde_json::Value>>,
-    conn: &mut PgConnection,
-    worker_id: usize,
-) -> miette::Result<i32> {
-    debug!(
+    fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
+        db::get_team_ingest_start_cursor(conn)
+    }
+
+    fn ingest_versions_page(taxa: &Taxa, raw_versions: Vec<ChronEntity<serde_json::Value>>, conn: &mut PgConnection, worker_id: usize) -> Result<i32, IngestFatalError> {
+        debug!(
         "Starting ingest of {} teams on worker {worker_id}",
-        raw_teams.len()
+        raw_versions.len()
     );
-    let save_start = Utc::now();
+        let save_start = Utc::now();
 
-    let deserialize_start = Utc::now();
-    // TODO Gracefully handle team deserialize failure
-    let teams = raw_teams
-        .into_par_iter()
-        .map(|entity| {
-            let data = serde_json::from_value(entity.data)
-                .into_diagnostic()
-                .with_context(|| {
-                    format!(
-                        "Error deserializing team {} at {}",
-                        entity.entity_id, entity.valid_from,
-                    )
-                })?;
+        let deserialize_start = Utc::now();
+        // TODO Gracefully handle team deserialize failure
+        let teams = raw_versions
+            .into_par_iter()
+            .map(|entity| {
+                let data = serde_json::from_value(entity.data)?;
 
-            Ok::<ChronEntity<mmolb_parsing::team::Team>, miette::Report>(ChronEntity {
-                kind: entity.kind,
-                entity_id: entity.entity_id,
-                valid_from: entity.valid_from,
-                valid_to: entity.valid_to,
-                data,
+                Ok::<ChronEntity<mmolb_parsing::team::Team>, IngestFatalError>(ChronEntity {
+                    kind: entity.kind,
+                    entity_id: entity.entity_id,
+                    valid_from: entity.valid_from,
+                    valid_to: entity.valid_to,
+                    data,
+                })
             })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
-    debug!(
+            .collect::<Result<Vec<_>, _>>()?;
+        let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
+        debug!(
         "Deserialized page of {} teams in {:.2} seconds on worker {}",
         teams.len(),
         deserialize_duration,
         worker_id
     );
 
-    let latest_time = teams
-        .last()
-        .map(|version| version.valid_from)
-        .unwrap_or(Utc::now());
-    let time_ago = latest_time.signed_duration_since(Utc::now());
-    let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
+        let latest_time = teams
+            .last()
+            .map(|version| version.valid_from)
+            .unwrap_or(Utc::now());
+        let time_ago = latest_time.signed_duration_since(Utc::now());
+        let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
 
-    // Convert to Insertable type
-    let new_teams = teams
-        .iter()
-        .map(|v| chron_team_as_new(&taxa, &v.entity_id, v.valid_from, &v.data))
-        .collect_vec();
+        // Convert to Insertable type
+        let new_teams = teams
+            .iter()
+            .map(|v| chron_team_as_new(&taxa, &v.entity_id, v.valid_from, &v.data))
+            .collect_vec();
 
-    // The handling of valid_until is entirely in the database layer, but its logic
-    // requires that a given batch of teams does not have the same team twice. We
-    // provide that guarantee here.
-    let new_teams_len = new_teams.len();
-    let mut total_inserted = 0;
-    for batch in batch_by_entity(new_teams, |v| v.0.mmolb_team_id) {
-        let to_insert = batch.len();
-        info!(
+        // The handling of valid_until is entirely in the database layer, but its logic
+        // requires that a given batch of teams does not have the same team twice. We
+        // provide that guarantee here.
+        let new_teams_len = new_teams.len();
+        let mut total_inserted = 0;
+        for batch in batch_by_entity(new_teams, |v| v.0.mmolb_team_id) {
+            let to_insert = batch.len();
+            info!(
             "Sent {} new team versions out of {} to the database.",
             to_insert, new_teams_len,
         );
 
-        let inserted = db::insert_team_versions(conn, &batch).into_diagnostic()?;
-        total_inserted += inserted as i32;
+            let inserted = db::insert_team_versions(conn, &batch)?;
+            total_inserted += inserted as i32;
 
-        info!(
+            info!(
             "Sent {} new team versions out of {} to the database. \
             {inserted} versions were actually inserted, the rest were duplicates. \
             Currently processing team versions from {human_time_ago}.",
             to_insert,
             teams.len(),
         );
-    }
+        }
 
-    let save_duration = (Utc::now() - save_start).as_seconds_f64();
+        let save_duration = (Utc::now() - save_start).as_seconds_f64();
 
-    info!(
+        info!(
         "Ingested page of {} team versions in {save_duration:.3} seconds.",
         teams.len(),
     );
 
-    Ok(total_inserted)
+        Ok(total_inserted)
+    }
 }
 
 pub fn chron_team_player_as_new<'a>(

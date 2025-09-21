@@ -19,5 +19,5 @@ pub use url::*;
 pub use pool::*;
 pub use migrations::*;
 
-pub use diesel::{Connection, PgConnection, QueryResult, result::Error as QueryError};
+pub use diesel::{Connection, PgConnection, QueryResult, result::Error as QueryError, result::ConnectionError};
 pub use diesel_async::{AsyncConnection, AsyncPgConnection};

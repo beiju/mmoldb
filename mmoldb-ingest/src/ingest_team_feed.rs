@@ -1,4 +1,4 @@
-use crate::ingest::{VersionIngestLogs, batch_by_entity};
+use crate::ingest::{VersionIngestLogs, batch_by_entity, IngestFatalError};
 use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use itertools::{Itertools};
@@ -24,7 +24,7 @@ pub async fn ingest_team_feeds(
     pool: ConnectionPool,
     abort: CancellationToken,
     config: &IngestibleConfig,
-) -> miette::Result<()> {
+) -> Result<(), IngestFatalError> {
     crate::ingest::ingest(
         ingest_id,
         TEAM_FEED_KIND,
@@ -43,7 +43,7 @@ pub fn ingest_page_of_team_feeds(
     raw_team_feeds: Vec<ChronEntity<serde_json::Value>>,
     conn: &mut PgConnection,
     worker_id: usize,
-) -> miette::Result<i32> {
+) -> Result<i32, IngestFatalError> {
     debug!(
         "Starting of {} team feeds on worker {worker_id}",
         raw_team_feeds.len()
@@ -68,8 +68,7 @@ pub fn ingest_page_of_team_feeds(
                 data: serde_json::from_value(game_json.data)?,
             })
         })
-        .collect::<Result<Vec<_>, _>>()
-        .into_diagnostic()?;
+        .collect::<Result<Vec<_>, _>>()?;
     let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} team feeds in {:.2} seconds on worker {}",
@@ -103,7 +102,7 @@ pub fn ingest_page_of_team_feeds(
             to_insert, new_team_feeds_len,
         );
 
-        let inserted = db::insert_team_feed_versions(conn, &batch).into_diagnostic()?;
+        let inserted = db::insert_team_feed_versions(conn, &batch)?;
         total_inserted += inserted as i32;
 
         info!(

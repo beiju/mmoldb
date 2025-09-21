@@ -7,6 +7,7 @@ mod ingest_teams;
 mod signal;
 mod config;
 
+use crate::ingest_teams::TeamIngest;
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::pin_mut;
@@ -15,6 +16,7 @@ use miette::{Context, IntoDiagnostic};
 use mmoldb_db::{db, ConnectionPool};
 use tokio_util::sync::CancellationToken;
 use config::IngestConfig;
+use crate::ingest::Ingestor;
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
@@ -22,6 +24,8 @@ async fn main() -> miette::Result<()> {
     console_subscriber::init();
 
     let config = IngestConfig::config().into_diagnostic()?;
+    let config = Box::new(config);
+    let config = Box::<IngestConfig>::leak(config);
     let pool = mmoldb_db::get_pool(config.db_pool_size)
         .into_diagnostic()?;
 
@@ -77,13 +81,13 @@ async fn main() -> miette::Result<()> {
         info!("Starting ingest {why}");
         previous_ingest_start_time = Some(ingest_start);
 
-        run_one_ingest(pool.clone(), &config).await?;
+        run_one_ingest(pool.clone(), config).await?;
     }
 
     Ok(())
 }
 
-async fn run_one_ingest(pool: ConnectionPool, config: &IngestConfig) -> miette::Result<()> {
+async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> miette::Result<()> {
     let ingest_start_time = Utc::now();
     let mut conn = pool.get().into_diagnostic()?;
 
@@ -161,12 +165,11 @@ async fn ingest_everything(
     pool: ConnectionPool,
     ingest_id: i64,
     abort: CancellationToken,
-    config: &IngestConfig,
+    config: &'static IngestConfig,
 ) -> miette::Result<()> {
-    if config.team_ingest.enable {
-        info!("Beginning team ingest");
-        ingest_teams::ingest_teams(ingest_id, pool.clone(), abort.clone(), &config.team_ingest).await?;
-    }
+    let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
+
+    ingestor.ingest(TeamIngest(&config.team_ingest)).await?;
 
     if config.team_feed_ingest.enable {
         // This could be parallelized with ingest_teams, since we never
