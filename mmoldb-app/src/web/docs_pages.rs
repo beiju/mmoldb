@@ -287,7 +287,8 @@ mod tests {
         for doc in docs_without_schemas {
             assert!(
                 false,
-                "Documented column {} does not exist in {schema_name}.{}",
+                "Documented column {} does not exist in {schema_name}.{}, or \
+                appears too many times in the documentation.",
                 doc.name, table.name
             );
         }

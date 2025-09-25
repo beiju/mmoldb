@@ -2077,6 +2077,7 @@ no mechanical effect.
 [[table.column]]
 name = "mmolb_team_id"
 type = "text"
+# TODO Update to reflect the fact that teams are included now
 description = """
 The MMOLB id for the team this player belongs to.
 
@@ -3679,4 +3680,731 @@ description = """
 The ID of the game that this team played in.
 
 Note there will be multiple rows with the same mmolb_game_id.
+"""
+
+[[table]]
+name = "player_versions_extended"
+description = """
+An expansive view that attempts to connect all the various attributes and
+numbers for a player, indicating what timestamp range this was the known data
+for the player.
+
+This view determines all the timestamps of a player's child data (Boons,
+Clubhouse Reports, Equipment, Modifications, etc) and presents the data that
+was appropriate for the player for the time those were all the known data. Team
+changes (Name, Location) are excluded to avoid excessive records per player.
+
+In particular, the timing associated with a player's Augment for the day may
+lack precision, as it is recorded with a timestamp that comes from MMOLB rather
+than using the moment the data is captured like other data points. They should
+be taken cautiously but listed in order to help users research data relevant to
+each Augment.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard code them into queries. They are generated solely
+for the purpose of giving this view a unique column.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player. This is the preferred way to identify a player.
+Use this to join back to any other player related tables if desired.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of this combination of player data was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of this combination of player data was
+observed, i.e. the earliest time we know this version is no longer valid.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "first_name"
+type = "text"
+description = """
+The player's first name.
+
+Players names are usually found in full when they appear in other tables. You
+can assemble the player's full name with the expression
+`first_name || ' ' || last_name`.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "last_name"
+type = "text"
+description = """
+The player's last name.
+
+Players names are usually found in full when they appear in other tables. You
+can assemble the player's full name with the expression
+`first_name || ' ' || last_name`.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "mmolb_team_id"
+type = "text"
+description = """
+The MMOLB id for the team this player belongs to.
+
+Teams are planned for addition to MMOLDB, and at that time you'll be able to
+use this to connect a player to their team.
+"""
+nullable_explanation = """
+`null` if this player is not currently on a team. Players can become teamless
+for many reasons, including a player Retiring after losing all their
+durability, being Released (full-team Release, different to Recompose) in the
+Hall of Unmaking, and Relegation (a season 0 mechanic which is no longer
+available).
+"""
+
+[[table.column]]
+name = "durability"
+type = "numeric"
+description = """
+The player's durability. Displayed as a green progress bar on the player page.
+
+This is a number that starts at 1 and is reduced by 0.05 at the end of every
+season, as well as when the player is damaged by a falling star. When it
+reaches 0, the player Retires.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "position"
+type = "text"
+description = """
+The standard abbreviation for this player's position, as seen on the MMOLB team
+page. Can be connected to other versions of the position through `taxa.slot`.
+This column can be joined on the `abbreviation` column of `taxa.slot`.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "batting_handedness"
+type = "text"
+description = """
+Hand this player uses to bat. References the `name` column of `taxa.handedness`.
+"""
+nullable_explanation = """
+`null` if this player's batting handedness was not recognized. This represents
+an ingest error.
+"""
+
+[[table.column]]
+name = "pitching_handedness"
+type = "text"
+description = """
+Hand this player uses to pitch. References the `name` column of
+`taxa.handedness`.
+"""
+nullable_explanation = """
+`null` if this player's pitching handedness was not recognized. This represents
+an ingest error.
+"""
+
+[[table.column]]
+name = "home"
+type = "text"
+description = """
+The player's birthplace. This is the location of the team they were born on at
+the time they were born (with some exceptions).
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "birthseason"
+type = "integer"
+description = """
+The season during which the player was born.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "birthday"
+type = "integer"
+description = """
+The day number during which the player was born. Not all day types have a day
+number. As of this writing (Season 5 Offseason), only `Day` and `SuperstarDay`
+day types have a day number.
+"""
+nullable_explanation = """
+`null` if this player wasn't born on a numbered day type.
+"""
+
+
+[[table.column]]
+name = "birthday_type"
+type = "text"
+description = """
+The type of the day during which the player was born. Corresponds to the
+`display_name` column of `taxa.day_type`. See the documentation on
+`taxa.day_type` for details.
+"""
+nullable_explanation = """
+`null` if this player's birthday type was not recognized. This represents
+an ingest error.
+"""
+
+[[table.column]]
+name = "greater_boon_id"
+type = "bigint"
+description = """
+The player's Greater Boon, if they have one. This references
+`data.modifications`.
+
+Modification ids (including boons) are *not* stable. You should not store
+these ids between queries, nor hard-code them into queries. Always join to
+`data.modifications` and use the modification name (and emoji and description
+if you like) instead.
+"""
+nullable_explanation = """
+`null` if this player does not have a Greater Boon.
+"""
+
+[[table.column]]
+name = "greater_boon"
+type = "text"
+description = """
+The name of the player's Greater Boon, if they have one.
+
+In the event that there are multiple versions of a boon with the same name, as
+has happened with the Partier boon, you can use `greater_boon_id` to 
+distinguish them.
+"""
+nullable_explanation = """
+`null` if this player does not have a Greater Boon.
+"""
+
+[[table.column]]
+name = "lesser_boon_id"
+type = "bigint"
+description = """
+The player's Lesser Boon, if they have one. This references
+`data.modifications`.
+
+Modification ids (including boons) are *not* stable. You should not store
+these ids between queries, nor hard-code them into queries. Always join to
+`data.modifications` and use the modification name (and emoji and description
+if you like) instead.
+"""
+nullable_explanation = """
+`null` if this player does not have a Lesser Boon.
+"""
+
+[[table.column]]
+name = "lesser_boon"
+type = "text"
+description = """
+The name of the player's Lesser Boon, if they have one.
+
+In the event that there are multiple versions of a boon with the same name, as
+has happened with the Partier boon, you can use `lesser_boon_id` to 
+distinguish them.
+"""
+nullable_explanation = """
+`null` if this player does not have a Lesser Boon.
+"""
+
+[[table.column]]
+name = "modification_ids"
+type = "ARRAY"
+description = """
+An array of the players' modifications, if they have any. This references
+`data.modifications`.
+
+Modification ids (including boons) are *not* stable. You should not store
+these ids between queries, nor hard-code them into queries. Always join to
+`data.modifications` and use the modification name (and emoji and description
+if you like) instead.
+"""
+nullable_explanation = """
+`null` if this player does not have any modifications. For this column, `null`
+should be treated as the empty array.
+"""
+
+[[table.column]]
+name = "modifications"
+type = "ARRAY"
+description = """
+A text array of the names of the modifications the player has, if they have any.
+Values in this array match the `name` column of
+`data.player_modification_versions`.
+
+In the event that there are multiple versions of a modification with the same
+name, as has happened with the Partier boon, you can use the corresponding value
+in `modification_ids` to distinguish them.
+"""
+nullable_explanation = """
+`null` if this player does not have any modifications. For this column, `null`
+should be treated as the empty array.
+"""
+
+[[table.column]]
+name = "attribute_augmented"
+type = "text"
+description = """
+If this record serves as a timestamp for when an Augment is applied to a
+player, it will display the text description of the Attribute that was
+increased.
+
+This view currently does not reflect Augments that are not direct Attribute
+increases.
+"""
+nullable_explanation = """
+`null` if this record is not the timestam for when an Augment is applied.
+"""
+
+[[table.column]]
+name = "augmented_amount"
+type = "integer"
+description = """
+If this record serves as a timestamp for when an Augment is applied to a
+player, it will display an integer indication how much the Attribute was
+increased.
+"""
+nullable_explanation = """
+`null` if this record is not the timestam for when an Augment is applied.
+"""
+
+[[table.column]]
+name = "accessory_equip_name"
+type = "text"
+description = """
+If the player is wearing Equipment in the Accessory slot (Ring), then this will
+be the text representation of the Equipment's name, regardless if it's plain,
+Magic or Rare.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Accessory slot (Ring).
+"""
+
+[[table.column]]
+name = "accessory_attributes"
+type = "ARRAY"
+description = """
+If the player's Ring has any Attribute bonuses, this will be an array of the 
+Attributes' IDs on the `taxa.attribute` table.
+  
+Note that this, along with the other Equipment arrays, are ordered by the 
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Accessory slot (Ring). If there is
+an Accessory equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "accessory_effect_types"
+type = "ARRAY"
+description = """
+If the player's Ring has any Attribute bonuses, this will be an array of the
+effect type on the taxa.attribute_effect_type table (Flat, Additive or
+Multiplicative).
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Accessory slot (Ring). If there is
+an Accessory equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "accessory_values"
+type = "ARRAY"
+description = """
+If the player's Ring has any Attribute bonuses, this will be an array of the 
+increase amount by which the attribute was boosted. Stores values as they are 
+displayed in the game log, meaning attributes are on the 0-100 scale.
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Accessory slot (Ring). If there is
+an Accessory equipped, but it has no attributes, this is the empty array.
+"""
+
+# TODO Insert duplicates of accessory_* columns for the other slots
+
+[[table.column]]
+name = "luck_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Luck.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Luck.
+"""
+
+[[table.column]]
+name = "aiming_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Aiming.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Aiming.
+"""
+
+[[table.column]]
+name = "contact_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Contact.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Contact.
+"""
+
+[[table.column]]
+name = "cunning_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Cunning.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Cunning.
+"""
+
+[[table.column]]
+name = "determination_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Determination.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Determination.
+"""
+
+[[table.column]]
+name = "discipline_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Discipline.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Discipline.
+"""
+
+[[table.column]]
+name = "insight_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Insight.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Insight.
+"""
+
+[[table.column]]
+name = "intimidation_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Intimidation.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Intimidation.
+"""
+
+[[table.column]]
+name = "lift_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Lift.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Lift.
+"""
+
+[[table.column]]
+name = "muscle_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Muscle.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Muscle.
+"""
+
+[[table.column]]
+name = "selflessness_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Selflessness.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Selflessness.
+"""
+
+[[table.column]]
+name = "vision_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Vision.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Vision.
+"""
+
+[[table.column]]
+name = "wisdom_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Wisdom.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Wisdom.
+"""
+
+[[table.column]]
+name = "accuracy_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Accuracy.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Accuracy.
+"""
+
+[[table.column]]
+name = "control_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Control.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Control.
+"""
+
+[[table.column]]
+name = "defiance_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Defiance.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Defiance.
+"""
+
+[[table.column]]
+name = "guts_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Guts.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Guts.
+"""
+
+[[table.column]]
+name = "presence_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Presence.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Presence.
+"""
+
+[[table.column]]
+name = "persuasion_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Persuasion.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Persuasion.
+"""
+
+[[table.column]]
+name = "rotation_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Rotation.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Rotation.
+"""
+
+[[table.column]]
+name = "stamina_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Stamina.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Stamina.
+"""
+
+[[table.column]]
+name = "stuff_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Stuff.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Stuff.
+"""
+
+[[table.column]]
+name = "velocity_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Velocity.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Velocity.
+"""
+
+[[table.column]]
+name = "acrobatics_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Acrobatics.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Acrobatics.
+"""
+
+[[table.column]]
+name = "agility_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Agility.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Agility.
+"""
+
+[[table.column]]
+name = "arm_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Arm.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Arm.
+"""
+
+[[table.column]]
+name = "awareness_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Awareness.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Awareness.
+"""
+
+[[table.column]]
+name = "composure_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Composure.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Composure.
+"""
+
+[[table.column]]
+name = "dexterity_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Dexterity.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Dexterity.
+"""
+
+[[table.column]]
+name = "patience_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Patience.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Patience.
+"""
+
+[[table.column]]
+name = "reaction_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Reaction.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Reaction.
+"""
+
+[[table.column]]
+name = "greed_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Greed.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Greed.
+"""
+
+[[table.column]]
+name = "performance_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Performance.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Performance.
+"""
+
+[[table.column]]
+name = "speed_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Speed.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Speed.
+"""
+
+[[table.column]]
+name = "stealth_stars"
+type = "integer"
+description = """
+If reported, the number of stars the player has in Stealth.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Stealth.
 """

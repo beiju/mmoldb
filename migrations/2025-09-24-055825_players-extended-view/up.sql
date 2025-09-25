@@ -8,6 +8,11 @@ boundaries AS (
     SELECT mmolb_player_id, valid_until
     FROM data.player_equipment_versions
     UNION ALL
+    SELECT mmolb_player_id, valid_from FROM data.player_equipment_effect_versions
+    UNION ALL
+    SELECT mmolb_player_id, valid_until
+    FROM data.player_equipment_effect_versions
+    UNION ALL
     SELECT mmolb_player_id, valid_from FROM data.player_versions
     UNION ALL
     SELECT mmolb_player_id, valid_until
@@ -48,17 +53,17 @@ SELECT DISTINCT
     b.first_name, b.last_name, b.mmolb_team_id,
     b.durability::DECIMAL(10,2), xsl.abbreviation AS position,
 	xhb.name AS batting_handedness, xhp.name AS pitching_handedness,
-	b.home, b.birthseason, COALESCE(b.birthday_day, b.birthday_superstar_day, 0) AS birthday,
+	b.home, b.birthseason, COALESCE(b.birthday_day, b.birthday_superstar_day, null) AS birthday,
 	xdt.display_name AS birthday_type,
 	mg.id AS greater_boon_id, mg.name AS greater_boon,
 	ml.id AS lesser_boon_id, ml.name AS lesser_boon,
-	pmod.modifications,
+	pmod.modification_ids, pmod.modifications,
 
 	--Augment
 	xaa.name AS attribute_augmented, c.value AS augmented_amount,
 
 	--Equipment
-	trim(coalesce(eva.rare_name || ' ' || eva.name, coalesce(eva.prefixes[1],'') || ' ' || eva.name || ' ' || coalesce(eva.suffixes[1],''))) AS accesory_equip_name,
+	trim(coalesce(eva.rare_name || ' ' || eva.name, coalesce(eva.prefixes[1],'') || ' ' || eva.name || ' ' || coalesce(eva.suffixes[1],''))) AS accessory_equip_name,
 	accessory_attributes, accessory_effect_types, accessory_values,
 	/*
 	accessory_attribute1, accessory_effect_type1, accessory_value1,
@@ -490,9 +495,9 @@ ON b.mmolb_player_id = s.mmolb_player_id
     LEFT JOIN
     (
     SELECT ev.*,
-    array_agg(eev.attribute ORDER BY effect_index) AS accessory_attributes,
-    array_agg(eev.effect_type ORDER BY effect_index) AS accessory_effect_types,
-    array_agg(eev.value ORDER BY effect_index) AS accessory_values
+    array_remove(array_agg(eev.attribute ORDER BY effect_index), null) AS accessory_attributes,
+    array_remove(array_agg(eev.effect_type ORDER BY effect_index), null) AS accessory_effect_types,
+    array_remove(array_agg(eev.value ORDER BY effect_index), null) AS accessory_values
     FROM DATA.player_equipment_versions ev
 
     LEFT JOIN DATA.player_equipment_effect_versions eev
@@ -510,9 +515,9 @@ ON b.mmolb_player_id = s.mmolb_player_id
     LEFT JOIN
     (
     SELECT ev.*,
-    array_agg(eev.attribute ORDER BY effect_index) AS body_attributes,
-    array_agg(eev.effect_type ORDER BY effect_index) AS body_effect_types,
-    array_agg(eev.value ORDER BY effect_index) AS body_values
+    array_remove(array_agg(eev.attribute ORDER BY effect_index), null) AS body_attributes,
+    array_remove(array_agg(eev.effect_type ORDER BY effect_index), null) AS body_effect_types,
+    array_remove(array_agg(eev.value ORDER BY effect_index), null) AS body_values
     FROM DATA.player_equipment_versions ev
 
     LEFT JOIN DATA.player_equipment_effect_versions eev
@@ -530,9 +535,9 @@ ON b.mmolb_player_id = s.mmolb_player_id
     LEFT JOIN
     (
     SELECT ev.*,
-    array_agg(eev.attribute ORDER BY effect_index) AS feet_attributes,
-    array_agg(eev.effect_type ORDER BY effect_index) AS feet_effect_types,
-    array_agg(eev.value ORDER BY effect_index) AS feet_values
+    array_remove(array_agg(eev.attribute ORDER BY effect_index), null) AS feet_attributes,
+    array_remove(array_agg(eev.effect_type ORDER BY effect_index), null) AS feet_effect_types,
+    array_remove(array_agg(eev.value ORDER BY effect_index), null) AS feet_values
     FROM DATA.player_equipment_versions ev
 
     LEFT JOIN DATA.player_equipment_effect_versions eev
@@ -550,9 +555,9 @@ ON b.mmolb_player_id = s.mmolb_player_id
     LEFT JOIN
     (
     SELECT ev.*,
-    array_agg(eev.attribute ORDER BY effect_index) AS hands_attributes,
-    array_agg(eev.effect_type ORDER BY effect_index) AS hands_effect_types,
-    array_agg(eev.value ORDER BY effect_index) AS hands_values
+    array_remove(array_agg(eev.attribute ORDER BY effect_index), null) AS hands_attributes,
+    array_remove(array_agg(eev.effect_type ORDER BY effect_index), null) AS hands_effect_types,
+    array_remove(array_agg(eev.value ORDER BY effect_index), null) AS hands_values
     FROM DATA.player_equipment_versions ev
 
     LEFT JOIN DATA.player_equipment_effect_versions eev
@@ -570,9 +575,9 @@ ON b.mmolb_player_id = s.mmolb_player_id
     LEFT JOIN
     (
     SELECT ev.*,
-    array_agg(eev.attribute ORDER BY effect_index) AS head_attributes,
-    array_agg(eev.effect_type ORDER BY effect_index) AS head_effect_types,
-    array_agg(eev.value ORDER BY effect_index) AS head_values
+    array_remove(array_agg(eev.attribute ORDER BY effect_index), null) AS head_attributes,
+    array_remove(array_agg(eev.effect_type ORDER BY effect_index), null) AS head_effect_types,
+    array_remove(array_agg(eev.value ORDER BY effect_index), null) AS head_values
     FROM DATA.player_equipment_versions ev
 
     LEFT JOIN DATA.player_equipment_effect_versions eev
@@ -621,6 +626,7 @@ ON b.mmolb_player_id = s.mmolb_player_id
     case
     when s.valid_until = NOW() THEN NULL ELSE s.valid_until
     END AS valid_until,
+    array_agg(mo.id ORDER BY modification_index) AS modification_ids,
     array_agg(mo.name ORDER BY modification_index) AS modifications
     FROM segments s
     JOIN DATA.player_modification_versions pm
