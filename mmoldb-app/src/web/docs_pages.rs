@@ -299,6 +299,9 @@ mod tests {
                 "Type mismatch for column {} in {schema_name}.{}",
                 schema.name, table.name
             );
+            // TODO: Investigate the performance implications of verifying that
+            //   all fields labeled `is_non_nullable_view_field` actually have
+            //   no null entries by querying the db
             assert_eq!(
                 schema.is_nullable && !docs.is_non_nullable_view_field,
                 docs.nullable_explanation.is_some(),

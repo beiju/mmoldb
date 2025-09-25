@@ -57,7 +57,8 @@ SELECT DISTINCT
 	xdt.display_name AS birthday_type,
 	mg.id AS greater_boon_id, mg.name AS greater_boon,
 	ml.id AS lesser_boon_id, ml.name AS lesser_boon,
-	pmod.modification_ids, pmod.modifications,
+	coalesce(pmod.modification_ids, '{}') as modification_ids,
+	coalesce(pmod.modifications, '{}') as modifications,
 
 	--Augment
 	xaa.name AS attribute_augmented, c.value AS augmented_amount,

@@ -3939,34 +3939,28 @@ name = "modification_ids"
 type = "ARRAY"
 description = """
 An array of the players' modifications, if they have any. This references
-`data.modifications`.
+`data.modifications`. If the player has no modifications, this is the empty
+array.
 
 Modification ids (including boons) are *not* stable. You should not store
 these ids between queries, nor hard-code them into queries. Always join to
 `data.modifications` and use the modification name (and emoji and description
 if you like) instead.
 """
-nullable_explanation = """
-`null` if this player does not have any modifications. For this column, `null`
-should be treated as the empty array.
-"""
+is_non_nullable_view_field = true
 
 [[table.column]]
 name = "modifications"
 type = "ARRAY"
 description = """
-A text array of the names of the modifications the player has, if they have any.
-Values in this array match the `name` column of
-`data.player_modification_versions`.
+A text array of the names of the modifications the player has. Values in this
+array match the `name` column of `data.player_modification_versions`.
 
 In the event that there are multiple versions of a modification with the same
 name, as has happened with the Partier boon, you can use the corresponding value
 in `modification_ids` to distinguish them.
 """
-nullable_explanation = """
-`null` if this player does not have any modifications. For this column, `null`
-should be treated as the empty array.
-"""
+is_non_nullable_view_field = true
 
 [[table.column]]
 name = "attribute_augmented"
@@ -4020,7 +4014,7 @@ arrays.
 """
 nullable_explanation = """
 `null` if the player has no equipment in the Accessory slot (Ring). If there is
-an Accessory equipped, but it has no attributes, this is the empty array.
+a Ring equipped, but it has no attributes, this is the empty array.
 """
 
 [[table.column]]
@@ -4037,7 +4031,7 @@ arrays.
 """
 nullable_explanation = """
 `null` if the player has no equipment in the Accessory slot (Ring). If there is
-an Accessory equipped, but it has no attributes, this is the empty array.
+a Ring equipped, but it has no attributes, this is the empty array.
 """
 
 [[table.column]]
@@ -4054,10 +4048,256 @@ arrays.
 """
 nullable_explanation = """
 `null` if the player has no equipment in the Accessory slot (Ring). If there is
-an Accessory equipped, but it has no attributes, this is the empty array.
+a Ring equipped, but it has no attributes, this is the empty array.
 """
 
-# TODO Insert duplicates of accessory_* columns for the other slots
+[[table.column]]
+name = "body_equip_name"
+type = "text"
+description = """
+If the player is wearing Equipment in the Body slot (T-Shirt), then this will
+be the text representation of the Equipment's name, regardless if it's plain,
+Magic or Rare.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Body slot (T-Shirt).
+"""
+
+[[table.column]]
+name = "body_attributes"
+type = "ARRAY"
+description = """
+If the player's T-Shirt has any Attribute bonuses, this will be an array of the 
+Attributes' IDs on the `taxa.attribute` table.
+  
+Note that this, along with the other Equipment arrays, are ordered by the 
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Body slot (T-Shirt). If there is
+a T-Shirt equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "body_effect_types"
+type = "ARRAY"
+description = """
+If the player's T-Shirt has any Attribute bonuses, this will be an array of the
+effect type on the taxa.attribute_effect_type table (Flat, Additive or
+Multiplicative).
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Body slot (T-Shirt). If there is
+a T-Shirt equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "body_values"
+type = "ARRAY"
+description = """
+If the player's T-Shirt has any Attribute bonuses, this will be an array of the 
+increase amount by which the attribute was boosted. Stores values as they are 
+displayed in the game log, meaning attributes are on the 0-100 scale.
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Body slot (T-Shirt). If there is
+a T-Shirt equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "feet_equip_name"
+type = "text"
+description = """
+If the player is wearing Equipment in the Feet slot (Sneakers), then this will
+be the text representation of the Equipment's name, regardless if it's plain,
+Magic or Rare.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Feet slot (Sneakers).
+"""
+
+[[table.column]]
+name = "feet_attributes"
+type = "ARRAY"
+description = """
+If the player's Sneakers has any Attribute bonuses, this will be an array of the
+Attributes' IDs on the `taxa.attribute` table.
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Feet slot (Sneakers). If there is
+a Sneakers equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "feet_effect_types"
+type = "ARRAY"
+description = """
+If the player's Sneakers has any Attribute bonuses, this will be an array of the
+effect type on the taxa.attribute_effect_type table (Flat, Additive or
+Multiplicative).
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Feet slot (Sneakers). If there is
+a Sneakers equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "feet_values"
+type = "ARRAY"
+description = """
+If the player's Sneakers has any Attribute bonuses, this will be an array of the
+increase amount by which the attribute was boosted. Stores values as they are
+displayed in the game log, meaning attributes are on the 0-100 scale.
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Feet slot (Sneakers). If there is
+a Sneakers equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "hands_equip_name"
+type = "text"
+description = """
+If the player is wearing Equipment in the Hands slot (Gloves), then this will
+be the text representation of the Equipment's name, regardless if it's plain,
+Magic or Rare.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Hands slot (Gloves).
+"""
+
+[[table.column]]
+name = "hands_attributes"
+type = "ARRAY"
+description = """
+If the player's Gloves has any Attribute bonuses, this will be an array of the
+Attributes' IDs on the `taxa.attribute` table.
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Hands slot (Gloves). If there is
+a Gloves equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "hands_effect_types"
+type = "ARRAY"
+description = """
+If the player's Gloves has any Attribute bonuses, this will be an array of the
+effect type on the taxa.attribute_effect_type table (Flat, Additive or
+Multiplicative).
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Hands slot (Gloves). If there is
+a Gloves equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "hands_values"
+type = "ARRAY"
+description = """
+If the player's Gloves has any Attribute bonuses, this will be an array of the
+increase amount by which the attribute was boosted. Stores values as they are
+displayed in the game log, meaning attributes are on the 0-100 scale.
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Hands slot (Gloves). If there is
+a Gloves equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "head_equip_name"
+type = "text"
+description = """
+If the player is wearing Equipment in the Head slot (Cap), then this will
+be the text representation of the Equipment's name, regardless if it's plain,
+Magic or Rare.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Head slot (Cap).
+"""
+
+[[table.column]]
+name = "head_attributes"
+type = "ARRAY"
+description = """
+If the player's Cap has any Attribute bonuses, this will be an array of the
+Attributes' IDs on the `taxa.attribute` table.
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Head slot (Cap). If there is
+a Cap equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "head_effect_types"
+type = "ARRAY"
+description = """
+If the player's Cap has any Attribute bonuses, this will be an array of the
+effect type on the taxa.attribute_effect_type table (Flat, Additive or
+Multiplicative).
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Head slot (Cap). If there is
+a Cap equipped, but it has no attributes, this is the empty array.
+"""
+
+[[table.column]]
+name = "head_values"
+type = "ARRAY"
+description = """
+If the player's Cap has any Attribute bonuses, this will be an array of the
+increase amount by which the attribute was boosted. Stores values as they are
+displayed in the game log, meaning attributes are on the 0-100 scale.
+
+Note that this, along with the other Equipment arrays, are ordered by the
+Equipment's `effect_index`, keeping the order consistent across the various
+arrays.
+"""
+nullable_explanation = """
+`null` if the player has no equipment in the Head slot (Cap). If there is
+a Cap equipped, but it has no attributes, this is the empty array.
+"""
 
 [[table.column]]
 name = "luck_stars"
