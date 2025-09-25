@@ -8,6 +8,12 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+2025-10-24
+----------
+- Add the materialized view `data.player_versions_extended` and its 
+  documentation. Big thanks to Ifhbiff for a doing a lot of work creating and 
+  documenting this view.
+
 2025-10-15
 ----------
 - Add recomposes to the player API
