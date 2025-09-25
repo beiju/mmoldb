@@ -1,5 +1,5 @@
 -- credit to ifhbiff for the view
-create view data.player_versions_extended as
+create materialized view data.player_versions_extended as
 WITH
 --Get all timestamps for a player
 boundaries AS (

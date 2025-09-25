@@ -3700,6 +3700,7 @@ than using the moment the data is captured like other data points. They should
 be taken cautiously but listed in order to help users research data relevant to
 each Augment.
 """
+is_materialized_view = true
 
 [[table.column]]
 name = "id"

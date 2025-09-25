@@ -172,6 +172,8 @@ pub struct TableDocs {
     pub columns: Vec<ColumnDocs>,
     #[serde(default)]
     pub allow_undocumented: bool,
+    #[serde(default)]
+    pub is_materialized_view: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -256,11 +258,16 @@ mod tests {
             associate(docs.tables, tables, |table, doc| table.name == doc.name);
 
         for doc in docs_without_schemas {
-            assert!(
-                false,
-                "Documented table {schema_name}.{} does not exist",
-                doc.name
-            );
+            // TODO Make the query fetch materialized views as well, and
+            //   delete this conditional and the is_materialized_view field
+            //   altogether
+            if !doc.is_materialized_view {
+                assert!(
+                    false,
+                    "Documented table {schema_name}.{} does not exist",
+                    doc.name
+                );
+            }
         }
 
         for (docs, schema) in schemas_with_docs {
