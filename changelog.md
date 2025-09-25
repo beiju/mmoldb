@@ -13,6 +13,7 @@ Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 - Add the materialized view `data.player_versions_extended` and its 
   documentation. Big thanks to Ifhbiff for a doing a lot of work creating and 
   documenting this view.
+- Raise statement timeout to 30 minutes
 
 2025-10-15
 ----------
