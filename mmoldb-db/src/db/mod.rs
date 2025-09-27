@@ -2840,3 +2840,15 @@ pub fn season_averages(
             .get_results::<SummaryStat>(conn)
     }
 }
+
+pub fn latest_game(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, i32, Option<i32>, Option<i32>)>> {
+    use crate::data_schema::data::team_games_played::dsl as tgp_dsl;
+
+    game_dsl::games
+        .inner_join(tgp_dsl::team_games_played.on(tgp_dsl::mmolb_game_id.eq(game_dsl::mmolb_game_id)))
+        .filter(game_dsl::is_ongoing.eq(false))
+        .order_by(tgp_dsl::time.desc())
+        .select((tgp_dsl::time, game_dsl::season, game_dsl::day, game_dsl::superstar_day))
+        .get_result(conn)
+        .optional()
+}

@@ -1,0 +1,49 @@
+{% import "macros" as macros %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MMOLDB</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
+</head>
+<body>
+    <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
+
+    <section class="card nav">
+        {% for page in pages %}
+            <a class="nav-item{% if page.name == "Records" %} current{% endif %}" href="{{ page.url }}">{{ page.name }}</a>
+        {% endfor %}
+    </section>
+
+    <section class="card">
+        {% if records %}
+        {% if records.latest_game %}
+        <p>
+            Records are up to date as of <span title="{{ records.latest_game.date }}">
+            {{ records.latest_game.date_display }}</span> (during Season
+            {{ records.latest_game.mmolb_season }}
+            {{ records.latest_game.mmolb_day_display }}).
+        </p>
+        {% else %}
+        <p>
+            There are no games.
+        </p>
+        {% endif %}
+        {% elif update %}
+        <p>
+            Records are currently being updated (update started <span title="{{ update.absolute }}">
+            {{ update.relative }}</span>). Please wait&hellip;
+        </p>
+        {% else %}
+            <p>
+                Error computing records. Please report this error to the
+                <a href="https://github.com/beiju/mmoldb">MMOLDB github</a> or
+                <a href="https://discord.com/channels/1136709081319604324/1366497767090028554">
+                    discord channel</a>.
+            </p>
+        {% endif %}
+    </section>
+</body>
+</html>

@@ -21,6 +21,7 @@ pub fn routes() -> Vec<rocket::Route> {
         pages::paginated_ingest_page,
         pages::game_page,
         pages::debug_always_error_page,
+        pages::records_page,
         player_pages::player,
     ]
 }

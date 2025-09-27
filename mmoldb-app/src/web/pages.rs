@@ -1,17 +1,44 @@
+use chrono::{DateTime, Utc};
 use diesel::{Connection, PgConnection};
 use num_format::{Locale, ToFormattedString};
 use mmoldb_db::db;
 use mmoldb_db::models::DbEventIngestLog;
-use rocket::{get, uri};
+use rocket::{get, uri, State};
+use rocket::http::uri::Origin;
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
-use mmoldb_db::db::{GamesStats, PlayersStats, TeamsStats};
+use lazy_static::lazy_static;
+use log::warn;
+use mmoldb_db::db::{latest_game, GamesStats, PlayersStats, TeamsStats};
 use super::docs_pages::*;
 use crate::Db;
+use crate::records_cache::RecordsCache;
 use crate::web::error::AppError;
 use crate::web::utility_contexts::{DayContext, FormattedDateContext, GameContext};
 
 const PAGE_OF_GAMES_SIZE: usize = 100;
+
+#[derive(Debug, Clone, Serialize)]
+struct NavPage<'a> {
+    name: &'a str,
+    url: Origin<'a>,
+}
+
+impl NavPage<'_> {
+    pub fn new<'a>(name: &'a str, url: Origin<'a>) -> NavPage<'a> {
+        NavPage { name, url }
+    }
+}
+
+lazy_static! {
+    static ref PAGES: [NavPage<'static>; 5] = [
+        NavPage::new("Home", uri!(index_page())),
+        NavPage::new("Status", uri!(status_page())),
+        NavPage::new("Health", uri!(health_page())),
+        NavPage::new("Docs", uri!(docs_page())),
+        NavPage::new("Records", uri!(records_page())),
+    ];
+}
 
 #[get("/game/<mmolb_game_id>")]
 pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppError> {
@@ -476,6 +503,53 @@ pub async fn health_page(db: Db) -> Result<Template, AppError> {
             health_url: uri!(health_page()),
             docs_url: uri!(docs_page()),
             stat_categories: stat_categories,
+        },
+    ))
+}
+
+#[get("/records")]
+pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, AppError> {
+    let update = records.update_date()
+        .map(|d| FormattedDateContext::from(&d.naive_utc()));
+    let records = records.latest();
+
+    #[derive(Serialize)]
+    struct LatestGameContext {
+        date: DateTime<Utc>,
+        date_display: String,
+        mmolb_season: i32,
+        mmolb_day_display: String,
+    }
+
+    #[derive(Serialize)]
+    struct RecordsContext {
+        latest_game: Option<LatestGameContext>,
+    }
+
+    let records_context = records.map(|r| RecordsContext {
+        latest_game: r.latest_game.map(|g| LatestGameContext {
+            date: g.time,
+            date_display: g.time.format("%Y %b %e, %T UTC").to_string(),
+            mmolb_season: g.season,
+            mmolb_day_display: match (g.day, g.superstar_day) {
+                (None, None) => "Unknown day".to_string(),
+                (Some(day), None) => format!("Day {day}"),
+                (None, Some(superstar_day)) => format!("Superstar Day {superstar_day}"),
+                (Some(day), Some(superstar_day)) => {
+                    warn!("Latest game had both a day and a superstar day");
+                    format!("Day {day} Superstar Day {superstar_day}")
+                },
+            },
+        })
+    });
+
+    Ok(Template::render(
+        "records",
+        context! {
+            index_url: uri!(index_page()),
+            pages: &*PAGES,
+            update: update,
+            records: records_context,
         },
     ))
 }

@@ -1949,6 +1949,7 @@ dependencies = [
  "hashbrown 0.16.0",
  "include_dir",
  "itertools",
+ "lazy_static",
  "log",
  "markdown",
  "miette",

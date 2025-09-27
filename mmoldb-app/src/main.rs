@@ -1,14 +1,15 @@
 mod api;
 mod web;
+mod records_cache;
 
 use num_format::{Locale, ToFormattedString};
 use rocket::fairing::AdHoc;
 use rocket::figment::map;
-use rocket::{Build, Rocket, figment, launch};
+use rocket::{figment, launch, Build, Rocket};
 use rocket_dyn_templates::Template;
 use rocket_dyn_templates::tera::Value;
 use rocket_sync_db_pools::database as sync_database;
-use rocket_sync_db_pools::diesel::{PgConnection};
+use rocket_sync_db_pools::diesel::PgConnection;
 use std::collections::HashMap;
 
 #[sync_database("mmoldb")]
@@ -43,6 +44,16 @@ async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
     rocket.manage(taxa)
 }
 
+async fn init_records(rocket: Rocket<Build>) -> Rocket<Build> {
+    // TODO Make this pool size a config param
+    let db = mmoldb_db::get_pool(20)
+        .expect("failed to initialize database pool for records task");
+
+    let cache = records_cache::RecordsCache::new(db);
+
+    rocket.manage(cache)
+}
+
 fn get_figment_with_constructed_db_url() -> figment::Figment {
     let url = mmoldb_db::postgres_url_from_environment();
     rocket::Config::figment().merge(("databases", map!["mmoldb" => map!["url" => url]]))
@@ -63,6 +74,7 @@ fn rocket() -> _ {
         }))
         .attach(Db::fairing())
         .attach(AdHoc::on_ignite("Migrations", run_migrations))
+        .attach(AdHoc::on_ignite("Records", init_records))
 }
 
 #[cfg(test)]
