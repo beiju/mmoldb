@@ -4,8 +4,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MMOLDB</title>
+    <title>MMOLDB &mdash; Records</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/records.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
 </head>
 <body>
@@ -18,6 +19,9 @@
     </section>
 
     <section class="card">
+        {% if error %}
+        <p>Error updating records: {{ error }}</p>
+        {% endif %}
         {% if records %}
         {% if records.latest_game %}
         <p>
@@ -31,10 +35,59 @@
             There are no games.
         </p>
         {% endif %}
+        {% for record in records.records %}
+            <section class="record">
+                <h1 class="record-title">{{ record.title }}</h1>
+                {% if record.description %}
+                <p class="record-description">{{ record.description }}</p>
+                {% endif %}
+                {% if record.holder.type == "PlayerInGame" %}
+                <p>
+                    <a href="https://mmolb.com/watch/{{ record.holder.mmolb_game_id }}?event={{ record.holder.game_event_index }}">
+                        {{ record.record }}</a>
+                    by
+                    <a href="https://mmolb.com/team/{{ record.holder.mmolb_team_id }}">
+                        {{ record.holder.team_emoji }} {{ record.holder.team_location }} {{ record.holder.team_name }}</a>
+                    <a href="https://mmolb.com/player/{{ record.holder.mmolb_player_id }}">
+                        {{ record.holder.player_name }}</a>
+                </p>
+                {% elif record.holder.type == "Player" %}
+                <p>
+                    {{ record.record }}
+                    by
+                    <a href="https://mmolb.com/team/{{ record.holder.mmolb_team_id }}">
+                        {{ record.holder.team_emoji }} {{ record.holder.team_location }} {{ record.holder.team_name }}</a>
+                    <a href="https://mmolb.com/player/{{ record.holder.mmolb_player_id }}">
+                        {{ record.holder.player_name }}</a>
+                </p>
+                {% elif record.holder.type == "TeamInGame" %}
+                <p>
+                    <a href="https://mmolb.com/watch/{{ record.holder.mmolb_game_id }}">
+                        {{ record.record }}</a>
+                    by
+                    <a href="https://mmolb.com/team/{{ record.holder.team_mmolb_id }}">
+                        {{ record.holder.team_emoji }} {{ record.holder.team_full_name }}</a>
+                </p>
+                {% elif record.holder.type == "Game" %}
+                <p>
+                    <a href="https://mmolb.com/watch/{{ record.holder.mmolb_game_id }}">
+                        {{ record.record }}</a>
+                    by
+                    <a href="https://mmolb.com/team/{{ record.holder.away_team_mmolb_id }}">
+                        {{ record.holder.away_team_emoji }} {{ record.holder.away_team_full_name }}</a>
+                    and
+                    <a href="https://mmolb.com/player/{{ record.holder.home_team_mmolb_id }}">
+                        {{ record.holder.home_team_emoji }} {{ record.holder.home_team_full_name }}</a>
+                </p>
+                {% else %}
+                <p>Error formatting record.</p>
+                {% endif %}
+            </section>
+        {% endfor %}
         {% elif update %}
         <p>
             Records are currently being updated (update started <span title="{{ update.absolute }}">
-            {{ update.relative }}</span>). Please wait&hellip;
+            {{ update.relative }}</span>). Please wait.
         </p>
         {% else %}
             <p>

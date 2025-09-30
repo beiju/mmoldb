@@ -10,7 +10,7 @@ macro_rules! taxa_main_enum {
         $(#[$($attr_name:ident: $attr_type:ty = $attr_value:expr),* $(,)?])?
         $variant_name:ident = $variant_id:expr
     ),+$(,)?) => {
-        #[derive(Debug, enum_map::Enum, Eq, PartialEq, Hash, Copy, Clone, strum::Display, strum::IntoStaticStr)]
+        #[derive(Debug, enum_map::Enum, Eq, PartialEq, Hash, Copy, Clone, strum::Display, strum::IntoStaticStr, strum::EnumIter)]
         $(#[derive($($derive),*)])?
         $vis enum $enum_name {
             $($variant_name,)*

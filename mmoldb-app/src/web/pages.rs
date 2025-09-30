@@ -9,10 +9,10 @@ use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 use lazy_static::lazy_static;
 use log::warn;
-use mmoldb_db::db::{latest_game, GamesStats, PlayersStats, TeamsStats};
+use mmoldb_db::db::{GamesStats, PlayersStats, TeamsStats};
 use super::docs_pages::*;
 use crate::Db;
-use crate::records_cache::RecordsCache;
+use crate::records_cache::{Record, RecordsCache};
 use crate::web::error::AppError;
 use crate::web::utility_contexts::{DayContext, FormattedDateContext, GameContext};
 
@@ -511,6 +511,7 @@ pub async fn health_page(db: Db) -> Result<Template, AppError> {
 pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, AppError> {
     let update = records.update_date()
         .map(|d| FormattedDateContext::from(&d.naive_utc()));
+    let error = records.update_error();
     let records = records.latest();
 
     #[derive(Serialize)]
@@ -522,8 +523,24 @@ pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, App
     }
 
     #[derive(Serialize)]
+    struct RecordContext {
+        title: String,
+        description: Option<String>,
+        mmolb_team_id: String,
+        team_emoji: String,
+        team_location: String,
+        team_name: String,
+        mmolb_player_id: String,
+        player_name: String,
+        mmolb_game_id: String,
+        game_event_index: i32,
+        record: String,
+    }
+
+    #[derive(Serialize)]
     struct RecordsContext {
         latest_game: Option<LatestGameContext>,
+        records: Vec<Record>,
     }
 
     let records_context = records.map(|r| RecordsContext {
@@ -540,7 +557,8 @@ pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, App
                     format!("Day {day} Superstar Day {superstar_day}")
                 },
             },
-        })
+        }),
+        records: r.records
     });
 
     Ok(Template::render(
@@ -548,6 +566,7 @@ pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, App
         context! {
             index_url: uri!(index_page()),
             pages: &*PAGES,
+            error: error,
             update: update,
             records: records_context,
         },

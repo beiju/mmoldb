@@ -85,6 +85,8 @@ pub struct DbGame {
     pub is_ongoing: bool,
     pub stadium_name: Option<String>,
     pub from_version: NaiveDateTime,
+    pub home_team_final_score: Option<i32>,
+    pub away_team_final_score: Option<i32>,
     pub home_team_earned_coins: Option<i32>,
     pub away_team_earned_coins: Option<i32>,
     pub home_team_photo_contest_top_scorer: Option<String>,

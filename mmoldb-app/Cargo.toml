@@ -29,3 +29,4 @@ markdown = "1.0.0"
 openport = { version = "0.1.1", features = ["rand"] }
 hashbrown = { version = "0.16.0", features = ["serde"] }
 lazy_static = "1.5.0"
+strum = "0.27.2"

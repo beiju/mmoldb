@@ -2852,3 +2852,164 @@ pub fn latest_game(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime
         .get_result(conn)
         .optional()
 }
+
+#[derive(QueryableByName)]
+pub struct PitchSpeedRecord {
+    #[diesel(sql_type = Text)]
+    pub mmolb_team_id: String,
+    #[diesel(sql_type = Text)]
+    pub team_emoji: String,
+    #[diesel(sql_type = Text)]
+    pub team_location: String,
+    #[diesel(sql_type = Text)]
+    pub team_name: String,
+    #[diesel(sql_type = Text)]
+    pub mmolb_player_id: String,
+    #[diesel(sql_type = Text)]
+    pub player_name: String,
+    #[diesel(sql_type = Text)]
+    pub mmolb_game_id: String,
+    #[diesel(sql_type = Integer)]
+    pub game_event_index: i32,
+    #[diesel(sql_type = Float8)]
+    pub pitch_speed: f64,
+}
+
+pub fn fastest_pitch(conn: &mut PgConnection) -> QueryResult<Option<PitchSpeedRecord>> {
+    sql_query("
+        select
+            tv.mmolb_team_id,
+            tv.emoji as team_emoji,
+            tv.location as team_location,
+            tv.name as team_name,
+            tpv.mmolb_player_id,
+            tpv.first_name || ' ' || tpv.last_name as player_name,
+            ee.mmolb_game_id,
+            ee.game_event_index,
+            ee.pitch_speed
+        from data.events_extended ee
+        inner join data.team_player_versions tpv on tpv.mmolb_team_id=ee.defending_team_mmolb_id
+            and tpv.first_name || ' ' || tpv.last_name=ee.pitcher_name
+            and tpv.valid_from <= ee.game_end_time and ee.game_end_time < coalesce(tpv.valid_until, 'infinity')
+        -- I'm intentionally selecting the latest team version, rather than the one from when the record
+        -- was set, because I want to get the latest team name and emoji
+        inner join data.team_versions tv on tv.mmolb_team_id=ee.defending_team_mmolb_id
+            and tv.valid_until is null
+        where ee.pitch_speed is not null
+        -- Select highest pitch speed, and in case of ties, select earliest game id
+        -- This will get the earliest record setter unless the record was broken multiple times in the same day
+        order by ee.pitch_speed desc, ee.mmolb_game_id asc, ee.game_event_index asc
+        limit 1
+    ").get_result(conn).optional()
+}
+
+pub fn highest_scoring_game(conn: &mut PgConnection) -> QueryResult<Option<DbGame>> {
+    sql_query("
+        select *
+        from data.games g
+        where g.away_team_final_score is not null
+            and g.home_team_final_score is not null
+        order by g.away_team_final_score + g.home_team_final_score desc,
+            g.mmolb_game_id asc
+        limit 1
+    ").get_result(conn).optional()
+}
+
+pub fn highest_score_in_a_game(conn: &mut PgConnection) -> QueryResult<Option<DbGame>> {
+    sql_query("
+        select *
+        from data.games g
+        where g.away_team_final_score is not null
+            and g.home_team_final_score is not null
+        order by greatest(g.away_team_final_score, g.home_team_final_score) desc,
+            g.mmolb_game_id asc
+        limit 1
+    ").get_result(conn).optional()
+}
+
+
+
+#[derive(QueryableByName)]
+pub struct GameWithCount {
+    #[diesel(sql_type = Text)]
+    pub away_team_mmolb_id: String,
+    #[diesel(sql_type = Text)]
+    pub away_team_emoji: String,
+    #[diesel(sql_type = Text)]
+    pub away_team_name: String,
+    #[diesel(sql_type = Text)]
+    pub home_team_mmolb_id: String,
+    #[diesel(sql_type = Text)]
+    pub home_team_emoji: String,
+    #[diesel(sql_type = Text)]
+    pub home_team_name: String,
+    #[diesel(sql_type = Text)]
+    pub mmolb_game_id: String,
+    #[diesel(sql_type = BigInt)]
+    pub count: i64,
+}
+
+pub fn longest_game_by_events(conn: &mut PgConnection) -> QueryResult<Option<GameWithCount>> {
+    sql_query("
+        select
+            (select count(1) from data.events e where e.game_id=g.id) as count,
+            g.*
+        from data.games g
+        order by count desc, g.mmolb_game_id asc
+        limit 1
+    ").get_result(conn).optional()
+}
+
+pub fn longest_game_by_innings(conn: &mut PgConnection) -> QueryResult<Option<GameWithCount>> {
+    sql_query("
+        select
+            e.inning::bigint as count,
+            g.*
+        from data.events e
+        left join data.games g on g.id=e.game_id
+        order by count desc, g.mmolb_game_id asc
+        limit 1
+    ").get_result(conn).optional()
+}
+
+#[derive(QueryableByName)]
+pub struct DbPlayerIdentityWithCount {
+    #[diesel(sql_type = Text)]
+    pub mmolb_team_id: String,
+    #[diesel(sql_type = Text)]
+    pub team_emoji: String,
+    #[diesel(sql_type = Text)]
+    pub team_location: String,
+    #[diesel(sql_type = Text)]
+    #[diesel(sql_type = Text)]
+    pub team_name: String,
+    #[diesel(sql_type = Text)]
+    pub mmolb_player_id: String,
+    #[diesel(sql_type = Text)]
+    pub player_name: String,
+    #[diesel(sql_type = BigInt)]
+    pub count: i64,
+}
+
+pub fn highest_reported_attribute(conn: &mut PgConnection, attr_name: &str) -> QueryResult<Option<DbPlayerIdentityWithCount>> {
+    sql_query("
+        select
+            tv.mmolb_team_id,
+            tv.emoji as team_emoji,
+            tv.location as team_location,
+            tv.name as team_name,
+            pv.mmolb_player_id,
+            pv.first_name || ' ' || pv.last_name as player_name,
+            prav.stars::bigint as count
+        from data.player_report_attribute_versions prav
+        inner join data.player_versions pv on pv.mmolb_player_id=prav.mmolb_player_id
+            and prav.valid_from >= pv.valid_from and prav.valid_from < coalesce(pv.valid_until, 'infinity')
+        -- intentionally getting the latest team version
+        inner join data.team_versions tv on tv.mmolb_team_id=pv.mmolb_team_id
+            and tv.valid_until is null
+        inner join taxa.attribute a on a.id=prav.attribute
+        where a.name=$1
+        order by prav.stars desc, prav.valid_from asc
+        limit 1
+    ").bind::<Text, _>(attr_name).get_result(conn).optional()
+}
