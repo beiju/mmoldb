@@ -104,22 +104,22 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
             superstar_day
         });
 
-    // let fastest_pitch = (*conn).transaction(mmoldb_db::db::fastest_pitch)?
-    //     .map(|r| Record {
-    //         title: "Fastest Pitch".to_string(),
-    //         description: None,
-    //         holder: RecordHolder::PlayerInGame {
-    //             mmolb_team_id: r.mmolb_team_id,
-    //             team_emoji: r.team_emoji,
-    //             team_location: r.team_location,
-    //             team_name: r.team_name,
-    //             mmolb_player_id: r.mmolb_player_id,
-    //             player_name: r.player_name,
-    //             mmolb_game_id: r.mmolb_game_id,
-    //             game_event_index: r.game_event_index,
-    //         },
-    //         record: format!("{:.1} MPH", r.pitch_speed),
-    //     });
+    let fastest_pitch = (*conn).transaction(mmoldb_db::db::fastest_pitch)?
+        .map(|r| Record {
+            title: "Fastest Pitch".to_string(),
+            description: None,
+            holder: RecordHolder::PlayerInGame {
+                mmolb_team_id: r.mmolb_team_id,
+                team_emoji: r.team_emoji,
+                team_location: r.team_location,
+                team_name: r.team_name,
+                mmolb_player_id: r.mmolb_player_id,
+                player_name: r.player_name,
+                mmolb_game_id: r.mmolb_game_id,
+                game_event_index: r.game_event_index,
+            },
+            record: format!("{:.1} MPH", r.pitch_speed),
+        });
 
     let highest_scoring_game = (*conn).transaction(mmoldb_db::db::highest_scoring_game)?
         .map(|g| {
@@ -175,7 +175,7 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
         .map(|g| {
             Record {
                 title: "Longest game by events".to_string(),
-                description: Some("Pitches and balks, but not mound visits or weather"),
+                description: Some("Includes pitches and balks, but not other things like mound visits or weather events"),
                 holder: RecordHolder::Game {
                     mmolb_game_id: g.mmolb_game_id,
                     away_team_mmolb_id: g.away_team_mmolb_id,
@@ -230,7 +230,7 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
         .collect::<Result<Vec<_>, _>>()?;
 
     let records = [
-        // fastest_pitch,
+        fastest_pitch,
         highest_scoring_game,
         highest_score_in_a_game,
         longest_game_by_events,
