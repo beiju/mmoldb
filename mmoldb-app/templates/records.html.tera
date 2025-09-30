@@ -12,11 +12,7 @@
 <body>
     <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
 
-    <section class="card nav">
-        {% for page in pages %}
-            <a class="nav-item{% if page.name == "Records" %} current{% endif %}" href="{{ page.url }}">{{ page.name }}</a>
-        {% endfor %}
-    </section>
+    {{ macros::nav(pages=pages, this_page="Records") }}
 
     <section class="card">
         {% if error %}

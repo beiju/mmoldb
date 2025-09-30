@@ -2,3 +2,11 @@
 {% macro date_format(date) %}<span title="{{ date.absolute }}">{{ date.relative }}</span>{% endmacro date_format %}
 
 {% macro season_day(season, day) %}{% if day.is_superstar_day %}s{{ season }}ss{{ day.day }}{% elif day %}s{{ season }}d{{ day.day }}{% else %}s{{ season }}d??{% endif %}{% endmacro season_day %}
+
+{% macro nav(pages, this_page) %}
+<section class="card nav">
+    {% for page in pages %}
+        <a class="nav-item{% if page.name == this_page %} current{% endif %}" href="{{ page.url }}">{{ page.name }}</a>
+    {% endfor %}
+</section>
+{% endmacro %}

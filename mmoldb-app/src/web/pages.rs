@@ -19,7 +19,7 @@ use crate::web::utility_contexts::{DayContext, FormattedDateContext, GameContext
 const PAGE_OF_GAMES_SIZE: usize = 100;
 
 #[derive(Debug, Clone, Serialize)]
-struct NavPage<'a> {
+pub struct NavPage<'a> {
     name: &'a str,
     url: Origin<'a>,
 }
@@ -31,7 +31,7 @@ impl NavPage<'_> {
 }
 
 lazy_static! {
-    static ref PAGES: [NavPage<'static>; 5] = [
+    pub static ref PAGES: [NavPage<'static>; 5] = [
         NavPage::new("Home", uri!(index_page())),
         NavPage::new("Status", uri!(status_page())),
         NavPage::new("Health", uri!(health_page())),
@@ -368,11 +368,9 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         "status",
         context! {
             index_url: uri!(index_page()),
-            status_url: uri!(status_page()),
-            health_url: uri!(health_page()),
-            docs_url: uri!(docs_page()),
-            games_page_url: uri!(games_page()),
+            pages: &*PAGES,
             total_games: total_games,
+            games_page_url: uri!(games_page()),
             games_with_issues_page_url: uri!(games_with_issues_page()),
             total_games_with_issues: total_games_with_issues,
             task_status: ingest_task_status,
@@ -499,9 +497,7 @@ pub async fn health_page(db: Db) -> Result<Template, AppError> {
         "health",
         context! {
             index_url: uri!(index_page()),
-            status_url: uri!(status_page()),
-            health_url: uri!(health_page()),
-            docs_url: uri!(docs_page()),
+            pages: &*PAGES,
             stat_categories: stat_categories,
         },
     ))
@@ -579,9 +575,7 @@ pub async fn index_page() -> Template {
         "index",
         context! {
             index_url: uri!(index_page()),
-            status_url: uri!(status_page()),
-            health_url: uri!(health_page()),
-            docs_url: uri!(docs_page()),
+            pages: &*PAGES,
             // This markdown conversion could be cached
             changelog: markdown::to_html(
                 include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../changelog.md")),

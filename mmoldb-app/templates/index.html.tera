@@ -12,11 +12,7 @@
 <body>
     <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
 
-    <section class="card nav">
-        <a class="nav-item" href="{{ status_url }}">Status</a>
-        <a class="nav-item" href="{{ health_url }}">Health</a>
-        <a class="nav-item" href="{{ docs_url }}">Docs</a>
-    </section>
+    {{ macros::nav(pages=pages, this_page="Home") }}
 
     <section class="card">
         <h2 class="about-heading">About</h2>
@@ -57,11 +53,11 @@
             settings.
         </p>
         <p class="about">
-            Note: MMOLDB already has a *lot* of data, and as I'm writing this it's
-            only season 2. For your sake and my server's, I suggest using low
-            `limit`s on your queries as you're debugging them. It'll make your
-            results load faster and reduce the load on the server. Just don't
-            forget to take it off before getting your final results.
+            Note: MMOLDB already has a <em>lot</em> of data, and as I'm writing
+            this it's only season 2. For your sake and my server's, I suggest
+            using low <code>limit</code>s on your queries as you're debugging them.
+            It'll make your results load faster and reduce the load on the server.
+            Just don't forget to take it off before getting your final results.
         </p>
     </section>
 

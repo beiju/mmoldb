@@ -8,6 +8,10 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+2025-10-30
+----------
+- Add Records page
+
 2025-10-24
 ----------
 - Add the materialized view `data.player_versions_extended` and its 

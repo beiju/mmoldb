@@ -12,11 +12,7 @@
 <body>
     <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
 
-    <section class="card nav">
-        <a class="nav-item" href="{{ status_url }}">Status</a>
-        <a class="nav-item" href="{{ health_url }}">Health</a>
-        <a class="nav-item current" href="{{ docs_url }}">Docs</a>
-    </section>
+    {{ macros::nav(pages=pages, this_page="Docs") }}
 
     <section class="card">
         <p>
