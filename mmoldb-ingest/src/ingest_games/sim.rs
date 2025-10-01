@@ -1603,12 +1603,15 @@ impl<'g> Game<'g> {
         ingest_logs: &mut IngestLogs,
     ) {
         let mut warn = |mut message| {
+            // TODO Implement player-object-based fielder tracking and then re-enable these warnings
             if self.season == 0 {
                 message += " This warning is downgraded to info for Season 0 because mid-game \
                     augments often cause fielder errors.";
                 ingest_logs.info(message);
             } else {
-                ingest_logs.warn(message)
+                message += " This warning is downgraded to info for now. Planned work on fielder \
+                    IDs should .";
+                ingest_logs.info(message)
             }
         };
 
