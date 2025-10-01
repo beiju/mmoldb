@@ -74,6 +74,40 @@ pub fn game_with_issues_count(conn: &mut PgConnection) -> QueryResult<i64> {
         .get_result(conn)
 }
 
+pub fn player_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
+    use crate::data_schema::data::player_versions::dsl::*;
+
+    player_versions.count().get_result(conn)
+}
+
+pub fn player_feed_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
+    use crate::data_schema::data::player_feed_versions::dsl::*;
+
+    player_feed_versions.count().get_result(conn)
+}
+
+pub fn team_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
+    use crate::data_schema::data::team_versions::dsl::*;
+
+    team_versions.count().get_result(conn)
+}
+
+pub fn team_feed_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
+    use crate::data_schema::data::team_feed_versions::dsl::*;
+
+    team_feed_versions.count().get_result(conn)
+}
+
+pub fn version_with_issues_count(conn: &mut PgConnection, kind: &str) -> QueryResult<i64> {
+    use crate::info_schema::info::version_ingest_log::dsl;
+
+    dsl::version_ingest_log
+        .filter(dsl::log_level.lt(3)) // Selects warnings and higher
+        .filter(dsl::kind.eq(kind))
+        .select(diesel::dsl::count_distinct(dsl::entity_id))
+        .get_result(conn)
+}
+
 pub fn latest_ingest_start_time(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
     use crate::info_schema::info::ingests::dsl::*;
 

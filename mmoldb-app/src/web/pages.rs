@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use diesel::{Connection, PgConnection};
+use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
 use mmoldb_db::db;
 use mmoldb_db::models::DbEventIngestLog;
-use rocket::{get, uri, State};
+use rocket::{futures, get, uri, State};
 use rocket::http::uri::Origin;
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
@@ -304,18 +305,6 @@ pub async fn debug_no_games_page() -> Result<Template, AppError> {
 
 #[get("/status")]
 pub async fn status_page(db: Db) -> Result<Template, AppError> {
-    #[derive(Serialize, Default)]
-    struct IngestTaskContext {
-        is_starting: bool,
-        is_stopping: bool,
-        // Running means actively ingesting. If it's idle this will be false.
-        is_running: bool,
-        error: Option<String>,
-    }
-
-    // TODO Restore status report for ingest task
-    let ingest_task_status = IngestTaskContext::default();
-
     #[derive(Serialize)]
     struct IngestContext {
         uri: String,
@@ -326,26 +315,51 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         message: Option<String>,
     }
 
-    // A transaction is probably overkill for this, but it's
-    // TECHNICALLY the only correct way to make sure that the
-    // value of number_of_ingests_not_shown is correct
-    let (total_games, total_games_with_issues, total_num_ingests, displayed_ingests) = db
+    let ingests_query = db
+        .run(move |conn| {
+            conn.transaction(|conn| {
+                let num_ingests = db::ingest_count(conn)?;
+                let latest_ingests = db::latest_ingests(conn)?;
+                Ok::<_, AppError>((num_ingests, latest_ingests))
+            })
+        });
+
+    let games_query = db
         .run(move |conn| {
             conn.transaction(|conn| {
                 let num_games = db::game_count(conn)?;
                 let num_games_with_issues = db::game_with_issues_count(conn)?;
-
-                let num_ingests = db::ingest_count(conn)?;
-                let latest_ingests = db::latest_ingests(conn)?;
-                Ok::<_, AppError>((
-                    num_games,
-                    num_games_with_issues,
-                    num_ingests,
-                    latest_ingests,
-                ))
+                Ok::<_, AppError>((num_games, num_games_with_issues))
             })
-        })
-        .await?;
+        });
+
+    macro_rules! versions_query {
+        ($db:expr, $load_fn:path, $kind:expr) => {
+            $db
+                .run(move |conn| {
+                    conn.transaction(|conn| {
+                        let num_versions = $load_fn(conn)?;
+                        let num_versions_with_issues = db::version_with_issues_count(conn, $kind)?;
+                        Ok::<_, AppError>((num_versions, num_versions_with_issues))
+                    })
+                })
+        };
+    }
+
+    let player_versions_query = versions_query!(db, db::player_versions_count, "player");
+    let player_feed_versions_query = versions_query!(db, db::player_feed_versions_count, "player_feed");
+    let team_versions_query = versions_query!(db, db::team_versions_count, "team");
+    let team_feed_versions_query = versions_query!(db, db::team_feed_versions_count, "team_feed");
+
+    let (
+        (total_num_ingests, displayed_ingests), 
+        (total_games, total_games_with_issues),
+        (total_player_versions, total_player_versions_with_issues),
+        (total_player_feed_versions, total_player_feed_versions_with_issues),
+        (total_team_versions, total_team_versions_with_issues),
+        (total_team_feed_versions, total_team_feed_versions_with_issues),
+    ) =
+        futures::try_join!(ingests_query, games_query, player_versions_query, player_feed_versions_query, team_versions_query, team_feed_versions_query)?;
 
     let number_of_ingests_not_shown = total_num_ingests - displayed_ingests.len() as i64;
     let ingests: Vec<_> = displayed_ingests
@@ -360,23 +374,41 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         })
         .collect();
 
-    let last_ingest_finished_at = ingests
-        .first()
-        .and_then(|ingest| ingest.finished_at.clone());
+    #[derive(Serialize)]
+    struct IngestibleWithErrors<'a> {
+        name: &'static str,
+        count_total: i64,
+        count_with_errors: i64,
+        total_url: Option<Origin<'a>>,
+        with_errors_url: Option<Origin<'a>>,
+    }
+
+    impl<'url> IngestibleWithErrors<'url> {
+        pub fn new(name: &'static str, count_total: i64, count_with_errors: i64) -> Self {
+            Self { name, count_total, count_with_errors, total_url: None, with_errors_url: None }
+        }
+
+        pub fn new_with_urls(name: &'static str, count_total: i64, count_with_errors: i64, total_url: Origin<'url>, with_errors_url: Origin<'url>) -> Self {
+            Self { name, count_total, count_with_errors, total_url: Some(total_url), with_errors_url: Some(with_errors_url) }
+        }
+    }
+    
+    let ingestible_counts = [
+        IngestibleWithErrors::new_with_urls("Games", total_games, total_games_with_issues, uri!(games_page()), uri!(games_with_issues_page())),
+        IngestibleWithErrors::new("Player versions", total_player_versions, total_player_versions_with_issues),
+        IngestibleWithErrors::new("Player feed versions", total_player_feed_versions, total_player_feed_versions_with_issues),
+        IngestibleWithErrors::new("Team versions", total_team_versions, total_team_versions_with_issues),
+        IngestibleWithErrors::new("Team feed versions", total_team_feed_versions, total_team_feed_versions_with_issues),
+    ];
 
     Ok(Template::render(
         "status",
         context! {
             index_url: uri!(index_page()),
             pages: &*PAGES,
-            total_games: total_games,
-            games_page_url: uri!(games_page()),
-            games_with_issues_page_url: uri!(games_with_issues_page()),
-            total_games_with_issues: total_games_with_issues,
-            task_status: ingest_task_status,
-            last_ingest_finished_at: last_ingest_finished_at,
             ingests: ingests,
             number_of_ingests_not_shown: number_of_ingests_not_shown,
+            ingestibles: ingestible_counts,
         },
     ))
 }

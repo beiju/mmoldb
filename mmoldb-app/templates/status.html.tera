@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <title>MMOLDB</title>
     <link rel="stylesheet" href="/static/style.css" />
-    <link rel="stylesheet" href="/static/index.css" />
+    <link rel="stylesheet" href="/static/status.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
 </head>
 <body>
@@ -15,25 +15,29 @@
     {{ macros::nav(pages=pages, this_page="Status") }}
 
     <section class="card status-card">
-        <a class="status-item" href="{{ games_page_url }}">{{ total_games | num_format }} total games</a>
-        {% if total_games_with_issues > 0 %}
-        <a class="status-item with-issues" href="{{ games_with_issues_page_url }}">{{ total_games_with_issues | num_format }} games with import issues</a>
-        {% endif %}
-        <span class="status-item">
-            {% if task_status.error %}
-            Latest ingest failed!
-            {% elif task_status.is_starting %}
-            Ingest is starting...
-            {% elif task_status.is_stopping %}
-            Ingest is stopping...
-            {% elif task_status.is_running %}
-            Ingest running
-            {% elif last_ingest_finished_at %}
-            Last ingest finished {{ self::date_format(date=last_ingest_finished_at) }}
-            {% else %}
-            No ingest yet
-            {% endif %}
-        </span>
+        <ul>
+        {% for ingestible in ingestibles %}
+            <li class="status-item">
+                {% if ingestible.total_url %}
+                <a href="{{ ingestible.total_url }}">{{ ingestible.count_total | num_format }} total {{ ingestible.name }}</a>
+                {% else %}
+                    <a>{{ ingestible.count_total | num_format }} total {{ ingestible.name }}</a>
+                {% endif %}
+                {% if ingestible.count_with_errors > 0 %}
+                    &mdash;
+                    {% if ingestible.with_errors_url %}
+                    <a class="with-issues" href="{{ ingestible.with_errors_url }}">{{ ingestible.count_with_errors | num_format }} with issues</a>
+                    {% else %}
+                    <a class="with-issues">{{ ingestible.count_with_errors | num_format }} with issues</a>
+                    {% endif %}
+                {% endif %}
+            </li>
+        {% endfor %}
+        </ul>
+{#        <a class="status-item" href="{{ games_page_url }}">{{ total_games | num_format }} total games</a>#}
+{#        {% if total_games_with_issues > 0 %}#}
+{#        <a class="status-item with-issues" href="{{ games_with_issues_page_url }}">{{ total_games_with_issues | num_format }} games with import issues</a>#}
+{#        {% endif %}#}
     </section>
 
     <section class="card">

@@ -1,6 +1,9 @@
 .status-card {
-    display: flex;
-    justify-content: center;
+}
+
+.status-card ul {
+    list-style: none;
+    padding: 0;
 }
 
 .status-card a {
@@ -9,14 +12,14 @@
 }
 
 .status-item {
-    padding: 0 10px;
+    padding: 4px 10px;
 }
 
-a.status-item {
+.status-item a {
     text-decoration: none;
 }
 
-.status-item.with-issues {
+.status-item .with-issues {
     color: red;
 }
 
