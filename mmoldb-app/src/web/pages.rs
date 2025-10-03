@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use diesel::{Connection, PgConnection};
-use itertools::Itertools;
 use num_format::{Locale, ToFormattedString};
 use mmoldb_db::db;
 use mmoldb_db::models::DbEventIngestLog;
@@ -394,11 +393,11 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
     }
     
     let ingestible_counts = [
-        IngestibleWithErrors::new_with_urls("Games", total_games, total_games_with_issues, uri!(games_page()), uri!(games_with_issues_page())),
-        IngestibleWithErrors::new("Player versions", total_player_versions, total_player_versions_with_issues),
-        IngestibleWithErrors::new("Player feed versions", total_player_feed_versions, total_player_feed_versions_with_issues),
-        IngestibleWithErrors::new("Team versions", total_team_versions, total_team_versions_with_issues),
-        IngestibleWithErrors::new("Team feed versions", total_team_feed_versions, total_team_feed_versions_with_issues),
+        IngestibleWithErrors::new_with_urls("games", total_games, total_games_with_issues, uri!(games_page()), uri!(games_with_issues_page())),
+        IngestibleWithErrors::new("player versions", total_player_versions, total_player_versions_with_issues),
+        IngestibleWithErrors::new("player feed versions", total_player_feed_versions, total_player_feed_versions_with_issues),
+        IngestibleWithErrors::new("team versions", total_team_versions, total_team_versions_with_issues),
+        IngestibleWithErrors::new("team feed versions", total_team_feed_versions, total_team_feed_versions_with_issues),
     ];
 
     Ok(Template::render(
@@ -548,21 +547,6 @@ pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, App
         date_display: String,
         mmolb_season: i32,
         mmolb_day_display: String,
-    }
-
-    #[derive(Serialize)]
-    struct RecordContext {
-        title: String,
-        description: Option<String>,
-        mmolb_team_id: String,
-        team_emoji: String,
-        team_location: String,
-        team_name: String,
-        mmolb_player_id: String,
-        player_name: String,
-        mmolb_game_id: String,
-        game_event_index: i32,
-        record: String,
     }
 
     #[derive(Serialize)]

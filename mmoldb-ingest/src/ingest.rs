@@ -5,7 +5,7 @@ use hashbrown::hash_map::{Entry, EntryRef};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info};
-use miette::{Diagnostic, IntoDiagnostic, WrapErr};
+use miette::Diagnostic;
 use mmoldb_db::models::NewVersionIngestLog;
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncConnection, AsyncPgConnection, PgConnection, QueryError, QueryResult, async_db, db, ConnectionPool};
@@ -15,7 +15,7 @@ use thiserror::Error;
 use tokio::sync::Notify;
 use tokio::task::JoinError;
 use tokio_util::sync::CancellationToken;
-use crate::config::{IngestConfig, IngestibleConfig};
+use crate::config::IngestibleConfig;
 
 // const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = Some("2025-07-16 04:07:42.699296Z");
 const ROLL_BACK_INGEST_TO_DATE: Option<&'static str> = None;

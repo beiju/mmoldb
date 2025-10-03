@@ -1544,7 +1544,9 @@ impl<'g> Game<'g> {
                     augments often cause fielder errors.";
                 ingest_logs.info(message);
             } else {
-                ingest_logs.warn(message)
+                message += "\n\nThis warning is downgraded to info temporarily. Fielder ID \
+                    handling (planned for future inclusion) should handle it.";
+                ingest_logs.info(message)
             }
         };
 

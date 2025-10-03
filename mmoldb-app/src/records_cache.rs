@@ -8,7 +8,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use mmoldb_db::ConnectionPool;
-use mmoldb_db::taxa::{Taxa, TaxaAttribute};
+use mmoldb_db::taxa::TaxaAttribute;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DisplayDate {
