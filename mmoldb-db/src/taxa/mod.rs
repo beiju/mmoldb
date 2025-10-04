@@ -1343,8 +1343,8 @@ taxa! {
     ]
     pub enum TaxaEffectType {
         Flat = 1,
-        Additive = 2,
-        Multiplicative = 3,
+        Multiplier = 2,
+        // MultiplicativeMultiplier = 3,
     }
 }
 
@@ -1352,6 +1352,7 @@ impl From<mmolb_parsing::enums::EquipmentEffectType> for TaxaEffectType {
     fn from(value: mmolb_parsing::enums::EquipmentEffectType) -> Self {
         match value {
             mmolb_parsing::enums::EquipmentEffectType::FlatBonus => TaxaEffectType::Flat,
+            mmolb_parsing::enums::EquipmentEffectType::Multiplier => TaxaEffectType::Multiplier,
         }
     }
 }

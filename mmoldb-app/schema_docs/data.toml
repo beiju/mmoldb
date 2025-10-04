@@ -3375,6 +3375,12 @@ type = "integer"
 description = """
 The number of championships this team has won.
 """
+nullable_explanation = """
+`null` if this team doesn't have a `Championships` field in the API. As of this
+writing, this applies to exactly one team: the Monongahela River Monsters
+Reflections, a special team created as a reflection of the Monongahela River
+Monsters as the conclusion of the Season 5 Kumite.
+"""
 
 [[table.column]]
 name = "mmolb_league_id"

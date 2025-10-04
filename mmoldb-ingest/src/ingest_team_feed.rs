@@ -3,7 +3,6 @@ use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use itertools::{Itertools};
 use log::{debug, info};
-use miette::IntoDiagnostic;
 use mmolb_parsing::enums::{LinkType};
 use mmolb_parsing::feed_event::{FeedEvent, ParsedFeedEventText};
 use mmoldb_db::taxa::Taxa;

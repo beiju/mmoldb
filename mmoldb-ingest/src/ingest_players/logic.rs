@@ -6,7 +6,6 @@ use chrono::{NaiveDateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
-use miette::{Context, IntoDiagnostic};
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
 use mmolb_parsing::{
@@ -42,13 +41,18 @@ pub fn ingest_page_of_players(
     // TODO Gracefully handle player deserialize failure
     let players = raw_players
         .into_par_iter()
-        .map(|game_json| {
+        .map(|entity| {
+            let data = serde_json::from_value(entity.data);
+
+            if let Some(err) = data.as_ref().err() {
+                warn!("Error deserializing player {}: {:?}", entity.entity_id, err);
+            }
             Ok::<ChronEntity<mmolb_parsing::player::Player>, serde_json::Error>(ChronEntity {
-                kind: game_json.kind,
-                entity_id: game_json.entity_id,
-                valid_from: game_json.valid_from,
-                valid_to: game_json.valid_to,
-                data: serde_json::from_value(game_json.data)?,
+                kind: entity.kind,
+                entity_id: entity.entity_id,
+                valid_from: entity.valid_from,
+                valid_to: entity.valid_to,
+                data: data?,
             })
         })
         .collect::<Result<Vec<_>, _>>()?;

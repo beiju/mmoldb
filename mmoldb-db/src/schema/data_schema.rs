@@ -404,7 +404,7 @@ pub mod data {
             location -> Text,
             full_location -> Text,
             abbreviation -> Text,
-            championships -> Int4,
+            championships -> Nullable<Int4>,
             mmolb_league_id -> Nullable<Text>,
             ballpark_name -> Nullable<Text>,
             num_players -> Int4,

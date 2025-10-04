@@ -4,7 +4,6 @@ use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use itertools::Itertools;
 use log::{debug, info};
-use miette::{Context, IntoDiagnostic};
 use mmolb_parsing::{AddedLater, NotRecognized, team::TeamPlayerCollection, MaybeRecognizedResult, AddedLaterResult};
 use mmolb_parsing::enums::Slot;
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
@@ -263,7 +262,7 @@ pub fn chron_team_as_new<'a>(
         location: &team.location,
         full_location: &team.full_location,
         abbreviation: &team.abbreviation,
-        championships: team.championships as i32,
+        championships: team.championships.as_ref().map(|c| *c as i32),
         mmolb_league_id: team.league.as_deref(),
         ballpark_name: team.ballpark_name.as_ref().ok().map(|s| s.as_str()),
         num_players: new_team_players.len() as i32,

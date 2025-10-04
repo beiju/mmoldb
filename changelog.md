@@ -8,6 +8,15 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+----------
+- Implement a temporary solution to allow ingesting games and player versions
+  while Chron is frozen
+- The speculative `taxa.attribute_effect_type` value `Additive` (short for 
+  "additive multiplier") has been renamed to its now-known name `Multiplier`. 
+  The speculative `Multiplicative` value (short for "multiplicative 
+  multiplier") has been removed until its actual name is known. 
+
 2025-10-30
 ----------
 - Add Records page
