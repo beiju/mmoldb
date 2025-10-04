@@ -23,7 +23,6 @@ drop trigger on_insert_player_report_attribute_trigger on data.player_report_att
 drop function data.on_insert_player_report_attribute;
 drop table data.player_report_attributes;
 
--- TODO Add this and any other new *_versions tables to the get-cursor query
 create table data.player_report_versions (
     -- bookkeeping
     id bigserial primary key not null,
@@ -94,7 +93,6 @@ create trigger on_insert_player_report_version_trigger
     for each row
 execute function data.on_insert_player_report_version();
 
--- TODO Add this and any other new *_versions tables to the get-cursor query
 create table data.player_report_attribute_versions (
     -- bookkeeping
     id bigserial primary key not null,

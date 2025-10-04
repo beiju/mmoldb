@@ -2077,12 +2077,10 @@ no mechanical effect.
 [[table.column]]
 name = "mmolb_team_id"
 type = "text"
-# TODO Update to reflect the fact that teams are included now
 description = """
 The MMOLB id for the team this player belongs to.
 
-Teams are planned for addition to MMOLDB, and at that time you'll be able to
-use this to connect a player to their team.
+Team data can be found in `data.team_versions`.
 """
 nullable_explanation = """
 `null` if this player is not currently on a team. Players can become teamless
