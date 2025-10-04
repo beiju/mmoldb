@@ -9,7 +9,7 @@ use chron::{Chron, ChronEntity};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
 use itertools::Itertools;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use miette::IntoDiagnostic;
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{PgConnection, db, ConnectionPool};
@@ -251,7 +251,8 @@ fn process_games_internal(
                 let mut dupe_tracker = dupe_tracker.lock().unwrap();
                 for game in &raw_games {
                     if let Some(prev_valid_from) = dupe_tracker.get(&game.entity_id) {
-                        error!(
+                        // TODO Is this still an error now that we're multi-chron?
+                        warn!(
                             "get_entities_at_cursor returned a duplicate game {}. Previous \
                             valid_from={}, our valid_from={}",
                             game.entity_id, prev_valid_from, game.valid_from
