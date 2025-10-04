@@ -1921,8 +1921,8 @@ dependencies = [
 
 [[package]]
 name = "mmolb_parsing"
-version = "0.45.0"
-source = "git+https://github.com/beiju/mmolb_parsing.git?branch=pre-s6-fixes#b32cd6b4d556c39b8b86d1b0bdd038142292e372"
+version = "0.47.0"
+source = "git+https://github.com/unnamed-girl/mmolb_parsing.git?branch=new-game-format#6ba5f0424c4a5fbc8091f50be9a64171e545ea07"
 dependencies = [
  "chrono",
  "indexmap 2.11.1",

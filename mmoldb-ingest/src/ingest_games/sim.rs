@@ -1,12 +1,9 @@
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
 use log::warn;
 use miette::Diagnostic;
-use mmolb_parsing::ParsedEventMessage;
-use mmolb_parsing::enums::{
-    Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType,
-    GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, StrikeType, TopBottom,
-};
-use mmolb_parsing::game::MaybePlayer;
+use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
+use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType, TopBottom};
+use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
 use mmolb_parsing::parsed_event::{
     BaseSteal, Cheer, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome,
     FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance,
@@ -337,6 +334,7 @@ pub struct Game<'g> {
     pub game_id: &'g str,
     pub season: i64,
     pub day: Day,
+    pub season_status: MaybeRecognizedResult<SeasonStatus>,
     pub stadium_name: Option<&'g str>,
     pub away_team_final_score: Option<i32>,
     pub home_team_final_score: Option<i32>,
@@ -976,12 +974,19 @@ impl<'g> EventDetailBuilder<'g> {
             ingest_logs.error(format!("Runner(s) out not found: {:?}", extra_runners_out));
         }
 
-        let pitcher_name = if let MaybePlayer::Player(pitcher) = &self.raw_event.pitcher {
-            pitcher
-        } else {
-            // TODO Correct error handling
-            panic!("Must have a pitcher when building an EventDetail");
+        let pitcher = match &self.raw_event.pitcher {
+            EventPitcherVersions::New(pitcher) => &pitcher.name,
+            EventPitcherVersions::Old(name) => name,
         };
+
+        let pitcher_name = match pitcher {
+            MaybePlayer::Player(pitcher_name) => pitcher_name,
+            MaybePlayer::EmptyString | MaybePlayer::Null => {
+                // TODO Correct error handling
+                panic!("Must have a pitcher when building an EventDetail");
+            }
+        };
+
         // When the active pitcher is ejected, MMOLB updates the name
         // in the event data on that event, even though the previous
         // pitcher is responsible for what happened in that event.
@@ -1304,6 +1309,7 @@ impl<'g> Game<'g> {
                     });
                 }
             },
+            season_status: game_data.season_status.clone(),
             stadium_name: *stadium_name,
             away_team_final_score: None,
             home_team_final_score: None,
@@ -1370,6 +1376,11 @@ impl<'g> Game<'g> {
 
 
     pub fn automatic_runner_rule_is_active(&self) -> bool {
+        match self.season_status {
+            Ok(SeasonStatus::Offseason) => return true,
+            _ => {}
+        }
+
         let day_threshold = if self.season == 0 {
             // s0 was 120 days of every team playing every day
             120
@@ -3552,7 +3563,12 @@ impl<'g> Game<'g> {
                 }
             }
 
-            if let MaybePlayer::Player(name) = &raw_event.batter {
+            let event_batter = match &raw_event.batter {
+                EventBatterVersions::New(batter) => &batter.name,
+                EventBatterVersions::Old(batter_name) => batter_name,
+            };
+
+            if let MaybePlayer::Player(name) = event_batter {
                 ingest_logs.info(format!(
                     "Inferred missing NowBatting event after a mound visit in season 3. \
                     Inferred batter name is {name}",
@@ -3564,7 +3580,7 @@ impl<'g> Game<'g> {
             } else {
                 Err(
                     SimEventError::UnknownBatterNameAfterSeason3BuggedMoundVisit(
-                        raw_event.batter.to_owned(),
+                        event_batter.to_owned(),
                     ),
                 )?;
             }
