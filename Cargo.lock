@@ -1922,7 +1922,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.47.0"
-source = "git+https://github.com/unnamed-girl/mmolb_parsing.git?branch=new-game-format#6ba5f0424c4a5fbc8091f50be9a64171e545ea07"
+source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#547cff2258c2520bf3779dbfe9423f605abe12ca"
 dependencies = [
  "chrono",
  "indexmap 2.11.1",
