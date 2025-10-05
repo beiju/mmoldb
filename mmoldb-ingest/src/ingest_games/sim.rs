@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
 use log::warn;
 use miette::Diagnostic;
@@ -1125,6 +1126,23 @@ fn place_is_compatible(canonical_place: Place, test_place: Place) -> bool {
     }
 }
 
+#[derive(Debug, PartialEq)]
+struct HomeLast(Base);
+
+impl PartialOrd for HomeLast {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        fn num(base: Base) -> i32 {
+            match base {
+                Base::Home => 1000,
+                Base::First => 1,
+                Base::Second => 2,
+                Base::Third => 3,
+            }
+        }
+        num(self.0).partial_cmp(&num(other.0))
+    }
+}
+
 impl<'g> Game<'g> {
     pub fn new<'a, IterT>(
         game_id: &'g str,
@@ -1850,6 +1868,29 @@ impl<'g> Game<'g> {
         let mut runs_to_add = 0;
         // Same applies to outs
         let mut outs_to_add = 0;
+
+        if !updates.steals.iter().rev().is_sorted_by_key(|s| HomeLast(s.base.into())) {
+            let mut msg = "Steals is not ordered descending by base".to_string();
+            for s in updates.steals {
+                msg = format!("{msg}, {} attempted steal of {}", s.runner, s.base);
+            }
+            ingest_logs.error(msg);
+        }
+        if !updates.advances.iter().rev().is_sorted_by_key(|a| HomeLast(a.base)) {
+            let mut msg = "Runner advances is not ordered descending by base".to_string();
+            for a in updates.advances {
+                msg = format!("{msg}, {} advanced to {}", a.runner, a.base);
+            }
+            ingest_logs.error(msg);
+        }
+        ingest_logs.debug(format!("Runners out: {:?}", updates.runners_out));
+        if !updates.runners_out.iter().rev().is_sorted_by_key(|o| HomeLast(o.base.into())) {
+            let mut msg = "Runners out is not ordered descending by base".to_string();
+            for o in updates.runners_out {
+                msg = format!("{msg}, {} out at {}", o.runner, o.base);
+            }
+            ingest_logs.error(msg);
+        }
 
         let n_runners_on_before = self.state.runners_on.len();
         let n_caught_stealing = updates.steals.iter().filter(|steal| steal.caught).count();
@@ -3507,6 +3548,11 @@ impl<'g> Game<'g> {
                             self.away.team_emoji, self.away.team_name,
                         ));
                     }
+                    None
+                },
+                [ParsedEventMessageDiscriminants::WeatherReflection]
+                ParsedEventMessage::WeatherReflection { .. } => {
+                    // TODO Don't ignore reflection shatters
                     None
                 },
                 // TODO see if there's a way to make the error message say which bug(s) we
