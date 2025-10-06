@@ -8,10 +8,15 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+2025-10-05 Hotfix 1
+-------------------
+- Speed up status page so it doesn't time out
+
 2025-10-05
 ----------
 - Implement a temporary solution to allow ingesting games and player versions
   while Chron is frozen
+- Support tense changes in parsing (thanks WoofyJack!)
 - The speculative `taxa.attribute_effect_type` value `Additive` (short for 
   "additive multiplier") has been renamed to its now-known name `Multiplier`. 
   The speculative `Multiplicative` value (short for "multiplicative 

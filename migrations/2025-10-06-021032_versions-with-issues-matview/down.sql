@@ -1,0 +1,1 @@
+drop materialized view info.entities_with_issues_count;

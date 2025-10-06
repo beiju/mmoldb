@@ -98,14 +98,23 @@ pub fn team_feed_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
     team_feed_versions.count().get_result(conn)
 }
 
-pub fn version_with_issues_count(conn: &mut PgConnection, kind: &str) -> QueryResult<i64> {
-    use crate::info_schema::info::version_ingest_log::dsl;
+pub fn with_issues_counts(conn: &mut PgConnection) -> QueryResult<HashMap<String, i64>> {
+    #[derive(QueryableByName)]
+    pub struct IssueCounts {
+        #[diesel(sql_type = Text)]
+        pub kind: String,
+        #[diesel(sql_type = BigInt)]
+        pub entities_with_issues: i64,
+    }
 
-    dsl::version_ingest_log
-        .filter(dsl::log_level.lt(3)) // Selects warnings and higher
-        .filter(dsl::kind.eq(kind))
-        .select(diesel::dsl::count_distinct(dsl::entity_id))
-        .get_result(conn)
+    let results = sql_query("select * from info.entities_with_issues_count")
+        .get_results::<IssueCounts>(conn)?;
+
+    Ok(
+        results.into_iter()
+            .map(|r| (r.kind, r.entities_with_issues))
+            .collect()
+    )
 }
 
 pub fn latest_ingest_start_time(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
@@ -2684,6 +2693,8 @@ pub fn update_num_ingested(
 }
 
 pub fn refresh_matviews(conn: &mut PgConnection) -> QueryResult<()> {
+    debug!("Updating info.entities_with_issues_count");
+    sql_query("refresh materialized view info.entities_with_issues_count").execute(conn)?;
     debug!("Updating data.offense_outcomes");
     sql_query("refresh materialized view data.offense_outcomes").execute(conn)?;
     debug!("Updating data.defense_outcomes");
