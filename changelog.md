@@ -8,27 +8,28 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
+2025-10-05
 ----------
 - Implement a temporary solution to allow ingesting games and player versions
   while Chron is frozen
 - The speculative `taxa.attribute_effect_type` value `Additive` (short for 
   "additive multiplier") has been renamed to its now-known name `Multiplier`. 
   The speculative `Multiplicative` value (short for "multiplicative 
-  multiplier") has been removed until its actual name is known. 
+  multiplier") has been removed until its actual name is known.
+- Remove an incorrect filter in `data.player_versions_extended`
 
-2025-10-30
+2025-09-30
 ----------
 - Add Records page
 
-2025-10-24
+2025-09-24
 ----------
 - Add the materialized view `data.player_versions_extended` and its 
   documentation. Big thanks to Ifhbiff for a doing a lot of work creating and 
   documenting this view.
 - Raise statement timeout to 30 minutes
 
-2025-10-15
+2025-09-15
 ----------
 - Add recomposes to the player API
 - Add reports to the player API
@@ -39,7 +40,7 @@ Upcoming
   slot is cleared / when the report is removed.
 - Clean up the code
 
-2025-10-07
+2025-09-07
 ----------
 - Add `data.team_games_played` with the feed events for games ending. This is
   primarily useful for the timestamp. It can be used to find the proper team 
