@@ -2948,6 +2948,63 @@ pub fn fastest_pitch(conn: &mut PgConnection) -> QueryResult<Option<PitchSpeedRe
     ").get_result(conn).optional()
 }
 
+#[derive(QueryableByName)]
+pub struct MostPitchesInGameRecord {
+    #[diesel(sql_type = Text)]
+    pub mmolb_team_id: String,
+    #[diesel(sql_type = Text)]
+    pub team_emoji: String,
+    #[diesel(sql_type = Text)]
+    pub team_location: String,
+    #[diesel(sql_type = Text)]
+    pub team_name: String,
+    #[diesel(sql_type = Text)]
+    pub mmolb_player_id: String,
+    #[diesel(sql_type = Text)]
+    pub player_name: String,
+    #[diesel(sql_type = Text)]
+    pub mmolb_game_id: String,
+    #[diesel(sql_type = BigInt)]
+    pub num_pitch_like_events: i64,
+}
+
+pub fn most_pitches_by_player_in_one_game(conn: &mut PgConnection) -> QueryResult<Option<MostPitchesInGameRecord>> {
+    sql_query("
+        with counts as (
+            select
+                count(1) as num_pitch_like_events,
+                ee.mmolb_game_id,
+                ee.defending_team_mmolb_id,
+                ee.pitcher_name,
+                ee.game_end_time
+            from data.events_extended ee
+            -- Also group on pitcher_count in the unlikely event a pitcher is replaced with a
+            -- pitcher of the same name. This doesn't catch the possibility that a player is ejected
+            -- and replaced with a same-name pitcher, but the DB doesn't make that easy at the moment.
+            group by ee.mmolb_game_id, ee.defending_team_mmolb_id, ee.pitcher_name, ee.pitcher_count, ee.game_end_time
+            order by count(1) desc, ee.mmolb_game_id asc
+            limit 1
+        )
+        select
+            tv.mmolb_team_id,
+            tv.emoji as team_emoji,
+            tv.location as team_location,
+            tv.name as team_name,
+            tpv.mmolb_player_id,
+            tpv.first_name || ' ' || tpv.last_name as player_name,
+            c.mmolb_game_id,
+            c.num_pitch_like_events
+        from counts c
+        inner join data.team_player_versions tpv on tpv.mmolb_team_id=c.defending_team_mmolb_id
+            and tpv.first_name || ' ' || tpv.last_name=c.pitcher_name
+            and tpv.valid_from <= c.game_end_time and c.game_end_time < coalesce(tpv.valid_until, 'infinity')
+        -- I'm intentionally selecting the latest team version, rather than the one from when the record
+        -- was set, because I want to get the latest team name and emoji
+        inner join data.team_versions tv on tv.mmolb_team_id=c.defending_team_mmolb_id
+            and tv.valid_until is null
+    ").get_result(conn).optional()
+}
+
 pub fn highest_scoring_game(conn: &mut PgConnection) -> QueryResult<Option<DbGame>> {
     sql_query("
         select *

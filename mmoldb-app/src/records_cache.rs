@@ -57,6 +57,15 @@ pub enum RecordHolder {
         mmolb_player_id: String,
         player_name: String,
         mmolb_game_id: String,
+    },
+    PlayerOnGameEvent {
+        mmolb_team_id: String,
+        team_emoji: String,
+        team_location: String,
+        team_name: String,
+        mmolb_player_id: String,
+        player_name: String,
+        mmolb_game_id: String,
         game_event_index: i32,
     },
 }
@@ -108,7 +117,7 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
         .map(|r| Record {
             title: "Fastest Pitch".to_string(),
             description: None,
-            holder: RecordHolder::PlayerInGame {
+            holder: RecordHolder::PlayerOnGameEvent {
                 mmolb_team_id: r.mmolb_team_id,
                 team_emoji: r.team_emoji,
                 team_location: r.team_location,
@@ -119,6 +128,22 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
                 game_event_index: r.game_event_index,
             },
             record: format!("{:.1} MPH", r.pitch_speed),
+        });
+
+    let most_pitches_by_player_in_one_game = (*conn).transaction(mmoldb_db::db::most_pitches_by_player_in_one_game)?
+        .map(|r| Record {
+            title: "Most pitches by a pitcher in one game".to_string(),
+            description: Some("Including balks as pitches"),
+            holder: RecordHolder::PlayerInGame {
+                mmolb_team_id: r.mmolb_team_id,
+                team_emoji: r.team_emoji,
+                team_location: r.team_location,
+                team_name: r.team_name,
+                mmolb_player_id: r.mmolb_player_id,
+                player_name: r.player_name,
+                mmolb_game_id: r.mmolb_game_id,
+            },
+            record: format!("{} pitch-like events", r.num_pitch_like_events),
         });
 
     let highest_scoring_game = (*conn).transaction(mmoldb_db::db::highest_scoring_game)?
@@ -231,6 +256,7 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
 
     let records = [
         fastest_pitch,
+        most_pitches_by_player_in_one_game,
         highest_scoring_game,
         highest_score_in_a_game,
         longest_game_by_events,

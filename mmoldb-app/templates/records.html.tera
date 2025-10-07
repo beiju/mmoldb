@@ -37,9 +37,19 @@
                 {% if record.description %}
                 <p class="record-description">{{ record.description }}</p>
                 {% endif %}
-                {% if record.holder.type == "PlayerInGame" %}
+                {% if record.holder.type == "PlayerOnGameEvent" %}
                 <p>
                     <a href="https://mmolb.com/watch/{{ record.holder.mmolb_game_id }}?event={{ record.holder.game_event_index }}">
+                        {{ record.record }}</a>
+                    by
+                    <a href="https://mmolb.com/team/{{ record.holder.mmolb_team_id }}">
+                        {{ record.holder.team_emoji }} {{ record.holder.team_location }} {{ record.holder.team_name }}</a>
+                    <a href="https://mmolb.com/player/{{ record.holder.mmolb_player_id }}">
+                        {{ record.holder.player_name }}</a>
+                </p>
+                {% elif record.holder.type == "PlayerInGame" %}
+                <p>
+                    <a href="https://mmolb.com/watch/{{ record.holder.mmolb_game_id }}">
                         {{ record.record }}</a>
                     by
                     <a href="https://mmolb.com/team/{{ record.holder.mmolb_team_id }}">
