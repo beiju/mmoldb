@@ -277,25 +277,37 @@ impl RecordsCacheUpdate {
         let update = Arc::new(Mutex::new(RecordsCacheUpdate::None));
         let update_for_task = update.clone();
         let task = tokio::task::spawn_blocking(move || {
-            match update_all_records(pool) {
-                Ok(new_records) => {
-                    {
-                        let mut records = records.lock()
-                            .expect("Error locking records for task");
-                        *records = Some(new_records);
-                    }
-                    {
+            let mut last_run_start = Utc::now();
+            loop {
+                match update_all_records(pool.clone()) {
+                    Ok(new_records) => {
+                        {
+                            let mut records = records.lock()
+                                .expect("Error locking records for task");
+                            *records = Some(new_records);
+                        }
+                        {
+                            let mut update = update_for_task.lock()
+                                .expect("Error locking update for task");
+                            *update = RecordsCacheUpdate::None;
+                        }
+                    },
+                    Err(e) => {
+                        error!("{e:?}");
                         let mut update = update_for_task.lock()
                             .expect("Error locking update for task");
-                        *update = RecordsCacheUpdate::None;
-                    }
-                },
-                Err(e) => {
-                    error!("{e:?}");
-                    let mut update = update_for_task.lock()
-                        .expect("Error locking update for task");
-                    *update = RecordsCacheUpdate::Error(e);
-                },
+                        *update = RecordsCacheUpdate::Error(e);
+                    },
+                }
+
+                let next_run_start = last_run_start + chrono::Duration::minutes(30);
+                // If this is not Ok it means the duration cannot be represented as a std Duration,
+                // which I think can only happen if the duration is negative, in which case we don't
+                // need to sleep at all.
+                if let Ok(sleep_for) = (next_run_start - Utc::now()).to_std() {
+                    std::thread::sleep(sleep_for);
+                }
+                last_run_start = next_run_start;
             }
         });
         {
