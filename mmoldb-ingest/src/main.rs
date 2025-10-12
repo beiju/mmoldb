@@ -19,6 +19,8 @@ use config::IngestConfig;
 use crate::ingest::Ingestor;
 
 pub use ingest::*;
+use crate::ingest_player_feed::PlayerFeedIngest;
+use crate::ingest_players::PlayerIngest;
 use crate::ingest_team_feed::TeamFeedIngest;
 
 #[tokio::main]
@@ -173,21 +175,9 @@ async fn ingest_everything(
     let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
 
     ingestor.ingest(TeamIngest::new(&config.team_ingest)).await?;
-    ingestor.ingest(TeamFeedIngest::new(&config.team_ingest)).await?;
-
-    if config.player_feed_ingest.enable {
-        info!("Beginning player ingest");
-        ingest_players::ingest_players(ingest_id, pool.clone(), abort.clone(), &config.player_feed_ingest).await?;
-
-        // Player feed ingest can't (currently) run without first running player ingest
-        if config.player_feed_ingest.enable {
-            info!("Beginning player feed ingest");
-            // Player feed ingest has to start after all players with inbuilt feeds are processed
-            ingest_player_feed::ingest_player_feeds(ingest_id, pool.clone(), abort.clone(), &config.player_feed_ingest).await?;
-        }
-    } else if config.player_feed_ingest.enable {
-        warn!("Can't ingest player feeds without ingesting players");
-    }
+    ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest)).await?;
+    ingestor.ingest(PlayerIngest::new(&config.player_ingest)).await?;
+    ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest)).await?;
 
     if config.game_ingest.enable {
         info!("Beginning game ingest");

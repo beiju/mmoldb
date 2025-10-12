@@ -1,10 +1,12 @@
-use crate::ingest::{VersionIngestLogs, batch_by_entity, IngestFatalError};
+use crate::config::IngestibleConfig;
+use crate::ingest::{VersionIngestLogs};
 use crate::ingest_players::day_to_db;
+use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionStage1Ingest};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
-use log::{debug, error, info};
+use log::{error};
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
@@ -13,36 +15,53 @@ use mmoldb_db::models::{
     NewPlayerRecomposition, NewVersionIngestLog,
 };
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{PgConnection, db, ConnectionPool};
-use rayon::iter::IntoParallelIterator;
-use rayon::iter::ParallelIterator;
-use serde::Deserialize;
+use mmoldb_db::{db, PgConnection, QueryResult};
 use std::fmt::{Display, Formatter};
-use tokio_util::sync::CancellationToken;
-use crate::config::IngestibleConfig;
+use std::sync::Arc;
 
-// I made this a constant because I'm constant-ly terrified of typoing
-// it and introducing a difficult-to-find bug
-const PLAYER_FEED_KIND: &'static str = "player_feed";
+pub struct PlayerFeedIngestFromVersions;
 
-pub async fn ingest_player_feeds(
-    ingest_id: i64,
-    pool: ConnectionPool,
-    abort: CancellationToken,
-    config: &IngestibleConfig
-) -> Result<(), IngestFatalError> {
-    todo!()
-    // crate::ingest::ingest(
-    //     ingest_id,
-    //     PLAYER_FEED_KIND,
-    //     config,
-    //     pool,
-    //     abort,
-    //     |version| version.clone(),
-    //     db::get_player_feed_ingest_start_cursor,
-    //     ingest_page_of_player_feeds,
-    // )
-    // .await
+impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
+    type Entity = mmolb_parsing::player_feed::PlayerFeed;
+
+    fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
+        db::get_player_feed_ingest_start_cursor(conn)
+    }
+
+    fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
+        version.clone()
+    }
+
+    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize> {
+        let new_versions = versions.iter()
+            .map(|team| chron_player_feed_as_new(taxa, &team.entity_id, team.valid_from, &team.data.feed, None))
+            .collect_vec();
+
+        db::insert_player_feed_versions(conn, &new_versions)
+    }
+}
+
+pub struct PlayerFeedIngest(&'static IngestibleConfig);
+
+impl PlayerFeedIngest {
+    pub fn new(config: &'static IngestibleConfig) -> PlayerFeedIngest {
+        PlayerFeedIngest(config)
+    }
+}
+
+impl Ingestable for PlayerFeedIngest {
+    const KIND: &'static str = "player_feed";
+
+    fn config(&self) -> &'static IngestibleConfig {
+        &self.0
+    }
+
+    fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
+        vec![
+            Arc::new(VersionStage1Ingest::new(Self::KIND)),
+            Arc::new(Stage2Ingest::new(Self::KIND, PlayerFeedIngestFromVersions))
+        ]
+    }
 }
 
 fn process_paradigm_shift<'e>(
@@ -91,7 +110,7 @@ pub fn chron_player_feed_as_new<'a>(
     Vec<NewPlayerRecomposition<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
-    let mut ingest_logs = VersionIngestLogs::new(PLAYER_FEED_KIND, player_id, valid_from);
+    let mut ingest_logs = VersionIngestLogs::new(PlayerFeedIngest::KIND, player_id, valid_from);
 
     // TODO make this static, or at least global
     // Some feed events were accidentally reverted (by caching issues I think), and we want to
