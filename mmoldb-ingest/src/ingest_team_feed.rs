@@ -1,43 +1,66 @@
-use crate::ingest::{VersionIngestLogs, batch_by_entity, IngestFatalError};
-use chron::ChronEntity;
-use chrono::{DateTime, Utc};
-use itertools::{Itertools};
-use log::{debug, info};
-use mmolb_parsing::enums::{LinkType};
-use mmolb_parsing::feed_event::{FeedEvent, ParsedFeedEventText};
-use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{PgConnection, db, ConnectionPool};
-use rayon::iter::IntoParallelIterator;
-use rayon::iter::ParallelIterator;
-use serde::Deserialize;
-use tokio_util::sync::CancellationToken;
-use mmoldb_db::models::{NewTeamFeedVersion, NewTeamGamePlayed, NewVersionIngestLog};
 use crate::config::IngestibleConfig;
+use crate::ingest::VersionIngestLogs;
+use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionStage1Ingest};
+use chron::ChronEntity;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use itertools::Itertools;
+use mmolb_parsing::enums::LinkType;
+use mmolb_parsing::feed_event::{FeedEvent, ParsedFeedEventText};
+use mmoldb_db::models::{NewTeamFeedVersion, NewTeamGamePlayed, NewVersionIngestLog};
+use mmoldb_db::taxa::Taxa;
+use mmoldb_db::{db, PgConnection, QueryResult};
+use serde::Deserialize;
+use std::sync::Arc;
 
-// I made this a constant because I'm constant-ly terrified of typoing
-// it and introducing a difficult-to-find bug
-const TEAM_FEED_KIND: &'static str = "team_feed";
-
-pub async fn ingest_team_feeds(
-    ingest_id: i64,
-    pool: ConnectionPool,
-    abort: CancellationToken,
-    config: &IngestibleConfig,
-) -> Result<(), IngestFatalError> {
-    todo!()
-    // crate::ingest::ingest(
-    //     ingest_id,
-    //     TEAM_FEED_KIND,
-    //     config,
-    //     pool,
-    //     abort,
-    //     |version| version.clone(),
-    //     db::get_team_feed_ingest_start_cursor,
-    //     ingest_page_of_team_feeds,
-    // )
-    // .await
+#[derive(Deserialize)]
+pub struct TeamFeedContainer {
+    feed: Vec<FeedEvent>,
 }
 
+pub struct TeamFeedIngestFromVersions;
+
+impl IngestibleFromVersions for TeamFeedIngestFromVersions {
+    type Entity = TeamFeedContainer;
+
+    fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
+        db::get_team_feed_ingest_start_cursor(conn)
+    }
+
+    fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
+        version.clone()
+    }
+
+    fn insert_batch(conn: &mut PgConnection, _: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize> {
+        let new_versions = versions.iter()
+            .map(|team| chron_team_feed_as_new(&team.entity_id, team.valid_from, &team.data.feed))
+            .collect_vec();
+
+        db::insert_team_feed_versions(conn, &new_versions)
+    }
+}
+
+pub struct TeamFeedIngest(&'static IngestibleConfig);
+
+impl TeamFeedIngest {
+    pub fn new(config: &'static IngestibleConfig) -> TeamFeedIngest {
+        TeamFeedIngest(config)
+    }
+}
+
+impl Ingestable for TeamFeedIngest {
+    const KIND: &'static str = "team_feed";
+
+    fn config(&self) -> &'static IngestibleConfig {
+        &self.0
+    }
+
+    fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
+        vec![
+            Arc::new(VersionStage1Ingest::new(Self::KIND)),
+            Arc::new(Stage2Ingest::new(Self::KIND, TeamFeedIngestFromVersions))
+        ]
+    }
+}
 
 pub fn chron_team_feed_as_new<'a>(
     team_id: &'a str,
@@ -48,7 +71,7 @@ pub fn chron_team_feed_as_new<'a>(
     Vec<NewTeamGamePlayed<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
-    let mut ingest_logs = VersionIngestLogs::new(TEAM_FEED_KIND, team_id, valid_from);
+    let mut ingest_logs = VersionIngestLogs::new(TeamFeedIngest::KIND, team_id, valid_from);
 
     let team_feed_version = NewTeamFeedVersion {
         mmolb_team_id: team_id,

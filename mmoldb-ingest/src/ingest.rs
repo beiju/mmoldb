@@ -140,7 +140,7 @@ impl Ingestor {
         }
     }
 
-    pub async fn ingest<I: Ingestable + 'static>(self, ingestible: I) -> Result<(), IngestFatalError> {
+    pub async fn ingest<I: Ingestable + 'static>(&self, ingestible: I) -> Result<(), IngestFatalError> {
         let config = ingestible.config();
         if !config.enable {
             return Ok(());
@@ -405,28 +405,18 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
                 match cache.entry(version.entity_id.clone()) {
                     Entry::Vacant(vacant) => {
-                        vacant.insert(trimmed_version.clone());
-                        Some(ChronEntity {
-                            kind: version.kind,
-                            entity_id: version.entity_id,
-                            valid_from: version.valid_from,
-                            valid_to: version.valid_to,
-                            data: trimmed_version,
-                        })
+                        // We store the trimmed version for future comparisons
+                        vacant.insert(trimmed_version);
+                        // We need to return the untrimmed version, or else deserialize will fail
+                        Some(version)
                     },
                     Entry::Occupied(mut occupied) => {
                         if occupied.get() == &trimmed_version {
                             // This is a duplicate -- no need to return it
                             None
                         } else {
-                            occupied.insert(trimmed_version.clone());
-                            Some(ChronEntity {
-                                kind: version.kind,
-                                entity_id: version.entity_id,
-                                valid_from: version.valid_from,
-                                valid_to: version.valid_to,
-                                data: trimmed_version,
-                            })
+                            occupied.insert(trimmed_version);
+                            Some(version)
                         }
                     }
                 }
@@ -461,6 +451,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                     warn!("{} ingest task got a {} entity!", self.kind, entity.kind);
                 }
 
+                let data = entity.data.clone(); // Temp
                 match serde_json::from_value(entity.data) {
                     Ok(data) => Either::Left(ChronEntity {
                         kind: entity.kind,
@@ -469,7 +460,11 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                         valid_to: entity.valid_to,
                         data,
                     }),
-                    Err(err) => Either::Right((err, entity.entity_id, entity.valid_from)),
+                    Err(err) => {
+                        // Temp
+                        error!("Error deserializing {} {} at {}: {} {}", self.kind, entity.entity_id, entity.valid_from, err, data);
+                        Either::Right((err, entity.entity_id, entity.valid_from))
+                    },
                 }
             });
         let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();

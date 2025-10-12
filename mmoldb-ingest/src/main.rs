@@ -19,6 +19,7 @@ use config::IngestConfig;
 use crate::ingest::Ingestor;
 
 pub use ingest::*;
+use crate::ingest_team_feed::TeamFeedIngest;
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
@@ -172,13 +173,7 @@ async fn ingest_everything(
     let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
 
     ingestor.ingest(TeamIngest::new(&config.team_ingest)).await?;
-
-    if config.team_feed_ingest.enable {
-        // This could be parallelized with ingest_teams, since we never
-        // process the embedded feeds in team objects
-        info!("Beginning team feed ingest");
-        ingest_team_feed::ingest_team_feeds(ingest_id, pool.clone(), abort.clone(), &config.team_feed_ingest).await?;
-    }
+    ingestor.ingest(TeamFeedIngest::new(&config.team_ingest)).await?;
 
     if config.player_feed_ingest.enable {
         info!("Beginning player ingest");
