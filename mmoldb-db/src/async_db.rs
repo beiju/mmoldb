@@ -59,8 +59,12 @@ pub(crate) fn version_cursor_query<'a, 'b>(
 pub async fn stream_versions_at_cursor(
     conn: &mut AsyncPgConnection,
     kind: &str,
-    cursor: Option<(NaiveDateTime, &str)>,
+    cursor: Option<(NaiveDateTime, String)>,
 ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
+    let cursor = cursor
+        .as_ref()
+        .map(|(dt, id)| (*dt, id.as_str()));
+
     let stream = version_cursor_query(kind, cursor)
         .select(Version::as_select())
         .load_stream(conn)

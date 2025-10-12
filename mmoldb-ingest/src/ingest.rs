@@ -165,24 +165,34 @@ impl Ingestor {
             })
             .collect_vec();
 
+        let mut waker = None;
         let running_stages = stages_with_task_names.iter()
             .map(|(stage, task_name)| {
-                tokio::task::Builder::new()
+                let prev_stage_finished = CancellationToken::new();
+                let task = tokio::task::Builder::new()
                     .name(task_name)
-                    .spawn(stage.clone().run(StageArgs {
-                        config,
-                        parallelism,
-                        pool: self.pool.clone(),
-                        ingest_id: self.ingest_id,
-                        wake_next_stage: Arc::new(Notify::new()),  // TODO save this
-                    }))
+                    .spawn(stage.clone().run({
+                        let wake_next_stage = Arc::new(Notify::new());
+                        let waker_from_prev_stage = waker.replace(wake_next_stage.clone());
+                        StageArgs {
+                            config,
+                            parallelism,
+                            pool: self.pool.clone(),
+                            ingest_id: self.ingest_id,
+                            wake_next_stage,
+                            waker_from_prev_stage,
+                            prev_stage_finished: prev_stage_finished.clone(),
+                        }
+                    }))?;
+                Ok((task, prev_stage_finished))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(IngestFatalError::TaskSpawnError)?;
 
         debug!("Waiting for {} {} ingest stages to finish", running_stages.len(), I::KIND);
 
-        for stage in running_stages {
+        for (stage, prev_stage_finished) in running_stages {
+            prev_stage_finished.cancel();
             // TODO intelligently handle concurrent errors
             stage.await.map_err(IngestFatalError::JoinError)??;
         }
@@ -198,6 +208,8 @@ pub struct StageArgs {
     pool: ConnectionPool,
     ingest_id: i64,
     wake_next_stage: Arc<Notify>,
+    waker_from_prev_stage: Option<Arc<Notify>>,
+    prev_stage_finished: CancellationToken,
 }
 
 pub trait IngestStage {
@@ -272,7 +284,7 @@ impl VersionStage1Ingest {
                 Err(err) => (err.0, Some(err.1)),
             };
 
-            info!("Stage 1 ingest saving {} {}(s)", chunk.len(), self.kind);
+            info!("{} stage 1 ingest saving {} {}(s)", self.kind, chunk.len(), self.kind);
             let inserted = match db::insert_versions(&mut conn, &chunk) {
                 Ok(x) => Ok(x),
                 Err(err) => {
@@ -280,7 +292,7 @@ impl VersionStage1Ingest {
                     Err(err)
                 }
             }?;
-            info!("Stage 1 ingest saved {} {}(s)", inserted, self.kind);
+            info!("{} stage 1 ingest saved {} {}(s)", self.kind, inserted, self.kind);
 
             args.wake_next_stage.notify_one();
 
@@ -289,6 +301,7 @@ impl VersionStage1Ingest {
             }
         }
 
+        info!("{} stage 1 ingest finished", self.kind);
         Ok(())
     }
 }
@@ -326,10 +339,12 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         // Compute how many least significant hexits we need to accurately compute
         // the modulus between an arbitrary hex number and the given parallelism
         let trailing_hexits_for_modulus = args.parallelism.get().lcm(&16);
-        // 1. Spawn N tasks
+
+        // Task names have to outlive their tasks, so we build then in advance
         let task_names_and_nums = (0..=args.parallelism.get())
             .map(|worker_idx| (format!("{} Stage 2 worker {}", self.kind, worker_idx), worker_idx))
             .collect_vec();
+
         let tasks = task_names_and_nums.iter()
             .map(|(name, worker_idx)| {
                 // There's not a principled reason `parallelism` is used as the buffer size,
@@ -344,8 +359,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
             .collect::<Result<Vec<_>, _>>()
             .map_err(IngestFatalError::TaskSpawnError)?;
 
-        // 2. Start the async fetch that dispatches to that task
-        let start_cursor = {
+        let mut start_cursor = {
             let mut conn = args.pool.get()?;
             VersionIngest::get_start_cursor(&mut conn)?
         };
@@ -353,48 +367,76 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let url = mmoldb_db::postgres_url_from_environment();
         let mut async_conn = AsyncPgConnection::establish(&url).await?;
 
-        let versions_stream = async_db::stream_versions_at_cursor(
-            &mut async_conn,
-            self.kind,
-            start_cursor
-                .as_ref()
-                .map(|(dt, id)| (*dt, id.as_str())),
-        ).await?;
-        pin_mut!(versions_stream);
 
-        while let Some(version_result) = versions_stream.next().await {
-            let version = version_result?;
-            let ascii_id = ascii::AsciiStr::from_ascii(version.entity_id.as_bytes())
-                .map_err(IngestFatalError::NonAsciiEntityId)?;
-            let start_idx = ascii_id.len() - trailing_hexits_for_modulus;
-            let hex_for_modulus = if start_idx > 0 {
-                usize::from_str_radix(ascii_id[start_idx..].as_str(), 16)
-                    .map_err(IngestFatalError::NonHexEntityId)?
+        // Probably not all of this needs to be in the loop but I'm tired, boss
+        loop {
+            let versions_stream = async_db::stream_versions_at_cursor(
+                &mut async_conn,
+                self.kind,
+                start_cursor.clone(),
+            ).await?;
+            pin_mut!(versions_stream);
+
+            while let Some(version_result) = versions_stream.next().await {
+                let version = version_result?;
+                let ascii_id = ascii::AsciiStr::from_ascii(version.entity_id.as_bytes())
+                    .map_err(IngestFatalError::NonAsciiEntityId)?;
+                let start_idx = ascii_id.len() - trailing_hexits_for_modulus;
+                let hex_for_modulus = if start_idx > 0 {
+                    usize::from_str_radix(ascii_id[start_idx..].as_str(), 16)
+                        .map_err(IngestFatalError::NonHexEntityId)?
+                } else {
+                    usize::from_str_radix(ascii_id.as_str(), 16)
+                        .map_err(IngestFatalError::NonHexEntityId)?
+                };
+                let assigned_worker = hex_for_modulus % args.parallelism.get();
+                // This panics on OOB, which is correct
+                let (pipe, _) = &tasks[assigned_worker];
+                let new_cursor = (version.valid_from.naive_utc(), version.entity_id.clone());
+                pipe.send(version).await
+                    .map_err(IngestFatalError::SendFailed)?;
+                start_cursor = Some(new_cursor);
+            }
+
+            info!("{} stage 2 ingest coordinator has processed all available versions", self.kind);
+            if let Some(notify) = &args.waker_from_prev_stage {
+                tokio::select! {
+                    biased; // We want to always
+                    _ = notify.notified() => {
+                        info!("{} stage 2 ingest coordinator was woken up", self.kind);
+                    }
+                    _ = args.prev_stage_finished.cancelled() => {
+                        info!("{} stage 2 ingest coordinator exiting because prev_stage_finished was set at the end of the loop", self.kind);
+                        break;
+                    }
+                }
             } else {
-                usize::from_str_radix(ascii_id.as_str(), 16)
-                    .map_err(IngestFatalError::NonHexEntityId)?
-            };
-            let assigned_worker = hex_for_modulus % args.parallelism.get();
-            // This panics on OOB, which is correct
-            let (pipe, _) = &tasks[assigned_worker];
-            pipe.send(version).await
-                .map_err(IngestFatalError::SendFailed)?;
+                info!("{} stage 2 ingest coordinator exiting because there is no waker from the previous stage", self.kind);
+                break;
+            }
         }
+
+        // Drop all the senders. This causes the receivers to output None, which is the
+        // signal the workers use to know when to exit.
+        let tasks = tasks.into_iter()
+            .map(|(_, task)| task)
+            .collect_vec();
 
         debug!("All versions for {} Stage 2 are dispatched to workers. Waiting for workers to exit.", self.kind);
 
-        for (_, task) in tasks {
+        for task in tasks {
             task.await.map_err(IngestFatalError::JoinError)??;
         }
 
-        debug!("All workers for {} finished. Exiting coordinator.", self.kind);
+        debug!("All workers for {} finished. Exiting coordinator and notifying next stage.", self.kind);
+        args.wake_next_stage.notify_one();
 
         Ok(())
     }
 
     // Worker could probably take a conn instead of the whole pool, but the cost is negligible
     async fn worker(self: Arc<Self>, args: StageArgs, version_recv: Receiver<ChronEntity<serde_json::Value>>, worker_idx: usize) -> Result<(), IngestFatalError> {
-        info!("{} stage 2 ingest worker launched", self.kind);
+        info!("{} stage 2 ingest worker {} launched", self.kind, worker_idx);
         let mut conn = args.pool.get()?;
         let taxa = Taxa::new(&mut conn)?;
 
