@@ -31,107 +31,18 @@ pub async fn ingest_player_feeds(
     abort: CancellationToken,
     config: &IngestibleConfig
 ) -> Result<(), IngestFatalError> {
-    crate::ingest::ingest(
-        ingest_id,
-        PLAYER_FEED_KIND,
-        config,
-        pool,
-        abort,
-        |version| version.clone(),
-        db::get_player_feed_ingest_start_cursor,
-        ingest_page_of_player_feeds,
-    )
-    .await
-}
-
-pub fn ingest_page_of_player_feeds(
-    taxa: &Taxa,
-    raw_player_feeds: Vec<ChronEntity<serde_json::Value>>,
-    conn: &mut PgConnection,
-    worker_id: usize,
-) -> Result<i32, IngestFatalError> {
-    debug!(
-        "Starting of {} player feeds on worker {worker_id}",
-        raw_player_feeds.len()
-    );
-    let save_start = Utc::now();
-
-    #[derive(Deserialize)]
-    struct FeedContainer {
-        feed: Vec<FeedEvent>,
-    }
-
-    let deserialize_start = Utc::now();
-    // TODO Gracefully handle player feed deserialize failure
-    let player_feeds = raw_player_feeds
-        .into_par_iter()
-        .map(|game_json| {
-            Ok::<ChronEntity<FeedContainer>, serde_json::Error>(ChronEntity {
-                kind: game_json.kind,
-                entity_id: game_json.entity_id,
-                valid_from: game_json.valid_from,
-                valid_to: game_json.valid_to,
-                data: serde_json::from_value(game_json.data)?,
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
-    debug!(
-        "Deserialized page of {} player feeds in {:.2} seconds on worker {}",
-        player_feeds.len(),
-        deserialize_duration,
-        worker_id
-    );
-
-    let latest_time = player_feeds
-        .last()
-        .map(|version| version.valid_from)
-        .unwrap_or(Utc::now());
-    let time_ago = latest_time.signed_duration_since(Utc::now());
-    let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
-
-    // Convert to Insertable type
-    let new_player_feeds = player_feeds
-        .iter()
-        .map(|v| chron_player_feed_as_new(&taxa, &v.entity_id, v.valid_from, &v.data.feed, None))
-        .collect_vec();
-
-    // The handling of valid_until is entirely in the database layer, but its logic
-    // requires that a given batch of players does not have the same player twice. We
-    // provide that guarantee here.
-    let new_player_feeds_len = new_player_feeds.len();
-    let mut total_inserted = 0;
-    for batch in batch_by_entity(new_player_feeds, |v| v.0.mmolb_player_id) {
-        let to_insert = batch.len();
-        info!(
-            "Sent {} new player feed versions out of {} to the database.",
-            to_insert, new_player_feeds_len,
-        );
-
-        let (inserted, maybe_err) = db::insert_to_error(db::insert_player_feed_versions, conn, &batch)
-            .map(|inserted| (inserted, Ok(())))
-            .unwrap_or_else(|(inserted, err)| (inserted, Err(err)));
-        total_inserted += inserted as i32;
-
-        info!(
-            "Sent {} new player feed versions out of {} to the database. \
-            {inserted} versions were actually inserted, the rest were duplicates. \
-            Currently processing player feeds from {human_time_ago}.",
-            to_insert,
-            player_feeds.len(),
-        );
-
-        maybe_err?;
-    }
-
-    let save_duration = (Utc::now() - save_start).as_seconds_f64();
-
-    info!(
-        "Ingested page of {} player feeds in {save_duration:.3} seconds.",
-        player_feeds.len(),
-    );
-
-    Ok(total_inserted)
+    todo!()
+    // crate::ingest::ingest(
+    //     ingest_id,
+    //     PLAYER_FEED_KIND,
+    //     config,
+    //     pool,
+    //     abort,
+    //     |version| version.clone(),
+    //     db::get_player_feed_ingest_start_cursor,
+    //     ingest_page_of_player_feeds,
+    // )
+    // .await
 }
 
 fn process_paradigm_shift<'e>(

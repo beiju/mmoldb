@@ -2044,7 +2044,7 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
     insert_player_attribute_augments(conn, new_player_attribute_augments)?;
     insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
     insert_player_recompositions(conn, new_player_recompositions)?;
-    insert_ingest_logs(conn, ingest_logs)?;
+    insert_nested_ingest_logs(conn, ingest_logs)?;
 
     Ok(num_inserted)
 }
@@ -2092,7 +2092,7 @@ pub fn insert_team_feed_versions<'container, 'game: 'container>(
         .execute(conn)?;
 
     insert_new_team_games_played(conn, new_team_games_played)?;
-    insert_ingest_logs(conn, ingest_logs)?;
+    insert_nested_ingest_logs(conn, ingest_logs)?;
 
     Ok(num_inserted)
 }
@@ -2113,7 +2113,19 @@ fn insert_player_recompositions(
         .execute(conn)
 }
 
-fn insert_ingest_logs(
+pub fn insert_ingest_logs(
+    conn: &mut PgConnection,
+    new_logs: Vec<NewVersionIngestLog>,
+) -> QueryResult<usize> {
+    use crate::info_schema::info::version_ingest_log::dsl as vil_dsl;
+
+    // Insert new records
+    diesel::copy_from(vil_dsl::version_ingest_log)
+        .from_insertable(new_logs)
+        .execute(conn)
+}
+
+fn insert_nested_ingest_logs(
     conn: &mut PgConnection,
     new_logs: Vec<&Vec<NewVersionIngestLog>>,
 ) -> QueryResult<usize> {
@@ -2234,7 +2246,7 @@ pub fn insert_player_versions<'container, 'game: 'container>(
         (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
     let insert_ingest_logs_start = Utc::now();
-    insert_ingest_logs(conn, new_ingest_logs)?;
+    insert_nested_ingest_logs(conn, new_ingest_logs)?;
     let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
 
     info!(
@@ -2656,7 +2668,7 @@ pub fn insert_team_versions<'container, 'game: 'container>(
         (Utc::now() - insert_team_player_versions_start).as_seconds_f64();
 
     let insert_ingest_logs_start = Utc::now();
-    insert_ingest_logs(conn, new_ingest_logs)?;
+    insert_nested_ingest_logs(conn, new_ingest_logs)?;
     let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
 
     info!(

@@ -18,6 +18,8 @@ use tokio_util::sync::CancellationToken;
 use config::IngestConfig;
 use crate::ingest::Ingestor;
 
+pub use ingest::*;
+
 #[tokio::main]
 async fn main() -> miette::Result<()> {
     env_logger::init();
@@ -169,7 +171,7 @@ async fn ingest_everything(
 ) -> miette::Result<()> {
     let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
 
-    ingestor.ingest(TeamIngest(&config.team_ingest)).await?;
+    ingestor.ingest(TeamIngest::new(&config.team_ingest)).await?;
 
     if config.team_feed_ingest.enable {
         // This could be parallelized with ingest_teams, since we never

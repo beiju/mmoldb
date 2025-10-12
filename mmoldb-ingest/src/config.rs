@@ -1,3 +1,4 @@
+use std::num::NonZero;
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use mmolb_parsing::player::Deserialize;
@@ -9,6 +10,7 @@ pub struct IngestibleConfig {
     pub chron_fetch_batch_size: usize,
     pub insert_raw_entity_batch_size: usize,
     pub process_batch_size: usize,
+    pub ingest_parallelism: Option<NonZero<usize>>,
 }
 
 impl Default for IngestibleConfig {
@@ -18,6 +20,7 @@ impl Default for IngestibleConfig {
             chron_fetch_batch_size: 1000,
             insert_raw_entity_batch_size: 1000,
             process_batch_size: 1000,
+            ingest_parallelism: None,
         }
     }
 }
