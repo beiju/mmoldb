@@ -6,17 +6,15 @@ use itertools::Itertools;
 use log::{error, warn};
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
-use mmolb_parsing::player::{PlayerEquipment, TalkCategory};
+use mmolb_parsing::player::{PlayerEquipment, TalkCategory, TalkStars};
 use thiserror::Error;
 
-use mmoldb_db::{db, ConnectionPool, PgConnection, QueryResult};
-use tokio_util::sync::CancellationToken;
+use mmoldb_db::{db, PgConnection, QueryResult};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaSlot};
 use crate::config::IngestibleConfig;
-use crate::ingest::IngestFatalError;
 use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs, VersionStage1Ingest};
 use crate::ingest_player_feed::chron_player_feed_as_new;
 
@@ -677,7 +675,14 @@ fn report_as_new<'e>(
             attribute: taxa.attribute_id((*attribute).into()),
             valid_from: entity.valid_from.naive_utc(),
             valid_until: None,
-            stars: *stars as i32,
+            stars: match stars {
+                TalkStars::Simple(stars) => { *stars as i32 },
+                TalkStars::Complex { stars, .. } => { *stars as i32 },
+            },
+            total: match stars {
+                TalkStars::Simple(_) => { None }
+                TalkStars::Complex { total, .. } => { Some(*total) }
+            }
         })
         .collect_vec();
 

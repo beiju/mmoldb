@@ -398,7 +398,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 start_cursor = Some(new_cursor);
             }
 
-            info!("{} stage 2 ingest coordinator has processed all available versions", self.kind);
+            info!("{} stage 2 ingest coordinator has processed all available versions. Waiting to be waken up or exited...", self.kind);
             if let Some(notify) = &args.waker_from_prev_stage {
                 tokio::select! {
                     biased; // We want to always

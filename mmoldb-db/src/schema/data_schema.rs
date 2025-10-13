@@ -305,6 +305,7 @@ pub mod data {
             valid_from -> Timestamp,
             valid_until -> Nullable<Timestamp>,
             stars -> Int4,
+            total -> Nullable<Float8>,
         }
     }
 

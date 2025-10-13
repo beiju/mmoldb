@@ -614,6 +614,7 @@ pub struct DbPlayerReportAttributeVersion {
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
     pub stars: i32,
+    pub total: Option<f64>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -626,6 +627,7 @@ pub struct NewPlayerReportAttributeVersion<'a> {
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
     pub stars: i32,
+    pub total: Option<f64>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
