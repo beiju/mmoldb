@@ -503,8 +503,6 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                         data,
                     }),
                     Err(err) => {
-                        // Temp
-                        error!("Error deserializing {} {} at {}: {} {}", self.kind, entity.entity_id, entity.valid_from, err, data);
                         Either::Right((err, entity.entity_id, entity.valid_from))
                     },
                 }

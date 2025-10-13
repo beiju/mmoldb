@@ -41,8 +41,33 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
     }
 
     fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize> {
+        // Collect all modifications that appear in this batch so we can ensure they're all added
+        let unique_modifications = versions
+            .iter()
+            .flat_map(|version| {
+                version
+                    .data
+                    .modifications
+                    .iter()
+                    .chain(version.data.lesser_boon.as_ref())
+                    .chain(version.data.greater_boon.as_ref())
+                    .map(|m| {
+                        // TODO Do this for extra_fields in other types
+                        if !m.extra_fields.is_empty() {
+                            warn!(
+                                "Modification had extra fields that were not captured: {:?}",
+                                m.extra_fields
+                            );
+                        }
+                        (m.name.as_str(), m.emoji.as_str(), m.description.as_str())
+                    })
+            })
+            .unique()
+            .collect_vec();
+
+        let modifications = get_filled_modifications_map(conn, &unique_modifications)?;
         let new_versions = versions.iter()
-            .map(|entity| chron_player_as_new(taxa, &entity, todo!()))
+            .map(|entity| chron_player_as_new(taxa, &entity, &modifications))
             .collect_vec();
 
         db::insert_player_versions(conn, &new_versions)
@@ -70,32 +95,6 @@ impl Ingestable for PlayerIngest {
             Arc::new(Stage2Ingest::new(Self::KIND, PlayerIngestFromVersions))
         ]
     }
-}
-pub async fn ingest_players(
-    ingest_id: i64,
-    pool: ConnectionPool,
-    abort: CancellationToken,
-    config: &IngestibleConfig,
-) -> Result<(), IngestFatalError> {
-    todo!()
-    // crate::ingest::ingest(
-    //     ingest_id,
-    //     PLAYER_KIND,
-    //     config,
-    //     pool,
-    //     abort,
-    //     |version| match version {
-    //         serde_json::Value::Object(obj) => obj
-    //             .iter()
-    //             .filter(|(k, _)| *k != "Stats" && *k != "SeasonStats")
-    //             .map(|(k, v)| (k.clone(), v.clone()))
-    //             .collect(),
-    //         other => other.clone(),
-    //     },
-    //     db::get_player_ingest_start_cursor,
-    //     logic::ingest_page_of_players,
-    // )
-    // .await
 }
 
 pub fn get_filled_modifications_map(
