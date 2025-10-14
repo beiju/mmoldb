@@ -237,16 +237,16 @@ impl VersionStage1Ingest {
 
     async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
         let mut conn = args.pool.get()?;
-        let start_cursor = db::get_latest_raw_version_cursor(&mut conn, self.kind)?
-            .map(|(dt, id)| (dt.and_utc(), id));
-        let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
-
-        info!("{} fetch will start from date {:?}", self.kind, start_date);
-
         let chron = Chron::new(args.config.chron_fetch_batch_size);
 
         let mut retries = 0;
         loop {
+            let start_cursor = db::get_latest_raw_version_cursor(&mut conn, self.kind)?
+                .map(|(dt, id)| (dt.and_utc(), id));
+            let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
+
+            info!("{} fetch will start from date {:?} (attempt {})", self.kind, start_date, retries + 1);
+
             let stream = chron
                 .versions(self.kind, start_date)
                 // We ask Chron to start at a given valid_from. It will give us
