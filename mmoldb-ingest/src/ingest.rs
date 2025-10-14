@@ -245,60 +245,71 @@ impl VersionStage1Ingest {
 
         let chron = Chron::new(args.config.chron_fetch_batch_size);
 
-        let stream = chron
-            .versions(self.kind, start_date)
-            // We ask Chron to start at a given valid_from. It will give us
-            // all versions whose valid_from is greater than _or equal to_
-            // that value. That's good, because it means that if we left
-            // off halfway through processing a batch of entities with
-            // identical valid_from, we won't miss the rest of the batch.
-            // However, we will receive the first half of the batch again.
-            // Later steps in the ingest code will error if we attempt to
-            // ingest a value that's already in the database, so we have to
-            // filter them out. That's what this skip_while is doing.
-            // It returns a future just because that's what's dictated by
-            // the stream api.
-            .skip_while(|result| {
-                let skip_this =
-                    start_cursor
-                        .as_ref()
-                        .is_some_and(|(start_valid_from, start_entity_id)| {
-                            result.as_ref().is_ok_and(|entity| {
-                                (entity.valid_from, &entity.entity_id)
-                                    <= (*start_valid_from, start_entity_id)
-                            })
-                        });
+        let mut retries = 0;
+        loop {
+            let stream = chron
+                .versions(self.kind, start_date)
+                // We ask Chron to start at a given valid_from. It will give us
+                // all versions whose valid_from is greater than _or equal to_
+                // that value. That's good, because it means that if we left
+                // off halfway through processing a batch of entities with
+                // identical valid_from, we won't miss the rest of the batch.
+                // However, we will receive the first half of the batch again.
+                // Later steps in the ingest code will error if we attempt to
+                // ingest a value that's already in the database, so we have to
+                // filter them out. That's what this skip_while is doing.
+                // It returns a future just because that's what's dictated by
+                // the stream api.
+                .skip_while(|result| {
+                    let skip_this =
+                        start_cursor
+                            .as_ref()
+                            .is_some_and(|(start_valid_from, start_entity_id)| {
+                                result.as_ref().is_ok_and(|entity| {
+                                    (entity.valid_from, &entity.entity_id)
+                                        <= (*start_valid_from, start_entity_id)
+                                })
+                            });
 
-                futures::future::ready(skip_this)
-            })
-            .try_chunks(args.config.insert_raw_entity_batch_size);
-        pin_mut!(stream);
+                    futures::future::ready(skip_this)
+                })
+                .try_chunks(args.config.insert_raw_entity_batch_size);
+            pin_mut!(stream);
 
-        while let Some(chunk) = stream.next().await {
-            // When a chunked stream encounters an error, it returns the portion
-            // of the chunk that was collected before the error and the error
-            // itself. We want to insert the successful portion of the chunk,
-            // _then_ propagate any error.
-            let (chunk, maybe_err): (Vec<ChronEntity<serde_json::Value>>, _) = match chunk {
-                Ok(chunk) => (chunk, None),
-                Err(err) => (err.0, Some(err.1)),
-            };
+            while let Some(chunk) = stream.next().await {
+                // When a chunked stream encounters an error, it returns the portion
+                // of the chunk that was collected before the error and the error
+                // itself. We want to insert the successful portion of the chunk,
+                // _then_ propagate any error.
+                let (chunk, maybe_err): (Vec<ChronEntity<serde_json::Value>>, _) = match chunk {
+                    Ok(chunk) => (chunk, None),
+                    Err(err) => (err.0, Some(err.1)),
+                };
 
-            info!("{} stage 1 ingest saving {} {}(s)", self.kind, chunk.len(), self.kind);
-            let inserted = match db::insert_versions(&mut conn, &chunk) {
-                Ok(x) => Ok(x),
-                Err(err) => {
-                    error!("Error in stage 1 ingest write: {err}");
-                    Err(err)
+                info!("{} stage 1 ingest saving {} {}(s)", self.kind, chunk.len(), self.kind);
+                let inserted = match db::insert_versions(&mut conn, &chunk) {
+                    Ok(x) => Ok(x),
+                    Err(err) => {
+                        error!("Error in stage 1 ingest write: {err}");
+                        Err(err)
+                    }
+                }?;
+                info!("{} stage 1 ingest saved {} {}(s)", self.kind, inserted, self.kind);
+
+                args.wake_next_stage.notify_one();
+
+                // TODO Clean up retry logic
+                if let Some(err) = maybe_err {
+                    if retries < 3 {
+                        retries += 1;
+                        warn!("Chron error, retrying ({retries} of 3 attempts): {err}");
+                    } else {
+                        Err(err)?
+                    }
                 }
-            }?;
-            info!("{} stage 1 ingest saved {} {}(s)", self.kind, inserted, self.kind);
-
-            args.wake_next_stage.notify_one();
-
-            if let Some(err) = maybe_err {
-                Err(err)?;
             }
+
+            break
         }
 
         info!("{} stage 1 ingest finished", self.kind);
