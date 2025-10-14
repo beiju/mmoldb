@@ -21,9 +21,9 @@ use tokio_util::sync::CancellationToken;
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
 const GAME_KIND: &'static str = "game";
-const CHRON_FETCH_PAGE_SIZE: usize = 1000;
-const RAW_GAME_INSERT_BATCH_SIZE: usize = 1000;
-const PROCESS_GAME_BATCH_SIZE: usize = 1000;
+const CHRON_FETCH_PAGE_SIZE: usize = 100;
+const RAW_GAME_INSERT_BATCH_SIZE: usize = 100;
+const PROCESS_GAME_BATCH_SIZE: usize = 100;
 
 pub async fn ingest_games(
     pool: ConnectionPool,
