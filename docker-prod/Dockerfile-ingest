@@ -42,5 +42,6 @@ EXPOSE 42424
 COPY --from=builder /app/target/release/mmoldb-ingest /mmoldb-ingest
 
 WORKDIR /app
+COPY ../MMOLDB.toml /app
 
 CMD [ "/mmoldb-ingest" ]
