@@ -65,6 +65,7 @@ impl Chron {
         &self,
         kind: &'static str,
         start_at: Option<DateTime<Utc>>,
+        max_retries: usize,
     ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
         let cutover_date = DateTime::parse_from_rfc3339(CUTOVER_DATE)
             .expect("Hard-coded cutover date must parse")
@@ -72,12 +73,12 @@ impl Chron {
 
         if start_at.is_none_or(|s| s < cutover_date) {
             Either::Left(
-                self.items("https://freecashe.ws/api/chron/v0/versions", kind, start_at, Some(cutover_date))
-                    .chain(self.items("https://cheapcashews.beiju.me/chron/v0/versions", kind, Some(cutover_date), None))
+                self.items("https://freecashe.ws/api/chron/v0/versions", kind, max_retries, start_at, Some(cutover_date))
+                    .chain(self.items("https://cheapcashews.beiju.me/chron/v0/versions", kind, max_retries, Some(cutover_date), None))
             )
         } else {
             Either::Right(
-                self.items("https://cheapcashews.beiju.me/chron/v0/versions", kind, start_at, None)
+                self.items("https://cheapcashews.beiju.me/chron/v0/versions", kind, max_retries, start_at, None)
             )
         }
     }
@@ -86,6 +87,7 @@ impl Chron {
         &self,
         kind: &'static str,
         start_at: Option<DateTime<Utc>>,
+        max_retries: usize,
     ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
         let cutover_date = DateTime::parse_from_rfc3339(CUTOVER_DATE)
             .expect("Hard-coded cutover date must parse")
@@ -93,12 +95,12 @@ impl Chron {
 
         if start_at.is_none_or(|s| s < cutover_date) {
             Either::Left(
-                self.items("https://freecashe.ws/api/chron/v0/entities", kind, start_at, Some(cutover_date))
-                    .chain(self.items("https://cheapcashews.beiju.me/chron/v0/entities", kind, Some(cutover_date), None))
+                self.items("https://freecashe.ws/api/chron/v0/entities", kind, max_retries, start_at, Some(cutover_date))
+                    .chain(self.items("https://cheapcashews.beiju.me/chron/v0/entities", kind, max_retries, Some(cutover_date), None))
             )
         } else {
             Either::Right(
-                self.items("https://cheapcashews.beiju.me/chron/v0/entities", kind, start_at, None)
+                self.items("https://cheapcashews.beiju.me/chron/v0/entities", kind, max_retries, start_at, None)
             )
         }
     }
@@ -107,10 +109,11 @@ impl Chron {
         &self,
         url: &'static str,
         kind: &'static str,
+        max_retries: usize,
         start_at: Option<DateTime<Utc>>,
         end_at: Option<DateTime<Utc>>,
     ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
-        self.pages(url, kind, start_at, end_at)
+        self.pages(url, kind, max_retries, start_at, end_at)
             .flat_map(|val| match val {
                 Ok(vec) => {
                     // Turn Vec<T> into a stream of Result<T, E>
@@ -138,6 +141,7 @@ impl Chron {
         &self,
         url: &'static str,
         kind: &'static str,
+        max_retries: usize,
         start_at: Option<DateTime<Utc>>,
         end_at: Option<DateTime<Utc>>,
     ) -> impl Stream<Item = Result<Vec<ChronEntity<serde_json::Value>>, ChronStreamError>> {
@@ -148,7 +152,7 @@ impl Chron {
         // Use tokio::spawn to eagerly fetch the next page while the caller is doing other work
         let start_at_for_first_fetch = start_at;
         let next_page = tokio::spawn(async move {
-            get_next_page(client, url, kind, page_size, start_at_for_first_fetch, end_at, None)
+            get_next_page_with_retries(client, url, kind, max_retries, page_size, start_at_for_first_fetch, end_at, None)
         });
 
         // I do not understand why a non-async closure with an async block inside works,
@@ -186,10 +190,11 @@ impl Chron {
                     if page.items.len() >= page_size {
                         // Then there are more pages
                         let next_page_fut = tokio::spawn(async move {
-                            get_next_page(
+                            get_next_page_with_retries(
                                 client,
                                 url,
                                 kind,
+                                max_retries,
                                 page_size,
                                 start_at_for_first_fetch,
                                 end_at,
@@ -215,15 +220,41 @@ impl Chron {
     }
 }
 
-async fn get_next_page(
+async fn get_next_page_with_retries(
     client: reqwest::Client,
     url: &str,
     kind: &str,
+    max_retries: usize,
     page_size: usize,
     start_at: Option<DateTime<Utc>>,
     end_at: Option<DateTime<Utc>>,
     page: Option<String>,
 ) -> Result<(reqwest::Client, ChronEntities<serde_json::Value>), ChronStreamError> {
+    let mut retries = 0;
+    loop {
+        match get_next_page(&client, url, kind, page_size, start_at, end_at, page.as_deref()).await {
+            Ok(next_page) => return Ok((client, next_page)),
+            Err(e) => {
+                if retries < max_retries {
+                    warn!("Chron encountered an error, will try again up to {} more times: {:?}", max_retries - retries, e);
+                    retries += 1;
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
+}
+
+async fn get_next_page(
+    client: &reqwest::Client,
+    url: &str,
+    kind: &str,
+    page_size: usize,
+    start_at: Option<DateTime<Utc>>,
+    end_at: Option<DateTime<Utc>>,
+    page: Option<&str>,
+) -> Result<ChronEntities<serde_json::Value>, ChronStreamError> {
     debug!("Fetching {kind} page {page:?} starting at {start_at:?}");
 
     let page_size_string = page_size.to_string();
@@ -243,7 +274,7 @@ async fn get_next_page(
     }
 
     if let Some(page) = page {
-        request_builder = request_builder.query(&[("page", &page)]);
+        request_builder = request_builder.query(&[("page", page)]);
     }
 
     let request = request_builder
@@ -265,5 +296,5 @@ async fn get_next_page(
     let items: ChronEntities<serde_json::Value> =
         serde_json::from_str(&result).map_err(ChronStreamError::DeserializeError)?;
 
-    Ok((client, items))
+    Ok(items)
 }

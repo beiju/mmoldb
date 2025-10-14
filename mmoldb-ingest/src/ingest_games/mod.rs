@@ -117,7 +117,7 @@ async fn ingest_raw_games(conn: &mut PgConnection, notify: Arc<Notify>) -> miett
     let chron = Chron::new(CHRON_FETCH_PAGE_SIZE);
 
     let stream = chron
-        .entities(GAME_KIND, start_date)
+        .entities(GAME_KIND, start_date, 3)
         .try_chunks(RAW_GAME_INSERT_BATCH_SIZE);
     pin_mut!(stream);
 
