@@ -276,6 +276,7 @@ impl VersionStage1Ingest {
                 .try_chunks(args.config.insert_raw_entity_batch_size);
             pin_mut!(stream);
 
+            let mut should_break = true;
             while let Some(chunk) = stream.next().await {
                 // When a chunked stream encounters an error, it returns the portion
                 // of the chunk that was collected before the error and the error
@@ -303,13 +304,14 @@ impl VersionStage1Ingest {
                     if retries < 3 {
                         retries += 1;
                         warn!("Chron error, retrying ({retries} of 3 attempts): {err}");
+                        should_break = false;
                     } else {
                         Err(err)?
                     }
                 }
             }
 
-            break
+            if should_break { break; }
         }
 
         info!("{} stage 1 ingest finished", self.kind);
