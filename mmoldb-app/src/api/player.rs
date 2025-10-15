@@ -39,7 +39,10 @@ pub struct ApiEquipment {
 
 #[derive(Clone, Serialize)]
 pub struct ApiReportAttribute {
-    pub stars: i32,
+    pub base_stars: Option<i32>,
+    pub base_total: Option<f64>,
+    pub modified_stars: Option<i32>,
+    pub modified_total: Option<f64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -481,7 +484,10 @@ pub async fn player_versions<'a>(
                 if let Some(report) = report {
                     if let Some(effect_slot) = report.attributes.get_mut(&attr) {
                         *effect_slot = Some(ApiReportAttribute {
-                            stars: attribute.stars,
+                            base_stars: attribute.base_stars,
+                            base_total: attribute.base_total,
+                            modified_stars: attribute.modified_stars,
+                            modified_total: attribute.modified_total,
                         })
                     } else {
                         warn!(
