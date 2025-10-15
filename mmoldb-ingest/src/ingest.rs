@@ -403,7 +403,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                         task.await.map_err(IngestFatalError::JoinError)??;
                     }
                     warn!("No child tasks exited with errors. Propagating the pipe error instead.");
-                    Err(pipe_err)?;
+                    return Err(IngestFatalError::SendFailed(pipe_err));
                 }
                 start_cursor = Some(new_cursor);
             }
