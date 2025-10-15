@@ -3165,7 +3165,7 @@ pub fn longest_game_by_innings(conn: &mut PgConnection) -> QueryResult<Option<Ga
 }
 
 #[derive(QueryableByName)]
-pub struct DbPlayerIdentityWithCount {
+pub struct DbPlayerIdentityWithValue {
     #[diesel(sql_type = Text)]
     pub mmolb_team_id: String,
     #[diesel(sql_type = Text)]
@@ -3179,11 +3179,12 @@ pub struct DbPlayerIdentityWithCount {
     pub mmolb_player_id: String,
     #[diesel(sql_type = Text)]
     pub player_name: String,
-    #[diesel(sql_type = BigInt)]
-    pub count: i64,
+    #[diesel(sql_type = Float8)]
+    pub value: f64,
 }
 
-pub fn highest_reported_attribute(conn: &mut PgConnection, attr_name: &str) -> QueryResult<Option<DbPlayerIdentityWithCount>> {
+// TODO Consider excluding the period during season 6 where values were fluctuating a lot
+pub fn highest_reported_attribute(conn: &mut PgConnection, attr_name: &str) -> QueryResult<Option<DbPlayerIdentityWithValue>> {
     sql_query("
         select
             tv.mmolb_team_id,
@@ -3192,7 +3193,7 @@ pub fn highest_reported_attribute(conn: &mut PgConnection, attr_name: &str) -> Q
             tv.name as team_name,
             pv.mmolb_player_id,
             pv.first_name || ' ' || pv.last_name as player_name,
-            prav.stars::bigint as count
+            prav.modified_total as value
         from data.player_report_attribute_versions prav
         inner join data.player_versions pv on pv.mmolb_player_id=prav.mmolb_player_id
             and prav.valid_from >= pv.valid_from and prav.valid_from < coalesce(pv.valid_until, 'infinity')
@@ -3200,8 +3201,8 @@ pub fn highest_reported_attribute(conn: &mut PgConnection, attr_name: &str) -> Q
         inner join data.team_versions tv on tv.mmolb_team_id=pv.mmolb_team_id
             and tv.valid_until is null
         inner join taxa.attribute a on a.id=prav.attribute
-        where a.name=$1
-        order by prav.stars desc, prav.valid_from asc
+        where a.name=$1 and prav.modified_total is not null
+        order by prav.modified_total desc, prav.valid_from asc
         limit 1
     ").bind::<Text, _>(attr_name).get_result(conn).optional()
 }

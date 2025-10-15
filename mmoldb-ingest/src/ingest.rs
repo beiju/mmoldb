@@ -393,8 +393,18 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 // This panics on OOB, which is correct
                 let (pipe, _) = &tasks[assigned_worker];
                 let new_cursor = (version.valid_from.naive_utc(), version.entity_id.clone());
-                pipe.send(version).await
-                    .map_err(IngestFatalError::SendFailed)?;
+
+                // If the send fails it's probably because a child errored. Propagate child
+                // errors first
+                if let Err(pipe_err) = pipe.send(version).await {
+                    warn!("Got a pipe error, which probably means there's an error in a child task. Joining child tasks...");
+                    for (pipe, task) in tasks.into_iter() {
+                        drop(pipe); // Signals child to exit
+                        task.await.map_err(IngestFatalError::JoinError)??;
+                    }
+                    warn!("No child tasks exited with errors. Propagating the pipe error instead.");
+                    Err(pipe_err)?;
+                }
                 start_cursor = Some(new_cursor);
             }
 

@@ -238,7 +238,7 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
                 .map(|r| r.map(|r| {
                     Record {
                         title: format!("Highest reported {attr} stars"),
-                        description: Some("Does not include items or boons"),
+                        description: Some("As shown in the player report section with items and boons enabled"),
                         holder: RecordHolder::Player {
                             mmolb_team_id: r.mmolb_team_id,
                             team_emoji: r.team_emoji,
@@ -247,7 +247,7 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
                             mmolb_player_id: r.mmolb_player_id,
                             player_name: r.player_name,
                         },
-                        record: format!("{} stars", r.count),
+                        record: format!("{}", r.value * 100.0),
                     }
                 }))
         })
