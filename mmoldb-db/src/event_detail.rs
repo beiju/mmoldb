@@ -389,7 +389,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
-                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -399,6 +399,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
             },
             TaxaEventType::SwingingStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Swinging,
@@ -418,6 +419,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
             },
             TaxaEventType::FoulTip => ParsedEventMessage::Foul {
                 foul: FoulType::Tip,
@@ -436,6 +438,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
             },
             TaxaEventType::FoulBall => ParsedEventMessage::Foul {
                 foul: FoulType::Ball,
@@ -605,6 +608,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
             },
             TaxaEventType::DoublePlay => {
                 let scores = self.scores();
