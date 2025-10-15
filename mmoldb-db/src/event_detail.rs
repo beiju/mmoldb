@@ -9,10 +9,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
-use mmolb_parsing::parsed_event::{
-    BaseSteal, Cheer, DoorPrize, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance,
-    RunnerOut, SnappedPhotos,
-};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
 use std::fmt::Formatter;
 use thiserror::Error;
 
@@ -74,6 +71,7 @@ pub struct EventDetail<StrT: Clone> {
     pub aurora_photos: Option<SnappedPhotos<StrT>>,
     pub ejection: Option<Ejection<StrT>>,
     pub door_prizes: Vec<DoorPrize<StrT>>,
+    pub wither: Option<WitherStruggle<StrT>>,
 }
 
 #[derive(Debug)]
@@ -381,6 +379,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,
@@ -390,6 +389,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -408,6 +408,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -425,6 +426,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
             },
             TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
                 foul: Some(FoulType::Tip),
@@ -442,6 +444,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
@@ -549,6 +552,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
             },
             TaxaEventType::HomeRun => {
                 let mut scores = self.scores();
@@ -764,4 +768,14 @@ pub struct PartyEvent<StrT: Clone> {
     pub batter_name: StrT,
     pub batter_amount_gained: i32,
     pub batter_attribute: TaxaAttribute,
+}
+
+#[derive(Debug, Clone)]
+pub struct WitherOutcome<StrT: Clone> {
+    pub struggle_game_event_index: i32,
+    pub outcome_game_event_index: i32,
+    pub team_emoji: StrT,
+    pub player_position: TaxaSlot,
+    pub player_name: StrT,
+    pub corrupted: bool,
 }

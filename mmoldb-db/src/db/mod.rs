@@ -24,9 +24,9 @@ use std::iter;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither};
 use crate::taxa::Taxa;
-use crate::{PartyEvent, PitcherChange, QueryError};
+use crate::{PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
 pub fn set_current_user_statement_timeout(
     conn: &mut PgConnection,
@@ -455,6 +455,37 @@ pub fn group_child_table_results<'a, ChildT>(
     results
 }
 
+pub fn group_wither_table_results<'a>(
+    games_events: impl IntoIterator<Item = &'a Vec<DbEvent>>,
+    withers: Vec<DbWither>,
+) -> Vec<Vec<Vec<DbWither>>> {
+    let mut wither_iter = withers.into_iter().peekable();
+
+    let results = games_events
+        .into_iter()
+        .map(|game_events| {
+            game_events
+                .iter()
+                .map(|game_event| {
+                    let mut children = Vec::new();
+                    while let Some(child) =
+                        wither_iter.next_if(|f|
+                            f.game_id == game_event.game_id &&
+                                f.struggle_game_event_index == game_event.game_event_index
+                        ) {
+                        children.push(child);
+                    }
+                    children
+                })
+                .collect_vec()
+        })
+        .collect_vec();
+
+    assert_eq!(wither_iter.count(), 0);
+
+    results
+}
+
 pub fn events_for_games(
     conn: &mut PgConnection,
     taxa: &Taxa,
@@ -471,6 +502,7 @@ pub fn events_for_games(
     use crate::data_schema::data::event_fielders::dsl as fielder_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
+    use crate::data_schema::data::wither::dsl as wither_dsl;
 
     let get_game_ids_start = Utc::now();
     let game_ids = games_dsl::games
@@ -590,6 +622,22 @@ pub fn events_for_games(
     let _group_door_prize_items_duration =
         (Utc::now() - group_door_prize_items_start).as_seconds_f64();
 
+    let get_wither_start = Utc::now();
+    let db_wither = wither_dsl::wither
+        .filter(wither_dsl::game_id.eq_any(&game_ids))
+        .order_by((
+            wither_dsl::game_id,
+        ))
+        .select(DbWither::as_select())
+        .load(conn)?;
+    let _get_wither_duration = (Utc::now() - get_wither_start).as_seconds_f64();
+
+    let group_wither_start = Utc::now();
+    let db_wither: Vec<Vec<Vec<DbWither>>> =
+        group_wither_table_results(&db_games_events, db_wither);
+    let _group_wither_duration =
+        (Utc::now() - group_wither_start).as_seconds_f64();
+
     let post_process_start = Utc::now();
     let result = itertools::izip!(
         game_ids,
@@ -599,7 +647,8 @@ pub fn events_for_games(
         db_aurora_photos,
         db_ejections,
         db_door_prizes,
-        db_door_prize_items
+        db_door_prize_items,
+        db_wither,
     )
     .map(
         |(
@@ -611,6 +660,7 @@ pub fn events_for_games(
             ejections,
             door_prizes,
             door_prize_items,
+            wither,
         )| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
@@ -621,7 +671,8 @@ pub fn events_for_games(
                 aurora_photos,
                 ejections,
                 door_prizes,
-                door_prize_items
+                door_prize_items,
+                wither,
             )
             .map(
                 |(
@@ -632,6 +683,7 @@ pub fn events_for_games(
                     ejection,
                     door_prizes,
                     door_prize_items,
+                    wither,
                 )| {
                     to_db_format::row_to_event(
                         taxa,
@@ -642,6 +694,7 @@ pub fn events_for_games(
                         ejection,
                         door_prizes,
                         door_prize_items,
+                        wither,
                     )
                 },
             )
@@ -673,6 +726,7 @@ pub struct CompletedGameForDb<'g> {
     pub events: Vec<EventDetail<&'g str>>,
     pub pitcher_changes: Vec<PitcherChange<&'g str>>,
     pub parties: Vec<PartyEvent<&'g str>>,
+    pub withers: Vec<WitherOutcome<&'g str>>,
     pub logs: Vec<Vec<IngestLog>>,
     // This is used for verifying the round trip
     pub parsed_game: Vec<ParsedEventMessage<&'g str>>,
@@ -795,6 +849,7 @@ fn insert_games_internal<'e>(
     use crate::data_schema::data::pitcher_changes::dsl as pitcher_changes_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
     use crate::info_schema::info::raw_events::dsl as raw_events_dsl;
+    use crate::data_schema::data::wither::dsl as withers_dsl;
 
     // First delete all games. If particular debug settings are turned on this may happen for every
     // game, but even in release mode we may need to delete partial games and replace them with
@@ -1258,6 +1313,29 @@ fn insert_games_internal<'e>(
         n_parties_inserted,
     );
     let _insert_parties_duration = (Utc::now() - insert_parties_start).as_seconds_f64();
+
+    let insert_withers_start = Utc::now();
+    let new_withers: Vec<_> = completed_games
+        .iter()
+        .flat_map(|(game_id, game)| {
+            game.withers
+                .iter()
+                .map(|wither| to_db_format::wither_to_rows(taxa, *game_id, wither))
+        })
+        .collect();
+
+    let n_withers_to_insert = new_withers.len();
+    let n_withers_inserted = diesel::copy_from(withers_dsl::wither)
+        .from_insertable(&new_withers)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_withers_to_insert == n_withers_inserted,
+        "withers insert should have inserted {} rows, but it inserted {}",
+        n_withers_to_insert,
+        n_withers_inserted,
+    );
+    let _insert_withers_duration = (Utc::now() - insert_withers_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,

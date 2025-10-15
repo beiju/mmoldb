@@ -675,14 +675,26 @@ fn report_as_new<'e>(
             attribute: taxa.attribute_id((*attribute).into()),
             valid_from: entity.valid_from.naive_utc(),
             valid_until: None,
-            stars: match stars {
-                TalkStars::Simple(stars) => { *stars as i32 },
-                TalkStars::Complex { stars, .. } => { *stars as i32 },
+            base_stars: match stars {
+                TalkStars::Simple(stars) => Some(*stars as i32),
+                TalkStars::Intermediate { .. } => None,
+                TalkStars::Complex { base_stars, .. } => Some(*base_stars as i32),
             },
-            total: match stars {
-                TalkStars::Simple(_) => { None }
-                TalkStars::Complex { total, .. } => { Some(*total) }
-            }
+            base_total: match stars {
+                TalkStars::Simple(_) => None,
+                TalkStars::Intermediate { .. } => None,
+                TalkStars::Complex { base_total, .. } => Some(*base_total),
+            },
+            modified_stars: match stars {
+                TalkStars::Simple(_) => None,
+                TalkStars::Intermediate { stars, .. } => Some(*stars as i32),
+                TalkStars::Complex { stars, .. } => Some(*stars as i32)
+            },
+            modified_total: match stars {
+                TalkStars::Simple(_) => None,
+                TalkStars::Intermediate { total, .. } => Some(*total),
+                TalkStars::Complex { total, .. } => Some(*total),
+            },
         })
         .collect_vec();
 

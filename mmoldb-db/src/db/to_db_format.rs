@@ -1,18 +1,11 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{
-    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner,
-    NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent,
-    NewFielder, NewParty, NewPitcherChange,
-};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent, NewFielder, NewParty, NewPitcherChange, NewWither};
 use crate::taxa::Taxa;
-use crate::{PartyEvent, PitcherChange};
+use crate::{PartyEvent, PitcherChange, WitherOutcome};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
-use mmolb_parsing::parsed_event::{
-    Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes,
-    PlacedPlayer, Prize, SnappedPhotos, ViolationType,
-};
+use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
 use std::str::FromStr;
 use strum::ParseError;
 use thiserror::Error;
@@ -268,6 +261,22 @@ pub fn party_to_rows<'e>(
     ]
 }
 
+pub fn wither_to_rows<'e>(
+    taxa: &Taxa,
+    game_id: i64,
+    wither: &'e WitherOutcome<&'e str>,
+) -> NewWither<'e> {
+    NewWither {
+        game_id,
+        struggle_game_event_index: wither.struggle_game_event_index,
+        outcome_game_event_index: wither.outcome_game_event_index,
+        team_emoji: wither.team_emoji,
+        player_position: taxa.slot_id(wither.player_position),
+        player_name: wither.player_name,
+        corrupted: wither.corrupted,
+    }
+}
+
 #[derive(Debug, Error, Diagnostic)]
 pub enum RowToEventError {
     #[error("invalid event type id {0}")]
@@ -278,6 +287,9 @@ pub enum RowToEventError {
 
     #[error("invalid number of ejections on a single event (expected 0 or 1, not {0})")]
     InvalidNumberOfEjections(usize),
+
+    #[error("invalid number of wither struggles on a single event (expected 0 or 1, not {0})")]
+    InvalidNumberOfWitherStruggles(usize),
 
     #[error(
         "{item_index}th prize {door_prize_index} for {player_name} failed to parse item name: \
@@ -341,6 +353,7 @@ pub fn row_to_event<'e>(
     ejection: Vec<DbEjection>,
     door_prizes: Vec<DbDoorPrize>,
     door_prize_items: Vec<DbDoorPrizeItem>,
+    wither: Vec<DbWither>
 ) -> Result<EventDetail<String>, RowToEventError> {
     let baserunners = runners
         .into_iter()
@@ -537,6 +550,23 @@ pub fn row_to_event<'e>(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    let wither = match wither.len() {
+        0 => None,
+        1 => {
+            let (wither,) = wither.into_iter().collect_tuple().unwrap();
+            Some(WitherStruggle {
+                team_emoji: wither.team_emoji,
+                player: PlacedPlayer {
+                    name: wither.player_name,
+                    place: taxa.slot_from_id(wither.player_position).into(),
+                },
+            })
+        },
+        other => {
+            return Err(RowToEventError::InvalidNumberOfWitherStruggles(other));
+        }
+    };
+
     Ok(EventDetail {
         game_event_index: event.game_event_index as usize,
         fair_ball_event_index: event.fair_ball_event_index.map(|i| i as usize),
@@ -582,5 +612,6 @@ pub fn row_to_event<'e>(
         aurora_photos,
         ejection,
         door_prizes,
+        wither,
     })
 }

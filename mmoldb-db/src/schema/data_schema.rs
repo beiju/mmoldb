@@ -304,8 +304,10 @@ pub mod data {
             attribute -> Int8,
             valid_from -> Timestamp,
             valid_until -> Nullable<Timestamp>,
-            stars -> Int4,
-            total -> Nullable<Float8>,
+            base_stars -> Nullable<Int4>,
+            base_total -> Nullable<Float8>,
+            modified_stars -> Nullable<Int4>,
+            modified_total -> Nullable<Float8>,
         }
     }
 
@@ -431,6 +433,19 @@ pub mod data {
         }
     }
 
+    diesel::table! {
+        data.wither (id) {
+            id -> Int8,
+            game_id -> Int8,
+            struggle_game_event_index -> Int4,
+            outcome_game_event_index -> Int4,
+            team_emoji -> Text,
+            player_position -> Int8,
+            player_name -> Text,
+            corrupted -> Bool,
+        }
+    }
+
     diesel::joinable!(aurora_photos -> events (event_id));
     diesel::joinable!(door_prize_items -> events (event_id));
     diesel::joinable!(door_prizes -> events (event_id));
@@ -442,6 +457,7 @@ pub mod data {
     diesel::joinable!(parties -> games (game_id));
     diesel::joinable!(pitcher_changes -> games (game_id));
     diesel::joinable!(player_modification_versions -> modifications (modification_id));
+    diesel::joinable!(wither -> games (game_id));
 
     diesel::allow_tables_to_appear_in_same_query!(
         aurora_photos,
@@ -472,5 +488,6 @@ pub mod data {
         team_versions,
         versions,
         weather,
+        wither,
     );
 }

@@ -613,8 +613,10 @@ pub struct DbPlayerReportAttributeVersion {
     pub attribute: i64,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
-    pub stars: i32,
-    pub total: Option<f64>,
+    pub base_stars: Option<i32>,
+    pub base_total: Option<f64>,
+    pub modified_stars: Option<i32>,
+    pub modified_total: Option<f64>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -626,8 +628,10 @@ pub struct NewPlayerReportAttributeVersion<'a> {
     pub attribute: i64,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
-    pub stars: i32,
-    pub total: Option<f64>,
+    pub base_stars: Option<i32>,
+    pub base_total: Option<f64>,
+    pub modified_stars: Option<i32>,
+    pub modified_total: Option<f64>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -1017,4 +1021,31 @@ pub struct NewTeamGamePlayed<'a> {
     pub feed_event_index: i32,
     pub time: NaiveDateTime,
     pub mmolb_game_id: &'a str,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::wither)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewWither<'a> {
+    pub game_id: i64,
+    pub struggle_game_event_index: i32,
+    pub outcome_game_event_index: i32,
+    pub team_emoji: &'a str,
+    pub player_position: i64,
+    pub player_name: &'a str,
+    pub corrupted: bool,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::wither)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbWither {
+    pub id: i64,
+    pub game_id: i64,
+    pub struggle_game_event_index: i32,
+    pub outcome_game_event_index: i32,
+    pub team_emoji: String,
+    pub player_position: i64,
+    pub player_name: String,
+    pub corrupted: bool,
 }

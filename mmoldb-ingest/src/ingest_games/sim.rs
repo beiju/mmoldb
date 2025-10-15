@@ -5,19 +5,12 @@ use miette::Diagnostic;
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType, TopBottom};
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{
-    BaseSteal, Cheer, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome,
-    FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance,
-    RunnerOut, SnappedPhotos, StartOfInningPitcher,
-};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WitherStruggle};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
 };
-use mmoldb_db::{
-    BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner,
-    IngestLog, PartyEvent, PitcherChange,
-};
+use mmoldb_db::{BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner, IngestLog, PartyEvent, PitcherChange, WitherOutcome};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::fmt::Write;
@@ -232,6 +225,12 @@ enum EventContext<'g> {
     ExpectFairBallOutcome(&'g str, FairBall<'g>),
     ExpectFallingStarOutcome {
         falling_star_hit_player: &'g str,
+        batter_name: &'g str,
+        first_pitch_of_plate_appearance: bool,
+    },
+    ExpectWitherOutcome {
+        struggle: WitherStruggle<&'g str>,
+        struggle_game_event_index: usize,
         batter_name: &'g str,
         first_pitch_of_plate_appearance: bool,
     },
@@ -523,6 +522,7 @@ struct EventDetailBuilder<'g> {
     aurora_photos: Option<SnappedPhotos<&'g str>>,
     ejection: Option<Ejection<&'g str>>,
     door_prizes: Vec<DoorPrize<&'g str>>,
+    wither: Option<WitherStruggle<&'g str>>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
@@ -727,6 +727,11 @@ impl<'g> EventDetailBuilder<'g> {
 
     fn ejection(mut self, ejection: Option<Ejection<&'g str>>) -> Self {
         self.ejection = ejection;
+        self
+    }
+
+    fn wither(mut self, wither: Option<WitherStruggle<&'g str>>) -> Self {
+        self.wither = wither;
         self
     }
 
@@ -1042,6 +1047,7 @@ impl<'g> EventDetailBuilder<'g> {
             aurora_photos: self.aurora_photos,
             ejection: self.ejection,
             door_prizes: self.door_prizes,
+            wither: self.wither,
         }
     }
 }
@@ -1072,6 +1078,7 @@ pub enum EventForTable<StrT: Clone> {
     EventDetail(EventDetail<StrT>),
     PitcherChange(PitcherChange<StrT>),
     Party(PartyEvent<StrT>),
+    WitherOutcome(WitherOutcome<StrT>),
 }
 
 fn map_fielder_location(place: Place) -> Option<TaxaFielderLocation> {
@@ -1691,6 +1698,7 @@ impl<'g> Game<'g> {
             aurora_photos: None,
             ejection: None,
             door_prizes: Vec::new(),
+            wither: None,
         }
     }
 
@@ -2556,7 +2564,7 @@ impl<'g> Game<'g> {
                 game_event!(
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
-                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes } => {
+                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes, wither } => {
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
                         self.update_runners(
@@ -2570,6 +2578,15 @@ impl<'g> Game<'g> {
                         );
                         self.handle_ejection(ejection, ingest_logs);
 
+                        if let Some(struggle) = wither {
+                            self.state.context = EventContext::ExpectWitherOutcome {
+                                struggle: struggle.clone(),
+                                struggle_game_event_index: game_event_index,
+                                batter_name,
+                                first_pitch_of_plate_appearance,
+                            }
+                        }
+
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
@@ -2577,16 +2594,26 @@ impl<'g> Game<'g> {
                             .ejection(ejection.clone())
                             .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
+                            .wither(wither.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither } => {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
                         self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
                         self.handle_ejection(ejection, ingest_logs);
 
+                        if let Some(struggle) = wither {
+                            self.state.context = EventContext::ExpectWitherOutcome {
+                                struggle: struggle.clone(),
+                                struggle_game_event_index: game_event_index,
+                                batter_name,
+                                first_pitch_of_plate_appearance,
+                            }
+                        }
+
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
@@ -2594,6 +2621,7 @@ impl<'g> Game<'g> {
                             .ejection(ejection.clone())
                             .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
+                            .wither(wither.clone())
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
                                 StrikeType::Swinging => { TaxaEventType::SwingingStrike }
@@ -2641,7 +2669,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
-                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes } => {
+                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes, wither } => {
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
                             self.state.count_strikes += 1;
@@ -2650,12 +2678,22 @@ impl<'g> Game<'g> {
 
                         self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
 
+                        if let Some(struggle) = wither {
+                            self.state.context = EventContext::ExpectWitherOutcome {
+                                struggle: struggle.clone(),
+                                struggle_game_event_index: game_event_index,
+                                batter_name,
+                                first_pitch_of_plate_appearance,
+                            }
+                        }
+
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
                             .aurora_photos(aurora_photos.clone())
                             .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
+                            .wither(wither.clone())
                             .build_some(self, batter_name, ingest_logs, match foul {
                                 FoulType::Tip => TaxaEventType::FoulTip,
                                 FoulType::Ball => TaxaEventType::FoulBall,
@@ -2677,7 +2715,7 @@ impl<'g> Game<'g> {
                         None
                     },
                     [ParsedEventMessageDiscriminants::Walk]
-                    ParsedEventMessage::Walk { batter, advances, scores, cheer, aurora_photos, ejection } => {
+                    ParsedEventMessage::Walk { batter, advances, scores, cheer, aurora_photos, ejection, wither } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(
@@ -3256,6 +3294,43 @@ impl<'g> Game<'g> {
 
                     None
                 },
+            ),
+            EventContext::ExpectWitherOutcome { struggle, struggle_game_event_index, batter_name, first_pitch_of_plate_appearance } => game_event!(
+                (previous_event, event),
+                [ParsedEventMessageDiscriminants::WeatherWither]
+                ParsedEventMessage::WeatherWither { team_emoji, player, corrupted } => {
+                    if *team_emoji != struggle.team_emoji {
+                        ingest_logs.warn(format!(
+                            "Wither outcome had a different team emoji to the wither struggle. \
+                            Outcome had {}, struggle had {}",
+                            team_emoji,
+                            struggle.team_emoji,
+                        ));
+                    }
+
+                    if *player != struggle.player {
+                        ingest_logs.warn(format!(
+                            "Wither outcome had a different player to the wither struggle. \
+                            Outcome had {}, struggle had {}",
+                            player,
+                            struggle.player,
+                        ));
+                    }
+
+                    self.state.context = EventContext::ExpectPitch {
+                        batter_name,
+                        first_pitch_of_plate_appearance,
+                    };
+
+                    Some(EventForTable::WitherOutcome(WitherOutcome {
+                        struggle_game_event_index: struggle_game_event_index as i32,
+                        outcome_game_event_index: game_event_index as i32,
+                        team_emoji: struggle.team_emoji,
+                        player_position: struggle.player.place.into(),
+                        player_name: struggle.player.name,
+                        corrupted: *corrupted,
+                    }))
+                }
             ),
             EventContext::ExpectInningEnd => game_event!(
                 (previous_event, event),
