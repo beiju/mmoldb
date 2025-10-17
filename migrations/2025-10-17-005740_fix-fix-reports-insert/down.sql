@@ -1,5 +1,3 @@
--- This was initially committed and used with up and down swapped. I've now made it so up and down are
--- identical, which I think is the right way to fix this sort of thing
 drop trigger on_insert_player_report_attribute_version_trigger on data.player_report_attribute_versions;
 drop function data.on_insert_player_report_attribute_version;
 create function data.on_insert_player_report_attribute_version()

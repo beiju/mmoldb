@@ -19,6 +19,7 @@ truncate table
     data.door_prize_items,
     data.pitcher_changes,
     data.parties,
+    data.wither,
     info.raw_events,
 
     -- player
