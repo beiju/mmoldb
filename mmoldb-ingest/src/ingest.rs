@@ -503,7 +503,6 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                     warn!("{} ingest task got a {} entity!", self.kind, entity.kind);
                 }
 
-                let data = entity.data.clone(); // Temp
                 match serde_json::from_value(entity.data) {
                     Ok(data) => Either::Left(ChronEntity {
                         kind: entity.kind,
@@ -547,12 +546,6 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
             .unwrap_or(Utc::now());
         let time_ago = latest_time.signed_duration_since(Utc::now());
         let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
-
-        // Convert to Insertable type
-        let batchable = entities
-            .iter()
-            .map(|v| (v.entity_id.as_str(), ))
-            .collect_vec();
 
         // The handling of valid_until is entirely in the database layer, but its logic
         // requires that a given batch of {kind}s does not have the same team twice. We

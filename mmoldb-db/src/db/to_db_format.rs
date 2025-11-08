@@ -7,6 +7,7 @@ use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
 use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
 use std::str::FromStr;
+use log::warn;
 use strum::ParseError;
 use thiserror::Error;
 
@@ -178,6 +179,14 @@ pub fn event_to_door_prize<'e>(
         .collect()
 }
 
+pub fn split_affixes<'e>(item: &Item<&'e str>) -> (Option<ItemPrefix>, Option<ItemSuffix>, Option<&'e str>) {
+    match item.affixes {
+        ItemAffixes::None => (None, None, None),
+        ItemAffixes::PrefixSuffix(prefix, suffix) => (prefix, suffix, None),
+        ItemAffixes::RareName(rare_name) => (None, None, Some(rare_name)),
+    }
+}
+
 pub fn event_to_door_prize_items<'e>(
     event_id: i64,
     event: &'e EventDetail<&'e str>,
@@ -191,11 +200,25 @@ pub fn event_to_door_prize_items<'e>(
             Some(Prize::Items(items)) => items
                 .iter()
                 .enumerate()
-                .map(|(item_index, item)| {
-                    let (prefix, suffix, rare_name) = match item.affixes {
-                        ItemAffixes::None => (None, None, None),
-                        ItemAffixes::PrefixSuffix(prefix, suffix) => (prefix, suffix, None),
-                        ItemAffixes::RareName(rare_name) => (None, None, Some(rare_name)),
+                .map(|(item_index, (item, equipped))| {
+                    let (prefix, suffix, rare_name) = split_affixes(item);
+
+                    let (equipped_by, (
+                        discarded_item_emoji,
+                        discarded_item_name,
+                        discarded_item_rare_name,
+                        discarded_item_prefix,
+                        discarded_item_suffix,
+                    )) = if let Some((equipped_by, discarded_item)) = equipped {
+                        let discarded_item = if let Some(discarded_item) = discarded_item {
+                            let (prefix, suffix, rare_name) = split_affixes(discarded_item);
+                            (Some(discarded_item.item_emoji), Some(discarded_item.item), rare_name, prefix, suffix)
+                        } else {
+                            (None, None, None, None, None)
+                        };
+                        (Some(*equipped_by), discarded_item)
+                    } else {
+                        (None, (None, None, None, None, None))
                     };
 
                     NewDoorPrizeItem {
@@ -207,6 +230,12 @@ pub fn event_to_door_prize_items<'e>(
                         rare_name,
                         prefix: prefix.map(Into::into),
                         suffix: suffix.map(Into::into),
+                        equipped_by,
+                        discarded_item_emoji,
+                        discarded_item_name: discarded_item_name.map(Into::into),
+                        discarded_item_rare_name,
+                        discarded_item_prefix: discarded_item_prefix.map(Into::into),
+                        discarded_item_suffix: discarded_item_suffix.map(Into::into),
                     }
                 })
                 .collect(),
@@ -292,41 +321,48 @@ pub enum RowToEventError {
     InvalidNumberOfWitherStruggles(usize),
 
     #[error(
-        "{item_index}th prize {door_prize_index} for {player_name} failed to parse item name: \
-        {parse_error}"
+        "{item_index}th prize {door_prize_index} for {player_name} failed to parse item name \
+        (discarded: {discarded}): {parse_error}"
     )]
     InvalidItemNameInPrize {
         door_prize_index: i32, // index of this prize within the event
         item_index: i32,       // index of this item within the prize
+        discarded: bool,       // whether this error comes from the discarded item
         player_name: String,
         parse_error: ParseError,
     },
 
-    #[error("{item_index}th prize {door_prize_index} for {player_name} prefix was null")]
+    #[error(
+        "{item_index}th prize {door_prize_index} for {player_name} prefix was null \
+        (discarded: {discarded})"
+    )]
     NullPrizeItemPrefix {
         door_prize_index: i32, // index of this prize within the event
         item_index: i32,       // index of this item within the prize
+        discarded: bool,       // whether this error comes from the discarded item
         player_name: String,
     },
 
     #[error(
-        "{item_index}th prize {door_prize_index} for {player_name} prefix failed to parse: \
-        {parse_error}"
+        "{item_index}th prize {door_prize_index} for {player_name} prefix failed to parse \
+        (discarded: {discarded}): {parse_error}"
     )]
     InvalidPrizeItemPrefix {
         door_prize_index: i32, // index of this prize within the event
         item_index: i32,       // index of this item within the prize
+        discarded: bool,       // whether this error comes from the discarded item
         player_name: String,
         parse_error: ParseError,
     },
 
     #[error(
-        "{item_index}th prize {door_prize_index} for {player_name} suffix failed to parse: \
-        {parse_error}"
+        "{item_index}th prize {door_prize_index} for {player_name} suffix failed to parse \
+        (discarded: {discarded}): {parse_error}"
     )]
     InvalidPrizeItemSuffix {
         door_prize_index: i32, // index of this prize within the event
         item_index: i32,       // index of this item within the prize
+        discarded: bool,       // whether this error comes from the discarded item
         player_name: String,
         parse_error: ParseError,
     },
@@ -342,6 +378,73 @@ pub enum RowToEventError {
         num_tokens: i32,
         items: Vec<String>,
     },
+}
+
+pub fn build_item<'e>(
+    door_prize_index: i32,
+    item_index: i32,
+    discarded: bool,
+    player_name: &str,
+    emoji: String,
+    name: String,
+    rare_name: Option<String>,
+    prefix: Option<String>,
+    suffix: Option<String>,
+) -> Result<Item<String>, RowToEventError> {
+    Ok(Item {
+        item_emoji: emoji,
+        item: match ItemName::from_str(&name) {
+            Ok(name) => name,
+            Err(parse_error) => {
+                return Err(RowToEventError::InvalidItemNameInPrize {
+                    door_prize_index,
+                    item_index,
+                    discarded,
+                    player_name: player_name.to_string(),
+                    parse_error,
+                });
+            }
+        },
+        affixes: if let Some(rare_name) = rare_name {
+            // TODO Warn if there's also prefixes and suffixes
+            ItemAffixes::RareName(rare_name)
+        } else {
+            match (prefix, suffix) {
+                (None, None) => ItemAffixes::None,
+                (prefix, suffix) => {
+                    let prefix: Option<ItemPrefix> = prefix
+                        .as_deref()
+                        .map(ItemPrefix::from_str)
+                        .transpose()
+                        .map_err(|parse_error| {
+                            RowToEventError::InvalidPrizeItemPrefix {
+                                door_prize_index,
+                                item_index,
+                                discarded,
+                                player_name: player_name.to_string(),
+                                parse_error,
+                            }
+                        })?;
+
+                    let suffix: Option<ItemSuffix> = suffix
+                        .as_deref()
+                        .map(ItemSuffix::from_str)
+                        .transpose()
+                        .map_err(|parse_error| {
+                            RowToEventError::InvalidPrizeItemSuffix {
+                                door_prize_index,
+                                item_index,
+                                discarded,
+                                player_name: player_name.to_string(),
+                                parse_error,
+                            }
+                        })?;
+
+                    ItemAffixes::PrefixSuffix(prefix, suffix)
+                }
+            }
+        },
+    })
 }
 
 pub fn row_to_event<'e>(
@@ -459,63 +562,54 @@ pub fn row_to_event<'e>(
                         prize_items
                             .into_iter()
                             .map(|prize_item| {
-                                Ok(Item {
-                                    item_emoji: prize_item.emoji,
-                                    item: match ItemName::from_str(&prize_item.name) {
-                                        Ok(name) => name,
-                                        Err(parse_error) => {
-                                            return Err(RowToEventError::InvalidItemNameInPrize {
-                                                door_prize_index: prize_item.door_prize_index,
-                                                item_index: prize_item.item_index,
-                                                player_name: door_prize.player_name.clone(),
-                                                parse_error,
-                                            });
-                                        }
-                                    },
-                                    affixes: if let Some(rare_name) = prize_item.rare_name {
-                                        // TODO Warn if there's also prefixes and suffixes
-                                        ItemAffixes::RareName(rare_name)
-                                    } else {
-                                        match (prize_item.prefix, prize_item.suffix) {
-                                            (None, None) => ItemAffixes::None,
-                                            (prefix, suffix) => {
-                                                let prefix: Option<ItemPrefix> = prefix
-                                                    .as_deref()
-                                                    .map(ItemPrefix::from_str)
-                                                    .transpose()
-                                                    .map_err(|parse_error| {
-                                                        RowToEventError::InvalidPrizeItemPrefix {
-                                                            door_prize_index: prize_item
-                                                                .door_prize_index,
-                                                            item_index: prize_item.item_index,
-                                                            player_name: door_prize
-                                                                .player_name
-                                                                .clone(),
-                                                            parse_error,
-                                                        }
-                                                    })?;
+                                let item = build_item(
+                                    prize_item.door_prize_index,
+                                    prize_item.item_index,
+                                    false,
+                                    &door_prize.player_name,
+                                    prize_item.emoji,
+                                    prize_item.name,
+                                    prize_item.rare_name,
+                                    prize_item.prefix,
+                                    prize_item.suffix,
+                                )?;
 
-                                                let suffix: Option<ItemSuffix> = suffix
-                                                    .as_deref()
-                                                    .map(ItemSuffix::from_str)
-                                                    .transpose()
-                                                    .map_err(|parse_error| {
-                                                        RowToEventError::InvalidPrizeItemSuffix {
-                                                            door_prize_index: prize_item
-                                                                .door_prize_index,
-                                                            item_index: prize_item.item_index,
-                                                            player_name: door_prize
-                                                                .player_name
-                                                                .clone(),
-                                                            parse_error,
-                                                        }
-                                                    })?;
+                                let equip = if let Some(equipper_name) = prize_item.equipped_by {
+                                    let discarded_item = match (prize_item.discarded_item_emoji, prize_item.discarded_item_name) {
+                                        (None, None) => None,
+                                        (Some(_), None) => {
+                                            warn!("Got a discarded item emoji without an equipping player");
+                                            None
+                                        },
+                                        (None, Some(_)) => {
+                                            warn!("Got a discarded item name without an equipping player");
+                                            None
+                                        },
+                                        (Some(emoji), Some(name)) => Some(build_item(
+                                            prize_item.door_prize_index,
+                                            prize_item.item_index,
+                                            true,
+                                            &door_prize.player_name,
+                                            emoji,
+                                            name,
+                                            prize_item.discarded_item_rare_name,
+                                            prize_item.discarded_item_prefix,
+                                            prize_item.discarded_item_suffix,
+                                        )?)
+                                    };
 
-                                                ItemAffixes::PrefixSuffix(prefix, suffix)
-                                            }
-                                        }
-                                    },
-                                })
+                                    Some((equipper_name, discarded_item))
+                                } else {
+                                    if prize_item.discarded_item_emoji.is_some() {
+                                        warn!("Got a discarded item emoji without an equipping player");
+                                    }
+                                    if prize_item.discarded_item_name.is_some() {
+                                        warn!("Got a discarded item name without an equipping player");
+                                    }
+                                    None
+                                };
+
+                                Ok((item, equip))
                             })
                             .collect::<Result<Vec<_>, _>>()?,
                     )))

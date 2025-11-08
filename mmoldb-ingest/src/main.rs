@@ -11,12 +11,11 @@ use crate::ingest_teams::TeamIngest;
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::pin_mut;
-use log::{debug, info, warn};
+use log::{debug, info};
 use miette::{Context, IntoDiagnostic};
 use mmoldb_db::{db, ConnectionPool};
 use tokio_util::sync::CancellationToken;
 use config::IngestConfig;
-use crate::ingest::Ingestor;
 
 pub use ingest::*;
 use crate::ingest_player_feed::PlayerFeedIngest;

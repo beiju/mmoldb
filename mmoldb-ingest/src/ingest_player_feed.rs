@@ -749,18 +749,15 @@ pub fn chron_player_feed_as_new<'a>(
                 }
             }
             ParsedPlayerFeedEventText::Retirement { .. } => {
-                // Warn if anything's happened to this player since they were
-                // Retirement.
-                if index + 1 != feed_items.len() {
-                    ingest_logs.warn(format!(
-                        "Retirement event wasn't the last event in the player's feed. {}/{}",
-                        index + 1,
-                        feed_items.len(),
-                    ));
-                }
+                // I used to warn if anything's happened to this player since they were
+                // Retired, but there's too many things that happen anyway (durability
+                // loss and duplicate retirement for a start)
             }
             ParsedPlayerFeedEventText::Modification { .. } => {
                 // See comment on HitByFallingStar
+            }
+            ParsedPlayerFeedEventText::DoorPrize { .. } => {
+                // See comment on Delivery
             }
         }
     }

@@ -834,8 +834,8 @@ pub struct NewTeamVersion<'a> {
     pub emoji: &'a str,
     pub color: &'a str,
     pub location: &'a str,
-    pub full_location: &'a str,
-    pub abbreviation: &'a str,
+    pub full_location: Option<&'a str>,
+    pub abbreviation: Option<&'a str>,
     pub championships: Option<i32>,
     pub mmolb_league_id: Option<&'a str>,
     pub ballpark_name: Option<&'a str>,
@@ -854,8 +854,8 @@ pub struct DbTeamVersion {
     pub emoji: String,
     pub color: String,
     pub location: String,
-    pub full_location: String,
-    pub abbreviation: String,
+    pub full_location: Option<String>,
+    pub abbreviation: Option<String>,
     pub championships: Option<i32>,
     pub mmolb_league_id: Option<String>,
     pub ballpark_name: Option<String>,
@@ -925,6 +925,12 @@ pub struct NewDoorPrizeItem<'a> {
     pub rare_name: Option<&'a str>,
     pub prefix: Option<&'a str>,
     pub suffix: Option<&'a str>,
+    pub equipped_by: Option<&'a str>,
+    pub discarded_item_emoji: Option<&'a str>,
+    pub discarded_item_name: Option<&'a str>,
+    pub discarded_item_rare_name: Option<&'a str>,
+    pub discarded_item_prefix: Option<&'a str>,
+    pub discarded_item_suffix: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -940,6 +946,12 @@ pub struct DbDoorPrizeItem {
     pub rare_name: Option<String>,
     pub prefix: Option<String>,
     pub suffix: Option<String>,
+    pub equipped_by: Option<String>,
+    pub discarded_item_emoji: Option<String>,
+    pub discarded_item_name: Option<String>,
+    pub discarded_item_rare_name: Option<String>,
+    pub discarded_item_prefix: Option<String>,
+    pub discarded_item_suffix: Option<String>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]

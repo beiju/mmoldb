@@ -5,12 +5,13 @@ use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use itertools::Itertools;
 use mmolb_parsing::enums::LinkType;
-use mmolb_parsing::feed_event::{FeedEvent, ParsedFeedEventText};
+use mmolb_parsing::feed_event::FeedEvent;
 use mmoldb_db::models::{NewTeamFeedVersion, NewTeamGamePlayed, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{db, PgConnection, QueryResult};
 use serde::Deserialize;
 use std::sync::Arc;
+use mmolb_parsing::team_feed::ParsedTeamFeedEventText;
 
 #[derive(Deserialize)]
 pub struct TeamFeedContainer {
@@ -92,15 +93,15 @@ pub fn chron_team_feed_as_new<'a>(
             continue;
         }
 
-        let parsed_event = mmolb_parsing::feed_event::parse_feed_event(event);
+        let parsed_event = mmolb_parsing::team_feed::parse_team_feed_event(event);
 
         match parsed_event {
-            ParsedFeedEventText::ParseError { error, text } => {
+            ParsedTeamFeedEventText::ParseError { error, text } => {
                 // I'm making this a warning because we don't care about most event types
                 // (and we can handle having a game for which we don't know the end time)
                 ingest_logs.warn(format!("Error parsing \"{text}\": {error}"));
             }
-            ParsedFeedEventText::GameResult { .. } => {
+            ParsedTeamFeedEventText::GameResult { .. } => {
                 let game_link = event.links
                     .iter()
                     .filter(|link| link.link_type == Ok(LinkType::Game))
@@ -124,6 +125,8 @@ pub fn chron_team_feed_as_new<'a>(
                 }
             }
             // We don't care about any other type of event
+            // TODO Add NewTeamGamePlayed for every other event type that happens at the
+            //   end of the game
             _ => {}
         }
     }

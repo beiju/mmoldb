@@ -23,6 +23,12 @@ pub mod data {
             rare_name -> Nullable<Text>,
             prefix -> Nullable<Text>,
             suffix -> Nullable<Text>,
+            equipped_by -> Nullable<Text>,
+            discarded_item_emoji -> Nullable<Text>,
+            discarded_item_name -> Nullable<Text>,
+            discarded_item_rare_name -> Nullable<Text>,
+            discarded_item_prefix -> Nullable<Text>,
+            discarded_item_suffix -> Nullable<Text>,
         }
     }
 
@@ -405,8 +411,8 @@ pub mod data {
             emoji -> Text,
             color -> Text,
             location -> Text,
-            full_location -> Text,
-            abbreviation -> Text,
+            full_location -> Nullable<Text>,
+            abbreviation -> Nullable<Text>,
             championships -> Nullable<Int4>,
             mmolb_league_id -> Nullable<Text>,
             ballpark_name -> Nullable<Text>,
