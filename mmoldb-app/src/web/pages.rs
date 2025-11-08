@@ -191,9 +191,21 @@ async fn paginated_ingest(
         "ingest",
         context! {
             index_url: uri!(index_page()),
+            timings_url: uri!(ingest_timings_page(ingest_id)),
             ingest: ingest,
             next_page_url: games_context.next_page_url,
             previous_page_url: games_context.previous_page_url,
+        },
+    ))
+}
+
+#[get("/ingest-timings/<ingest_id>")]
+pub async fn ingest_timings_page(ingest_id: i64, db: Db) -> Result<Template, AppError> {
+    Ok(Template::render(
+        "ingest-timings",
+        context! {
+            index_url: uri!(index_page()),
+            ingest_id: ingest_id,
         },
     ))
 }

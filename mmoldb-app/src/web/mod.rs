@@ -18,6 +18,7 @@ pub fn routes() -> Vec<rocket::Route> {
         pages::paginated_games_with_issues_page,
         pages::debug_no_games_page,
         pages::ingest_page,
+        pages::ingest_timings_page,
         pages::paginated_ingest_page,
         pages::game_page,
         pages::debug_always_error_page,

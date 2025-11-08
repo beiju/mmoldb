@@ -26,6 +26,8 @@
         {% else %}
         <p class="no-games">No games</p>
         {% endif %}
+
+        <a href="{{ timings_url }}">Timings</a>
     </section>
 </body>
 </html>

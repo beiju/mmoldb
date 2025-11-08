@@ -1,0 +1,23 @@
+{% import "macros" as macros %}
+{% import "games_include" as games_include %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MMOLDB &mdash; Ingest Timings</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/ingest.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
+</head>
+<body>
+    <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
+
+    <section class="card seamless-h">
+        <h2 class="ingest-heading">Ingest {{ ingest_id }} Timings</h2>
+        <p>
+            Under heavy development. Player objects only so far.
+        </p>
+    </section>
+</body>
+</html>

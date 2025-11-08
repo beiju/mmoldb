@@ -245,6 +245,7 @@ impl VersionStage1Ingest {
 
         info!("{} fetch will start from date {:?}", self.kind, start_date, );
 
+        let mut chunk_fetch_start_t = Utc::now();
         let stream = chron
             .versions(self.kind, start_date, 3)
             // We ask Chron to start at a given valid_from. It will give us
@@ -275,6 +276,7 @@ impl VersionStage1Ingest {
         pin_mut!(stream);
 
         while let Some(chunk) = stream.next().await {
+            let mut chunk_fetched_t = Utc::now();
             // When a chunked stream encounters an error, it returns the portion
             // of the chunk that was collected before the error and the error
             // itself. We want to insert the successful portion of the chunk,
