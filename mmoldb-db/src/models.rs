@@ -999,6 +999,7 @@ pub struct NewParty<'a> {
     pub player_name: &'a str,
     pub attribute: i64,
     pub value: i32,
+    pub durability_loss: Option<i32>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -1013,6 +1014,7 @@ pub struct DbParty {
     pub player_name: String,
     pub attribute: i64,
     pub value: i32,
+    pub durability_loss: Option<i32>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -1045,7 +1047,10 @@ pub struct NewWither<'a> {
     pub team_emoji: &'a str,
     pub player_position: i64,
     pub player_name: &'a str,
+    pub source_player_name: Option<&'a str>,
     pub corrupted: bool,
+    pub contain_attempted: bool,
+    pub contain_replacement_player_name: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -1059,5 +1064,8 @@ pub struct DbWither {
     pub team_emoji: String,
     pub player_position: i64,
     pub player_name: String,
+    pub source_player_name: Option<String>,
     pub corrupted: bool,
+    pub contain_attempted: bool,
+    pub contain_replacement_player_name: Option<String>,
 }

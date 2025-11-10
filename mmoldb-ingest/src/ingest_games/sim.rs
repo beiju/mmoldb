@@ -5,7 +5,7 @@ use miette::Diagnostic;
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType, TopBottom};
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WitherStruggle};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, ContainResult, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WitherStruggle};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
@@ -74,6 +74,9 @@ pub enum SimEventError {
 
     #[error("Event following bugged season 3 mound visit had no batter name ({0:?}).")]
     UnknownBatterNameAfterSeason3BuggedMoundVisit(MaybePlayer<String>),
+
+    #[error("Wither event occurred during unexpected context ({0}).")]
+    UnexpectedContextForWither(String),
 }
 
 // A utility to more conveniently build a Vec<IngestLog>
@@ -211,6 +214,39 @@ impl<'g> ContextAfterMoundVisitOutcome<'g> {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum ContextAfterWitherOutcome<'g> {
+    ExpectNowBatting,
+    ExpectInningEnd,
+    // There has in fact been a walkoff steal of home corruption attempt:
+    // https://mmolb.com/watch/6903b5f9b6db8e5cf5bd1d8e?event=469
+    ExpectGameEnd,
+    ExpectPitch {
+        batter_name: &'g str,
+    },
+}
+
+impl<'g> ContextAfterWitherOutcome<'g> {
+    pub fn to_event_context(self) -> EventContext<'g> {
+        match self {
+            ContextAfterWitherOutcome::ExpectNowBatting => {
+                EventContext::ExpectNowBatting
+            }
+            ContextAfterWitherOutcome::ExpectInningEnd => {
+                EventContext::ExpectInningEnd
+            }
+            ContextAfterWitherOutcome::ExpectGameEnd => {
+                EventContext::ExpectGameEnd
+            }
+            ContextAfterWitherOutcome::ExpectPitch { batter_name} => EventContext::ExpectPitch {
+                batter_name,
+                // Wither can never happen between a NowBatting and the first pitch
+                first_pitch_of_plate_appearance: false,
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum EventContext<'g> {
     ExpectInningStart,
@@ -231,8 +267,7 @@ enum EventContext<'g> {
     ExpectWitherOutcome {
         struggle: WitherStruggle<&'g str>,
         struggle_game_event_index: usize,
-        // TODO Consider making this a ContextAfter like mound visit is
-        after: Box<EventContext<'g>>,
+        context_after: ContextAfterWitherOutcome<'g>,
     },
     ExpectInningEnd,
     ExpectMoundVisitOutcome {
@@ -242,6 +277,22 @@ enum EventContext<'g> {
     ExpectGameEnd,
     ExpectFinalScore,
     Finished,
+}
+
+impl<'g> EventContext<'g> {
+    pub fn after_wither_outcome(&self) -> Result<ContextAfterWitherOutcome<'g>, SimEventError> {
+        Ok(match self {
+            EventContext::ExpectPitch { batter_name, first_pitch_of_plate_appearance: _ } => {
+                ContextAfterWitherOutcome::ExpectPitch { batter_name }
+            }
+            EventContext::ExpectNowBatting => ContextAfterWitherOutcome::ExpectNowBatting,
+            EventContext::ExpectInningEnd => ContextAfterWitherOutcome::ExpectInningEnd,
+            EventContext::ExpectGameEnd => ContextAfterWitherOutcome::ExpectGameEnd,
+            other => {
+                return Err(SimEventError::UnexpectedContextForWither(format!("{other:?}")))
+            }
+        })
+    }
 }
 
 #[derive(Debug, Default)]
@@ -2205,7 +2256,7 @@ impl<'g> Game<'g> {
         if team.name != self.defending_team().team_name {
             ingest_logs.info(format!(
                 "Defending team name from MoundVisit ({}) did not match the one from \
-                                LiveNow ({}). Assuming this was a manual change.",
+                LiveNow ({}). Assuming this was a manual change.",
                 team.name,
                 self.defending_team().team_name,
             ));
@@ -2214,7 +2265,7 @@ impl<'g> Game<'g> {
         if team.emoji != self.defending_team().team_emoji {
             ingest_logs.info(format!(
                 "Defending team emoji from MoundVisit ({}) did not match the one \
-                                from LiveNow ({}). Assuming this was a manual change.",
+                from LiveNow ({}). Assuming this was a manual change.",
                 team.emoji,
                 self.defending_team().team_emoji,
             ));
@@ -2582,7 +2633,7 @@ impl<'g> Game<'g> {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
                                 struggle_game_event_index: game_event_index,
-                                after: Box::new(self.state.context.clone()),
+                                context_after: self.state.context.after_wither_outcome()?,
                             }
                         }
 
@@ -2608,7 +2659,7 @@ impl<'g> Game<'g> {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
                                 struggle_game_event_index: game_event_index,
-                                after: Box::new(self.state.context.clone()),
+                                context_after: self.state.context.after_wither_outcome()?,
                             }
                         }
 
@@ -2662,7 +2713,7 @@ impl<'g> Game<'g> {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
                                 struggle_game_event_index: game_event_index,
-                                after: Box::new(self.state.context.clone()),
+                                context_after: self.state.context.after_wither_outcome()?,
                             }
                         }
 
@@ -2689,7 +2740,7 @@ impl<'g> Game<'g> {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
                                 struggle_game_event_index: game_event_index,
-                                after: Box::new(self.state.context.clone()),
+                                context_after: self.state.context.after_wither_outcome()?,
                             }
                         }
 
@@ -2742,7 +2793,7 @@ impl<'g> Game<'g> {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
                                 struggle_game_event_index: game_event_index,
-                                after: Box::new(self.state.context.clone()),
+                                context_after: ContextAfterWitherOutcome::ExpectNowBatting,
                             }
                         }
 
@@ -2778,7 +2829,7 @@ impl<'g> Game<'g> {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
                                 struggle_game_event_index: game_event_index,
-                                after: Box::new(self.state.context.clone()),
+                                context_after: ContextAfterWitherOutcome::ExpectNowBatting,
                             }
                         }
 
@@ -2837,8 +2888,31 @@ impl<'g> Game<'g> {
                         None
                     },
                     [ParsedEventMessageDiscriminants::Party]
-                    ParsedEventMessage::Party { pitcher_name, pitcher_amount_gained, pitcher_attribute, batter_name: event_batter_name, batter_amount_gained, batter_attribute } => {
+                    ParsedEventMessage::Party { pitcher_name, pitcher_amount_gained, pitcher_attribute, batter_name: event_batter_name, batter_amount_gained, batter_attribute, durability_loss } => {
                         self.check_batter(batter_name, event_batter_name, ingest_logs);
+
+                        let (pitcher_durability_loss, batter_durability_loss) = match durability_loss {
+                            PartyDurabilityLoss::Both(loss) => (Some(*loss as i32), Some(*loss as i32)),
+                            PartyDurabilityLoss::OneProtected { protected_player_name, unprotected_player_name, durability_loss} => {
+                                if *protected_player_name == batter_name && *unprotected_player_name == self.defending_team().active_pitcher.name {
+                                    // Then the protected player is the batter and the unprotected player is the pitcher
+                                    (Some(*durability_loss as i32), None)
+                                } else if *protected_player_name == self.defending_team().active_pitcher.name && *unprotected_player_name == batter_name {
+                                    // Then the protected player is the pitcher and the unprotected player is the batter
+                                    (None, Some(*durability_loss as i32))
+                                } else {
+                                    ingest_logs.error(format!(
+                                        "Party durability loss could not match players. Expected \
+                                        {protected_player_name} and {unprotected_player_name} to \
+                                        match {} and {} or vice versa.",
+                                        batter_name,
+                                        self.defending_team().active_pitcher.name,
+                                    ));
+                                    (None, None)
+                                }
+                            }
+                        };
+
                         ingest_logs.info(format!("Recording parties for {pitcher_name} and {batter_name}"));
                         Some(EventForTable::Party(PartyEvent {
                             game_event_index,
@@ -2846,9 +2920,11 @@ impl<'g> Game<'g> {
                             pitcher_name: *pitcher_name,
                             pitcher_amount_gained: *pitcher_amount_gained as i32,
                             pitcher_attribute: (*pitcher_attribute).into(),
+                            pitcher_durability_loss,
                             batter_name: *event_batter_name,
                             batter_amount_gained: *batter_amount_gained as i32,
                             batter_attribute: (*batter_attribute).into(),
+                            batter_durability_loss,
                         }))
                     },
                 )
@@ -3319,10 +3395,10 @@ impl<'g> Game<'g> {
                     None
                 },
             ),
-            EventContext::ExpectWitherOutcome { struggle, struggle_game_event_index, after } => game_event!(
+            EventContext::ExpectWitherOutcome { struggle, struggle_game_event_index, mut context_after } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::WeatherWither]
-                ParsedEventMessage::WeatherWither { team_emoji, player, corrupted } => {
+                ParsedEventMessage::WeatherWither { team_emoji, player, corrupted, contained } => {
                     if *team_emoji != struggle.team_emoji {
                         ingest_logs.warn(format!(
                             "Wither outcome had a different team emoji to the wither struggle. \
@@ -3332,24 +3408,121 @@ impl<'g> Game<'g> {
                         ));
                     }
 
-                    if *player != struggle.player {
+                    if *player != struggle.target {
                         ingest_logs.warn(format!(
-                            "Wither outcome had a different player to the wither struggle. \
+                            "Wither outcome had a different target to the wither struggle. \
                             Outcome had {}, struggle had {}",
                             player,
-                            struggle.player,
+                            struggle.target,
                         ));
                     }
 
-                    self.state.context = *after;
+                    let (contain_attempted, contain_replacement_player_name) = match contained {
+                        ContainResult::NoContain => (false, None),
+                        ContainResult::SuccessfulContain { replacement_player_name, contained_player_name } => {
+                            if let Some(source_name) = struggle.source_name {
+                                if source_name != *contained_player_name {
+                                    ingest_logs.warn(format!(
+                                        "Contained player did not match the corruption spreader. \
+                                        Contained {}, spreader was {}",
+                                        contained_player_name,
+                                        source_name,
+                                    ));
+                                }
+                            }
+
+                            // I'm just not going to worry about cases when the source and target have
+                            // the exact same name. Hopefully that doesn't come back to bite me later.
+                            if *contained_player_name == self.defending_team().active_pitcher.name {
+                                ingest_logs.info(format!(
+                                    "Contained player name {} matches the active pitcher name. \
+                                    Assuming the active pitcher was replaced by {}",
+                                    contained_player_name,
+                                    replacement_player_name,
+                                ));
+
+                                // No need to update the slot because contain assigns the outgoing
+                                // player's slot to the incoming player
+                                self.defending_team_mut().active_pitcher.name = replacement_player_name;
+                            }
+
+                            // Note that a fielder can get replaced even when the pitcher gets replaced
+                            // because a fielder can be pitching and fielding at the same time
+                            for (_, prev_fielder_name) in &mut self.defending_team_mut().fielder_locations {
+                                if *prev_fielder_name == *contained_player_name {
+                                    ingest_logs.info(format!(
+                                        "Contained player name {} matches defending team fielder. \
+                                        Assuming this fielder was replaced by {}",
+                                        contained_player_name,
+                                        replacement_player_name,
+                                    ));
+
+                                    *prev_fielder_name = replacement_player_name;
+                                }
+                            }
+
+                            for (_, prev_fielder_name) in &mut self.batting_team_mut().fielder_locations {
+                                if *prev_fielder_name == *contained_player_name {
+                                    ingest_logs.info(format!(
+                                        "Contained player name {} matches batting team fielder. \
+                                        Assuming this fielder was replaced by {}",
+                                        contained_player_name,
+                                        replacement_player_name,
+                                    ));
+
+                                    *prev_fielder_name = replacement_player_name;
+                                }
+                            }
+
+                            match &mut context_after {
+                                ContextAfterWitherOutcome::ExpectNowBatting => {}
+                                ContextAfterWitherOutcome::ExpectInningEnd => {}
+                                ContextAfterWitherOutcome::ExpectGameEnd => {}
+                                ContextAfterWitherOutcome::ExpectPitch { batter_name, .. } => {
+                                    if *batter_name == *contained_player_name {
+                                        ingest_logs.info(format!(
+                                            "Contained player name {} matches the active pitcher name. \
+                                            Assuming the active pitcher was replaced by {}",
+                                            contained_player_name,
+                                            replacement_player_name,
+                                        ));
+
+                                        *batter_name = replacement_player_name;
+                                    }
+                                },
+                            };
+                            (true, Some(*replacement_player_name))
+                        }
+                        ContainResult::FailedContain { target_player_name } => {
+                            if let Some(source_name) = struggle.source_name {
+                                // Names are kinda confusing because the *corruption* source is
+                                // also the *contain* target
+                                if source_name != *target_player_name {
+                                    ingest_logs.warn(format!(
+                                        "Contain target did not match the corruption spreader. \
+                                        Contain was attempted on {}, spreader was {}",
+                                        target_player_name,
+                                        source_name,
+                                    ));
+                                }
+                            }
+
+                            (true, None)
+                        }
+                    };
+
+                    self.state.context = context_after.to_event_context();
 
                     Some(EventForTable::WitherOutcome(WitherOutcome {
                         struggle_game_event_index: struggle_game_event_index as i32,
                         outcome_game_event_index: game_event_index as i32,
                         team_emoji: struggle.team_emoji,
-                        player_position: struggle.player.place.into(),
-                        player_name: struggle.player.name,
+                        player_position: struggle.target.place.into(),
+                        player_name: struggle.target.name,
+                        source_player_name: struggle.source_name,
                         corrupted: *corrupted,
+                        contain_attempted,
+                        contain_replacement_player_name,
                     }))
                 }
             ),
@@ -3649,6 +3822,11 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::WeatherReflection]
                 ParsedEventMessage::WeatherReflection { .. } => {
                     // TODO Don't ignore reflection shatters
+                    None
+                },
+                [ParsedEventMessageDiscriminants::WeatherReflection]
+                ParsedEventMessage::LinealBeltTransfer { .. } => {
+                    // TODO Don't ignore lineal belt
                     None
                 },
                 // TODO see if there's a way to make the error message say which bug(s) we

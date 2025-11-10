@@ -131,26 +131,26 @@ pub fn event_to_ejection<'e>(
 ) -> Vec<NewEjection<'e>> {
     match &event.ejection {
         None => Vec::new(),
-        Some(photos) => vec![match photos.replacement {
+        Some(ejection) => vec![match ejection.replacement {
             EjectionReplacement::BenchPlayer { player_name } => NewEjection {
                 event_id,
-                team_emoji: photos.team.emoji,
-                team_name: photos.team.name,
-                ejected_player_name: photos.ejected_player.name,
-                ejected_player_slot: taxa.slot_id(photos.ejected_player.place.into()),
-                violation_type: photos.violation_type.to_string(),
-                reason: photos.reason.to_string(),
+                team_emoji: ejection.team.emoji,
+                team_name: ejection.team.name,
+                ejected_player_name: ejection.ejected_player.name,
+                ejected_player_slot: taxa.slot_id(ejection.ejected_player.place.into()),
+                violation_type: ejection.violation_type.to_string(),
+                reason: ejection.reason.to_string(),
                 replacement_player_name: player_name,
                 replacement_player_slot: None,
             },
             EjectionReplacement::RosterPlayer { player } => NewEjection {
                 event_id,
-                team_emoji: photos.team.emoji,
-                team_name: photos.team.name,
-                ejected_player_name: photos.ejected_player.name,
-                ejected_player_slot: taxa.slot_id(photos.ejected_player.place.into()),
-                violation_type: photos.violation_type.to_string(),
-                reason: photos.reason.to_string(),
+                team_emoji: ejection.team.emoji,
+                team_name: ejection.team.name,
+                ejected_player_name: ejection.ejected_player.name,
+                ejected_player_slot: taxa.slot_id(ejection.ejected_player.place.into()),
+                violation_type: ejection.violation_type.to_string(),
+                reason: ejection.reason.to_string(),
                 replacement_player_name: player.name,
                 replacement_player_slot: Some(taxa.slot_id(player.place.into())),
             },
@@ -277,6 +277,7 @@ pub fn party_to_rows<'e>(
             player_name: party.pitcher_name,
             attribute: taxa.attribute_id(party.pitcher_attribute),
             value: party.pitcher_amount_gained,
+            durability_loss: party.pitcher_durability_loss,
         },
         NewParty {
             game_id,
@@ -286,6 +287,7 @@ pub fn party_to_rows<'e>(
             player_name: party.batter_name,
             attribute: taxa.attribute_id(party.batter_attribute),
             value: party.batter_amount_gained,
+            durability_loss: party.batter_durability_loss,
         },
     ]
 }
@@ -302,7 +304,10 @@ pub fn wither_to_rows<'e>(
         team_emoji: wither.team_emoji,
         player_position: taxa.slot_id(wither.player_position),
         player_name: wither.player_name,
+        source_player_name: wither.source_player_name,
         corrupted: wither.corrupted,
+        contain_attempted: wither.contain_attempted,
+        contain_replacement_player_name: wither.contain_replacement_player_name,
     }
 }
 
@@ -650,10 +655,11 @@ pub fn row_to_event<'e>(
             let (wither,) = wither.into_iter().collect_tuple().unwrap();
             Some(WitherStruggle {
                 team_emoji: wither.team_emoji,
-                player: PlacedPlayer {
+                target: PlacedPlayer {
                     name: wither.player_name,
                     place: taxa.slot_from_id(wither.player_position).into(),
                 },
+                source_name: wither.source_player_name,
             })
         },
         other => {

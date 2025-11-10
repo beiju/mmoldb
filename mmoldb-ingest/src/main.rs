@@ -173,14 +173,14 @@ async fn ingest_everything(
 ) -> miette::Result<()> {
     let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
 
-    ingestor.ingest(TeamIngest::new(&config.team_ingest)).await?;
-    ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest)).await?;
-    ingestor.ingest(PlayerIngest::new(&config.player_ingest)).await?;
-    ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest)).await?;
+    ingestor.ingest(TeamIngest::new(&config.team_ingest), config.use_local_cheap_cashews).await?;
+    ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest), config.use_local_cheap_cashews).await?;
+    ingestor.ingest(PlayerIngest::new(&config.player_ingest), config.use_local_cheap_cashews).await?;
+    ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest), config.use_local_cheap_cashews).await?;
 
     if config.game_ingest.enable {
         info!("Beginning game ingest");
-        ingest_games::ingest_games(pool.clone(), ingest_id, abort).await?;
+        ingest_games::ingest_games(pool.clone(), ingest_id, abort, config.use_local_cheap_cashews).await?;
     }
 
     info!("Refreshing materialized views");

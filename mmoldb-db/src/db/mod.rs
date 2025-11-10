@@ -627,6 +627,7 @@ pub fn events_for_games(
         .filter(wither_dsl::game_id.eq_any(&game_ids))
         .order_by((
             wither_dsl::game_id,
+            wither_dsl::struggle_game_event_index,
         ))
         .select(DbWither::as_select())
         .load(conn)?;

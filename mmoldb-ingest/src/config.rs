@@ -31,6 +31,7 @@ pub struct IngestConfig {
     pub ingest_period: i64,
     pub db_pool_size: u32,
     pub set_postgres_statement_timeout: Option<i64>,
+    pub use_local_cheap_cashews: bool,
     pub team_ingest: IngestibleConfig,
     pub team_feed_ingest: IngestibleConfig,
     pub player_ingest: IngestibleConfig,
@@ -45,6 +46,7 @@ impl Default for IngestConfig {
             ingest_period: 30 * 60, // 30 minutes in seconds
             db_pool_size: 20,
             set_postgres_statement_timeout: Some(0), // 0 means no timeout
+            use_local_cheap_cashews: false,
             team_ingest: Default::default(),
             team_feed_ingest: Default::default(),
             player_ingest: Default::default(),

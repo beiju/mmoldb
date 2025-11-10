@@ -769,9 +769,11 @@ pub struct PartyEvent<StrT: Clone> {
     pub pitcher_name: StrT,
     pub pitcher_amount_gained: i32,
     pub pitcher_attribute: TaxaAttribute,
+    pub pitcher_durability_loss: Option<i32>,
     pub batter_name: StrT,
     pub batter_amount_gained: i32,
     pub batter_attribute: TaxaAttribute,
+    pub batter_durability_loss: Option<i32>,
 }
 
 #[derive(Debug, Clone)]
@@ -781,5 +783,8 @@ pub struct WitherOutcome<StrT: Clone> {
     pub team_emoji: StrT,
     pub player_position: TaxaSlot,
     pub player_name: StrT,
+    pub source_player_name: Option<StrT>,
     pub corrupted: bool,
+    pub contain_attempted: bool,
+    pub contain_replacement_player_name: Option<StrT>,
 }

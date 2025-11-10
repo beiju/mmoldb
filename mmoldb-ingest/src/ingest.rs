@@ -140,7 +140,7 @@ impl Ingestor {
         }
     }
 
-    pub async fn ingest<I: Ingestable + 'static>(&self, ingestible: I) -> Result<(), IngestFatalError> {
+    pub async fn ingest<I: Ingestable + 'static>(&self, ingestible: I, use_local_cheap_cashews: bool) -> Result<(), IngestFatalError> {
         let config = ingestible.config();
         if !config.enable {
             return Ok(());
@@ -175,6 +175,7 @@ impl Ingestor {
                         let wake_next_stage = Arc::new(Notify::new());
                         let waker_from_prev_stage = waker.replace(wake_next_stage.clone());
                         StageArgs {
+                            use_local_cheap_cashews,
                             config,
                             parallelism,
                             pool: self.pool.clone(),
@@ -203,6 +204,7 @@ impl Ingestor {
 
 #[derive(Debug, Clone)]
 pub struct StageArgs {
+    use_local_cheap_cashews: bool,
     config: &'static IngestibleConfig,
     parallelism: NonZero<usize>,
     pool: ConnectionPool,
@@ -247,7 +249,7 @@ impl VersionStage1Ingest {
 
         let mut chunk_fetch_start_t = Utc::now();
         let stream = chron
-            .versions(self.kind, start_date, 3)
+            .versions(self.kind, start_date, 3, args.use_local_cheap_cashews)
             // We ask Chron to start at a given valid_from. It will give us
             // all versions whose valid_from is greater than _or equal to_
             // that value. That's good, because it means that if we left

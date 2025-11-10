@@ -29,6 +29,7 @@ pub async fn ingest_games(
     pool: ConnectionPool,
     ingest_id: i64,
     abort: CancellationToken,
+    use_local_cheap_cashews: bool,
 ) -> miette::Result<()> {
     let mut conn = pool.get().into_diagnostic()?;
     let notify = Arc::new(Notify::new());
@@ -86,7 +87,7 @@ pub async fn ingest_games(
     let mut ingest_conn = pool.get().into_diagnostic()?;
 
     tokio::select! {
-        result = ingest_raw_games(&mut ingest_conn, notify) => {
+        result = ingest_raw_games(&mut ingest_conn, notify, use_local_cheap_cashews) => {
             result?;
             // Tell process games workers to stop waiting and exit
             finish.cancel();
@@ -106,7 +107,7 @@ pub async fn ingest_games(
     Ok(())
 }
 
-async fn ingest_raw_games(conn: &mut PgConnection, notify: Arc<Notify>) -> miette::Result<()> {
+async fn ingest_raw_games(conn: &mut PgConnection, notify: Arc<Notify>, use_local_cheap_cashews: bool) -> miette::Result<()> {
     let start_date = db::get_latest_entity_valid_from(conn, GAME_KIND)
         .into_diagnostic()?
         .as_ref()
@@ -117,7 +118,7 @@ async fn ingest_raw_games(conn: &mut PgConnection, notify: Arc<Notify>) -> miett
     let chron = Chron::new(CHRON_FETCH_PAGE_SIZE);
 
     let stream = chron
-        .entities(GAME_KIND, start_date, 3)
+        .entities(GAME_KIND, start_date, 3, use_local_cheap_cashews)
         .try_chunks(RAW_GAME_INSERT_BATCH_SIZE);
     pin_mut!(stream);
 
