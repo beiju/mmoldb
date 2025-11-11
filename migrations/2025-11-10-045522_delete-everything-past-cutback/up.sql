@@ -1,17 +1,17 @@
 -- Delete all versions past the cutback date
 delete
 from data.versions
-where valid_from <= '2025-10-27T11:16:00.000Z';
+where valid_from > '2025-10-27T11:16:00.000Z';
 
 -- Un-close-out all versions that were closed back after the cutback date
 update data.versions
 set valid_to = null
-where valid_to > '2025-10-27T11:16:00.000Z';
+where valid_to <= '2025-10-27T11:16:00.000Z';
 
 -- Delete all entities past the cutback date
 delete
 from data.entities
-where valid_from <= '2025-10-27T11:16:00.000Z';
+where valid_from > '2025-10-27T11:16:00.000Z';
 
 -- Delete ALL derived data
 truncate table
