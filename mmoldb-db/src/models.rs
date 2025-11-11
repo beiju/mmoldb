@@ -931,6 +931,7 @@ pub struct NewDoorPrizeItem<'a> {
     pub discarded_item_rare_name: Option<&'a str>,
     pub discarded_item_prefix: Option<&'a str>,
     pub discarded_item_suffix: Option<&'a str>,
+    pub prize_discarded: Option<bool>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -952,6 +953,7 @@ pub struct DbDoorPrizeItem {
     pub discarded_item_rare_name: Option<String>,
     pub discarded_item_prefix: Option<String>,
     pub discarded_item_suffix: Option<String>,
+    pub prize_discarded: Option<bool>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]

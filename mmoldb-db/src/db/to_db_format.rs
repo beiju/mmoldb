@@ -5,7 +5,7 @@ use crate::{PartyEvent, PitcherChange, WitherOutcome};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
-use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
+use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, ItemEquip, ItemPrize, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
 use std::str::FromStr;
 use log::warn;
 use strum::ParseError;
@@ -200,8 +200,8 @@ pub fn event_to_door_prize_items<'e>(
             Some(Prize::Items(items)) => items
                 .iter()
                 .enumerate()
-                .map(|(item_index, (item, equipped))| {
-                    let (prefix, suffix, rare_name) = split_affixes(item);
+                .map(|(item_index, prize)| {
+                    let (prefix, suffix, rare_name) = split_affixes(&prize.item);
 
                     let (equipped_by, (
                         discarded_item_emoji,
@@ -209,24 +209,30 @@ pub fn event_to_door_prize_items<'e>(
                         discarded_item_rare_name,
                         discarded_item_prefix,
                         discarded_item_suffix,
-                    )) = if let Some((equipped_by, discarded_item)) = equipped {
-                        let discarded_item = if let Some(discarded_item) = discarded_item {
-                            let (prefix, suffix, rare_name) = split_affixes(discarded_item);
-                            (Some(discarded_item.item_emoji), Some(discarded_item.item), rare_name, prefix, suffix)
-                        } else {
-                            (None, None, None, None, None)
-                        };
-                        (Some(*equipped_by), discarded_item)
-                    } else {
-                        (None, (None, None, None, None, None))
+                    ), prize_discarded) = match &prize.equip {
+                        ItemEquip::Equipped { player_name, discarded_item } => {
+                            let discarded_item = if let Some(discarded_item) = discarded_item {
+                                let (prefix, suffix, rare_name) = split_affixes(discarded_item);
+                                (Some(discarded_item.item_emoji), Some(discarded_item.item), rare_name, prefix, suffix)
+                            } else {
+                                (None, None, None, None, None)
+                            };
+                            (Some(*player_name), discarded_item, Some(false))
+                        },
+                        ItemEquip::Discarded => {
+                            (None, (None, None, None, None, None), Some(true))
+                        },
+                        ItemEquip::None => {
+                            (None, (None, None, None, None, None), None)
+                        }
                     };
 
                     NewDoorPrizeItem {
                         event_id,
                         door_prize_index: door_prize_index as i32,
                         item_index: item_index as i32,
-                        emoji: item.item_emoji,
-                        name: item.item.into(),
+                        emoji: prize.item.item_emoji,
+                        name: prize.item.item.into(),
                         rare_name,
                         prefix: prefix.map(Into::into),
                         suffix: suffix.map(Into::into),
@@ -236,6 +242,7 @@ pub fn event_to_door_prize_items<'e>(
                         discarded_item_rare_name,
                         discarded_item_prefix: discarded_item_prefix.map(Into::into),
                         discarded_item_suffix: discarded_item_suffix.map(Into::into),
+                        prize_discarded,
                     }
                 })
                 .collect(),
@@ -579,7 +586,20 @@ pub fn row_to_event<'e>(
                                     prize_item.suffix,
                                 )?;
 
-                                let equip = if let Some(equipper_name) = prize_item.equipped_by {
+                                let equip = if let Some(player_name) = prize_item.equipped_by {
+                                    if prize_item.prize_discarded.is_none() {
+                                        warn!(
+                                            "Got a None prize_discarded and a Some player_name. \
+                                            This should not happen because None prize_discarded \
+                                            means that this item went straight to the inventory."
+                                        );
+                                    } else if let Some(true) = prize_item.prize_discarded {
+                                        warn!(
+                                            "Got a true prize_discarded and a Some equipped_by, \
+                                            which is contradictory."
+                                        );
+                                    }
+
                                     let discarded_item = match (prize_item.discarded_item_emoji, prize_item.discarded_item_name) {
                                         (None, None) => None,
                                         (Some(_), None) => {
@@ -603,7 +623,7 @@ pub fn row_to_event<'e>(
                                         )?)
                                     };
 
-                                    Some((equipper_name, discarded_item))
+                                    ItemEquip::Equipped { player_name, discarded_item }
                                 } else {
                                     if prize_item.discarded_item_emoji.is_some() {
                                         warn!("Got a discarded item emoji without an equipping player");
@@ -611,10 +631,27 @@ pub fn row_to_event<'e>(
                                     if prize_item.discarded_item_name.is_some() {
                                         warn!("Got a discarded item name without an equipping player");
                                     }
-                                    None
+
+                                    match prize_item.prize_discarded {
+                                        None => ItemEquip::None,
+                                        Some(true) => ItemEquip::Discarded,
+                                        Some(false) => {
+                                            warn!(
+                                                "Got a None equipped_by and a Some(false) \
+                                                prize_discarded, which is an invalid combination."
+                                            );
+                                            // There is no sensible value to return here, because
+                                            // this is an invalid combination, but this probably
+                                            // the least surprising value.
+                                            ItemEquip::None
+                                        },
+                                    }
                                 };
 
-                                Ok((item, equip))
+                                Ok(ItemPrize {
+                                    item,
+                                    equip,
+                                })
                             })
                             .collect::<Result<Vec<_>, _>>()?,
                     )))

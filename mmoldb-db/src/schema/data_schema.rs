@@ -29,6 +29,7 @@ pub mod data {
             discarded_item_rare_name -> Nullable<Text>,
             discarded_item_prefix -> Nullable<Text>,
             discarded_item_suffix -> Nullable<Text>,
+            prize_discarded -> Nullable<Bool>,
         }
     }
 
