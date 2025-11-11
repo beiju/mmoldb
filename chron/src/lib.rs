@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 const CUTOVER_DATE: &str = "2025-09-13T22:02:43.355548Z";
+const CUTBACK_DATE: &str = "2025-10-27T11:16:00.000Z";
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum ChronStreamError {
@@ -68,26 +69,20 @@ impl Chron {
         max_retries: usize,
         use_local_cheap_cashews: bool,
     ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
-        let cutover_date = DateTime::parse_from_rfc3339(CUTOVER_DATE)
-            .expect("Hard-coded cutover date must parse")
-            .with_timezone(&Utc);
-
+        let free_cashews_url = "https://freecashe.ws/api/chron/v0/versions";
         let cheap_cashews_url = if use_local_cheap_cashews {
             "http://10.0.0.71:3001/chron/v0/versions"
         } else {
             "https://cheapcashews.beiju.me/chron/v0/versions"
         };
 
-        if start_at.is_none_or(|s| s < cutover_date) {
-            Either::Left(
-                self.items("https://freecashe.ws/api/chron/v0/versions", kind, max_retries, start_at, Some(cutover_date))
-                    .chain(self.items(&cheap_cashews_url, kind, max_retries, Some(cutover_date), None))
-            )
-        } else {
-            Either::Right(
-                self.items(&cheap_cashews_url, kind, max_retries, start_at, None)
-            )
-        }
+        self.chained_api_call(
+            kind,
+            start_at,
+            max_retries,
+            free_cashews_url,
+            cheap_cashews_url,
+        )
     }
 
     pub fn entities(
@@ -97,25 +92,53 @@ impl Chron {
         max_retries: usize,
         use_local_cheap_cashews: bool,
     ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
-        let cutover_date = DateTime::parse_from_rfc3339(CUTOVER_DATE)
-            .expect("Hard-coded cutover date must parse")
-            .with_timezone(&Utc);
-
+        let free_cashews_url = "https://freecashe.ws/api/chron/v0/entities";
         let cheap_cashews_url = if use_local_cheap_cashews {
             "http://10.0.0.71:3001/chron/v0/entities"
         } else {
             "https://cheapcashews.beiju.me/chron/v0/entities"
         };
 
+        self.chained_api_call(
+            kind,
+            start_at,
+            max_retries,
+            free_cashews_url,
+            cheap_cashews_url,
+        )
+    }
+
+    fn chained_api_call(
+        &self,
+        kind: &'static str,
+        start_at: Option<DateTime<Utc>>,
+        max_retries: usize,
+        free_cashews_url: &'static str,
+        cheap_cashews_url: &'static str,
+    ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
+        let cutover_date = DateTime::parse_from_rfc3339(CUTOVER_DATE)
+            .expect("Hard-coded cutover date must parse")
+            .with_timezone(&Utc);
+        let cutback_date = DateTime::parse_from_rfc3339(CUTBACK_DATE)
+            .expect("Hard-coded cutback date must parse")
+            .with_timezone(&Utc);
+
+
         if start_at.is_none_or(|s| s < cutover_date) {
             Either::Left(
-                self.items("https://freecashe.ws/api/chron/v0/entities", kind, max_retries, start_at, Some(cutover_date))
-                    .chain(self.items(cheap_cashews_url, kind, max_retries, Some(cutover_date), None))
+                self.items(free_cashews_url, kind, max_retries, start_at, Some(cutover_date))
+                    .chain(self.items(cheap_cashews_url, kind, max_retries, Some(cutover_date), Some(cutback_date)))
+                    .chain(self.items(free_cashews_url, kind, max_retries, Some(cutback_date), None))
             )
+        } else if start_at.is_none_or(|s| s < cutback_date) {
+            Either::Right(Either::Left(
+                self.items(cheap_cashews_url, kind, max_retries, start_at, Some(cutback_date))
+                    .chain(self.items(free_cashews_url, kind, max_retries, Some(cutback_date), None))
+            ))
         } else {
-            Either::Right(
+            Either::Right(Either::Right(
                 self.items(cheap_cashews_url, kind, max_retries, start_at, None)
-            )
+            ))
         }
     }
 
