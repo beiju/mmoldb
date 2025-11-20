@@ -177,6 +177,11 @@ async fn ingest_everything(
     ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest), config.use_local_cheap_cashews).await?;
     ingestor.ingest(PlayerIngest::new(&config.player_ingest), config.use_local_cheap_cashews).await?;
     ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest), config.use_local_cheap_cashews).await?;
+    
+    if config.fetch_known_missing_games {
+        info!("Fetching any missing games in known-game-ids.txt");
+        ingest_games::fetch_missed_games(pool.clone()).await?;
+    }
 
     if config.game_ingest.enable {
         info!("Beginning game ingest");

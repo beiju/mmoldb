@@ -108,6 +108,42 @@ impl Chron {
         )
     }
 
+    pub async fn entities_by_id(
+        &self,
+        kind: &'static str,
+        ids: &[&str],
+    ) -> Result<ChronEntities<serde_json::Value>, ChronStreamError> {
+        debug!("Fetching {} {kind} entities", ids.len());
+        let client = self.client.clone(); // This is internally reference counted
+
+        let request_builder = client.get("https://freecashe.ws/api/chron/v0/entities").query(&[
+            ("kind", kind),
+            ("id", &ids.join(",")),
+            ("order", "asc"),
+        ]);
+
+        let request = request_builder
+            .build()
+            .map_err(ChronStreamError::RequestBuildError)?;
+
+        let response = client
+            .execute(request)
+            .await
+            .map_err(ChronStreamError::RequestExecuteError)?
+            .error_for_status()
+            .map_err(ChronStreamError::ChronStatusError)?;
+
+        let result = response
+            .text()
+            .await
+            .map_err(ChronStreamError::RequestBodyError)?;
+
+        let items: ChronEntities<serde_json::Value> =
+            serde_json::from_str(&result).map_err(ChronStreamError::DeserializeError)?;
+
+        Ok(items)
+    }
+
     fn chained_api_call(
         &self,
         kind: &'static str,

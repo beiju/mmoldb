@@ -10,20 +10,72 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
-use miette::IntoDiagnostic;
+use miette::{WrapErr, IntoDiagnostic};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{PgConnection, db, ConnectionPool};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::RandomState;
+use tokio::fs;
 use std::sync::{Arc, Mutex};
+use futures::stream::TryChunksError;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Notify;
-use tokio_util::sync::CancellationToken;
+use tokio_stream::wrappers::LinesStream;
+use tokio_util::{sync::CancellationToken};
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
 const GAME_KIND: &'static str = "game";
+const CHRON_MAX_IDS_PER_CALL: usize = 50;
 const CHRON_FETCH_PAGE_SIZE: usize = 100;
 const RAW_GAME_INSERT_BATCH_SIZE: usize = 100;
 const PROCESS_GAME_BATCH_SIZE: usize = 100;
+
+pub async fn fetch_missed_games(
+    pool: ConnectionPool,
+) -> miette::Result<()> {
+    let known_game_ids_file = match fs::File::open("known-game-ids.txt").await {
+        Ok(file) => file,
+        Err(err) => {
+            warn!("Can't fetch missed games from file: {err}");
+            return Ok(());
+        }
+    };
+
+    let reader = BufReader::new(known_game_ids_file);
+    let lines = LinesStream::new(reader.lines());
+    let known_ids = lines.try_collect::<HashSet<_>>().await
+        .into_diagnostic()?;
+
+    let mut conn = pool.get()
+        .into_diagnostic()
+        .wrap_err("error getting database connection in fetch_missed_games")?;
+
+    let our_ids = db::get_all_game_entity_ids_set(&mut conn).into_diagnostic()?;
+
+    let chron = Chron::new(CHRON_MAX_IDS_PER_CALL);
+
+    let missing_ids = known_ids.difference(&our_ids).map(|s| s.as_str()).collect_vec();
+    info!("{} out of {} known games are missing", missing_ids.len(), known_ids.len());
+
+    for chunk in missing_ids.chunks(CHRON_MAX_IDS_PER_CALL) {
+        let entities = chron.entities_by_id("game", chunk).await?;
+
+        assert_eq!(chunk.len(), entities.items.len());
+
+        // For debug
+        assert_eq!(
+            HashSet::<_, RandomState>::from_iter(chunk.iter().copied()),
+            HashSet::<_, RandomState>::from_iter(entities.items.iter().map(|e| e.entity_id.as_str())),
+        );
+
+        info!("Saving {} games", chunk.len());
+        let inserted = db::insert_entities(&mut conn, entities.items).into_diagnostic()?;
+        info!("Saved {} games", inserted);
+    }
+
+    Ok(())
+}
 
 pub async fn ingest_games(
     pool: ConnectionPool,

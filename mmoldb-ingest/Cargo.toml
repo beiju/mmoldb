@@ -31,4 +31,4 @@ rayon = "1.10.0"
 figment = { version = "0.10.19", features = ["env", "toml"] }
 num = "0.4.3"
 ascii = "1.1.0"
-tokio-stream = "0.1.17"
+tokio-stream = { version = "0.1.17", features = ["io-util"] }

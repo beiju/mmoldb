@@ -3,6 +3,7 @@ mod to_db_format;
 mod versions;
 mod weather;
 
+use std::collections::HashSet;
 // Reexports
 pub use crate::db::weather::NameEmojiTooltip;
 pub use entities::*;
@@ -21,6 +22,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
+use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
@@ -220,6 +222,17 @@ pub fn mark_ingest_aborted(
         ))
         .execute(conn)
         .map(|_| ())
+}
+
+pub fn get_all_game_entity_ids_set(conn: &mut PgConnection) -> QueryResult<HashSet<String>> {
+    use crate::data_schema::data::entities::dsl as entities_dsl;
+
+    entities_dsl::entities
+        .filter(entities_dsl::kind.eq("game"))
+        .select(entities_dsl::entity_id)
+        .order_by(entities_dsl::entity_id.desc())
+        .load_iter::<_, DefaultLoadingMode>(conn)?
+        .collect()
 }
 
 macro_rules! log_only_assert {
