@@ -43,5 +43,6 @@ COPY --from=builder /app/target/release/mmoldb-ingest /mmoldb-ingest
 
 WORKDIR /app
 COPY ../MMOLDB.toml /app
+COPY ../known-game-ids.txt /app
 
 CMD [ "/mmoldb-ingest" ]
