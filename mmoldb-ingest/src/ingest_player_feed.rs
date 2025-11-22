@@ -735,18 +735,9 @@ pub fn chron_player_feed_as_new<'a>(
                 // this player's ID is retired instead of being repurposed for the
                 // new player.
 
-                // Warn if anything's happened to this player since they were
-                // Released. Except for players affected by a bug at the start
-                // of s3 where released players weren't actually released.
-                if index + 1 != feed_items.len()
-                    && (event.season, &event.day) != (3, &Ok(Day::Day(1)))
-                {
-                    ingest_logs.warn(format!(
-                        "Released event wasn't the last event in the player's feed. {}/{}",
-                        index + 1,
-                        feed_items.len(),
-                    ));
-                }
+                // I used to warn if there were any events after the Released, but
+                // there's been too many bugs with events after Released and I got
+                // tired of excluding them one by one.
             }
             ParsedPlayerFeedEventText::Retirement { .. } => {
                 // I used to warn if anything's happened to this player since they were
