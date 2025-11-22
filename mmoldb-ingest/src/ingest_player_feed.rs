@@ -75,7 +75,7 @@ fn process_paradigm_shift<'e>(
     taxa: &Taxa,
 ) {
     if changing_attribute == Attribute::Priority {
-        let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
+        let (day_type, day, superstar_day) = day_to_db(Some(&event.day), taxa);
 
         paradigm_shifts.push(NewPlayerParadigmShift {
             mmolb_player_id: player_id,
@@ -504,7 +504,7 @@ pub fn chron_player_feed_as_new<'a>(
                 ));
                 check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
                 check_player_name.set_known_name(player_name_after);
-                let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
+                let (day_type, day, superstar_day) = day_to_db(Some(&Ok(*day)), taxa);
                 recompositions.push(NewPlayerRecomposition {
                     mmolb_player_id: player_id,
                     feed_event_index,
@@ -537,7 +537,7 @@ pub fn chron_player_feed_as_new<'a>(
                     "Inserting implied Recomposed event for overwritten Recompose from \
                     {player_name_before} to {player_name_after}",
                 ));
-                let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
+                let (day_type, day, superstar_day) = day_to_db(Some(&Ok(*day)), taxa);
                 recompositions.push(NewPlayerRecomposition {
                     mmolb_player_id: player_id,
                     feed_event_index,
@@ -656,7 +656,7 @@ pub fn chron_player_feed_as_new<'a>(
                 attribute,
                 amount,
             } => {
-                let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
+                let (day_type, day, superstar_day) = day_to_db(Some(&event.day), taxa);
 
                 check_player_name.check_or_set_name(player_name, &mut ingest_logs);
                 attribute_augments.push(NewPlayerAttributeAugment {
@@ -712,7 +712,7 @@ pub fn chron_player_feed_as_new<'a>(
                 // as the utility of processing Delivery is limited.
             }
             ParsedPlayerFeedEventText::Recomposed { new, previous } => {
-                let (day_type, day, superstar_day) = day_to_db(&event.day, taxa);
+                let (day_type, day, superstar_day) = day_to_db(Some(&event.day), taxa);
 
                 check_player_name.check_or_set_name(previous, &mut ingest_logs);
                 check_player_name.set_known_name(new);
@@ -750,6 +750,36 @@ pub fn chron_player_feed_as_new<'a>(
             ParsedPlayerFeedEventText::DoorPrize { .. } => {
                 // See comment on Delivery
             }
+            ParsedPlayerFeedEventText::SeasonalDurabilityLoss { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::CorruptedByWither { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::Purified { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::Party { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::PlayerContained { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::PlayerPositionsSwapped { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::PlayerGrow { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::GreaterAugment { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::PlayerRelegated { .. } => {
+                // Nothing to do yet
+            }
+            ParsedPlayerFeedEventText::PlayerMoved { .. } => {
+                // Nothing to do yet
+            }
         }
     }
 
@@ -764,7 +794,7 @@ pub fn chron_player_feed_as_new<'a>(
             ));
             check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
             check_player_name.set_known_name(player_name_after);
-            let (day_type, day, superstar_day) = day_to_db(&Ok(*day), taxa);
+            let (day_type, day, superstar_day) = day_to_db(Some(&Ok(*day)), taxa);
             recompositions.push(NewPlayerRecomposition {
                 mmolb_player_id: player_id,
                 // feed_event_index for inferred events is the feed event index of

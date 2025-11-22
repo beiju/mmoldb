@@ -17,7 +17,6 @@ use std::collections::{HashMap, HashSet};
 use std::hash::RandomState;
 use tokio::fs;
 use std::sync::{Arc, Mutex};
-use futures::stream::TryChunksError;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Notify;
 use tokio_stream::wrappers::LinesStream;

@@ -1928,7 +1928,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.48.0"
-source = "git+https://github.com/beiju/mmolb_parsing.git?branch=s6#76ddb47787ac2d595fa7b1e9f0bbd8bf2b331661"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=s6#6bac70eb9f76eff0a78cf8a8f40b0ceb4c1de1fa"
 dependencies = [
  "chrono",
  "indexmap 2.11.1",
@@ -1940,6 +1940,7 @@ dependencies = [
  "serde",
  "serde_cow",
  "serde_json",
+ "serde_path_to_error",
  "serde_with",
  "strum",
  "thiserror",
@@ -3257,6 +3258,17 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
+ "serde_core",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+dependencies = [
+ "itoa",
+ "serde",
  "serde_core",
 ]
 

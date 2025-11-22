@@ -134,69 +134,70 @@ pub fn get_filled_modifications_map(
 }
 
 pub fn day_to_db(
-    day: &Result<Day, NotRecognized>,
+    day: Option<&Result<Day, NotRecognized>>,
     taxa: &Taxa,
 ) -> (Option<i64>, Option<i32>, Option<i32>) {
     match day {
-        Ok(Day::Preseason) => (Some(taxa.day_type_id(TaxaDayType::Preseason)), None, None),
-        Ok(Day::SuperstarBreak) => (
+        None => (None, None, None),
+        Some(Ok(Day::Preseason)) => (Some(taxa.day_type_id(TaxaDayType::Preseason)), None, None),
+        Some(Ok(Day::SuperstarBreak)) => (
             Some(taxa.day_type_id(TaxaDayType::SuperstarBreak)),
             None,
             None,
         ),
-        Ok(Day::PostseasonPreview) => (
+        Some(Ok(Day::PostseasonPreview)) => (
             Some(taxa.day_type_id(TaxaDayType::PostseasonPreview)),
             None,
             None,
         ),
-        Ok(Day::PostseasonRound(1)) => (
+        Some(Ok(Day::PostseasonRound(1))) => (
             Some(taxa.day_type_id(TaxaDayType::PostseasonRound1)),
             None,
             None,
         ),
-        Ok(Day::PostseasonRound(2)) => (
+        Some(Ok(Day::PostseasonRound(2))) => (
             Some(taxa.day_type_id(TaxaDayType::PostseasonRound2)),
             None,
             None,
         ),
-        Ok(Day::PostseasonRound(3)) => (
+        Some(Ok(Day::PostseasonRound(3))) => (
             Some(taxa.day_type_id(TaxaDayType::PostseasonRound3)),
             None,
             None,
         ),
-        Ok(Day::PostseasonRound(other)) => {
+        Some(Ok(Day::PostseasonRound(other))) => {
             error!("Unexpected postseason day {other} (expected 1-3)");
             (None, None, None)
         }
-        Ok(Day::Election) => (Some(taxa.day_type_id(TaxaDayType::Election)), None, None),
-        Ok(Day::Holiday) => (Some(taxa.day_type_id(TaxaDayType::Holiday)), None, None),
-        Ok(Day::Day(day)) => (
+        Some(Ok(Day::Election)) => (Some(taxa.day_type_id(TaxaDayType::Election)), None, None),
+        Some(Ok(Day::Holiday)) => (Some(taxa.day_type_id(TaxaDayType::Holiday)), None, None),
+        Some(Ok(Day::Day(day))) => (
             Some(taxa.day_type_id(TaxaDayType::RegularDay)),
             Some(*day as i32),
             None,
         ),
-        Ok(Day::SuperstarGame) => (
+        Some(Ok(Day::SuperstarGame)) => (
             Some(taxa.day_type_id(TaxaDayType::SuperstarDay)),
             None,
             None,
         ),
-        Ok(Day::SuperstarDay(day)) => (
+        Some(Ok(Day::SuperstarDay(day))) => (
             Some(taxa.day_type_id(TaxaDayType::SuperstarDay)),
             None,
             Some(*day as i32),
         ),
-        Ok(Day::Event) => (Some(taxa.day_type_id(TaxaDayType::Event)), None, None),
-        Ok(Day::SpecialEvent) => (
+        Some(Ok(Day::Event)) => (Some(taxa.day_type_id(TaxaDayType::Event)), None, None),
+        Some(Ok(Day::SpecialEvent)) => (
             Some(taxa.day_type_id(TaxaDayType::SpecialEvent)),
             None,
             None,
         ),
-        Ok(Day::Offseason) => (
+        Some(Ok(Day::Offseason)) => (
             Some(taxa.day_type_id(TaxaDayType::Offseason)),
             None,
             None,  // In this context, offseason day isn't available
         ),
-        Err(err) => {
+        Some(Err(err)) => {
             error!("Unrecognized day {err}");
             (None, None, None)
         }
@@ -303,7 +304,7 @@ fn chron_player_as_new<'a>(
 ) {
     let mut ingest_logs = VersionIngestLogs::new(PlayerIngest::KIND, &entity.entity_id, entity.valid_from);
     let (birthday_type, birthday_day, birthday_superstar_day) =
-        day_to_db(&entity.data.birthday, taxa);
+        day_to_db(Some(&entity.data.birthday), taxa);
 
     let get_modification_id = |modification: &mmolb_parsing::player::Modification| {
         *modifications
@@ -635,12 +636,16 @@ fn report_as_new<'e>(
     Vec<NewPlayerReportAttributeVersion<'e>>,
 ) {
     let season = match report.season {
-        Ok(season) => Some(season as i32),
+        Ok(Some(season)) => Some(season as i32),
+        Ok(None) => {
+            // TODO Publicize the implications of this None
+            None
+        },
         Err(AddedLater) => None,
     };
 
     let (day_type, day, superstar_day) = match &report.day {
-        Ok(maybe_day) => day_to_db(maybe_day, taxa),
+        Ok(maybe_day) => day_to_db(maybe_day.as_ref(), taxa),
         Err(AddedLater) => (None, None, None),
     };
 
