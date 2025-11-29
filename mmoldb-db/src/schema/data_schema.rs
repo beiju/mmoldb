@@ -131,6 +131,17 @@ pub mod data {
     }
 
     diesel::table! {
+        data.feed_event_versions (kind, entity_id, feed_event_index, valid_from) {
+            kind -> Text,
+            entity_id -> Text,
+            feed_event_index -> Int4,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            data -> Jsonb,
+        }
+    }
+
+    diesel::table! {
         data.feed_events (id) {
             id -> Int8,
             kind -> Text,
@@ -139,6 +150,15 @@ pub mod data {
             deleted_event_index -> Nullable<Int4>,
             first_observed_at -> Timestamp,
             data -> Jsonb,
+        }
+    }
+
+    diesel::table! {
+        data.feed_events_processed (kind, entity_id, feed_event_index, valid_from) {
+            kind -> Text,
+            entity_id -> Text,
+            feed_event_index -> Int4,
+            valid_from -> Timestamp,
         }
     }
 
@@ -491,7 +511,9 @@ pub mod data {
         event_baserunners,
         event_fielders,
         events,
+        feed_event_versions,
         feed_events,
+        feed_events_processed,
         games,
         modifications,
         parties,

@@ -17,7 +17,7 @@ use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
@@ -26,7 +26,7 @@ use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbFeedEventProcessed};
 use crate::taxa::Taxa;
 use crate::{PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -1798,25 +1798,6 @@ pub fn get_player_feed_ingest_start_cursor(
         .optional()
 }
 
-pub fn get_team_feed_ingest_start_cursor(
-    conn: &mut PgConnection,
-) -> QueryResult<Option<(NaiveDateTime, String)>> {
-    use crate::schema::data_schema::data::team_feed_versions::dsl as team_feed_dsl;
-
-    team_feed_dsl::team_feed_versions
-        .select((
-            team_feed_dsl::valid_from,
-            team_feed_dsl::mmolb_team_id,
-        ))
-        .order_by((
-            team_feed_dsl::valid_from.desc(),
-            team_feed_dsl::mmolb_team_id.desc(),
-        ))
-        .limit(1)
-        .get_result(conn)
-        .optional()
-}
-
 pub fn get_modifications_table(
     conn: &mut PgConnection,
 ) -> QueryResult<HashMap<NameEmojiTooltip, i64>> {
@@ -2142,14 +2123,14 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
 }
 
 type NewTeamFeedVersionExt<'a> = (
-    NewTeamFeedVersion<'a>,
-    Vec<NewTeamGamePlayed<'a>>,
+    NewFeedEventProcessed<'a>,
+    Option<NewTeamGamePlayed<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 );
 
 fn insert_new_team_games_played(
     conn: &mut PgConnection,
-    new_team_games_played: Vec<&Vec<NewTeamGamePlayed>>,
+    new_team_games_played: Vec<&Option<NewTeamGamePlayed>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::team_games_played::dsl as get_dsl;
     let new_team_games_played = new_team_games_played.into_iter().flatten().collect_vec();
@@ -2159,32 +2140,42 @@ fn insert_new_team_games_played(
         .from_insertable(new_team_games_played)
         .execute(conn)
 }
+
+fn insert_feed_events_processed(
+    conn: &mut PgConnection,
+    new_feed_events_processed: Vec<&NewFeedEventProcessed>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::feed_events_processed::dsl as fep_dsl;
+
+    // Insert new records
+    diesel::copy_from(fep_dsl::feed_events_processed)
+        .from_insertable(new_feed_events_processed)
+        .execute(conn)
+}
+
 pub fn insert_team_feed_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
     new_team_feed_versions: impl IntoIterator<Item = &'container NewTeamFeedVersionExt<'game>>,
 ) -> QueryResult<usize> {
-    use crate::data_schema::data::team_feed_versions::dsl as tfv_dsl;
-
     let new_team_feed_versions = new_team_feed_versions.into_iter()
         .map(|(a, b, c)| (a, b, c));
 
     let (
-        new_team_feed_versions,
+        new_feed_ingest_cursor,
         new_team_games_played,
         ingest_logs,
     ): (
-        Vec<&NewTeamFeedVersion>,
-        Vec<&Vec<NewTeamGamePlayed>>,
+        Vec<&NewFeedEventProcessed>,
+        Vec<&Option<NewTeamGamePlayed>>,
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_team_feed_versions);
 
     // Insert new records
-    let num_inserted = diesel::copy_from(tfv_dsl::team_feed_versions)
-        .from_insertable(new_team_feed_versions)
-        .execute(conn)?;
-
-    insert_new_team_games_played(conn, new_team_games_played)?;
+    let num_inserted = insert_new_team_games_played(conn, new_team_games_played)?;
     insert_nested_ingest_logs(conn, ingest_logs)?;
+
+    // This is last so that we don't update the cursor if there were any errors
+    insert_feed_events_processed(conn, new_feed_ingest_cursor)?;
 
     Ok(num_inserted)
 }

@@ -1,7 +1,7 @@
 use crate::config::IngestibleConfig;
 use chron::{Chron, ChronEntity, ChronStreamError};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use futures::{pin_mut, StreamExt, TryStreamExt};
+use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
@@ -17,10 +17,11 @@ use std::iter;
 use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
+use serde::Deserialize;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::Notify;
+use tokio::sync::{Notify};
 use tokio::task::JoinError;
 use tokio_util::sync::CancellationToken;
 
@@ -247,7 +248,6 @@ impl VersionStage1Ingest {
 
         info!("{} fetch will start from date {:?}", self.kind, start_date, );
 
-        let mut chunk_fetch_start_t = Utc::now();
         let stream = chron
             .versions(self.kind, start_date, 3, args.use_local_cheap_cashews)
             // We ask Chron to start at a given valid_from. It will give us
@@ -278,7 +278,6 @@ impl VersionStage1Ingest {
         pin_mut!(stream);
 
         while let Some(chunk) = stream.next().await {
-            let mut chunk_fetched_t = Utc::now();
             // When a chunked stream encounters an error, it returns the portion
             // of the chunk that was collected before the error and the error
             // itself. We want to insert the successful portion of the chunk,
@@ -321,6 +320,269 @@ impl IngestStage for VersionStage1Ingest {
     }
 }
 
+pub struct FeedEventVersionStage1Ingest {
+    kind: &'static str,
+    embedded_kind: &'static str,
+}
+
+async fn insert_feed_event_versions_from_stream(
+    async_conn: &mut AsyncPgConnection,
+    conn: &mut PgConnection,
+    event_cache: &mut HashMap<(String, i32), serde_json::Value>,
+    insert_as_kind: &str,
+    kind: &str,
+    kind_description: &str,
+    batch_size: usize,
+    until: Option<NaiveDateTime>,
+    wake_next_stage: Arc<Notify>,
+) -> Result<(), IngestFatalError> {
+    let start_cursor = db::get_latest_raw_feed_event_version_cursor(conn, insert_as_kind)
+        .map_err(|e| { info!("Error {e}"); e })?
+        .map(|(dt, id, _)| (dt, id))
+        .unwrap_or_else(|| (
+            // This is the date of the first record with a feed, rounded down a bit
+            NaiveDateTime::parse_from_str("2025-06-09 11:50:00.000000", "%Y-%m-%d %H:%M:%S%.f")
+                .expect("Hard-coded date must not fail to parse"),
+            "6805db0cac48194de3cd3ff7".to_string(),
+        ));
+
+    info!("Migrating feed event versions from {kind_description} starting from {:?}", start_cursor);
+
+    let version_chunks_stream = async_db::stream_versions_at_cursor_until(
+        async_conn,
+        kind,
+        Some(start_cursor),
+        until,
+    ).await?
+        .flat_map(|result| futures::stream::iter(match result {
+            Ok(version) => {
+                #[derive(Deserialize)]
+                struct SomethingWithFeed {
+                    // It has a capital F when it's embedded in an entity (team or player)
+                    // and lowercase f when it's alone
+                    #[serde(alias = "Feed")]
+                    feed: Option<Vec<serde_json::Value>>,
+                }
+
+                match serde_json::from_value::<SomethingWithFeed>(version.data) {
+                    Ok(des) => {
+                        if let Some(feed) = des.feed {
+                            let dt = version.valid_from.naive_utc();
+                            Either::Left(Either::Right(
+                                feed.into_iter()
+                                    .enumerate()
+                                    .map(move |(idx, item)| Ok((version.entity_id.clone(), idx as i32, dt, item)))
+                            ))
+                        } else {
+                            Either::Right(Either::Left(iter::empty()))
+                        }
+                    },
+                    Err(err) => {
+                        Either::Left(Either::Left(iter::once(Err(IngestFatalError::DeserializeError(err)))))
+                    }
+                }
+            }
+            Err(err) => {
+                Either::Right(Either::Right(iter::once(Err(IngestFatalError::DbError(err)))))
+            }
+        }
+        ))
+        .filter(|result| futures::future::ready(filter_cached(event_cache, result)))
+        .chunks(batch_size);
+    pin_mut!(version_chunks_stream);
+
+    while let Some(version_chunk) = version_chunks_stream.next().await {
+        let chunk_len = version_chunk.len();
+        let versions = version_chunk.into_iter().collect::<Result<Vec<_>, _>>()?;
+        let (_, _, date, _): &(String, i32, NaiveDateTime, serde_json::Value) = versions.last()
+            .expect("This vec cannot be empty");
+        let human_time_ago = chrono_humanize::HumanTime::from(date.and_utc())
+            .to_text_en(chrono_humanize::Accuracy::Precise, chrono_humanize::Tense::Past);
+        debug!(
+            "Inserting {chunk_len} {kind_description} event versions. Currently processing \
+            {kind_description}s from {human_time_ago}",
+        );
+        let chunk_insert_start = Utc::now();
+        let n_inserted = db::insert_feed_event_versions(conn, insert_as_kind, &versions)?;
+        let chunk_insert_duration = (Utc::now() - chunk_insert_start).as_seconds_f64();
+        debug!("Inserted {n_inserted} of {chunk_len} {kind_description} event versions in {chunk_insert_duration:.2}s");
+        wake_next_stage.notify_one();
+    }
+
+    debug!("Finished processing legacy {kind_description} versions");
+    Ok(())
+}
+
+fn filter_cached(event_cache: &mut HashMap<(String, i32), serde_json::Value>, result: &Result<(String, i32, NaiveDateTime, serde_json::Value), IngestFatalError>) -> bool {
+    match result {
+        Ok((id, idx, _, item)) => {
+            match event_cache.entry((id.clone(), *idx)) {
+                Entry::Occupied(mut entry) => {
+                    if entry.get() == item {
+                        false // matches the cached version, don't process
+                    } else {
+                        entry.insert(item.clone());
+                        true // doesn't match the cached version, must process
+                    }
+                },
+                Entry::Vacant(entry) => {
+                    entry.insert(item.clone());
+                    true // there was no cached version, must process
+                }
+            }
+        },
+        Err(_) => true, // always process errors
+    }
+}
+
+impl FeedEventVersionStage1Ingest {
+    pub fn new(kind: &'static str, embedded_kind: &'static str) -> FeedEventVersionStage1Ingest {
+        FeedEventVersionStage1Ingest { kind, embedded_kind }
+    }
+
+    async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
+        let mut conn = args.pool.get()?;
+
+        let url = mmoldb_db::postgres_url_from_environment();
+        let mut async_conn = AsyncPgConnection::establish(&url).await?;
+        let mut event_cache = HashMap::new();
+
+        insert_feed_event_versions_from_stream(
+            &mut async_conn,
+            &mut conn,
+            &mut event_cache,
+            self.kind,
+            self.embedded_kind,
+            &format!("embedded {} feed", self.embedded_kind),
+            args.config.insert_raw_entity_batch_size,
+            Some(NaiveDateTime::parse_from_str("2025-07-29 00:00:00.000000", "%Y-%m-%d %H:%M:%S%.f").expect("Hard-coded date must not fail to parse")),
+            args.wake_next_stage.clone(),
+        ).await?;
+
+        insert_feed_event_versions_from_stream(
+            &mut async_conn,
+            &mut conn,
+            &mut event_cache,
+            self.kind,
+            self.kind,
+            self.kind,
+            args.config.insert_raw_entity_batch_size,
+            None,
+            args.wake_next_stage.clone(),
+        ).await?;
+
+        // Need to re-acquire the cursor after inserting embedded feed events
+        // (this could be skipped if we know we didn't insert any feed events)
+        let start_cursor = db::get_latest_raw_feed_event_version_cursor(&mut conn, self.kind)?
+            .map(|(dt, id, _)| (dt, id));
+        let start_cursor_utc = start_cursor.as_ref().map(|(dt, id)| (dt.and_utc(), id));
+
+        let start_date = start_cursor.as_ref().map(|(dt, _)| dt.and_utc());
+        info!("{} fetch will start from date {:?}", self.kind, start_date, );
+        let chron = Chron::new(args.config.chron_fetch_batch_size);
+
+        let stream = chron
+            .versions(self.kind, start_date, 3, args.use_local_cheap_cashews)
+            // We ask Chron to start at a given valid_from. It will give us
+            // all versions whose valid_from is greater than _or equal to_
+            // that value. That's good, because it means that if we left
+            // off halfway through processing a batch of entities with
+            // identical valid_from, we won't miss the rest of the batch.
+            // However, we will receive the first half of the batch again.
+            // Later steps in the ingest code will error if we attempt to
+            // ingest a value that's already in the database, so we have to
+            // filter them out. That's what this skip_while is doing.
+            // It returns a future just because that's what's dictated by
+            // the stream api.
+            .skip_while(|result| {
+                let skip_this =
+                    start_cursor_utc
+                        .as_ref()
+                        .is_some_and(|(start_valid_from, start_entity_id)| {
+                            result.as_ref().is_ok_and(|entity| {
+                                (entity.valid_from, &entity.entity_id)
+                                    <= (*start_valid_from, start_entity_id)
+                            })
+                        });
+
+                futures::future::ready(skip_this)
+            })
+            .flat_map(|result| futures::stream::iter(match result {
+                Ok(version) => {
+                    #[derive(Deserialize)]
+                    struct SomethingWithFeed {
+                        // It has a capital F when it's embedded in an entity (team or player)
+                        // and lowercase f when it's alone
+                        #[serde(alias = "Feed")]
+                        feed: Option<Vec<serde_json::Value>>,
+                    }
+
+                    match serde_json::from_value::<SomethingWithFeed>(version.data) {
+                        Ok(des) => {
+                            if let Some(feed) = des.feed {
+                                let dt = version.valid_from.naive_utc();
+                                Either::Left(Either::Right(feed.into_iter().enumerate().map(move |(idx, item)| Ok((version.entity_id.clone(), idx as i32, dt, item)))))
+                            } else {
+                                Either::Right(Either::Left(iter::empty()))
+                            }
+                        },
+                        Err(err) => {
+                            Either::Left(Either::Left(iter::once(Err(IngestFatalError::DeserializeError(err)))))
+                        }
+                    }
+                }
+                Err(err) => {
+                    Either::Right(Either::Right(iter::once(Err(IngestFatalError::ChronStreamError(err)))))
+                }
+            }
+            ))
+            .filter(|result| futures::future::ready(filter_cached(&mut event_cache, result)))
+            .try_chunks(args.config.insert_raw_entity_batch_size);
+        pin_mut!(stream);
+
+        while let Some(chunk) = stream.next().await {
+            // When a chunked stream encounters an error, it returns the portion
+            // of the chunk that was collected before the error and the error
+            // itself. We want to insert the successful portion of the chunk,
+            // _then_ propagate any error.
+            let (chunk, maybe_err): (Vec<(String, i32, NaiveDateTime, serde_json::Value)>, _) = match chunk {
+                Ok(chunk) => (chunk, None),
+                Err(err) => (err.0, Some(err.1)),
+            };
+
+            info!("{} stage 1 ingest saving {} {}(s)", self.kind, chunk.len(), self.kind);
+            let inserted = match db::insert_feed_event_versions(&mut conn, self.kind, &chunk) {
+                Ok(x) => Ok(x),
+                Err(err) => {
+                    error!("Error in stage 1 ingest write: {err}");
+                    Err(err)
+                }
+            }?;
+            info!("{} stage 1 ingest saved {} {}(s)", self.kind, inserted, self.kind);
+
+            args.wake_next_stage.notify_one();
+
+            if let Some(err) = maybe_err {
+                Err(err)?;
+            }
+        }
+
+        info!("{} stage 1 ingest finished", self.kind);
+        Ok(())
+    }
+}
+
+impl IngestStage for FeedEventVersionStage1Ingest {
+    fn name(&self) -> &'static str {
+        "Stage 1"
+    }
+
+    // Treat this as boilerplate
+    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=Result<(), IngestFatalError>> + Send>> {
+        Box::pin(FeedEventVersionStage1Ingest::run(self, args))
+    }
+}
+
 pub struct Stage2Ingest<VersionIngest> {
     kind: &'static str,
     version_ingest: VersionIngest,
@@ -332,6 +594,11 @@ pub trait IngestibleFromVersions {
     fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>;
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value;
     fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize>;
+    fn stream_versions_at_cursor(
+        conn: &mut AsyncPgConnection,
+        kind: &str,
+        cursor: Option<(NaiveDateTime, String)>,
+    ) -> impl Future<Output = QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>> + Send>> + Send;
 }
 
 impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest<VersionIngest>  {
@@ -374,7 +641,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
         // Probably not all of this needs to be in the loop but I'm tired, boss
         loop {
-            let versions_stream = async_db::stream_versions_at_cursor(
+            let versions_stream = VersionIngest::stream_versions_at_cursor(
                 &mut async_conn,
                 self.kind,
                 start_cursor.clone(),

@@ -6,9 +6,11 @@ use mmolb_parsing::enums::Slot;
 use mmolb_parsing::{team::TeamPlayerCollection, AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized};
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{db, BestEffortSlot, PgConnection, QueryResult};
+use mmoldb_db::{async_db, db, AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult};
 use std::str::FromStr;
 use std::sync::Arc;
+use futures::Stream;
+use serde_json::Value;
 use chron::ChronEntity;
 
 pub struct TeamIngestFromVersions;
@@ -79,6 +81,10 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
             .collect_vec();
 
         db::insert_team_versions(conn, &new_team_versions)
+    }
+
+    async fn stream_versions_at_cursor(conn: &mut AsyncPgConnection, kind: &str, cursor: Option<(NaiveDateTime, String)>) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<Value>>>> {
+        async_db::stream_versions_at_cursor(conn, kind, cursor).await
     }
 }
 

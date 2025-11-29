@@ -6,9 +6,9 @@ use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
-
 use crate::QueryError;
 use crate::data_schema::data::versions::dsl as versions_dsl;
+use crate::data_schema::data::feed_event_versions::dsl as feed_event_versions_dsl;
 
 pub fn get_latest_raw_version_cursor(
     conn: &mut PgConnection,
@@ -20,6 +20,27 @@ pub fn get_latest_raw_version_cursor(
         .order_by((
             versions_dsl::valid_from.desc(),
             versions_dsl::entity_id.desc(),
+        ))
+        .limit(1)
+        .get_result(conn)
+        .optional()
+}
+
+pub fn get_latest_raw_feed_event_version_cursor(
+    conn: &mut PgConnection,
+    kind: &str,
+) -> QueryResult<Option<(NaiveDateTime, String, i32)>> {
+    feed_event_versions_dsl::feed_event_versions
+        .filter(feed_event_versions_dsl::kind.eq(kind))
+        .select((
+            feed_event_versions_dsl::valid_from,
+            feed_event_versions_dsl::entity_id,
+            feed_event_versions_dsl::feed_event_index,
+        ))
+        .order_by((
+            feed_event_versions_dsl::valid_from.desc(),
+            feed_event_versions_dsl::entity_id.desc(),
+            feed_event_versions_dsl::feed_event_index.desc(),
         ))
         .limit(1)
         .get_result(conn)
@@ -94,6 +115,38 @@ pub fn insert_versions(
         .collect_vec();
 
     diesel::copy_from(versions_dsl::versions)
+        .from_insertable(&new_versions)
+        .execute(conn)
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::data_schema::data::feed_event_versions)]
+#[diesel(treat_none_as_default_value = false)]
+struct NewFeedEventVersion<'a> {
+    pub kind: &'a str,
+    pub entity_id: &'a str,
+    pub feed_event_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub data: &'a serde_json::Value,
+}
+
+pub fn insert_feed_event_versions(
+    conn: &mut PgConnection,
+    kind: &str,
+    versions: &[(String, i32, NaiveDateTime, serde_json::Value)],
+) -> QueryResult<usize> {
+    let new_versions = versions
+        .iter()
+        .map(|(id, idx, dt, v)| NewFeedEventVersion {
+            kind,
+            entity_id: id,
+            feed_event_index: *idx,
+            valid_from: *dt,
+            data: v,
+        })
+        .collect_vec();
+
+    diesel::copy_from(feed_event_versions_dsl::feed_event_versions)
         .from_insertable(&new_versions)
         .execute(conn)
 }

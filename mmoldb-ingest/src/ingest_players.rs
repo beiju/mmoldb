@@ -1,15 +1,17 @@
 use std::fmt::Display;
 use std::sync::Arc;
 use chrono::NaiveDateTime;
+use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{error, warn};
 use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
 use mmolb_parsing::player::{PlayerEquipment, TalkCategory, TalkStars};
+use serde_json::Value;
 use thiserror::Error;
 
-use mmoldb_db::{db, PgConnection, QueryResult};
+use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
@@ -69,6 +71,10 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
             .collect_vec();
 
         db::insert_player_versions(conn, &new_versions)
+    }
+
+    async fn stream_versions_at_cursor(conn: &mut AsyncPgConnection, kind: &str, cursor: Option<(NaiveDateTime, String)>) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<Value>>>> {
+        async_db::stream_versions_at_cursor(conn, kind, cursor).await
     }
 }
 

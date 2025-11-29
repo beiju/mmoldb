@@ -3,7 +3,8 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use futures::{Stream, TryStreamExt};
-
+use futures::future::Either;
+use log::info;
 use crate::schema::data_schema::data::versions::dsl as versions_dsl;
 
 #[derive(Queryable, Selectable)]
@@ -56,6 +57,17 @@ pub(crate) fn version_cursor_query<'a, 'b>(
 
     version_cursor_query_diesel(kind, cursor_date, cursor_id)
 }
+
+fn version_to_chron(v: Version) -> ChronEntity<serde_json::Value> {
+    ChronEntity {
+        kind: v.kind,
+        entity_id: v.entity_id,
+        valid_from: v.valid_from.and_utc(),
+        valid_to: v.valid_to.map(|dt| dt.and_utc()),
+        data: v.data,
+    }
+}
+
 pub async fn stream_versions_at_cursor(
     conn: &mut AsyncPgConnection,
     kind: &str,
@@ -69,12 +81,88 @@ pub async fn stream_versions_at_cursor(
         .select(Version::as_select())
         .load_stream(conn)
         .await?
+        .map_ok(version_to_chron);
+
+    Ok(stream)
+}
+
+pub async fn stream_versions_at_cursor_until(
+    conn: &mut AsyncPgConnection,
+    kind: &str,
+    cursor: Option<(NaiveDateTime, String)>,
+    until: Option<NaiveDateTime>,
+) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
+    let Some(until) = until else {
+        return stream_versions_at_cursor(conn, kind, cursor).await
+            .map(Either::Left);
+    };
+    
+    let cursor = cursor
+        .as_ref()
+        .map(|(dt, id)| (*dt, id.as_str()));
+
+    let stream = version_cursor_query(kind, cursor)
+        .filter(versions_dsl::valid_from.lt(until))
+        .select(Version::as_select())
+        .load_stream(conn)
+        .await?
+        .map_ok(version_to_chron);
+
+    Ok(Either::Right(stream))
+}
+
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = crate::data_schema::data::feed_event_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub(crate) struct FeedEventVersion {
+    pub kind: String,
+    pub entity_id: String,
+    pub feed_event_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub data: serde_json::Value,
+}
+
+pub async fn stream_feed_event_versions_at_cursor(
+    conn: &mut AsyncPgConnection,
+    kind: &str,
+) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
+    use crate::schema::data_schema::data::feed_event_versions::dsl as fev_dsl;
+    use crate::schema::data_schema::data::feed_events_processed::dsl as fep_dsl;
+
+    let q = fev_dsl::feed_event_versions
+        .filter(fev_dsl::kind.eq(kind))
+        .filter(diesel::dsl::not(diesel::dsl::exists(
+            // This subquery is meant to check if there is a corresponding entry in feed_events_processed
+            fep_dsl::feed_events_processed
+                .filter(fep_dsl::kind.eq(fev_dsl::kind))
+                .filter(fep_dsl::entity_id.eq(fev_dsl::entity_id))
+                .filter(fep_dsl::feed_event_index.eq(fev_dsl::feed_event_index))
+                .filter(fep_dsl::valid_from.eq(fev_dsl::valid_from))
+        )))
+        // Callers of this function rely on the results being sorted by
+        // (valid_from, entity_id) with the highest id last
+        .order_by((
+            fev_dsl::valid_from.asc(),
+            fev_dsl::entity_id.asc(),
+        ))
+        .select(FeedEventVersion::as_select());
+
+    info!("Query: {}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
+
+    let stream = q
+        .load_stream(conn)
+        .await?
         .map_ok(|v| ChronEntity {
             kind: v.kind,
             entity_id: v.entity_id,
             valid_from: v.valid_from.and_utc(),
-            valid_to: v.valid_to.map(|dt| dt.and_utc()),
-            data: v.data,
+            valid_to: v.valid_until.map(|dt| dt.and_utc()),
+            // Kind of a hack to smuggle extra data through the machinery
+            data: serde_json::json!({
+                "feed_event_index": v.feed_event_index,
+                "data": v.data,
+            }),
         });
 
     Ok(stream)

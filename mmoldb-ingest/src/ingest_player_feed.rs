@@ -15,9 +15,11 @@ use mmoldb_db::models::{
     NewPlayerRecomposition, NewVersionIngestLog,
 };
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{db, PgConnection, QueryResult};
+use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
+use futures::Stream;
+use serde_json::Value;
 
 pub struct PlayerFeedIngestFromVersions;
 
@@ -38,6 +40,10 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
             .collect_vec();
 
         db::insert_player_feed_versions(conn, &new_versions)
+    }
+
+    async fn stream_versions_at_cursor(conn: &mut AsyncPgConnection, kind: &str, cursor: Option<(NaiveDateTime, String)>) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<Value>>>> {
+        async_db::stream_versions_at_cursor(conn, kind, cursor).await
     }
 }
 

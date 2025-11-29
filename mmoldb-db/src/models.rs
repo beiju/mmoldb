@@ -1071,3 +1071,23 @@ pub struct DbWither {
     pub contain_attempted: bool,
     pub contain_replacement_player_name: Option<String>,
 }
+
+#[derive(Clone, Debug, Insertable, PartialEq, AsChangeset, Identifiable)]
+#[diesel(table_name = crate::data_schema::data::feed_events_processed)]
+#[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id))]
+pub struct NewFeedEventProcessed<'a> {
+    pub kind: &'a str,
+    pub entity_id: &'a str,
+    pub feed_event_index: i32,
+    pub valid_from: NaiveDateTime,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::feed_events_processed)]
+#[diesel(check_for_backend(diesel::pg::Pg), primary_key(kind, entity_id))]
+pub struct DbFeedEventProcessed {
+    pub kind: String,
+    pub entity_id: String,
+    pub feed_event_index: i32,
+    pub valid_from: NaiveDateTime,
+}

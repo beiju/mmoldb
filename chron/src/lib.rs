@@ -2,7 +2,7 @@ use std::future;
 use chrono::{DateTime, Utc};
 use futures::{Stream, StreamExt, stream, TryStreamExt};
 use futures::future::Either;
-use log::{debug, error, warn};
+use log::{debug, warn};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

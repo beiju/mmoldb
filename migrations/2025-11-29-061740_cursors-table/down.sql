@@ -1,0 +1,1 @@
+drop table data.feed_events_processed;
