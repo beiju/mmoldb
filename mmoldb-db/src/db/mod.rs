@@ -2148,8 +2148,12 @@ fn insert_feed_events_processed(
     use crate::data_schema::data::feed_events_processed::dsl as fep_dsl;
 
     // Insert new records
-    diesel::copy_from(fep_dsl::feed_events_processed)
-        .from_insertable(new_feed_events_processed)
+    diesel::insert_into(fep_dsl::feed_events_processed)
+        .values(new_feed_events_processed)
+        // Because of the buffers between the coordinator and the workers, we
+        // may process the same record multiple times. Every table handles
+        // that itself, so we just need to not error on inserting this one.
+        .on_conflict_do_nothing()
         .execute(conn)
 }
 

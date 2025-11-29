@@ -717,6 +717,14 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
     // Worker could probably take a conn instead of the whole pool, but the cost is negligible
     async fn worker(self: Arc<Self>, args: StageArgs, version_recv: Receiver<ChronEntity<serde_json::Value>>, worker_idx: usize) -> Result<(), IngestFatalError> {
+        let val = self.worker_internal(args, version_recv, worker_idx).await;
+        if let Err(err) = &val {
+            error!("Error in stage 2 ingest worker: {err}");
+        }
+        val
+    }
+    
+    async fn worker_internal(self: Arc<Self>, args: StageArgs, version_recv: Receiver<ChronEntity<serde_json::Value>>, worker_idx: usize) -> Result<(), IngestFatalError> {
         info!("{} stage 2 ingest worker {} launched", self.kind, worker_idx);
         let mut conn = args.pool.get()?;
         let taxa = Taxa::new(&mut conn)?;

@@ -130,7 +130,7 @@ pub async fn stream_feed_event_versions_at_cursor(
     use crate::schema::data_schema::data::feed_event_versions::dsl as fev_dsl;
     use crate::schema::data_schema::data::feed_events_processed::dsl as fep_dsl;
 
-    let q = fev_dsl::feed_event_versions
+    let stream = fev_dsl::feed_event_versions
         .filter(fev_dsl::kind.eq(kind))
         .filter(diesel::dsl::not(diesel::dsl::exists(
             // This subquery is meant to check if there is a corresponding entry in feed_events_processed
@@ -145,12 +145,9 @@ pub async fn stream_feed_event_versions_at_cursor(
         .order_by((
             fev_dsl::valid_from.asc(),
             fev_dsl::entity_id.asc(),
+            fev_dsl::feed_event_index.asc(),
         ))
-        .select(FeedEventVersion::as_select());
-
-    info!("Query: {}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
-
-    let stream = q
+        .select(FeedEventVersion::as_select())
         .load_stream(conn)
         .await?
         .map_ok(|v| ChronEntity {
