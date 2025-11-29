@@ -7,12 +7,15 @@ use futures::Stream;
 use itertools::Itertools;
 use mmolb_parsing::enums::LinkType;
 use mmolb_parsing::feed_event::FeedEvent;
+use mmoldb_db::models::{NewFeedEventProcessed, NewTeamFeedVersion, NewTeamGamePlayed, NewVersionIngestLog};
 use mmolb_parsing::team_feed::ParsedTeamFeedEventText;
 use mmoldb_db::models::{NewFeedEventProcessed, NewTeamGamePlayed, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{async_db, db, AsyncPgConnection, Connection, PgConnection, QueryResult};
 use serde::Deserialize;
 use std::sync::Arc;
+use futures::Stream;
+use mmolb_parsing::team_feed::ParsedTeamFeedEventText;
 
 #[derive(Deserialize)]
 pub struct TeamFeedItemContainer {
@@ -43,6 +46,17 @@ impl IngestibleFromVersions for TeamFeedIngestFromVersions {
         conn.transaction(|c| {
             db::insert_team_feed_versions(c, &new_versions)
         })
+    }
+
+    async fn stream_versions_at_cursor(
+        conn: &mut AsyncPgConnection,
+        kind: &str,
+        _: Option<(NaiveDateTime, String)>,
+    ) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<serde_json::Value>>>> {
+        // This ingestible doesn't use a cursor. I used to have an assert that cursor
+        // was None, but that's incorrect because the machinery opportunistically updates
+        // the cursor based on values that are passing through
+        async_db::stream_feed_event_versions_at_cursor(conn, kind).await
     }
 
     async fn stream_versions_at_cursor(

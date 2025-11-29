@@ -96,7 +96,7 @@ pub async fn stream_versions_at_cursor_until(
         return stream_versions_at_cursor(conn, kind, cursor).await
             .map(Either::Left);
     };
-    
+
     let cursor = cursor
         .as_ref()
         .map(|(dt, id)| (*dt, id.as_str()));
