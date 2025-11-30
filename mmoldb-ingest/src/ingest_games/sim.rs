@@ -5,7 +5,7 @@ use miette::Diagnostic;
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType, TopBottom};
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, ContainResult, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WitherStruggle};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, ContainResult, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WitherResult, WitherStruggle};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
@@ -2615,7 +2615,7 @@ impl<'g> Game<'g> {
                 game_event!(
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
-                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes, wither } => {
+                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence: _ /* TODO */ } => {
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
                         self.update_runners(
@@ -2648,7 +2648,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence: _ /* TODO */ } => {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
@@ -2727,7 +2727,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
-                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes, wither } => {
+                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes, wither, efflorescence: _ /* TODO */ } => {
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
                             self.state.count_strikes += 1;
@@ -2757,7 +2757,7 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
-                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes } => {
+                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes, efflorescence: _ /* TODO */ } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
@@ -2808,7 +2808,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, TaxaEventType::Walk)
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]
-                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer, aurora_photos, ejection, door_prizes, wither } => {
+                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence: _ /* TODO */ } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(
@@ -3520,7 +3520,12 @@ impl<'g> Game<'g> {
                         player_position: struggle.target.place.into(),
                         player_name: struggle.target.name,
                         source_player_name: struggle.source_name,
-                        corrupted: *corrupted,
+                        corrupted: match corrupted {
+                            WitherResult::Resisted |
+                            WitherResult::ResistedEffloresced |
+                            WitherResult::ResistedImmune => false,
+                            WitherResult::Corrupted => true,
+                        },
                         contain_attempted,
                         contain_replacement_player_name,
                     }))

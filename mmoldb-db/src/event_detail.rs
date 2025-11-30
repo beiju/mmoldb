@@ -379,7 +379,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
-                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
+                efflorescence: Vec::new(), // TODO
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,
@@ -390,6 +391,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
+                efflorescence: Vec::new(), // TODO
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -409,7 +411,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
-                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
+                efflorescence: Vec::new(), // TODO
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -428,7 +431,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
-                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
+                efflorescence: Vec::new(), // TODO
             },
             TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
                 foul: Some(FoulType::Tip),
@@ -447,7 +451,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 cheer: self.cheer.clone(),
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
-                wither: self.wither.as_ref().map(WitherStruggle::to_ref)
+                wither: self.wither.as_ref().map(WitherStruggle::to_ref),
+                efflorescence: Vec::new(), // TODO
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
@@ -609,6 +614,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
+                efflorescence: Vec::new(), // TODO
             },
             TaxaEventType::DoublePlay => {
                 let scores = self.scores();
@@ -743,6 +749,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             cheer: self.cheer.clone(),
             aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
             door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
+            efflorescence: Vec::new(), // TODO
         })
     }
 }
