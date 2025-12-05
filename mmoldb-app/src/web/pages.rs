@@ -366,7 +366,11 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
     let player_versions_query = versions_query!(db, db::player_versions_count, "player");
     let player_feed_versions_query = versions_query!(db, db::player_feed_versions_count, "player_feed");
     let team_versions_query = versions_query!(db, db::team_versions_count, "team");
-    let team_feed_versions_query = versions_query!(db, db::team_feed_versions_count, "team_feed");
+    let team_feed_versions_query = db.run(move |conn| {
+        conn.transaction(|conn| {
+            Ok::<_, AppError>(db::feed_event_versions_count(conn, "team_feed")?)
+        })
+    });
 
     let (
         (total_num_ingests, displayed_ingests),
@@ -416,7 +420,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         IngestibleWithErrors::new("player versions", total_player_versions, with_issues.get("player").cloned().unwrap_or(0)),
         IngestibleWithErrors::new("player feed versions", total_player_feed_versions, with_issues.get("player_feed").cloned().unwrap_or(0)),
         IngestibleWithErrors::new("team versions", total_team_versions, with_issues.get("team").cloned().unwrap_or(0)),
-        IngestibleWithErrors::new("team feed versions", total_team_feed_versions, with_issues.get("team_feed").cloned().unwrap_or(0)),
+        IngestibleWithErrors::new("team feed event versions", total_team_feed_versions, with_issues.get("team_feed").cloned().unwrap_or(0)),
     ];
 
     Ok(Template::render(

@@ -159,7 +159,6 @@ impl Chron {
             .expect("Hard-coded cutback date must parse")
             .with_timezone(&Utc);
 
-
         if start_at.is_none_or(|s| s < cutover_date) {
             Either::Left(
                 self.items(free_cashews_url, kind, max_retries, start_at, Some(cutover_date))
@@ -173,7 +172,7 @@ impl Chron {
             ))
         } else {
             Either::Right(Either::Right(
-                self.items(cheap_cashews_url, kind, max_retries, start_at, None)
+                self.items(free_cashews_url, kind, max_retries, start_at, None)
             ))
         }
     }
@@ -354,6 +353,7 @@ async fn get_next_page(
         .build()
         .map_err(ChronStreamError::RequestBuildError)?;
 
+    debug!("Requesting {}", request.url());
     let response = client
         .execute(request)
         .await

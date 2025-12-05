@@ -94,10 +94,13 @@ pub fn team_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
     team_versions.count().get_result(conn)
 }
 
-pub fn team_feed_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
-    use crate::data_schema::data::team_feed_versions::dsl::*;
+pub fn feed_event_versions_count(conn: &mut PgConnection, of_kind: &str) -> QueryResult<i64> {
+    use crate::data_schema::data::feed_events_processed::dsl::*;
 
-    team_feed_versions.count().get_result(conn)
+    feed_events_processed
+        .filter(kind.eq(of_kind))
+        .count()
+        .get_result(conn)
 }
 
 pub fn with_issues_counts(conn: &mut PgConnection) -> QueryResult<HashMap<String, i64>> {
@@ -2578,6 +2581,7 @@ pub struct PlayerAll {
 use crate::schema::data_schema::data::events::dsl as event_dsl;
 use crate::schema::data_schema::data::games::dsl as game_dsl;
 use diesel::helper_types as d;
+use crate::schema::data_schema::data::feed_events_processed::dsl::feed_events_processed;
 
 type PlayerFilter<'q, Field> = d::And<
     d::Eq<Field, &'q str>,
