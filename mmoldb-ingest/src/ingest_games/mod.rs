@@ -80,6 +80,104 @@ pub async fn fetch_missed_games(
     Ok(())
 }
 
+pub async fn ingest_stage_2(
+    pool: ConnectionPool,
+    ingest_id: i64,
+    abort: CancellationToken,
+    notify: Arc<Notify>,
+    finish: CancellationToken,
+) -> miette::Result<()> {
+    let num_workers = std::thread::available_parallelism()
+        .unwrap_or_else(|err| {
+            warn!("Couldn't get available cores: {}. Falling back to 1.", err);
+            NonZero::new(1).expect("Literal 1 should be nonzero")
+        });
+    debug!("Ingesting with {} workers", num_workers);
+
+    let partitioner = Partitioner::new(num_workers);
+
+    let url = mmoldb_db::postgres_url_from_environment();
+    let mut async_conn = AsyncPgConnection::establish(&url).await.into_diagnostic()?;
+
+    // Task names have to outlive their tasks, so we build then in advance
+    let task_names_and_nums = (0..=num_workers.get())
+        .map(|worker_idx| (format!("game Stage 2 worker {}", worker_idx), worker_idx))
+        .collect_vec();
+
+    // Loop so that we can restart every time we're notify()'d
+    loop {
+        // Launching and awaiting subtasks outside the loop leads to multiple copies of a
+        // game being stuck in the queue. There's probably a more elegant solution than
+        // spinning up and shutting down tasks so often, but this will do for now.
+        let tasks = task_names_and_nums.iter()
+            .map(|(name, worker_idx)| {
+                // There's not a principled reason `parallelism` is used as the buffer size,
+                // it's just that the more parallelism you want the more buffer you probably
+                // also want.
+                let (send, recv) = tokio::sync::mpsc::channel(num_workers.get());
+                let task = tokio::task::Builder::new()
+                    .name(name)
+                    .spawn(process_games(
+                        pool.clone(),
+                        ingest_id,
+                        recv,
+                        *worker_idx
+                    ))?;
+                Ok((send, task))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(crate::IngestFatalError::TaskSpawnError)?;
+
+        let stream = async_db::stream_unprocessed_game_versions(&mut async_conn).await.into_diagnostic()?;
+        pin_mut!(stream);
+
+        while let Some(entity) = stream.try_next().await.into_diagnostic()? {
+            let assigned_worker = partitioner.partition_for(&entity.entity_id)?;
+            // This panics on OOB, which is correct
+            let (pipe, _) = &tasks[assigned_worker];
+
+            // If the send fails it's probably because a child errored. Propagate child
+            // errors first
+            if let Err(pipe_err) = pipe.send(entity).await {
+                warn!("Got a pipe error, which probably means there's an error in a child task. Joining child tasks...");
+                for (pipe, task) in tasks.into_iter() {
+                    drop(pipe); // Signals child to exit
+                    task.await.map_err(crate::IngestFatalError::JoinError)??;
+                }
+                warn!("No child tasks exited with errors. Propagating the pipe error instead.");
+                return Err(pipe_err).into_diagnostic();
+            }
+        }
+
+        // Drop all the senders. This causes the receivers to output None, which is the
+        // signal the workers use to know when to exit.
+        let tasks = tasks.into_iter()
+            .map(|(_, task)| task)
+            .collect_vec();
+
+        debug!("All available versions for game Stage 2 are dispatched to workers. Waiting for workers to exit.");
+
+        for task in tasks {
+            task.await.map_err(crate::IngestFatalError::JoinError)??;
+        }
+
+        info!("game stage 2 ingest coordinator has processed all available versions. Waiting to be waken up or exited...");
+        tokio::select! {
+            biased; // We want to always
+            _ = notify.notified() => {
+                info!("game stage 2 ingest coordinator was woken up");
+            }
+            _ = finish.cancelled() => {
+                info!("game stage 2 ingest coordinator exiting because finished was set at the end of the loop");
+                break;
+            }
+        }
+    }
+
+    Ok(())
+
+}
+
 pub async fn ingest_games(
     pool: ConnectionPool,
     ingest_id: i64,
@@ -93,15 +191,14 @@ pub async fn ingest_games(
 
     let stage_2_task = tokio::task::Builder::new()
         .name("Games Stage 2 Ingest Coordinator")
-        .spawn(move || {
-            ingest_stage_2(
-                pool,
-                ingest_id,
-                abort,
-                notify,
-                finish,
-            )
-        })?;
+        .spawn(ingest_stage_2(
+            pool.clone(),
+            ingest_id,
+            abort.clone(),
+            notify.clone(),
+            finish.clone(),
+        ))
+        .into_diagnostic()?;
 
     info!("Launched process games task");
     info!("Beginning raw game ingest");
@@ -169,14 +266,12 @@ async fn process_games(
     pool: ConnectionPool,
     ingest_id: i64,
     game_recv: Receiver<ChronEntity<serde_json::Value>>,
-    handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
     let result = process_games_internal(
         pool,
         ingest_id,
         game_recv,
-        handle,
         worker_id,
     ).await;
     if let Err(err) = &result {
@@ -189,7 +284,6 @@ async fn process_games_internal(
     pool: ConnectionPool,
     ingest_id: i64,
     game_recv: Receiver<ChronEntity<serde_json::Value>>,
-    handle: tokio::runtime::Handle,
     worker_idx: usize,
 ) -> miette::Result<()> {
     let mut conn = pool.get().into_diagnostic()?;
@@ -231,10 +325,6 @@ async fn process_games_internal(
         );
 
         page_index += 1;
-        // Yield to allow the tokio scheduler to do its thing
-        // (with out this, signal handling effectively doesn't work because it has to wait
-        // for the entire process games task to finish)
-        handle.block_on(tokio::task::yield_now());
 
         // Must be the last thing in the loop
         get_batch_to_process_start = Utc::now();

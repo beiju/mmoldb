@@ -188,7 +188,9 @@ pub async fn stream_unprocessed_game_versions(
             // This subquery is meant to check if there is a corresponding entry in games
             games_dsl::games
                 .filter(games_dsl::mmolb_game_id.eq(entities_dsl::entity_id))
-                .filter(games_dsl::from_version.eq(entities_dsl::valid_from))
+                // We want to consider this entity processed if there exists a game
+                // from its valid_from *or any later valid_from*
+                .filter(games_dsl::from_version.ge(entities_dsl::valid_from))
         )))
         // I don't actually know if return order matters for this one
         .order_by((
