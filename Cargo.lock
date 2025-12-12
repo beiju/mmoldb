@@ -1928,7 +1928,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.48.0"
-source = "git+https://github.com/beiju/mmolb_parsing.git?branch=hotfix%2Fs8#f57b6de744e158aaf081e3bd95ebfbb61b77960f"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=hotfix%2Fs8#67285aa5e9947c297354c234a97a44a84f044414"
 dependencies = [
  "chrono",
  "indexmap 2.11.1",
@@ -2023,6 +2023,7 @@ dependencies = [
  "serde",
  "serde_default",
  "serde_json",
+ "serde_path_to_error",
  "strum",
  "thiserror",
  "tokio",

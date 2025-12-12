@@ -6,6 +6,7 @@ use itertools::{Itertools, izip, Either};
 use log::{debug, error, info};
 use miette::{Context, Diagnostic};
 use mmolb_parsing::enums::EventType;
+use serde::de::IntoDeserializer;
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{IngestLog, PgConnection, QueryError, db};
@@ -72,7 +73,8 @@ pub fn ingest_page_of_games(
     let all_games = all_games_json
         .into_iter()
         .map(|game_json| {
-            match serde_json::from_value(game_json.data) {
+            let des = game_json.data.into_deserializer();
+            match serde_path_to_error::deserialize(des) {
                 Ok(data) => Either::Left(ChronEntity {
                     kind: game_json.kind,
                     entity_id: game_json.entity_id,
