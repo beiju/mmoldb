@@ -174,26 +174,6 @@ pub struct DbEvent {
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = crate::info_schema::info::raw_events)]
-#[diesel(treat_none_as_default_value = false)]
-pub struct NewRawEvent<'a> {
-    pub game_id: i64,
-    pub game_event_index: i32,
-    pub event_text: &'a str,
-}
-
-#[derive(Identifiable, Queryable, Selectable, Associations)]
-#[diesel(belongs_to(DbGame, foreign_key = game_id))]
-#[diesel(table_name = crate::info_schema::info::raw_events)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbRawEvent {
-    pub id: i64,
-    pub game_id: i64,
-    pub game_event_index: i32,
-    pub event_text: String,
-}
-
-#[derive(Insertable)]
 #[diesel(table_name = crate::info_schema::info::event_ingest_log)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewEventIngestLog<'a> {
@@ -233,7 +213,6 @@ pub struct NewGameIngestTimings {
     pub db_insert_delete_old_games_duration: f64,
     pub db_insert_update_weather_table_duration: f64,
     pub db_insert_insert_games_duration: f64,
-    pub db_insert_insert_raw_events_duration: f64,
     pub db_insert_insert_logs_duration: f64,
     pub db_insert_insert_events_duration: f64,
     pub db_insert_get_event_ids_duration: f64,

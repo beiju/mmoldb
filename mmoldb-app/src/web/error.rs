@@ -5,8 +5,10 @@ use miette::Diagnostic;
 use rocket::http::Status;
 use rocket::response::Responder;
 use rocket::{Request, Response, uri};
+use rocket::serde::json::serde_json;
 use rocket_dyn_templates::{Template, context};
 use thiserror::Error;
+use mmoldb_db::db::QueryDeserializeError;
 
 // TODO This should probably be some miette bullshit
 #[derive(Debug, Error, Diagnostic)]
@@ -18,10 +20,22 @@ pub enum AppError {
     DbError(#[from] diesel::result::Error),
 
     #[error(transparent)]
+    SerdeError(#[from] serde_json::Error),
+
+    #[error(transparent)]
     DbMetaQueryError(#[from] mmoldb_db::DbMetaQueryError),
 
     #[error(transparent)]
     DocsError(#[from] DocsError),
+}
+
+impl From<QueryDeserializeError> for AppError {
+    fn from(value: QueryDeserializeError) -> Self {
+        match value {
+            QueryDeserializeError::Query(err) => AppError::DbError(err),
+            QueryDeserializeError::Deserialize(err) => AppError::SerdeError(err),
+        }
+    }
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for AppError {

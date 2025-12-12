@@ -26,7 +26,7 @@ use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRawEvent, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewRawEvent, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbFeedEventProcessed};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbFeedEventProcessed};
 use crate::taxa::Taxa;
 use crate::{PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -831,7 +831,6 @@ pub struct InsertGamesTimings {
     pub delete_old_games_duration: f64,
     pub update_weather_table_duration: f64,
     pub insert_games_duration: f64,
-    pub insert_raw_events_duration: f64,
     pub insert_logs_duration: f64,
     pub insert_events_duration: f64,
     pub get_event_ids_duration: f64,
@@ -865,7 +864,6 @@ fn insert_games_internal<'e>(
     use crate::data_schema::data::parties::dsl as parties_dsl;
     use crate::data_schema::data::pitcher_changes::dsl as pitcher_changes_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
-    use crate::info_schema::info::raw_events::dsl as raw_events_dsl;
     use crate::data_schema::data::wither::dsl as withers_dsl;
 
     // First delete all games. If particular debug settings are turned on this may happen for every
@@ -1027,35 +1025,6 @@ fn insert_games_internal<'e>(
         .partition_map(|x| x);
 
     let insert_games_duration = (Utc::now() - insert_games_start).as_seconds_f64();
-
-    let insert_raw_events_start = Utc::now();
-    let new_raw_events = completed_games
-        .iter()
-        .flat_map(|(game_id, game)| {
-            game.raw_game
-                .event_log
-                .iter()
-                .enumerate()
-                .map(|(index, raw_event)| NewRawEvent {
-                    game_id: *game_id,
-                    game_event_index: index as i32,
-                    event_text: &raw_event.message,
-                })
-        })
-        .collect::<Vec<_>>();
-
-    let n_raw_events_to_insert = new_raw_events.len();
-    let n_raw_events_inserted = diesel::copy_from(raw_events_dsl::raw_events)
-        .from_insertable(&new_raw_events)
-        .execute(conn)?;
-
-    log_only_assert!(
-        n_raw_events_to_insert == n_raw_events_inserted,
-        "Raw events insert should have inserted {} rows, but it inserted {}",
-        n_raw_events_to_insert,
-        n_raw_events_inserted,
-    );
-    let insert_raw_events_duration = (Utc::now() - insert_raw_events_start).as_seconds_f64();
 
     let insert_logs_start = Utc::now();
     let new_logs = completed_games
@@ -1358,7 +1327,6 @@ fn insert_games_internal<'e>(
         delete_old_games_duration,
         update_weather_table_duration,
         insert_games_duration,
-        insert_raw_events_duration,
         insert_logs_duration,
         insert_events_duration,
         get_event_ids_duration,
@@ -1434,28 +1402,38 @@ pub fn insert_additional_ingest_logs(
 pub struct DbFullGameWithLogs {
     pub game: DbGame,
     pub game_wide_logs: Vec<DbEventIngestLog>,
-    pub raw_events_with_logs: Vec<(DbRawEvent, Vec<DbEventIngestLog>)>,
+    pub raw_events_with_logs: Vec<(mmolb_parsing::game::Event, Vec<DbEventIngestLog>)>,
+}
+
+#[derive(Debug, Error)]
+pub enum QueryDeserializeError {
+    #[error(transparent)]
+    Query(#[from] diesel::result::Error),
+
+    #[error(transparent)]
+    Deserialize(#[from] serde_json::error::Error),
 }
 
 pub fn game_and_raw_events(
     conn: &mut PgConnection,
     mmolb_game_id: &str,
-) -> QueryResult<DbFullGameWithLogs> {
+) -> Result<DbFullGameWithLogs, QueryDeserializeError> {
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
-    use crate::info_schema::info::raw_events::dsl as raw_events_dsl;
+    use crate::data_schema::data::entities::dsl as entities_dsl;
 
     let game = games_dsl::games
         .filter(games_dsl::mmolb_game_id.eq(mmolb_game_id))
         .select(DbGame::as_select())
         .get_result::<DbGame>(conn)?;
 
-    let raw_events = DbRawEvent::belonging_to(&game)
-        .order_by(raw_events_dsl::game_event_index.asc())
-        .load::<DbRawEvent>(conn)?;
+    let raw_game = entities_dsl::entities
+        .filter(entities_dsl::entity_id.eq(mmolb_game_id))
+        .select(entities_dsl::data)
+        .get_result::<serde_json::Value>(conn)?;
 
-    // This would be another belonging_to but diesel doesn't seem to support
-    // compound foreign keys in associations
+    let raw_game: mmolb_parsing::Game = serde_json::from_value(raw_game)?;
+
     let mut raw_logs = event_ingest_log_dsl::event_ingest_log
         .filter(event_ingest_log_dsl::game_id.eq(game.id))
         .order_by(event_ingest_log_dsl::game_event_index.asc().nulls_first())
@@ -1469,12 +1447,14 @@ pub fn game_and_raw_events(
         game_wide_logs.push(event);
     }
 
-    let logs_by_event = raw_events
+    let logs_by_event = raw_game
+        .event_log
         .iter()
-        .map(|raw_event| {
+        .enumerate()
+        .map(|(game_event_index, raw_event)| {
             let mut events = Vec::new();
             while let Some(event) =
-                raw_logs.next_if(|log| log.game_event_index.expect("All logs with a None game_event_index should have been extracted before this loop began") == raw_event.game_event_index)
+                raw_logs.next_if(|log| log.game_event_index.expect("All logs with a None game_event_index should have been extracted before this loop began") == game_event_index as i32)
             {
                 events.push(event);
             }
@@ -1484,7 +1464,7 @@ pub fn game_and_raw_events(
 
     assert!(raw_logs.next().is_none(), "Failed to map all raw logs");
 
-    let raw_events_with_logs = raw_events
+    let raw_events_with_logs = raw_game.event_log
         .into_iter()
         .zip(logs_by_event)
         .collect::<Vec<_>>();
@@ -1551,7 +1531,6 @@ pub fn insert_timings(
             .db_insert_timings
             .update_weather_table_duration,
         db_insert_insert_games_duration: timings.db_insert_timings.insert_games_duration,
-        db_insert_insert_raw_events_duration: timings.db_insert_timings.insert_raw_events_duration,
         db_insert_insert_logs_duration: timings.db_insert_timings.insert_logs_duration,
         db_insert_insert_events_duration: timings.db_insert_timings.insert_events_duration,
         db_insert_get_event_ids_duration: timings.db_insert_timings.get_event_ids_duration,

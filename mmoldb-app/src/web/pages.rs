@@ -67,7 +67,7 @@ pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppErr
 
     #[derive(Serialize)]
     struct EventContext {
-        game_event_index: i32,
+        game_event_index: usize,
         text: String,
         logs: Vec<LogContext>,
     }
@@ -117,9 +117,10 @@ pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppErr
         events: full_game
             .raw_events_with_logs
             .into_iter()
-            .map(|(raw_event, logs)| EventContext {
-                game_event_index: raw_event.game_event_index,
-                text: raw_event.event_text,
+            .enumerate()
+            .map(|(game_event_index, (raw_event, logs))| EventContext {
+                game_event_index,
+                text: raw_event.message,
                 logs: logs.into_iter().map(Into::into).collect(),
             })
             .collect(),

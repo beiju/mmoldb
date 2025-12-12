@@ -66,15 +66,6 @@ pub mod info {
     }
 
     diesel::table! {
-        info.raw_events (id) {
-            id -> Int8,
-            game_id -> Int8,
-            game_event_index -> Int4,
-            event_text -> Text,
-        }
-    }
-
-    diesel::table! {
         info.version_ingest_log (id) {
             id -> Int8,
             kind -> Text,
@@ -94,7 +85,6 @@ pub mod info {
         ingest_counts,
         ingest_timings,
         ingests,
-        raw_events,
         version_ingest_log,
     );
 }
