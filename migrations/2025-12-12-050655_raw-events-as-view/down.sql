@@ -1,3 +1,6 @@
+alter table info.ingest_timings
+    add column db_insert_insert_raw_events_duration float8 not null default 0.0;
+
 drop view info.raw_events;
 
 create table info.raw_events (

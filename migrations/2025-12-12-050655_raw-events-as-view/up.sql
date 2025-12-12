@@ -1,4 +1,3 @@
--- need to change
 alter table info.event_ingest_log
     drop constraint event_ingest_log_game_id_game_event_index_fkey;
 
@@ -15,3 +14,6 @@ create view info.raw_events as select
 from data.entities e
          cross join lateral jsonb_array_elements(e.data->'EventLog') with ordinality as ev(event_raw, game_event_index)
 where e.kind='game';
+
+alter table info.ingest_timings
+    drop column db_insert_insert_raw_events_duration;
