@@ -24,6 +24,7 @@ use tokio::sync::mpsc::Receiver;
 use tokio::sync::{Notify};
 use tokio::task::JoinError;
 use tokio_util::sync::CancellationToken;
+use crate::partitioner::Partitioner;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -607,9 +608,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
     }
 
     async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
-        // Compute how many least significant hexits we need to accurately compute
-        // the modulus between an arbitrary hex number and the given parallelism
-        let trailing_hexits_for_modulus = args.parallelism.get().lcm(&16);
+        let partitioner = Partitioner::new(args.parallelism);
 
         // Task names have to outlive their tasks, so we build then in advance
         let task_names_and_nums = (0..=args.parallelism.get())
@@ -650,17 +649,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
             while let Some(version_result) = versions_stream.next().await {
                 let version = version_result?;
-                let ascii_id = ascii::AsciiStr::from_ascii(version.entity_id.as_bytes())
-                    .map_err(IngestFatalError::NonAsciiEntityId)?;
-                let start_idx = ascii_id.len() - trailing_hexits_for_modulus;
-                let hex_for_modulus = if start_idx > 0 {
-                    usize::from_str_radix(ascii_id[start_idx..].as_str(), 16)
-                        .map_err(IngestFatalError::NonHexEntityId)?
-                } else {
-                    usize::from_str_radix(ascii_id.as_str(), 16)
-                        .map_err(IngestFatalError::NonHexEntityId)?
-                };
-                let assigned_worker = hex_for_modulus % args.parallelism.get();
+                let assigned_worker = partitioner.partition_for(&version.entity_id)?;
                 // This panics on OOB, which is correct
                 let (pipe, _) = &tasks[assigned_worker];
                 let new_cursor = (version.valid_from.naive_utc(), version.entity_id.clone());

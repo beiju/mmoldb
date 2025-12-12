@@ -291,13 +291,6 @@ fn chron_player_as_new<'a>(
 ) -> (
     NewPlayerVersion<'a>,
     Vec<NewPlayerModificationVersion<'a>>,
-    Option<(
-        NewPlayerFeedVersion<'a>,
-        Vec<NewPlayerAttributeAugment<'a>>,
-        Vec<NewPlayerParadigmShift<'a>>,
-        Vec<NewPlayerRecomposition<'a>>,
-        Vec<NewVersionIngestLog<'a>>,
-    )>,
     Vec<(
         NewPlayerReportVersion<'a>,
         Vec<NewPlayerReportAttributeVersion<'a>>,
@@ -439,19 +432,7 @@ fn chron_player_as_new<'a>(
         occupied_equipment_slots,
         included_report_categories,
     };
-
-    let player_full_name = format!("{} {}", player.first_name, player.last_name);
-    let feed_as_new = match &entity.data.feed {
-        Ok(entries) => Some(chron_player_feed_as_new(
-            taxa,
-            &entity.entity_id,
-            entity.valid_from,
-            entries,
-            Some(&player_full_name),
-        )),
-        Err(_) => None,
-    };
-
+    
     let mut report_versions = Vec::new();
     if let Some(talk) = &entity.data.talk {
         if let Some(report) = &talk.batting {
@@ -625,7 +606,6 @@ fn chron_player_as_new<'a>(
     (
         player,
         modifications,
-        feed_as_new,
         report_versions,
         equipment,
         ingest_logs.into_vec(),

@@ -1898,9 +1898,9 @@ pub fn latest_player_versions(
 }
 
 type NewPlayerFeedVersionExt<'a> = (
-    NewPlayerFeedVersion<'a>,
-    Vec<NewPlayerAttributeAugment<'a>>,
-    Vec<NewPlayerParadigmShift<'a>>,
+    NewFeedEventProcessed<'a>,
+    Option<NewPlayerAttributeAugment<'a>>,
+    Option<NewPlayerParadigmShift<'a>>,
     Vec<NewPlayerRecomposition<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 );
@@ -1908,7 +1908,6 @@ type NewPlayerFeedVersionExt<'a> = (
 type NewPlayerVersionExt<'a> = (
     NewPlayerVersion<'a>,
     Vec<NewPlayerModificationVersion<'a>>,
-    Option<NewPlayerFeedVersionExt<'a>>,
     Vec<(
         NewPlayerReportVersion<'a>,
         Vec<NewPlayerReportAttributeVersion<'a>>,
@@ -2078,28 +2077,27 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
         .map(|(a, b, c, d, e)| (a, b, c, d, e));
 
     let (
-        new_player_feed_versions,
+        new_player_feed_events_processed,
         new_player_attribute_augments,
         new_player_paradigm_shifts,
         new_player_recompositions,
         ingest_logs,
     ): (
-        Vec<&NewPlayerFeedVersion>,
-        Vec<&Vec<NewPlayerAttributeAugment>>,
-        Vec<&Vec<NewPlayerParadigmShift>>,
+        Vec<&NewFeedEventProcessed>,
+        Vec<&Option<NewPlayerAttributeAugment>>,
+        Vec<&Option<NewPlayerParadigmShift>>,
         Vec<&Vec<NewPlayerRecomposition>>,
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_feed_versions);
 
     // Insert new records
-    let num_inserted = diesel::copy_from(pfv_dsl::player_feed_versions)
-        .from_insertable(new_player_feed_versions)
-        .execute(conn)?;
-
     insert_player_attribute_augments(conn, new_player_attribute_augments)?;
     insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
     insert_player_recompositions(conn, new_player_recompositions)?;
     insert_nested_ingest_logs(conn, ingest_logs)?;
+
+    // This is last so that we don't mark them as processed if there were db errors
+    let num_inserted = insert_feed_events_processed(conn, new_player_feed_events_processed)?;
 
     Ok(num_inserted)
 }
@@ -2147,7 +2145,7 @@ pub fn insert_team_feed_versions<'container, 'game: 'container>(
         .map(|(a, b, c)| (a, b, c));
 
     let (
-        new_feed_ingest_cursor,
+        new_team_feed_events_processed,
         new_team_games_played,
         ingest_logs,
     ): (
@@ -2157,11 +2155,11 @@ pub fn insert_team_feed_versions<'container, 'game: 'container>(
     ) = itertools::multiunzip(new_team_feed_versions);
 
     // Insert new records
-    let num_inserted = insert_new_team_games_played(conn, new_team_games_played)?;
+    insert_new_team_games_played(conn, new_team_games_played)?;
     insert_nested_ingest_logs(conn, ingest_logs)?;
 
-    // This is last so that we don't update the cursor if there were any errors
-    insert_feed_events_processed(conn, new_feed_ingest_cursor)?;
+    // This is last so that we don't mark them as processed if there were db errors
+    let num_inserted = insert_feed_events_processed(conn, new_team_feed_events_processed)?;
 
     Ok(num_inserted)
 }
@@ -2209,7 +2207,7 @@ fn insert_nested_ingest_logs(
 
 fn insert_player_paradigm_shifts(
     conn: &mut PgConnection,
-    new_player_paradigm_shifts: Vec<&Vec<NewPlayerParadigmShift>>,
+    new_player_paradigm_shifts: Vec<&Option<NewPlayerParadigmShift>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_paradigm_shifts::dsl as pps_dsl;
     let player_augments = new_player_paradigm_shifts
@@ -2225,7 +2223,7 @@ fn insert_player_paradigm_shifts(
 
 fn insert_player_attribute_augments(
     conn: &mut PgConnection,
-    new_player_augments: Vec<&Vec<NewPlayerAttributeAugment>>,
+    new_player_augments: Vec<&Option<NewPlayerAttributeAugment>>,
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_attribute_augments::dsl as paa_dsl;
     let player_attribute_augments = new_player_augments.into_iter().flatten().collect_vec();
@@ -2261,20 +2259,18 @@ pub fn insert_player_versions<'container, 'game: 'container>(
 
     // Reference to tuple into tuple of references
     let new_player_versions = new_player_versions.into_iter()
-        .map(|(a, b, c, d, e, f)| (a, b, c, d, e, f));
+        .map(|(a, b, c, d, e)| (a, b, c, d, e));
 
     let preprocess_start = Utc::now();
     let (
         new_player_versions,
         new_player_modification_versions,
-        new_player_feed_versions,
         new_player_report_attributes,
         new_player_equipment,
         new_ingest_logs,
     ): (
         Vec<&NewPlayerVersion>,
         Vec<&Vec<NewPlayerModificationVersion>>,
-        Vec<&Option<NewPlayerFeedVersionExt>>,
         Vec<&Vec<(NewPlayerReportVersion, Vec<NewPlayerReportAttributeVersion>)>>,
         Vec<
             &Vec<(
@@ -2299,11 +2295,6 @@ pub fn insert_player_versions<'container, 'game: 'container>(
     let insert_player_modifications_duration =
         (Utc::now() - insert_player_modifications_start).as_seconds_f64();
 
-    let insert_player_feed_versions_start = Utc::now();
-    insert_player_feed_versions(conn, new_player_feed_versions.into_iter().flatten())?;
-    let insert_player_feed_versions_duration =
-        (Utc::now() - insert_player_feed_versions_start).as_seconds_f64();
-
     let insert_player_reports_start = Utc::now();
     insert_player_report_versions(conn, new_player_report_attributes)?;
     let insert_player_reports_duration =
@@ -2322,7 +2313,6 @@ pub fn insert_player_versions<'container, 'game: 'container>(
         "preprocess_duration: {preprocess_duration:.2}, \
         insert_player_equipment_duration: {insert_player_equipment_duration:.2}, \
         insert_player_reports_duration: {insert_player_reports_duration:.2}, \
-        insert_player_feed_versions_duration: {insert_player_feed_versions_duration:.2}, \
         insert_player_modifications_duration: {insert_player_modifications_duration:.2}, \
         insert_player_version_duration: {insert_player_version_duration:.2}, \
         insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
@@ -2560,7 +2550,6 @@ pub struct PlayerAll {
 use crate::schema::data_schema::data::events::dsl as event_dsl;
 use crate::schema::data_schema::data::games::dsl as game_dsl;
 use diesel::helper_types as d;
-use crate::schema::data_schema::data::feed_events_processed::dsl::feed_events_processed;
 
 type PlayerFilter<'q, Field> = d::And<
     d::Eq<Field, &'q str>,

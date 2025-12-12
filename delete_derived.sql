@@ -39,4 +39,7 @@ truncate table
     data.team_versions,
     data.team_player_versions,
     data.team_feed_versions,
-    data.team_games_played;
+    data.team_games_played,
+
+    -- generic
+    data.feed_events_processed;

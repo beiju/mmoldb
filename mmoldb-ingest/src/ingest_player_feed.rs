@@ -1,7 +1,7 @@
 use crate::config::IngestibleConfig;
 use crate::ingest::{VersionIngestLogs};
 use crate::ingest_players::day_to_db;
-use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionStage1Ingest};
+use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionStage1Ingest};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::{HashMap, HashSet};
@@ -10,24 +10,29 @@ use log::{error};
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
-use mmoldb_db::models::{
-    NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift,
-    NewPlayerRecomposition, NewVersionIngestLog,
-};
+use mmoldb_db::models::{NewFeedEventProcessed, NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
+use mmoldb_db::{async_db, db, AsyncPgConnection, Connection, PgConnection, QueryResult};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use futures::Stream;
-use serde_json::Value;
+use mmolb_parsing::player::Deserialize;
+
+#[derive(Deserialize)]
+pub struct PlayerFeedItemContainer {
+    feed_event_index: i32,
+    data: FeedEvent,
+}
 
 pub struct PlayerFeedIngestFromVersions;
 
 impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
-    type Entity = mmolb_parsing::player_feed::PlayerFeed;
+    type Entity = PlayerFeedItemContainer;
 
-    fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
-        db::get_player_feed_ingest_start_cursor(conn)
+    fn get_start_cursor(_: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
+        // TODO: This is None because I'm not using a cursor for player feeds any more. Update
+        //   the infrastructure to not require a stub.
+        Ok(None)
     }
 
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
@@ -36,14 +41,23 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
 
     fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize> {
         let new_versions = versions.iter()
-            .map(|team| chron_player_feed_as_new(taxa, &team.entity_id, team.valid_from, &team.data.feed, None))
+            .map(|player| chron_player_feed_as_new(taxa, &player.entity_id, player.valid_from, &player.data, None))
             .collect_vec();
 
-        db::insert_player_feed_versions(conn, &new_versions)
+        conn.transaction(|c| {
+            db::insert_player_feed_versions(c, &new_versions)
+        })
     }
 
-    async fn stream_versions_at_cursor(conn: &mut AsyncPgConnection, kind: &str, cursor: Option<(NaiveDateTime, String)>) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<Value>>>> {
-        async_db::stream_versions_at_cursor(conn, kind, cursor).await
+    async fn stream_versions_at_cursor(
+        conn: &mut AsyncPgConnection,
+        kind: &str,
+        _: Option<(NaiveDateTime, String)>,
+    ) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<serde_json::Value>>>> {
+        // This ingestible doesn't use a cursor. I used to have an assert that cursor
+        // was None, but that's incorrect because the machinery opportunistically updates
+        // the cursor based on values that are passing through
+        async_db::stream_feed_event_versions_at_cursor(conn, kind).await
     }
 }
 
@@ -64,7 +78,7 @@ impl Ingestable for PlayerFeedIngest {
 
     fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
         vec![
-            Arc::new(VersionStage1Ingest::new(Self::KIND)),
+            Arc::new(FeedEventVersionStage1Ingest::new(Self::KIND, "player")),
             Arc::new(Stage2Ingest::new(Self::KIND, PlayerFeedIngestFromVersions))
         ]
     }
@@ -73,17 +87,16 @@ impl Ingestable for PlayerFeedIngest {
 fn process_paradigm_shift<'e>(
     changing_attribute: Attribute,
     value_attribute: Attribute,
-    paradigm_shifts: &mut Vec<NewPlayerParadigmShift<'e>>,
     feed_event_index: i32,
     event: &FeedEvent,
     time: NaiveDateTime,
     player_id: &'e str,
     taxa: &Taxa,
-) {
+) -> Option<NewPlayerParadigmShift<'e>> {
     if changing_attribute == Attribute::Priority {
         let (day_type, day, superstar_day) = day_to_db(Some(&event.day), taxa);
 
-        paradigm_shifts.push(NewPlayerParadigmShift {
+        Some(NewPlayerParadigmShift {
             mmolb_player_id: player_id,
             feed_event_index,
             time,
@@ -100,6 +113,7 @@ fn process_paradigm_shift<'e>(
             attribute other than priority. Player {} feed event {} changes {}",
             player_id, feed_event_index, changing_attribute,
         );
+        None
     }
 }
 
@@ -107,16 +121,23 @@ pub fn chron_player_feed_as_new<'a>(
     taxa: &Taxa,
     player_id: &'a str,
     valid_from: DateTime<Utc>,
-    feed_items: &'a [FeedEvent],
-    mut final_player_name: Option<&str>,
+    event: &'a PlayerFeedItemContainer,
+    final_player_name: Option<&str>,
 ) -> (
-    NewPlayerFeedVersion<'a>,
-    Vec<NewPlayerAttributeAugment<'a>>,
-    Vec<NewPlayerParadigmShift<'a>>,
+    NewFeedEventProcessed<'a>,
+    Option<NewPlayerAttributeAugment<'a>>,
+    Option<NewPlayerParadigmShift<'a>>,
     Vec<NewPlayerRecomposition<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
     let mut ingest_logs = VersionIngestLogs::new(PlayerFeedIngest::KIND, player_id, valid_from);
+
+    let processed = NewFeedEventProcessed {
+        kind: "player_feed",
+        entity_id: player_id,
+        feed_event_index: event.feed_event_index,
+        valid_from: valid_from.naive_utc(),
+    };
 
     // TODO make this static, or at least global
     // Some feed events were accidentally reverted (by caching issues I think), and we want to
@@ -447,18 +468,9 @@ pub fn chron_player_feed_as_new<'a>(
     // Note that the name at the start of the feed is not (necessarily) final_player_name
     let mut check_player_name = CheckPlayerName::new();
 
-    let player_feed_version = NewPlayerFeedVersion {
-        mmolb_player_id: player_id,
-        valid_from: valid_from.naive_utc(),
-        valid_until: None,
-        num_entries: feed_items.len() as i32,
-    };
-
-    // Current plan is to regenerate all feed-dependent tables every
-    // time a player is ingested, and use a database function to handle
-    // the many duplicates that will create.
-    let mut attribute_augments = Vec::new();
-    let mut paradigm_shifts = Vec::new();
+    let mut attribute_augment = None;
+    let mut paradigm_shift = None;
+    // A single event can have an implied and a real recomposition
     let mut recompositions = Vec::new();
 
     let mut pending_inferred_recompositions = inferred_recompositions
@@ -468,324 +480,320 @@ pub fn chron_player_feed_as_new<'a>(
     // This will *almost* always be equal to feed_items.len(), but not
     // when there is an impermanent event
     let mut max_permanent_feed_event_index_plus_one = 0;
-    for (index, event) in feed_items.iter().enumerate() {
-        let feed_event_index = index as i32;
-        let time = event.timestamp.naive_utc();
 
-        check_player_name.clear_temporary_name_override();
+    let time = event.data.timestamp.naive_utc();
 
-        let mut inferred_event_index = 0;
-        if impermanent_feed_events.contains(&(player_id, time)) {
-            // TODO Add this as a pair of recompose/unrecompose events, so the attributes
-            //   in between are accurate
+    check_player_name.clear_temporary_name_override();
+
+    let mut inferred_event_index = 0;
+    if impermanent_feed_events.contains(&(player_id, time)) {
+        // TODO Add this as a pair of recompose/unrecompose events, so the attributes
+        //   in between are accurate
+        ingest_logs.info(format!(
+            "Skipping feed event \"{}\" because it was reverted later",
+            event.data.text,
+        ));
+        return (
+            processed,
+            attribute_augment,
+            paradigm_shift,
+            recompositions,
+            ingest_logs.into_vec(),
+        );
+    }
+
+    max_permanent_feed_event_index_plus_one = event.feed_event_index + 1;
+
+    // Apply any inferred recompositions whose time is before this event's time
+    if let Some(pending) = &mut pending_inferred_recompositions {
+        while let Some((time, info)) = pending.next_if(|(dt, _)| *dt <= time) {
+            let (season, day, player_name_before, player_name_after) = info;
             ingest_logs.info(format!(
-                "Skipping feed event \"{}\" because it was reverted later",
-                event.text,
+                "Applying inferred recomposition from {} to {}",
+                player_name_before, player_name_after
             ));
-            if index + 1 != feed_items.len() {
-                ingest_logs.warn(format!(
-                    "This non-permanent event is not the last event in the feed ({} of {}).",
-                    index + 1,
-                    feed_items.len(),
-                ));
-            }
-
-            // Impermanent feed events still change the player name, but since we
-            // skip them we don't catch the change and the check at the end of
-            // the feed processing will fail. Pretend the name is unknown to
-            // skip the check.
-            final_player_name = None;
-            continue;
+            check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
+            check_player_name.set_known_name(player_name_after);
+            let (day_type, day, superstar_day) = day_to_db(Some(&Ok(*day)), taxa);
+            recompositions.push(NewPlayerRecomposition {
+                mmolb_player_id: player_id,
+                feed_event_index: event.feed_event_index,
+                inferred_event_index: Some(inferred_event_index),
+                time: *time,
+                season: *season,
+                day_type,
+                day,
+                superstar_day,
+                player_name_before,
+                player_name_after,
+                reverts_recomposition: None,
+            });
+            inferred_event_index += 1;
         }
+    };
 
-        max_permanent_feed_event_index_plus_one = feed_event_index + 1;
+    let parsed_event = mmolb_parsing::player_feed::parse_player_feed_event(&event.data);
+    let skip_this_event =
+        if let Some(info) = overwritten_recompositions.get(&(player_id, event.feed_event_index)) {
+            let (player_name_before, player_name_after, recompose_time, season, day) = info;
 
-        // Apply any inferred recompositions whose time is before this event's time
-        if let Some(pending) = &mut pending_inferred_recompositions {
-            while let Some((time, info)) = pending.next_if(|(dt, _)| *dt <= time) {
-                let (season, day, player_name_before, player_name_after) = info;
-                ingest_logs.info(format!(
-                    "Applying inferred recomposition from {} to {}",
-                    player_name_before, player_name_after
+            check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
+            // There shouldn't be any subsequent events, but there is still
+            // the player_final_name check so we do have to update the name
+            check_player_name.set_known_name(player_name_after);
+            ingest_logs.debug(format!("Set expected player name to {player_name_after}"));
+
+            ingest_logs.debug(format!(
+                "Inserting implied Recomposed event for overwritten Recompose from \
+                {player_name_before} to {player_name_after}",
+            ));
+            let (day_type, day, superstar_day) = day_to_db(Some(&Ok(*day)), taxa);
+            recompositions.push(NewPlayerRecomposition {
+                mmolb_player_id: player_id,
+                feed_event_index: event.feed_event_index,
+                inferred_event_index: Some(inferred_event_index),
+                time: *recompose_time,
+                season: *season,
+                day_type,
+                day,
+                superstar_day,
+                player_name_before,
+                player_name_after,
+                reverts_recomposition: None,
+            });
+            inferred_event_index += 1;
+
+            if let ParsedPlayerFeedEventText::Recomposed { new, previous } = &parsed_event {
+                // The first time we hit one of these, it'll be a Recompose event
+                ingest_logs.debug(format!(
+                    "Checking and skipping overwritten Recomposed event from {previous} to {new}",
                 ));
-                check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
-                check_player_name.set_known_name(player_name_after);
-                let (day_type, day, superstar_day) = day_to_db(Some(&Ok(*day)), taxa);
+                // This is a real event now, but it's marked as overwritten,
+                // which means it's about to be deleted and become implied.
+                // So we ignore the real version and insert the inferred version
+                if new != player_name_after {
+                    ingest_logs.error(format!(
+                        "The overwritten Recomposed event new player name didn't match: expected \
+                        {player_name_after}, but observed {new}.",
+                    ));
+                }
+                if previous != player_name_before {
+                    ingest_logs.error(format!(
+                        "The overwritten Recomposed event previous player name didn't match: \
+                        expected {player_name_before}, but observed {previous}.",
+                    ));
+                }
+                if *recompose_time != time {
+                    ingest_logs.error(format!(
+                        "The overwritten Recomposed event timestamp didn't match: \
+                        expected {recompose_time}, but observed {}.",
+                        event.data.timestamp.naive_utc(),
+                    ));
+                }
+                true
+            } else {
+                ingest_logs.debug(format!(
+                    "Inserting unrecompose event to reset {player_name_after}'s attributes",
+                ));
+                // If the event in question is *not* a recompose event, that means this is the
+                // event that reverted the recompose. We need to insert the unrecompose event.
                 recompositions.push(NewPlayerRecomposition {
                     mmolb_player_id: player_id,
-                    feed_event_index,
+                    feed_event_index: event.feed_event_index,
                     inferred_event_index: Some(inferred_event_index),
-                    time: *time,
+                    // This very event is our first observation of the unrecompose
+                    time,
+                    // Due to the nature of this particular bug, the seasonday is the same for the
+                    // original recompose and the unrecompose.
                     season: *season,
                     day_type,
                     day,
                     superstar_day,
-                    player_name_before,
+                    // Player name doesn't change
+                    player_name_before: player_name_after,
                     player_name_after,
-                    reverts_recomposition: None,
+                    reverts_recomposition: Some(*recompose_time),
                 });
-                inferred_event_index += 1;
+                // I want to make sure inferred_event_index is correct if another use of it is added
+                #[allow(unused_assignments)]
+                {
+                    inferred_event_index += 1
+                };
+
+                // The long-term name will be player_name_after...
+                check_player_name.set_known_name(player_name_after);
+                // ...but for this feed event, it will be player_name_before
+                check_player_name.set_temporary_name_override(player_name_before);
+
+                false
             }
+        } else {
+            false
         };
 
-        let parsed_event = mmolb_parsing::player_feed::parse_player_feed_event(event);
-        let skip_this_event =
-            if let Some(info) = overwritten_recompositions.get(&(player_id, feed_event_index)) {
-                let (player_name_before, player_name_after, recompose_time, season, day) = info;
+    if skip_this_event {
+        ingest_logs.debug(format!(
+            "Skipping event \"{}\" because `skip_this_event` told us to",
+            event.data.text,
+        ));
+        return (
+            processed,
+            attribute_augment,
+            paradigm_shift,
+            recompositions,
+            ingest_logs.into_vec(),
+        );
+    }
 
-                check_player_name.check_or_set_name(player_name_before, &mut ingest_logs);
-                // There shouldn't be any subsequent events, but there is still
-                // the player_final_name check so we do have to update the name
-                check_player_name.set_known_name(player_name_after);
-                ingest_logs.debug(format!("Set expected player name to {player_name_after}"));
-
-                ingest_logs.debug(format!(
-                    "Inserting implied Recomposed event for overwritten Recompose from \
-                    {player_name_before} to {player_name_after}",
-                ));
-                let (day_type, day, superstar_day) = day_to_db(Some(&Ok(*day)), taxa);
-                recompositions.push(NewPlayerRecomposition {
-                    mmolb_player_id: player_id,
-                    feed_event_index,
-                    inferred_event_index: Some(inferred_event_index),
-                    time: *recompose_time,
-                    season: *season,
-                    day_type,
-                    day,
-                    superstar_day,
-                    player_name_before,
-                    player_name_after,
-                    reverts_recomposition: None,
-                });
-                inferred_event_index += 1;
-
-                if let ParsedPlayerFeedEventText::Recomposed { new, previous } = &parsed_event {
-                    // The first time we hit one of these, it'll be a Recompose event
-                    ingest_logs.debug(format!(
-                        "Checking and skipping overwritten Recomposed event from {previous} to {new}",
-                    ));
-                    // This is a real event now, but it's marked as overwritten,
-                    // which means it's about to be deleted and become implied.
-                    // So we ignore the real version and insert the inferred version
-                    if new != player_name_after {
-                        ingest_logs.error(format!(
-                            "The overwritten Recomposed event new player name didn't match: expected \
-                            {player_name_after}, but observed {new}.",
-                        ));
-                    }
-                    if previous != player_name_before {
-                        ingest_logs.error(format!(
-                            "The overwritten Recomposed event previous player name didn't match: \
-                            expected {player_name_before}, but observed {previous}.",
-                        ));
-                    }
-                    if *recompose_time != time {
-                        ingest_logs.error(format!(
-                            "The overwritten Recomposed event timestamp didn't match: \
-                            expected {recompose_time}, but observed {}.",
-                            event.timestamp.naive_utc(),
-                        ));
-                    }
-                    true
-                } else {
-                    ingest_logs.debug(format!(
-                        "Inserting unrecompose event to reset {player_name_after}'s attributes",
-                    ));
-                    // If the event in question is *not* a recompose event, that means this is the
-                    // event that reverted the recompose. We need to insert the unrecompose event.
-                    recompositions.push(NewPlayerRecomposition {
-                        mmolb_player_id: player_id,
-                        feed_event_index,
-                        inferred_event_index: Some(inferred_event_index),
-                        // This very event is our first observation of the unrecompose
-                        time,
-                        // Due to the nature of this particular bug, the seasonday is the same for the
-                        // original recompose and the unrecompose.
-                        season: *season,
-                        day_type,
-                        day,
-                        superstar_day,
-                        // Player name doesn't change
-                        player_name_before: player_name_after,
-                        player_name_after,
-                        reverts_recomposition: Some(*recompose_time),
-                    });
-                    // I want to make sure inferred_event_index is correct if another use of it is added
-                    #[allow(unused_assignments)]
-                    {
-                        inferred_event_index += 1
-                    };
-
-                    // The long-term name will be player_name_after...
-                    check_player_name.set_known_name(player_name_after);
-                    // ...but for this feed event, it will be player_name_before
-                    check_player_name.set_temporary_name_override(player_name_before);
-
-                    false
-                }
-            } else {
-                false
-            };
-
-        if skip_this_event {
-            ingest_logs.debug(format!(
-                "Skipping event \"{}\" because `skip_this_event` told us to",
-                event.text,
+    match parsed_event {
+        ParsedPlayerFeedEventText::ParseError { error, text } => {
+            // TODO Expose player ingest errors on the site
+            ingest_logs.error(format!(
+                "Error {error} parsing {text} from {} ({})'s feed",
+                check_player_name, player_id,
             ));
-            continue;
         }
+        ParsedPlayerFeedEventText::Delivery { .. } => {
+            // We don't (yet) use this event, but feed events have a timestamp so it
+            // could be used to backdate when players got their item. Although it
+            // doesn't really matter because player items can't (yet) change during
+            // a game, so we can backdate any player items to the beginning of any
+            // game they were observed doing. Also this doesn't apply to item changes
+            // that team owners make using the inventory, so there's not much point.
+        }
+        ParsedPlayerFeedEventText::Shipment { .. } => {
+            // See comment on Delivery
+        }
+        ParsedPlayerFeedEventText::SpecialDelivery { .. } => {
+            // See comment on Delivery
+        }
+        ParsedPlayerFeedEventText::AttributeChanges {
+            player_name,
+            attribute,
+            amount,
+        } => {
+            let (day_type, day, superstar_day) = day_to_db(Some(&event.data.day), taxa);
 
-        match parsed_event {
-            ParsedPlayerFeedEventText::ParseError { error, text } => {
-                // TODO Expose player ingest errors on the site
-                ingest_logs.error(format!(
-                    "Error {error} parsing {text} from {} ({})'s feed",
-                    check_player_name, player_id,
-                ));
-            }
-            ParsedPlayerFeedEventText::Delivery { .. } => {
-                // We don't (yet) use this event, but feed events have a timestamp so it
-                // could be used to backdate when players got their item. Although it
-                // doesn't really matter because player items can't (yet) change during
-                // a game, so we can backdate any player items to the beginning of any
-                // game they were observed doing. Also this doesn't apply to item changes
-                // that team owners make using the inventory, so there's not much point.
-            }
-            ParsedPlayerFeedEventText::Shipment { .. } => {
-                // See comment on Delivery
-            }
-            ParsedPlayerFeedEventText::SpecialDelivery { .. } => {
-                // See comment on Delivery
-            }
-            ParsedPlayerFeedEventText::AttributeChanges {
-                player_name,
-                attribute,
-                amount,
-            } => {
-                let (day_type, day, superstar_day) = day_to_db(Some(&event.day), taxa);
-
-                check_player_name.check_or_set_name(player_name, &mut ingest_logs);
-                attribute_augments.push(NewPlayerAttributeAugment {
-                    mmolb_player_id: player_id,
-                    feed_event_index,
-                    time,
-                    season: event.season as i32,
-                    day_type,
-                    day,
-                    superstar_day,
-                    attribute: taxa.attribute_id(attribute.into()),
-                    value: amount as i32,
-                })
-            }
-            ParsedPlayerFeedEventText::AttributeEquals {
-                player_name,
+            check_player_name.check_or_set_name(player_name, &mut ingest_logs);
+            attribute_augment = Some(NewPlayerAttributeAugment {
+                mmolb_player_id: player_id,
+                feed_event_index: event.feed_event_index,
+                time,
+                season: event.data.season as i32,
+                day_type,
+                day,
+                superstar_day,
+                attribute: taxa.attribute_id(attribute.into()),
+                value: amount as i32,
+            });
+        }
+        ParsedPlayerFeedEventText::AttributeEquals {
+            player_name,
+            changing_attribute,
+            value_attribute,
+        } => {
+            check_player_name.check_or_set_name(&player_name, &mut ingest_logs);
+            // The handling of a non-priority SingleAttributeEquals will have to
+            // be so different that it's not worth trying to implement before it
+            // actually appears
+            paradigm_shift = process_paradigm_shift(
                 changing_attribute,
                 value_attribute,
-            } => {
-                check_player_name.check_or_set_name(&player_name, &mut ingest_logs);
-                // The handling of a non-priority SingleAttributeEquals will have to
-                // be so different that it's not worth trying to implement before it
-                // actually appears
-                process_paradigm_shift(
-                    changing_attribute,
-                    value_attribute,
-                    &mut paradigm_shifts,
-                    feed_event_index,
-                    event,
-                    time,
-                    player_id,
-                    taxa,
-                )
-            }
-            ParsedPlayerFeedEventText::TakeTheMound { .. } => {
-                // We can use this to backdate certain position changes, but
-                // the utility of doing that is limited for the same reason
-                // as the utility of processing Delivery is limited.
-            }
-            ParsedPlayerFeedEventText::TakeThePlate { .. } => {
-                // See comment on TakeTheMound
-            }
-            ParsedPlayerFeedEventText::SwapPlaces { .. } => {
-                // See comment on TakeTheMound
-            }
-            ParsedPlayerFeedEventText::Enchantment { .. } => {
-                // See comment on Delivery
-            }
-            ParsedPlayerFeedEventText::FallingStarOutcome { .. } => {
-                // We don't (yet) have a use for this event.
-                // We can use some variants to backdate certain mod changes, but
-                // the utility of doing that is limited for the same reason
-                // as the utility of processing Delivery is limited.
-            }
-            ParsedPlayerFeedEventText::Recomposed { new, previous } => {
-                let (day_type, day, superstar_day) = day_to_db(Some(&event.day), taxa);
+                event.feed_event_index,
+                &event.data,
+                time,
+                player_id,
+                taxa,
+            )
+        }
+        ParsedPlayerFeedEventText::TakeTheMound { .. } => {
+            // We can use this to backdate certain position changes, but
+            // the utility of doing that is limited for the same reason
+            // as the utility of processing Delivery is limited.
+        }
+        ParsedPlayerFeedEventText::TakeThePlate { .. } => {
+            // See comment on TakeTheMound
+        }
+        ParsedPlayerFeedEventText::SwapPlaces { .. } => {
+            // See comment on TakeTheMound
+        }
+        ParsedPlayerFeedEventText::Enchantment { .. } => {
+            // See comment on Delivery
+        }
+        ParsedPlayerFeedEventText::FallingStarOutcome { .. } => {
+            // We don't (yet) have a use for this event.
+            // We can use some variants to backdate certain mod changes, but
+            // the utility of doing that is limited for the same reason
+            // as the utility of processing Delivery is limited.
+        }
+        ParsedPlayerFeedEventText::Recomposed { new, previous } => {
+            let (day_type, day, superstar_day) = day_to_db(Some(&event.data.day), taxa);
 
-                check_player_name.check_or_set_name(previous, &mut ingest_logs);
-                check_player_name.set_known_name(new);
-                recompositions.push(NewPlayerRecomposition {
-                    mmolb_player_id: player_id,
-                    feed_event_index,
-                    inferred_event_index: None,
-                    time,
-                    season: event.season as i32,
-                    day_type,
-                    day,
-                    superstar_day,
-                    player_name_before: previous,
-                    player_name_after: new,
-                    reverts_recomposition: None,
-                });
-            }
-            ParsedPlayerFeedEventText::Released { .. } => {
-                // There shouldn't be anything to do about this. Unlike recomposition,
-                // this player's ID is retired instead of being repurposed for the
-                // new player.
+            check_player_name.check_or_set_name(previous, &mut ingest_logs);
+            check_player_name.set_known_name(new);
+            recompositions.push(NewPlayerRecomposition {
+                mmolb_player_id: player_id,
+                feed_event_index: event.feed_event_index,
+                inferred_event_index: None,
+                time,
+                season: event.data.season as i32,
+                day_type,
+                day,
+                superstar_day,
+                player_name_before: previous,
+                player_name_after: new,
+                reverts_recomposition: None,
+            });
+        }
+        ParsedPlayerFeedEventText::Released { .. } => {
+            // There shouldn't be anything to do about this. Unlike recomposition,
+            // this player's ID is retired instead of being repurposed for the
+            // new player.
 
-                // I used to warn if there were any events after the Released, but
-                // there's been too many bugs with events after Released and I got
-                // tired of excluding them one by one.
-            }
-            ParsedPlayerFeedEventText::Retirement { .. } => {
-                // I used to warn if anything's happened to this player since they were
-                // Retired, but there's too many things that happen anyway (durability
-                // loss and duplicate retirement for a start)
-            }
-            ParsedPlayerFeedEventText::Modification { .. } => {
-                // See comment on HitByFallingStar
-            }
-            ParsedPlayerFeedEventText::DoorPrize { .. } => {
-                // See comment on Delivery
-            }
-            ParsedPlayerFeedEventText::SeasonalDurabilityLoss { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::CorruptedByWither { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::Purified { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::Party { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::PlayerContained { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::PlayerPositionsSwapped { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::PlayerGrow { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::GreaterAugment { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::PlayerRelegated { .. } => {
-                // Nothing to do yet
-            }
-            ParsedPlayerFeedEventText::PlayerMoved { .. } => {
-                // Nothing to do yet
-            }
+            // I used to warn if there were any events after the Released, but
+            // there's been too many bugs with events after Released and I got
+            // tired of excluding them one by one.
+        }
+        ParsedPlayerFeedEventText::Retirement { .. } => {
+            // I used to warn if anything's happened to this player since they were
+            // Retired, but there's too many things that happen anyway (durability
+            // loss and duplicate retirement for a start)
+        }
+        ParsedPlayerFeedEventText::Modification { .. } => {
+            // See comment on HitByFallingStar
+        }
+        ParsedPlayerFeedEventText::DoorPrize { .. } => {
+            // See comment on Delivery
+        }
+        ParsedPlayerFeedEventText::SeasonalDurabilityLoss { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::CorruptedByWither { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::Purified { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::Party { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::PlayerContained { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::PlayerPositionsSwapped { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::PlayerGrow { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::GreaterAugment { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::PlayerRelegated { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::PlayerMoved { .. } => {
+            // Nothing to do yet
         }
     }
 
@@ -821,6 +829,7 @@ pub fn chron_player_feed_as_new<'a>(
         }
     };
 
+    // TODO Add some separate processing for name checks, because this never runs any more
     check_player_name.clear_temporary_name_override();
 
     if let Some(name) = final_player_name {
@@ -828,9 +837,9 @@ pub fn chron_player_feed_as_new<'a>(
     }
 
     (
-        player_feed_version,
-        attribute_augments,
-        paradigm_shifts,
+        processed,
+        attribute_augment,
+        paradigm_shift,
         recompositions,
         ingest_logs.into_vec(),
     )

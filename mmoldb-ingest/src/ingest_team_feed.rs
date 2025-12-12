@@ -91,7 +91,7 @@ pub fn chron_team_feed_as_new<'a>(
 ) {
     let mut ingest_logs = VersionIngestLogs::new(TeamFeedIngest::KIND, team_id, valid_from);
 
-    let new_cursor = NewFeedEventProcessed {
+    let processed = NewFeedEventProcessed {
         kind: "team_feed",
         entity_id: team_id,
         feed_event_index: item.feed_event_index,
@@ -101,7 +101,7 @@ pub fn chron_team_feed_as_new<'a>(
     // There is a bug in mmolb_parsing that causes a panic when an
     // augment's text is empty
     if item.data.text.is_empty() {
-        return (new_cursor, None, ingest_logs.into_vec());
+        return (processed, None, ingest_logs.into_vec());
     }
 
     let parsed_event = mmolb_parsing::team_feed::parse_team_feed_event(&item.data);
@@ -178,5 +178,5 @@ pub fn chron_team_feed_as_new<'a>(
         ParsedTeamFeedEventText::Retirement { .. } => None
     };
 
-    (new_cursor, game_outcome, ingest_logs.into_vec())
+    (processed, game_outcome, ingest_logs.into_vec())
 }

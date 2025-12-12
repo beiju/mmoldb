@@ -6,6 +6,7 @@ mod ingest_players;
 mod ingest_teams;
 mod signal;
 mod config;
+mod partitioner;
 
 use crate::ingest_teams::TeamIngest;
 use chrono::Utc;

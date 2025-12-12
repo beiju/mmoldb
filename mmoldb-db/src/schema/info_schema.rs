@@ -32,7 +32,6 @@ pub mod info {
             db_insert_delete_old_games_duration -> Float8,
             db_insert_update_weather_table_duration -> Float8,
             db_insert_insert_games_duration -> Float8,
-            db_insert_insert_raw_events_duration -> Float8,
             db_insert_insert_logs_duration -> Float8,
             db_insert_insert_events_duration -> Float8,
             db_insert_get_event_ids_duration -> Float8,
