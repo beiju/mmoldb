@@ -2,7 +2,7 @@ use crate::ingest_games::sim::{EventForTable, Game, SimStartupError};
 use crate::ingest_games::{check_round_trip, sim};
 use chron::ChronEntity;
 use chrono::Utc;
-use itertools::{Itertools, izip};
+use itertools::{Itertools, izip, Either};
 use log::{debug, error, info};
 use miette::{Context, Diagnostic};
 use mmolb_parsing::enums::EventType;
@@ -10,6 +10,7 @@ use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{IngestLog, PgConnection, QueryError, db};
 use thiserror::Error;
+use mmoldb_db::models::NewVersionIngestLog;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -68,20 +69,23 @@ pub fn ingest_page_of_games(
     );
     let save_start = Utc::now();
     let deserialize_games_start = Utc::now();
-    // TODO Turn game deserialize failure into a GameForDb::FatalError case
-    //   instead of propagating it
     let all_games = all_games_json
         .into_iter()
         .map(|game_json| {
-            Ok::<_, serde_json::Error>(ChronEntity {
-                kind: game_json.kind,
-                entity_id: game_json.entity_id,
-                valid_from: game_json.valid_from,
-                valid_to: game_json.valid_to,
-                data: serde_json::from_value(game_json.data)?,
-            })
+            match serde_json::from_value(game_json.data) {
+                Ok(data) => Either::Left(ChronEntity {
+                    kind: game_json.kind,
+                    entity_id: game_json.entity_id,
+                    valid_from: game_json.valid_from,
+                    valid_to: game_json.valid_to,
+                    data,
+                }),
+                Err(err) => {
+                    Either::Right((err, game_json.entity_id, game_json.valid_from))
+                },
+            }
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Vec<_>>();
     let deserialize_games_duration = (Utc::now() - deserialize_games_start).as_seconds_f64();
     debug!(
         "Deserialized page of {} games on worker {worker_id}",
@@ -95,7 +99,14 @@ pub fn ingest_page_of_games(
     let parse_and_sim_start = Utc::now();
     let games_for_db = all_games
         .iter()
-        .map(prepare_game_for_db)
+        .map(|result| match result {
+            Either::Left(game) => prepare_game_for_db(game),
+            Either::Right((err, entity_id, valid_from)) => Ok(GameForDb::DeserializeError {
+                game_id: entity_id,
+                from_version: *valid_from,
+                error_message: err.to_string(),
+            })
+        })
         .collect::<Result<Vec<_>, _>>()?;
     debug!(
         "Prepared {} games on worker {worker_id}",
@@ -131,6 +142,9 @@ pub fn ingest_page_of_games(
                 num_unsupported_games_skipped += 1;
             }
             GameForDb::FatalError { .. } => {
+                num_games_with_fatal_errors += 1;
+            }
+            GameForDb::DeserializeError { .. } => {
                 num_games_with_fatal_errors += 1;
             }
         }

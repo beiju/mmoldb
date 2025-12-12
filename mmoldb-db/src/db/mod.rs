@@ -786,36 +786,56 @@ pub enum GameForDb<'g> {
         raw_game: &'g mmolb_parsing::Game,
         error_message: String,
     },
+    // Like FatalError but we don't have a raw game
+    DeserializeError {
+        game_id: &'g str,
+        from_version: DateTime<Utc>,
+        error_message: String,
+    },
 }
 
 impl<'g> GameForDb<'g> {
-    pub fn raw(&self) -> (&'g str, DateTime<Utc>, &'g mmolb_parsing::Game) {
+    pub fn metadata(&self) -> (&'g str, DateTime<Utc>) {
         match self {
             GameForDb::Ongoing {
                 game_id,
                 from_version,
-                raw_game,
-            } => (*game_id, *from_version, raw_game),
+                ..
+            } => (*game_id, *from_version),
             GameForDb::ForeverIncomplete {
                 game_id,
                 from_version,
-                raw_game,
-            } => (*game_id, *from_version, raw_game),
+                ..
+            } => (*game_id, *from_version),
             GameForDb::Completed { game, from_version } => {
-                (&game.id, *from_version, &game.raw_game)
+                (&game.id, *from_version)
             }
             GameForDb::NotSupported {
                 game_id,
                 from_version,
-                raw_game,
                 ..
-            } => (*game_id, *from_version, raw_game),
+            } => (*game_id, *from_version),
             GameForDb::FatalError {
                 game_id,
                 from_version,
-                raw_game,
                 ..
-            } => (*game_id, *from_version, raw_game),
+            } => (*game_id, *from_version),
+            GameForDb::DeserializeError {
+                game_id,
+                from_version,
+                ..
+            } => (*game_id, *from_version),
+        }
+    }
+
+    pub fn raw_game(&self) -> Option<&'g mmolb_parsing::Game> {
+        match self {
+            GameForDb::Ongoing { raw_game, .. } => Some(raw_game),
+            GameForDb::ForeverIncomplete { raw_game, .. } => Some(raw_game),
+            GameForDb::Completed { game, .. } => Some(&game.raw_game),
+            GameForDb::NotSupported { raw_game, .. } => Some(raw_game),
+            GameForDb::FatalError { raw_game, .. } => Some(raw_game),
+            GameForDb::DeserializeError { .. } => None,
         }
     }
 
@@ -872,8 +892,8 @@ fn insert_games_internal<'e>(
     let delete_old_games_start = Utc::now();
     let game_mmolb_ids = games
         .iter()
-        .map(GameForDb::raw)
-        .map(|(id, _, _)| id)
+        .map(GameForDb::metadata)
+        .map(|(id, _)| id)
         .collect_vec();
 
     diesel::delete(games_dsl::games)
@@ -889,7 +909,43 @@ fn insert_games_internal<'e>(
     let new_games = games
         .iter()
         .map(|game| {
-            let (game_id, from_version, raw_game) = game.raw();
+            let (game_id, from_version) = game.metadata();
+            let Some(raw_game) = game.raw_game() else {
+                // TODO Is there a more elegant solution than a defaulted game?
+                // Get an arbitrary weather. This is a bad solution.
+                let weather = weather_table.values()
+                    .next()
+                    .cloned()
+                    // This unwrap is pretty much guaranteed to lead to a db constraint error.
+                    // It's here to make the code compile while I hope it's never hit.
+                    .unwrap_or(0);
+                return NewGame {
+                    ingest: ingest_id,
+                    mmolb_game_id: game_id,
+                    weather,
+                    season: 0,
+                    day: Some(0), // db constraints enforce one of (day, superstar_day) is not None
+                    superstar_day: None,
+                    away_team_emoji: "",
+                    away_team_name: "",
+                    away_team_mmolb_id: "",
+                    away_team_final_score: None,
+                    home_team_emoji: "",
+                    home_team_name: "",
+                    home_team_mmolb_id: "",
+                    home_team_final_score: None,
+                    is_ongoing: false,
+                    stadium_name: None,
+                    from_version: from_version.naive_utc(),
+                    home_team_earned_coins: None,
+                    away_team_earned_coins: None,
+                    home_team_photo_contest_top_scorer: None,
+                    home_team_photo_contest_score: None,
+                    away_team_photo_contest_top_scorer: None,
+                    away_team_photo_contest_score: None,
+                }
+            };
+
             let Some(weather_id) = weather_table.get(&(
                 raw_game.weather.name.as_str(),
                 raw_game.weather.emoji.as_str(),
@@ -1017,6 +1073,15 @@ fn insert_games_internal<'e>(
                     game_id: *game_id,
                     game_event_index: None, // None => applies to the entire game
                     log_index: 0,           // there's only ever one
+                    log_level: 0,           // critical
+                    log_text: error_message,
+                }))
+            }
+            GameForDb::DeserializeError { error_message, .. } => {
+                Some(Either::Right(NewEventIngestLog {
+                    game_id: *game_id,
+                    game_event_index: None, // None => applies to the entire game
+                    log_index: 0,           // there's only ever one (this overrides FatalError)
                     log_level: 0,           // critical
                     log_text: error_message,
                 }))

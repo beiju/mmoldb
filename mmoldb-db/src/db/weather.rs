@@ -79,8 +79,8 @@ fn create_weather_table_inner(
 
     let new_weathers = games
         .iter()
-        .map(GameForDb::raw)
-        .filter_map(|(_, _, raw_game)| {
+        .flat_map(GameForDb::raw_game)
+        .filter_map(|raw_game| {
             if weather_table.contains_key(&(
                 raw_game.weather.name.as_str(),
                 raw_game.weather.emoji.as_str(),
