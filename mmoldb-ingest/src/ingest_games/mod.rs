@@ -12,15 +12,19 @@ use itertools::Itertools;
 use log::{debug, error, info, warn};
 use miette::{WrapErr, IntoDiagnostic};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{PgConnection, db, ConnectionPool};
+use mmoldb_db::{PgConnection, db, ConnectionPool, AsyncPgConnection, AsyncConnection, async_db};
 use std::collections::{HashMap, HashSet};
 use std::hash::RandomState;
+use std::num::NonZero;
 use tokio::fs;
 use std::sync::{Arc, Mutex};
+use hashbrown::hash_map::Entry;
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc::Receiver;
 use tokio::sync::Notify;
 use tokio_stream::wrappers::LinesStream;
 use tokio_util::{sync::CancellationToken};
+use crate::partitioner::Partitioner;
 
 // I made this a constant because I'm constant-ly terrified of typoing
 // it and introducing a difficult-to-find bug
@@ -82,55 +86,22 @@ pub async fn ingest_games(
     abort: CancellationToken,
     use_local_cheap_cashews: bool,
 ) -> miette::Result<()> {
-    let mut conn = pool.get().into_diagnostic()?;
     let notify = Arc::new(Notify::new());
     // Finish tells the task "once there are no more games to process, exit", while
     // abort tells the task "exit immediately, even if there are more games to process"
     let finish = CancellationToken::new();
-    let ingest_cursor = Arc::new(Mutex::new(
-        db::get_game_ingest_start_cursor(&mut conn)
-            .into_diagnostic()?
-            .map(|(dt, id)| (dt.and_utc(), id)),
-    ));
-    // dupe_tracker is only for debugging
-    let dupe_tracker = Arc::new(Mutex::new(HashMap::new()));
 
-    // let num_workers = std::thread::available_parallelism()
-    //     .map(|n| n.get())
-    //     .unwrap_or_else(|err| {
-    //         warn!("Couldn't get available cores: {}. Falling back to 1.", err);
-    //         1
-    //     });
-    let num_workers = 4;
-    debug!("Ingesting with {} workers", num_workers);
-
-    let process_games_handles = (1..=num_workers)
-        .map(|n| {
-            let pool = pool.clone();
-            let notify = notify.clone();
-            let finish = finish.clone();
-            let abort = abort.clone();
-            let ingest_cursor = ingest_cursor.clone();
-            let dupe_tracker = dupe_tracker.clone();
-            let handle = tokio::runtime::Handle::current();
-            tokio::task::Builder::new()
-                .name(format!("Ingest worker {n}").leak())
-                .spawn_blocking(move || {
-                    process_games(
-                        pool,
-                        ingest_id,
-                        ingest_cursor,
-                        dupe_tracker,
-                        abort,
-                        notify,
-                        finish,
-                        handle,
-                        n,
-                    )
-                })
-                .expect("Could not spawn worker thread")
-        })
-        .collect_vec();
+    let stage_2_task = tokio::task::Builder::new()
+        .name("Games Stage 2 Ingest Coordinator")
+        .spawn(move || {
+            ingest_stage_2(
+                pool,
+                ingest_id,
+                abort,
+                notify,
+                finish,
+            )
+        })?;
 
     info!("Launched process games task");
     info!("Beginning raw game ingest");
@@ -151,9 +122,7 @@ pub async fn ingest_games(
         }
     }
 
-    for process_games_handle in process_games_handles {
-        process_games_handle.await.into_diagnostic()??;
-    }
+    stage_2_task.await.into_diagnostic()??;
 
     Ok(())
 }
@@ -196,167 +165,82 @@ async fn ingest_raw_games(conn: &mut PgConnection, notify: Arc<Notify>, use_loca
     Ok(())
 }
 
-fn process_games(
+async fn process_games(
     pool: ConnectionPool,
     ingest_id: i64,
-    ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
-    dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
-    abort: CancellationToken,
-    notify: Arc<Notify>,
-    finish: CancellationToken,
+    game_recv: Receiver<ChronEntity<serde_json::Value>>,
     handle: tokio::runtime::Handle,
     worker_id: usize,
 ) -> miette::Result<()> {
     let result = process_games_internal(
         pool,
         ingest_id,
-        ingest_cursor,
-        dupe_tracker,
-        abort,
-        notify,
-        finish,
+        game_recv,
         handle,
         worker_id,
-    );
+    ).await;
     if let Err(err) = &result {
         error!("Error in process games: {}. ", err);
     }
     result
 }
 
-fn process_games_internal(
+async fn process_games_internal(
     pool: ConnectionPool,
     ingest_id: i64,
-    ingest_cursor: Arc<Mutex<Option<(DateTime<Utc>, String)>>>,
-    dupe_tracker: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
-    abort: CancellationToken,
-    notify: Arc<Notify>,
-    finish: CancellationToken,
+    game_recv: Receiver<ChronEntity<serde_json::Value>>,
     handle: tokio::runtime::Handle,
-    worker_id: usize,
+    worker_idx: usize,
 ) -> miette::Result<()> {
     let mut conn = pool.get().into_diagnostic()?;
     let taxa = Taxa::new(&mut conn).into_diagnostic()?;
 
-    // Permit ourselves to start processing right away, in case there
-    // are unprocessed games left over from a previous ingest. This
-    // will happen after every derived data reset.
-    notify.notify_one();
+    let chunk_stream = tokio_stream::wrappers::ReceiverStream::new(game_recv)
+        .chunks(PROCESS_GAME_BATCH_SIZE);
+    pin_mut!(chunk_stream);
 
+    // TODO This is going to be duplicated across workers now. It's only used for
+    //   timings, so it's not terrible, but it should be fixed.
     let mut page_index = 0;
-    while {
-        debug!("Process games task worker {worker_id} is waiting to be woken up");
-        handle.block_on(async {
-            tokio::select! {
-                biased; // We always want to respond to abort, notify, and finish in that order
-                _ = abort.cancelled() => { false }
-                _ = notify.notified() => { true }
-                _ = finish.cancelled() => { false }
-            }
-        })
-    } {
-        debug!("Process games task worker {worker_id} is woken up");
-
-        // The inner loop is over batches of games to process
-        while !abort.is_cancelled() {
-            debug!("Starting ingest_games loop on worker {worker_id}");
-            let get_batch_to_process_start = Utc::now();
-            let this_cursor = {
-                let mut ingest_cursor = ingest_cursor.lock().unwrap();
-                let this_cursor = ingest_cursor.clone();
-                debug!("Worker {worker_id} getting games after {:?}", ingest_cursor);
-                let next_cursor = db::advance_entity_cursor(
-                    &mut conn,
-                    GAME_KIND,
-                    ingest_cursor
-                        .as_ref()
-                        .map(|(d, i)| (d.naive_utc(), i.as_str())),
-                    PROCESS_GAME_BATCH_SIZE,
-                )
-                .into_diagnostic()?
-                .map(|(dt, id)| (dt.and_utc(), id));
-                if let Some(cursor) = next_cursor {
-                    *ingest_cursor = Some(cursor);
-                    debug!("Worker {worker_id} set cursor to {:?}", ingest_cursor);
-                } else {
-                    debug!(
-                        "All games have been processed. Worker {} waiting to be woken up again.",
-                        worker_id,
-                    );
-                    break;
-                }
-
-                this_cursor
-            };
-
-            let raw_games = db::get_entities_at_cursor(
-                &mut conn,
-                GAME_KIND,
-                PROCESS_GAME_BATCH_SIZE,
-                this_cursor
-                    .as_ref()
-                    .map(|(d, i)| (d.naive_utc(), i.as_str())),
-            )
+    let mut get_batch_to_process_start = Utc::now();
+    while let Some(raw_games) = chunk_stream.next().await {
+        let get_batch_to_process_duration = (Utc::now() - get_batch_to_process_start).as_seconds_f64();
+        info!(
+            "Processing batch of {} raw games on worker {worker_idx}",
+            raw_games.len()
+        );
+        let stats = ingest_page_of_games(
+            &taxa,
+            ingest_id,
+            page_index,
+            get_batch_to_process_duration,
+            raw_games,
+            &mut conn,
+            worker_idx,
+        )
             .into_diagnostic()?;
+        info!(
+            "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
+            progress, skipped {} unsupported games, and skipped {} bugged games on worker {}.",
+            stats.num_games_imported,
+            stats.num_games_with_fatal_errors,
+            stats.num_ongoing_games_skipped,
+            stats.num_unsupported_games_skipped,
+            stats.num_bugged_games_skipped,
+            worker_idx,
+        );
 
-            {
-                let mut dupe_tracker = dupe_tracker.lock().unwrap();
-                for game in &raw_games {
-                    if let Some(prev_valid_from) = dupe_tracker.get(&game.entity_id) {
-                        // TODO Is this still an error now that we're multi-chron?
-                        warn!(
-                            "get_entities_at_cursor returned a duplicate game {}. Previous \
-                            valid_from={}, our valid_from={}",
-                            game.entity_id, prev_valid_from, game.valid_from
-                        );
-                    } else {
-                        dupe_tracker.insert(game.entity_id.clone(), game.valid_from);
-                    }
-                }
-            }
-            let get_batch_to_process_duration =
-                (Utc::now() - get_batch_to_process_start).as_seconds_f64();
+        page_index += 1;
+        // Yield to allow the tokio scheduler to do its thing
+        // (with out this, signal handling effectively doesn't work because it has to wait
+        // for the entire process games task to finish)
+        handle.block_on(tokio::task::yield_now());
 
-            // Make "graceful" shutdown a bit more responsive by checking `abort` in between
-            // long-running operations
-            if abort.is_cancelled() {
-                break;
-            }
-
-            info!(
-                "Processing batch of {} raw games on worker {worker_id}",
-                raw_games.len()
-            );
-            let stats = ingest_page_of_games(
-                &taxa,
-                ingest_id,
-                page_index,
-                get_batch_to_process_duration,
-                raw_games,
-                &mut conn,
-                worker_id,
-            )
-            .into_diagnostic()?;
-            info!(
-                "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
-                progress, skipped {} unsupported games, and skipped {} bugged games on worker {}.",
-                stats.num_games_imported,
-                stats.num_games_with_fatal_errors,
-                stats.num_ongoing_games_skipped,
-                stats.num_unsupported_games_skipped,
-                stats.num_bugged_games_skipped,
-                worker_id,
-            );
-
-            page_index += 1;
-            // Yield to allow the tokio scheduler to do its thing
-            // (with out this, signal handling effectively doesn't work because it has to wait
-            // for the entire process games task to finish)
-            handle.block_on(tokio::task::yield_now());
-        }
+        // Must be the last thing in the loop
+        get_batch_to_process_start = Utc::now();
     }
 
-    debug!("Process games worker {worker_id} is exiting");
+    debug!("game stage 2 ingest worker {} is exiting", worker_idx);
 
     Ok(())
 }

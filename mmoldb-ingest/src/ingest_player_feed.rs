@@ -57,7 +57,7 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
         // This ingestible doesn't use a cursor. I used to have an assert that cursor
         // was None, but that's incorrect because the machinery opportunistically updates
         // the cursor based on values that are passing through
-        async_db::stream_feed_event_versions_at_cursor(conn, kind).await
+        async_db::stream_unprocessed_feed_event_versions(conn, kind).await
     }
 }
 
