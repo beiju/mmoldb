@@ -1070,3 +1070,27 @@ pub struct DbFeedEventProcessed {
     pub feed_event_index: i32,
     pub valid_from: NaiveDateTime,
 }
+
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::efflorescence)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewEfflorescence<'a> {
+    pub game_id: i64,
+    pub game_event_index: i32,
+    pub efflorescence_index: i32,
+    pub player_name: &'a str,
+    pub effloresced: bool,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::efflorescence)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbEfflorescence {
+    pub id: i64,
+    pub game_id: i64,
+    pub game_event_index: i32,
+    pub efflorescence_index: i32,
+    pub player_name: String,
+    pub effloresced: bool,
+}

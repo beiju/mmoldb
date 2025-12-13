@@ -9,7 +9,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
 use std::fmt::Formatter;
 use thiserror::Error;
 
@@ -72,6 +72,7 @@ pub struct EventDetail<StrT: Clone> {
     pub ejection: Option<Ejection<StrT>>,
     pub door_prizes: Vec<DoorPrize<StrT>>,
     pub wither: Option<WitherStruggle<StrT>>,
+    pub efflorescence: Vec<Efflorescence<StrT>>,
 }
 
 #[derive(Debug)]
@@ -380,7 +381,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
-                efflorescence: Vec::new(), // TODO
+                efflorescence: self.efflorescence.iter().map(Efflorescence::to_ref).collect(),
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,

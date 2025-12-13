@@ -789,6 +789,12 @@ pub fn chron_player_feed_as_new<'a>(
         ParsedPlayerFeedEventText::GreaterAugment { .. } => {
             // Nothing to do yet
         }
+        ParsedPlayerFeedEventText::RetractedGreaterAugment { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::RetroactiveGreaterAugment { .. } => {
+            // Nothing to do yet
+        }
         ParsedPlayerFeedEventText::PlayerRelegated { .. } => {
             // Nothing to do yet
         }

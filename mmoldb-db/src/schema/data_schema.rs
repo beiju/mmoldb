@@ -44,6 +44,29 @@ pub mod data {
     }
 
     diesel::table! {
+        data.efflorescence (id) {
+            id -> Int8,
+            game_id -> Int8,
+            game_event_index -> Int4,
+            efflorescence_index -> Int4,
+            player_name -> Text,
+            effloresced -> Bool,
+        }
+    }
+
+    diesel::table! {
+        data.efflorescence_growth (id) {
+            id -> Int8,
+            game_id -> Int8,
+            game_event_index -> Int4,
+            efflorescence_index -> Int4,
+            efflorescence_growth_index -> Int4,
+            value -> Int4,
+            attribute -> Int8,
+        }
+    }
+
+    diesel::table! {
         data.ejections (id) {
             id -> Int8,
             event_id -> Int8,
@@ -492,6 +515,8 @@ pub mod data {
     diesel::joinable!(aurora_photos -> events (event_id));
     diesel::joinable!(door_prize_items -> events (event_id));
     diesel::joinable!(door_prizes -> events (event_id));
+    diesel::joinable!(efflorescence -> games (game_id));
+    diesel::joinable!(efflorescence_growth -> games (game_id));
     diesel::joinable!(ejections -> events (event_id));
     diesel::joinable!(event_baserunners -> events (event_id));
     diesel::joinable!(event_fielders -> events (event_id));
@@ -506,6 +531,8 @@ pub mod data {
         aurora_photos,
         door_prize_items,
         door_prizes,
+        efflorescence,
+        efflorescence_growth,
         ejections,
         entities,
         event_baserunners,

@@ -5,7 +5,7 @@ use miette::Diagnostic;
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType, TopBottom};
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, ContainResult, DoorPrize, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WitherResult, WitherStruggle};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WitherResult, WitherStruggle};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
@@ -574,6 +574,7 @@ struct EventDetailBuilder<'g> {
     ejection: Option<Ejection<&'g str>>,
     door_prizes: Vec<DoorPrize<&'g str>>,
     wither: Option<WitherStruggle<&'g str>>,
+    efflorescence: Vec<Efflorescence<&'g str>>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
@@ -1099,6 +1100,7 @@ impl<'g> EventDetailBuilder<'g> {
             ejection: self.ejection,
             door_prizes: self.door_prizes,
             wither: self.wither,
+            efflorescence: self.efflorescence,
         }
     }
 }
@@ -1750,6 +1752,7 @@ impl<'g> Game<'g> {
             ejection: None,
             door_prizes: Vec::new(),
             wither: None,
+            efflorescence: Vec::new(),
         }
     }
 

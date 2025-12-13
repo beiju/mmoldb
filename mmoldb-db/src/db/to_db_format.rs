@@ -1,5 +1,5 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent, NewFielder, NewParty, NewPitcherChange, NewWither};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEjection, DbEvent, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent, NewFielder, NewParty, NewPitcherChange, NewWither};
 use crate::taxa::Taxa;
 use crate::{PartyEvent, PitcherChange, WitherOutcome};
 use itertools::Itertools;
@@ -468,7 +468,8 @@ pub fn row_to_event<'e>(
     ejection: Vec<DbEjection>,
     door_prizes: Vec<DbDoorPrize>,
     door_prize_items: Vec<DbDoorPrizeItem>,
-    wither: Vec<DbWither>
+    wither: Vec<DbWither>,
+    efflorescence: Vec<DbEfflorescence>,
 ) -> Result<EventDetail<String>, RowToEventError> {
     let baserunners = runners
         .into_iter()
@@ -704,6 +705,16 @@ pub fn row_to_event<'e>(
         }
     };
 
+    let efflorescence = efflorescence
+        .into_iter()
+        .map(|eff| {
+            mmolb_parsing::parsed_event::Efflorescence {
+                player: eff.player_name,
+                outcome: mmolb_parsing::parsed_event::EfflorescenceOutcome::Effloresce,  // TODO fix
+            }
+        })
+        .collect_vec();
+
     Ok(EventDetail {
         game_event_index: event.game_event_index as usize,
         fair_ball_event_index: event.fair_ball_event_index.map(|i| i as usize),
@@ -750,5 +761,6 @@ pub fn row_to_event<'e>(
         ejection,
         door_prizes,
         wither,
+        efflorescence,
     })
 }

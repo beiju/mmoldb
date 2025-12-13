@@ -26,7 +26,7 @@ use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbFeedEventProcessed};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbFeedEventProcessed, DbEfflorescence};
 use crate::taxa::Taxa;
 use crate::{PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -502,6 +502,37 @@ pub fn group_wither_table_results<'a>(
     results
 }
 
+pub fn group_efflorescence_table_results<'a>(
+    games_events: impl IntoIterator<Item = &'a Vec<DbEvent>>,
+    effs: Vec<DbEfflorescence>,
+) -> Vec<Vec<Vec<DbEfflorescence>>> {
+    let mut effs_iter = effs.into_iter().peekable();
+
+    let results = games_events
+        .into_iter()
+        .map(|game_events| {
+            game_events
+                .iter()
+                .map(|game_event| {
+                    let mut children = Vec::new();
+                    while let Some(child) =
+                        effs_iter.next_if(|f|
+                            f.game_id == game_event.game_id &&
+                                f.game_event_index == game_event.game_event_index
+                        ) {
+                        children.push(child);
+                    }
+                    children
+                })
+                .collect_vec()
+        })
+        .collect_vec();
+
+    assert_eq!(effs_iter.count(), 0);
+
+    results
+}
+
 pub fn events_for_games(
     conn: &mut PgConnection,
     taxa: &Taxa,
@@ -519,6 +550,7 @@ pub fn events_for_games(
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::data_schema::data::wither::dsl as wither_dsl;
+    use crate::data_schema::data::efflorescence::dsl as efflorescence_dsl;
 
     let get_game_ids_start = Utc::now();
     let game_ids = games_dsl::games
@@ -655,6 +687,23 @@ pub fn events_for_games(
     let _group_wither_duration =
         (Utc::now() - group_wither_start).as_seconds_f64();
 
+    let get_efflorescence_start = Utc::now();
+    let db_efflorescence = efflorescence_dsl::efflorescence
+        .filter(efflorescence_dsl::game_id.eq_any(&game_ids))
+        .order_by((
+            efflorescence_dsl::game_id,
+            efflorescence_dsl::game_event_index,
+        ))
+        .select(DbEfflorescence::as_select())
+        .load(conn)?;
+    let _get_efflorescence_duration = (Utc::now() - get_efflorescence_start).as_seconds_f64();
+
+    let group_efflorescence_start = Utc::now();
+    let db_efflorescence: Vec<Vec<Vec<DbEfflorescence>>> =
+        group_efflorescence_table_results(&db_games_events, db_efflorescence);
+    let _group_efflorescence_duration =
+        (Utc::now() - group_efflorescence_start).as_seconds_f64();
+
     let post_process_start = Utc::now();
     let result = itertools::izip!(
         game_ids,
@@ -666,6 +715,7 @@ pub fn events_for_games(
         db_door_prizes,
         db_door_prize_items,
         db_wither,
+        db_efflorescence,
     )
     .map(
         |(
@@ -678,6 +728,7 @@ pub fn events_for_games(
             door_prizes,
             door_prize_items,
             wither,
+            efflorescence,
         )| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
@@ -690,6 +741,7 @@ pub fn events_for_games(
                 door_prizes,
                 door_prize_items,
                 wither,
+                efflorescence,
             )
             .map(
                 |(
@@ -701,6 +753,7 @@ pub fn events_for_games(
                     door_prizes,
                     door_prize_items,
                     wither,
+                    efflorescence,
                 )| {
                     to_db_format::row_to_event(
                         taxa,
@@ -712,6 +765,7 @@ pub fn events_for_games(
                         door_prizes,
                         door_prize_items,
                         wither,
+                        efflorescence,
                     )
                 },
             )
