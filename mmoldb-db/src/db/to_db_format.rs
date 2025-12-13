@@ -1,11 +1,11 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEjection, DbEvent, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEjection, NewEvent, NewFielder, NewParty, NewPitcherChange, NewWither};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
 use crate::taxa::Taxa;
-use crate::{PartyEvent, PitcherChange, WitherOutcome};
+use crate::{EfflorescenceForDb, PartyEvent, PitcherChange, WitherOutcome};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
-use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, ItemEquip, ItemPrize, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
+use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Efflorescence, EfflorescenceOutcome, GrowAttributeChange, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, ItemEquip, ItemPrize, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
 use std::str::FromStr;
 use log::warn;
 use strum::ParseError;
@@ -131,29 +131,45 @@ pub fn event_to_ejection<'e>(
 ) -> Vec<NewEjection<'e>> {
     match &event.ejection {
         None => Vec::new(),
-        Some(ejection) => vec![match ejection.replacement {
+        Some(Ejection::Ejection { team, ejected_player, violation_type, reason, replacement }) => vec![match replacement {
             EjectionReplacement::BenchPlayer { player_name } => NewEjection {
                 event_id,
-                team_emoji: ejection.team.emoji,
-                team_name: ejection.team.name,
-                ejected_player_name: ejection.ejected_player.name,
-                ejected_player_slot: taxa.slot_id(ejection.ejected_player.place.into()),
-                violation_type: ejection.violation_type.to_string(),
-                reason: ejection.reason.to_string(),
+                team_emoji: team.emoji,
+                team_name: team.name,
+                ejected_player_name: ejected_player.name,
+                ejected_player_slot: taxa.slot_id(ejected_player.place.into()),
+                violation_type: violation_type.to_string(),
+                reason: reason.to_string(),
                 replacement_player_name: player_name,
                 replacement_player_slot: None,
             },
             EjectionReplacement::RosterPlayer { player } => NewEjection {
                 event_id,
-                team_emoji: ejection.team.emoji,
-                team_name: ejection.team.name,
-                ejected_player_name: ejection.ejected_player.name,
-                ejected_player_slot: taxa.slot_id(ejection.ejected_player.place.into()),
-                violation_type: ejection.violation_type.to_string(),
-                reason: ejection.reason.to_string(),
+                team_emoji: team.emoji,
+                team_name: team.name,
+                ejected_player_name: ejected_player.name,
+                ejected_player_slot: taxa.slot_id(ejected_player.place.into()),
+                violation_type: violation_type.to_string(),
+                reason: reason.to_string(),
                 replacement_player_name: player.name,
                 replacement_player_slot: Some(taxa.slot_id(player.place.into())),
             },
+        }],
+        Some(Ejection::FailedEjection { .. }) => Vec::new(),
+    }
+}
+
+pub fn event_to_failed_ejection<'e>(
+    event_id: i64,
+    event: &'e EventDetail<&'e str>,
+) -> Vec<NewFailedEjection<'e>> {
+    match &event.ejection {
+        None => Vec::new(),
+        Some(Ejection::Ejection { .. }) => Vec::new(),
+        Some(Ejection::FailedEjection { player_names: [player_name_1, player_name_2] }) => vec![NewFailedEjection {
+            event_id,
+            player_name_1,
+            player_name_2,
         }],
     }
 }
@@ -250,6 +266,58 @@ pub fn event_to_door_prize_items<'e>(
         .collect()
 }
 
+pub fn event_to_efflorescence<'e>(
+    event_id: i64,
+    event: &'e EventDetail<&'e str>,
+) -> Vec<NewEfflorescence<'e>> {
+    event
+        .efflorescences
+        .iter()
+        .enumerate()
+        .map(|(efflorescence_index, eff)| {
+            let effloresced = match &eff.outcome {
+                EfflorescenceOutcome::Grow(_) => false,
+                EfflorescenceOutcome::Effloresce => true,
+            };
+
+            NewEfflorescence {
+                event_id,
+                efflorescence_index: efflorescence_index as i32,
+                player_name: eff.player,
+                effloresced,
+            }
+        })
+        .collect()
+}
+
+pub fn event_to_efflorescence_growths<'e>(
+    taxa: &Taxa,
+    event_id: i64,
+    event: &'e EventDetail<&'e str>,
+) -> Vec<NewEfflorescenceGrowth> {
+    event
+        .efflorescences
+        .iter()
+        .enumerate()
+        .flat_map(|(efflorescence_index, eff)| match &eff.outcome {
+            EfflorescenceOutcome::Effloresce => Vec::new(),
+            EfflorescenceOutcome::Grow(growths) => growths
+                .iter()
+                .enumerate()
+                .map(|(growth_index, growth)| {
+                    NewEfflorescenceGrowth {
+                        event_id,
+                        efflorescence_index: efflorescence_index as i32,
+                        growth_index: growth_index as i32,
+                        value: growth.amount,
+                        attribute: taxa.attribute_id(growth.attribute.into()),
+                    }
+                })
+                .collect(),
+        })
+        .collect()
+}
+
 pub fn pitcher_change_to_row<'e>(
     taxa: &Taxa,
     game_id: i64,
@@ -329,6 +397,9 @@ pub enum RowToEventError {
     #[error("invalid number of ejections on a single event (expected 0 or 1, not {0})")]
     InvalidNumberOfEjections(usize),
 
+    #[error("ejection and failed ejection on a single event")]
+    EjectionAndFailedEjection,
+
     #[error("invalid number of wither struggles on a single event (expected 0 or 1, not {0})")]
     InvalidNumberOfWitherStruggles(usize),
 
@@ -389,6 +460,16 @@ pub enum RowToEventError {
         player_name: String,
         num_tokens: i32,
         items: Vec<String>,
+    },
+
+    #[error(
+        "{efflorescence_index}th efflorescence, for {player_name}, had too few growths. Expected \
+        2, received {growths:?}"
+    )]
+    NotEnoughEfflorescenceGrowths {
+        efflorescence_index: i32,
+        player_name: String,
+        growths: Vec<GrowAttributeChange>,
     },
 }
 
@@ -466,10 +547,12 @@ pub fn row_to_event<'e>(
     fielders: Vec<DbFielder>,
     aurora_photo: Vec<DbAuroraPhoto>,
     ejection: Vec<DbEjection>,
+    failed_ejection: Vec<DbFailedEjection>,
     door_prizes: Vec<DbDoorPrize>,
     door_prize_items: Vec<DbDoorPrizeItem>,
+    efflorescences: Vec<DbEfflorescence>,
+    efflorescence_growths: Vec<DbEfflorescenceGrowth>,
     wither: Vec<DbWither>,
-    efflorescence: Vec<DbEfflorescence>,
 ) -> Result<EventDetail<String>, RowToEventError> {
     let baserunners = runners
         .into_iter()
@@ -527,7 +610,7 @@ pub fn row_to_event<'e>(
         0 => None,
         1 => {
             let (ejection,) = ejection.into_iter().collect_tuple().unwrap();
-            Some(Ejection {
+            Some(Ejection::Ejection {
                 team: EmojiTeam {
                     emoji: ejection.team_emoji,
                     name: ejection.team_name,
@@ -554,6 +637,26 @@ pub fn row_to_event<'e>(
         other => {
             return Err(RowToEventError::InvalidNumberOfEjections(other));
         }
+    };
+
+    let failed_ejection = match failed_ejection.len() {
+        0 => None,
+        1 => {
+            let (failed_ejection,) = failed_ejection.into_iter().collect_tuple().unwrap();
+            Some(Ejection::FailedEjection {
+                player_names: [failed_ejection.player_name_1, failed_ejection.player_name_2],
+            })
+        }
+        other => {
+            return Err(RowToEventError::InvalidNumberOfEjections(other));
+        }
+    };
+    
+    let ejection = match (ejection, failed_ejection) {
+        (None, None) => None,
+        (Some(e), None) => Some(e),
+        (None, Some(e)) => Some(e),
+        (Some(_), Some(_)) => return Err(RowToEventError::EjectionAndFailedEjection),
     };
 
     let mut door_prize_items_iter = door_prize_items.into_iter().peekable();
@@ -687,6 +790,60 @@ pub fn row_to_event<'e>(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    for remaining_door_prize_item in door_prize_items_iter {
+        warn!("Door prize item abandoned: {remaining_door_prize_item:?}");
+    }
+
+    let mut efflorescence_growths_iter = efflorescence_growths.into_iter().peekable();
+
+    let efflorescences = efflorescences
+        .into_iter()
+        .map(|efflorescence| {
+            let mut growths = Vec::new();
+            while let Some(growth) =
+                efflorescence_growths_iter.next_if(|i| i.efflorescence_index == efflorescence.efflorescence_index)
+            {
+                growths.push(GrowAttributeChange {
+                    attribute: taxa.attribute_from_id(growth.attribute).into(),
+                    amount: growth.value,
+                });
+            }
+
+            if efflorescence.effloresced {
+                if !growths.is_empty() {
+                    warn!("Efflorescence had effloresced=true and growth items {:?}", growths);
+                }
+
+                Ok(Efflorescence {
+                    player: efflorescence.player_name,
+                    outcome: EfflorescenceOutcome::Effloresce,
+                })
+            } else {
+                let growths = if growths.len() > 2 {
+                    warn!("Efflorescence had more than 2 growths {:?}", growths);
+                    [growths[0], growths[1]]
+                } else if growths.len() == 2 {
+                    [growths[0], growths[1]]
+                } else {
+                    return Err(RowToEventError::NotEnoughEfflorescenceGrowths {
+                        efflorescence_index: efflorescence.efflorescence_index,
+                        player_name: efflorescence.player_name,
+                        growths,
+                    });
+                };
+
+                Ok(Efflorescence {
+                    player: efflorescence.player_name,
+                    outcome: EfflorescenceOutcome::Grow(growths),
+                })
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for remaining_efflorescence_growth in efflorescence_growths_iter {
+        warn!("Efflorescence growth abandoned: {remaining_efflorescence_growth:?}");
+    }
+
     let wither = match wither.len() {
         0 => None,
         1 => {
@@ -704,16 +861,6 @@ pub fn row_to_event<'e>(
             return Err(RowToEventError::InvalidNumberOfWitherStruggles(other));
         }
     };
-
-    let efflorescence = efflorescence
-        .into_iter()
-        .map(|eff| {
-            mmolb_parsing::parsed_event::Efflorescence {
-                player: eff.player_name,
-                outcome: mmolb_parsing::parsed_event::EfflorescenceOutcome::Effloresce,  // TODO fix
-            }
-        })
-        .collect_vec();
 
     Ok(EventDetail {
         game_event_index: event.game_event_index as usize,
@@ -761,6 +908,6 @@ pub fn row_to_event<'e>(
         ejection,
         door_prizes,
         wither,
-        efflorescence,
+        efflorescences,
     })
 }

@@ -163,6 +163,7 @@ struct FairBall<'g> {
     cheer: Option<Cheer>,
     aurora_photos: Option<SnappedPhotos<&'g str>>,
     door_prizes: Vec<DoorPrize<&'g str>>,
+    efflorescences: Vec<Efflorescence<&'g str>>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -589,8 +590,9 @@ impl<'g> EventDetailBuilder<'g> {
         // so it's ok to use the same fields
         self = self.cheer(fair_ball.cheer);
         self = self.aurora_photos(fair_ball.aurora_photos);
-        // Ditto door prizes
+        // Ditto door prizes, etc
         self = self.door_prizes(fair_ball.door_prizes);
+        self = self.efflorescence(fair_ball.efflorescences);
         self
     }
 
@@ -784,6 +786,11 @@ impl<'g> EventDetailBuilder<'g> {
 
     fn wither(mut self, wither: Option<WitherStruggle<&'g str>>) -> Self {
         self.wither = wither;
+        self
+    }
+
+    fn efflorescence(mut self, efflorescence: Vec<Efflorescence<&'g str>>) -> Self {
+        self.efflorescence = efflorescence;
         self
     }
 
@@ -1048,13 +1055,13 @@ impl<'g> EventDetailBuilder<'g> {
         // When the active pitcher is ejected, MMOLB updates the name
         // in the event data on that event, even though the previous
         // pitcher is responsible for what happened in that event.
-        let pitcher_name = if let Some(ejection) = &self.ejection {
-            let replacement_name = match ejection.replacement {
+        let pitcher_name = if let Some(Ejection::Ejection { replacement, ejected_player, .. }) = &self.ejection {
+            let replacement_name = match replacement {
                 EjectionReplacement::BenchPlayer { player_name } => player_name,
                 EjectionReplacement::RosterPlayer { player } => player.name,
             };
             if replacement_name == pitcher_name {
-                ejection.ejected_player.name
+                ejected_player.name
             } else {
                 pitcher_name
             }
@@ -1100,7 +1107,7 @@ impl<'g> EventDetailBuilder<'g> {
             ejection: self.ejection,
             door_prizes: self.door_prizes,
             wither: self.wither,
-            efflorescence: self.efflorescence,
+            efflorescences: self.efflorescence,
         }
     }
 }
@@ -2297,12 +2304,16 @@ impl<'g> Game<'g> {
         ejection: &Ejection<&'g str>,
         ingest_logs: &mut IngestLogs,
     ) {
-        if team.team_emoji == ejection.team.emoji &&
-                team.team_name == ejection.team.name {
-            if team.active_pitcher.name == ejection.ejected_player.name &&
+        let Ejection::Ejection { team: team_emoji_name, ejected_player, replacement, .. } = ejection else {
+            return;
+        };
+
+        if team.team_emoji == team_emoji_name.emoji &&
+                team.team_name == team_emoji_name.name {
+            if team.active_pitcher.name == ejected_player.name &&
                 // I checked that the slots do match for all true ejections, even
                 // down to e.g. SP vs SP5
-                team.active_pitcher.slot == ejection.ejected_player.place.into()
+                team.active_pitcher.slot == ejected_player.place.into()
             {
                 // Assume the active pitcher was replaced
                 ingest_logs.info(format!(
@@ -2311,7 +2322,7 @@ impl<'g> Game<'g> {
                     team.team_emoji,
                     team.team_name,
                     team.active_pitcher,
-                    match ejection.replacement {
+                    match replacement {
                         EjectionReplacement::BenchPlayer { player_name } => {
                             format!("bench player {}", player_name)
                         }
@@ -2319,7 +2330,7 @@ impl<'g> Game<'g> {
                     }
                 ));
 
-                match &ejection.replacement {
+                match &replacement {
                     EjectionReplacement::BenchPlayer { player_name } => {
                         // Assuming for now that the bench player always assumes the same slot
                         team.active_pitcher.name = player_name;
@@ -2331,7 +2342,7 @@ impl<'g> Game<'g> {
             }
             // We need to allow the pitcher and fielder to be replaced in the same event:
             // https://mmolb.com/watch/68aa0ff1f2bc4821eed4aa29?event=447
-            let maybe_loc = match ejection.ejected_player.place {
+            let maybe_loc = match ejected_player.place {
                 Place::Pitcher => None,
                 Place::Catcher => Some(TaxaFielderLocation::Catcher),
                 Place::FirstBaseman => Some(TaxaFielderLocation::FirstBase),
@@ -2348,7 +2359,7 @@ impl<'g> Game<'g> {
             };
             if let Some(loc) = maybe_loc {
                 if let Some(old_name) = team.fielder_locations.get_mut(&loc) {
-                    if *old_name == ejection.ejected_player.name {
+                    if *old_name == ejected_player.name {
                         ingest_logs.info(format!(
                             "A player who matches the active {}'s team, name, and slot was \
                             ejected. Assuming it was the active {} and replacing {} {}'s {} \
@@ -2358,14 +2369,14 @@ impl<'g> Game<'g> {
                             team.team_emoji,
                             team.team_name,
                             loc,
-                            match ejection.replacement {
+                            match replacement {
                                 EjectionReplacement::BenchPlayer { player_name } => {
                                     format!("bench player {}", player_name)
                                 }
                                 EjectionReplacement::RosterPlayer { player } => player.to_string(),
                             }
                         ));
-                        *old_name = ejection.replacement.player_name();
+                        *old_name = replacement.player_name();
                     }
                 }
             }
@@ -2618,7 +2629,7 @@ impl<'g> Game<'g> {
                 game_event!(
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
-                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence: _ /* TODO */ } => {
+                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence } => {
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
                         self.update_runners(
@@ -2648,10 +2659,11 @@ impl<'g> Game<'g> {
                             .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
                             .wither(wither.clone())
+                            .efflorescence(efflorescence.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence: _ /* TODO */ } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence } => {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
@@ -2674,6 +2686,7 @@ impl<'g> Game<'g> {
                             .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
                             .wither(wither.clone())
+                            .efflorescence(efflorescence.clone())
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
                                 StrikeType::Swinging => { TaxaEventType::SwingingStrike }
@@ -2730,7 +2743,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
-                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes, wither, efflorescence: _ /* TODO */ } => {
+                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes, wither, efflorescence } => {
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
                             self.state.count_strikes += 1;
@@ -2754,13 +2767,14 @@ impl<'g> Game<'g> {
                             .door_prizes(door_prizes.clone())
                             .steals(steals.clone())
                             .wither(wither.clone())
+                            .efflorescence(efflorescence.clone())
                             .build_some(self, batter_name, ingest_logs, match foul {
                                 FoulType::Tip => TaxaEventType::FoulTip,
                                 FoulType::Ball => TaxaEventType::FoulBall,
                             })
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
-                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes, efflorescence: _ /* TODO */ } => {
+                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes, efflorescence } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
@@ -2771,6 +2785,7 @@ impl<'g> Game<'g> {
                             cheer: cheer.clone(),
                             aurora_photos: aurora_photos.clone(),
                             door_prizes: door_prizes.clone(),
+                            efflorescences: efflorescence.clone(),
                         });
                         None
                     },
@@ -2811,7 +2826,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, TaxaEventType::Walk)
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]
-                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence: _ /* TODO */ } => {
+                    ParsedEventMessage::HitByPitch { batter, advances, scores, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence } => {
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(
@@ -2845,6 +2860,7 @@ impl<'g> Game<'g> {
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .wither(wither.clone())
+                            .efflorescence(efflorescence.clone())
                             .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)
                     },
                     [ParsedEventMessageDiscriminants::MoundVisit]
@@ -3484,8 +3500,8 @@ impl<'g> Game<'g> {
                                 ContextAfterWitherOutcome::ExpectPitch { batter_name, .. } => {
                                     if *batter_name == *contained_player_name {
                                         ingest_logs.info(format!(
-                                            "Contained player name {} matches the active pitcher name. \
-                                            Assuming the active pitcher was replaced by {}",
+                                            "Contained player name {} matches the active batter name. \
+                                            Assuming the active batter was replaced by {}",
                                             contained_player_name,
                                             replacement_player_name,
                                         ));

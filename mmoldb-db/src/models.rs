@@ -736,6 +736,25 @@ pub struct NewEjection<'a> {
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::failed_ejections)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbFailedEjection {
+    pub id: i64,
+    pub event_id: i64,
+    pub player_name_1: String,
+    pub player_name_2: String,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::failed_ejections)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewFailedEjection<'a> {
+    pub event_id: i64,
+    pub player_name_1: &'a str,
+    pub player_name_2: &'a str,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::aurora_photos)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbAuroraPhoto {
@@ -1071,13 +1090,11 @@ pub struct DbFeedEventProcessed {
     pub valid_from: NaiveDateTime,
 }
 
-
 #[derive(Clone, Debug, Insertable, PartialEq)]
 #[diesel(table_name = crate::data_schema::data::efflorescence)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewEfflorescence<'a> {
-    pub game_id: i64,
-    pub game_event_index: i32,
+    pub event_id: i64,
     pub efflorescence_index: i32,
     pub player_name: &'a str,
     pub effloresced: bool,
@@ -1088,9 +1105,31 @@ pub struct NewEfflorescence<'a> {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbEfflorescence {
     pub id: i64,
-    pub game_id: i64,
-    pub game_event_index: i32,
+    pub event_id: i64,
     pub efflorescence_index: i32,
     pub player_name: String,
     pub effloresced: bool,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::efflorescence_growth)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewEfflorescenceGrowth {
+    pub event_id: i64,
+    pub efflorescence_index: i32,
+    pub growth_index: i32,
+    pub value: f64,
+    pub attribute: i64,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::efflorescence_growth)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbEfflorescenceGrowth {
+    pub id: i64,
+    pub event_id: i64,
+    pub efflorescence_index: i32,
+    pub growth_index: i32,
+    pub value: f64,
+    pub attribute: i64,
 }

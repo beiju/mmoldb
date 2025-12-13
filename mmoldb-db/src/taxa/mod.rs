@@ -1334,6 +1334,49 @@ impl From<mmolb_parsing::enums::Attribute> for TaxaAttribute {
     }
 }
 
+impl Into<mmolb_parsing::enums::Attribute> for TaxaAttribute {
+    fn into(self) -> mmolb_parsing::enums::Attribute {
+        match self {
+            Self::Priority => mmolb_parsing::enums::Attribute::Priority,
+            Self::Luck => mmolb_parsing::enums::Attribute::Luck,
+            Self::Aiming => mmolb_parsing::enums::Attribute::Aiming,
+            Self::Contact => mmolb_parsing::enums::Attribute::Contact,
+            Self::Cunning => mmolb_parsing::enums::Attribute::Cunning,
+            Self::Discipline => mmolb_parsing::enums::Attribute::Discipline,
+            Self::Insight => mmolb_parsing::enums::Attribute::Insight,
+            Self::Intimidation => mmolb_parsing::enums::Attribute::Intimidation,
+            Self::Lift => mmolb_parsing::enums::Attribute::Lift,
+            Self::Vision => mmolb_parsing::enums::Attribute::Vision,
+            Self::Determination => mmolb_parsing::enums::Attribute::Determination,
+            Self::Wisdom => mmolb_parsing::enums::Attribute::Wisdom,
+            Self::Muscle => mmolb_parsing::enums::Attribute::Muscle,
+            Self::Selflessness => mmolb_parsing::enums::Attribute::Selflessness,
+            Self::Accuracy => mmolb_parsing::enums::Attribute::Accuracy,
+            Self::Rotation => mmolb_parsing::enums::Attribute::Rotation,
+            Self::Presence => mmolb_parsing::enums::Attribute::Presence,
+            Self::Persuasion => mmolb_parsing::enums::Attribute::Persuasion,
+            Self::Stamina => mmolb_parsing::enums::Attribute::Stamina,
+            Self::Velocity => mmolb_parsing::enums::Attribute::Velocity,
+            Self::Control => mmolb_parsing::enums::Attribute::Control,
+            Self::Stuff => mmolb_parsing::enums::Attribute::Stuff,
+            Self::Defiance => mmolb_parsing::enums::Attribute::Defiance,
+            Self::Acrobatics => mmolb_parsing::enums::Attribute::Acrobatics,
+            Self::Agility => mmolb_parsing::enums::Attribute::Agility,
+            Self::Arm => mmolb_parsing::enums::Attribute::Arm,
+            Self::Awareness => mmolb_parsing::enums::Attribute::Awareness,
+            Self::Composure => mmolb_parsing::enums::Attribute::Composure,
+            Self::Dexterity => mmolb_parsing::enums::Attribute::Dexterity,
+            Self::Patience => mmolb_parsing::enums::Attribute::Patience,
+            Self::Reaction => mmolb_parsing::enums::Attribute::Reaction,
+            Self::Greed => mmolb_parsing::enums::Attribute::Greed,
+            Self::Performance => mmolb_parsing::enums::Attribute::Performance,
+            Self::Speed => mmolb_parsing::enums::Attribute::Speed,
+            Self::Stealth => mmolb_parsing::enums::Attribute::Stealth,
+            Self::Guts => mmolb_parsing::enums::Attribute::Guts,
+        }
+    }
+}
+
 taxa! {
     #[
         schema = crate::taxa_schema::taxa::attribute_effect_type,

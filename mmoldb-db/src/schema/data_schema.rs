@@ -46,8 +46,7 @@ pub mod data {
     diesel::table! {
         data.efflorescence (id) {
             id -> Int8,
-            game_id -> Int8,
-            game_event_index -> Int4,
+            event_id -> Int8,
             efflorescence_index -> Int4,
             player_name -> Text,
             effloresced -> Bool,
@@ -57,11 +56,10 @@ pub mod data {
     diesel::table! {
         data.efflorescence_growth (id) {
             id -> Int8,
-            game_id -> Int8,
-            game_event_index -> Int4,
+            event_id -> Int8,
             efflorescence_index -> Int4,
-            efflorescence_growth_index -> Int4,
-            value -> Int4,
+            growth_index -> Int4,
+            value -> Float8,
             attribute -> Int8,
         }
     }
@@ -150,6 +148,15 @@ pub mod data {
             errors_after -> Int4,
             cheer -> Nullable<Text>,
             fair_ball_fielder_name -> Nullable<Text>,
+        }
+    }
+
+    diesel::table! {
+        data.failed_ejections (id) {
+            id -> Int8,
+            event_id -> Int8,
+            player_name_1 -> Text,
+            player_name_2 -> Text,
         }
     }
 
@@ -515,12 +522,13 @@ pub mod data {
     diesel::joinable!(aurora_photos -> events (event_id));
     diesel::joinable!(door_prize_items -> events (event_id));
     diesel::joinable!(door_prizes -> events (event_id));
-    diesel::joinable!(efflorescence -> games (game_id));
-    diesel::joinable!(efflorescence_growth -> games (game_id));
+    diesel::joinable!(efflorescence -> events (event_id));
+    diesel::joinable!(efflorescence_growth -> events (event_id));
     diesel::joinable!(ejections -> events (event_id));
     diesel::joinable!(event_baserunners -> events (event_id));
     diesel::joinable!(event_fielders -> events (event_id));
     diesel::joinable!(events -> games (game_id));
+    diesel::joinable!(failed_ejections -> events (event_id));
     diesel::joinable!(games -> weather (weather));
     diesel::joinable!(parties -> games (game_id));
     diesel::joinable!(pitcher_changes -> games (game_id));
@@ -538,6 +546,7 @@ pub mod data {
         event_baserunners,
         event_fielders,
         events,
+        failed_ejections,
         feed_event_versions,
         feed_events,
         feed_events_processed,

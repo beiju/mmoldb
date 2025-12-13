@@ -72,7 +72,7 @@ pub struct EventDetail<StrT: Clone> {
     pub ejection: Option<Ejection<StrT>>,
     pub door_prizes: Vec<DoorPrize<StrT>>,
     pub wither: Option<WitherStruggle<StrT>>,
-    pub efflorescence: Vec<Efflorescence<StrT>>,
+    pub efflorescences: Vec<Efflorescence<StrT>>,
 }
 
 #[derive(Debug)]
@@ -381,7 +381,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
-                efflorescence: self.efflorescence.iter().map(Efflorescence::to_ref).collect(),
+                efflorescence: self.efflorescences.iter().map(Efflorescence::to_ref).collect(),
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,
@@ -392,7 +392,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
-                efflorescence: Vec::new(), // TODO
+                efflorescence: self.efflorescences.iter().map(Efflorescence::to_ref).collect(),
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -413,7 +413,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
-                efflorescence: Vec::new(), // TODO
+                efflorescence: self.efflorescences.iter().map(Efflorescence::to_ref).collect(),
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -433,7 +433,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
-                efflorescence: Vec::new(), // TODO
+                efflorescence: self.efflorescences.iter().map(Efflorescence::to_ref).collect(),
             },
             TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
                 foul: Some(FoulType::Tip),
@@ -453,7 +453,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
-                efflorescence: Vec::new(), // TODO
+                efflorescence: self.efflorescences.iter().map(Efflorescence::to_ref).collect(),
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
@@ -615,7 +615,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
                 door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
                 wither: self.wither.as_ref().map(WitherStruggle::to_ref),
-                efflorescence: Vec::new(), // TODO
+                efflorescence: self.efflorescences.iter().map(Efflorescence::to_ref).collect(),
             },
             TaxaEventType::DoublePlay => {
                 let scores = self.scores();
@@ -750,7 +750,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             cheer: self.cheer.clone(),
             aurora_photos: self.aurora_photos.as_ref().map(SnappedPhotos::as_ref),
             door_prizes: self.door_prizes.iter().map(DoorPrize::to_ref).collect(),
-            efflorescence: Vec::new(), // TODO
+            efflorescence: self.efflorescences.iter().map(Efflorescence::to_ref).collect(),
         })
     }
 }
@@ -795,4 +795,12 @@ pub struct WitherOutcome<StrT: Clone> {
     pub corrupted: bool,
     pub contain_attempted: bool,
     pub contain_replacement_player_name: Option<StrT>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EfflorescenceForDb<StrT: Clone> {
+    pub game_event_index: i32,
+    pub efflorescence_index: i32,
+    pub team_emoji: StrT,
+    pub player_name: StrT,
 }

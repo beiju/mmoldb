@@ -26,9 +26,9 @@ use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbFeedEventProcessed, DbEfflorescence};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection};
 use crate::taxa::Taxa;
-use crate::{PartyEvent, PitcherChange, QueryError, WitherOutcome};
+use crate::{EfflorescenceForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
 pub fn set_current_user_statement_timeout(
     conn: &mut PgConnection,
@@ -502,37 +502,6 @@ pub fn group_wither_table_results<'a>(
     results
 }
 
-pub fn group_efflorescence_table_results<'a>(
-    games_events: impl IntoIterator<Item = &'a Vec<DbEvent>>,
-    effs: Vec<DbEfflorescence>,
-) -> Vec<Vec<Vec<DbEfflorescence>>> {
-    let mut effs_iter = effs.into_iter().peekable();
-
-    let results = games_events
-        .into_iter()
-        .map(|game_events| {
-            game_events
-                .iter()
-                .map(|game_event| {
-                    let mut children = Vec::new();
-                    while let Some(child) =
-                        effs_iter.next_if(|f|
-                            f.game_id == game_event.game_id &&
-                                f.game_event_index == game_event.game_event_index
-                        ) {
-                        children.push(child);
-                    }
-                    children
-                })
-                .collect_vec()
-        })
-        .collect_vec();
-
-    assert_eq!(effs_iter.count(), 0);
-
-    results
-}
-
 pub fn events_for_games(
     conn: &mut PgConnection,
     taxa: &Taxa,
@@ -545,12 +514,14 @@ pub fn events_for_games(
     use crate::data_schema::data::door_prize_items::dsl as door_prize_item_dsl;
     use crate::data_schema::data::door_prizes::dsl as door_prize_dsl;
     use crate::data_schema::data::ejections::dsl as ejection_dsl;
+    use crate::data_schema::data::failed_ejections::dsl as failed_ejection_dsl;
     use crate::data_schema::data::event_baserunners::dsl as runner_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielder_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::data_schema::data::wither::dsl as wither_dsl;
     use crate::data_schema::data::efflorescence::dsl as efflorescence_dsl;
+    use crate::data_schema::data::efflorescence_growth::dsl as efflorescence_growth_dsl;
 
     let get_game_ids_start = Utc::now();
     let game_ids = games_dsl::games
@@ -639,6 +610,18 @@ pub fn events_for_games(
     let db_ejections = group_child_table_results(&db_games_events, db_ejections, |r| r.event_id);
     let _group_ejections_duration = (Utc::now() - group_ejections_start).as_seconds_f64();
 
+    let get_failed_ejections_start = Utc::now();
+    let db_failed_ejections = failed_ejection_dsl::failed_ejections
+        .filter(failed_ejection_dsl::event_id.eq_any(&all_event_ids))
+        .order_by(failed_ejection_dsl::event_id)
+        .select(DbFailedEjection::as_select())
+        .load(conn)?;
+    let _get_failed_ejections_duration = (Utc::now() - get_failed_ejections_start).as_seconds_f64();
+
+    let group_failed_ejections_start = Utc::now();
+    let db_failed_ejections = group_child_table_results(&db_games_events, db_failed_ejections, |r| r.event_id);
+    let _group_failed_ejections_duration = (Utc::now() - group_failed_ejections_start).as_seconds_f64();
+
     let get_door_prizes_start = Utc::now();
     let db_door_prizes = door_prize_dsl::door_prizes
         .filter(door_prize_dsl::event_id.eq_any(&all_event_ids))
@@ -670,6 +653,37 @@ pub fn events_for_games(
     let _group_door_prize_items_duration =
         (Utc::now() - group_door_prize_items_start).as_seconds_f64();
 
+    let get_efflorescences_start = Utc::now();
+    let db_efflorescences = efflorescence_dsl::efflorescence
+        .filter(efflorescence_dsl::event_id.eq_any(&all_event_ids))
+        .order_by((efflorescence_dsl::event_id, efflorescence_dsl::efflorescence_index))
+        .select(DbEfflorescence::as_select())
+        .load(conn)?;
+    let _get_efflorescences_duration = (Utc::now() - get_efflorescences_start).as_seconds_f64();
+
+    let group_efflorescences_start = Utc::now();
+    let db_efflorescences =
+        group_child_table_results(&db_games_events, db_efflorescences, |r| r.event_id);
+    let _group_efflorescences_duration = (Utc::now() - group_efflorescences_start).as_seconds_f64();
+
+    let get_efflorescence_growths_start = Utc::now();
+    let db_efflorescence_growths = efflorescence_growth_dsl::efflorescence_growth
+        .filter(efflorescence_growth_dsl::event_id.eq_any(&all_event_ids))
+        .order_by((
+            efflorescence_growth_dsl::event_id,
+            efflorescence_growth_dsl::efflorescence_index,
+            efflorescence_growth_dsl::growth_index,
+        ))
+        .select(DbEfflorescenceGrowth::as_select())
+        .load(conn)?;
+    let _get_efflorescence_growths_duration = (Utc::now() - get_efflorescence_growths_start).as_seconds_f64();
+
+    let group_efflorescence_growths_start = Utc::now();
+    let db_efflorescence_growths =
+        group_child_table_results(&db_games_events, db_efflorescence_growths, |r| r.event_id);
+    let _group_efflorescence_growths_duration =
+        (Utc::now() - group_efflorescence_growths_start).as_seconds_f64();
+
     let get_wither_start = Utc::now();
     let db_wither = wither_dsl::wither
         .filter(wither_dsl::game_id.eq_any(&game_ids))
@@ -687,23 +701,6 @@ pub fn events_for_games(
     let _group_wither_duration =
         (Utc::now() - group_wither_start).as_seconds_f64();
 
-    let get_efflorescence_start = Utc::now();
-    let db_efflorescence = efflorescence_dsl::efflorescence
-        .filter(efflorescence_dsl::game_id.eq_any(&game_ids))
-        .order_by((
-            efflorescence_dsl::game_id,
-            efflorescence_dsl::game_event_index,
-        ))
-        .select(DbEfflorescence::as_select())
-        .load(conn)?;
-    let _get_efflorescence_duration = (Utc::now() - get_efflorescence_start).as_seconds_f64();
-
-    let group_efflorescence_start = Utc::now();
-    let db_efflorescence: Vec<Vec<Vec<DbEfflorescence>>> =
-        group_efflorescence_table_results(&db_games_events, db_efflorescence);
-    let _group_efflorescence_duration =
-        (Utc::now() - group_efflorescence_start).as_seconds_f64();
-
     let post_process_start = Utc::now();
     let result = itertools::izip!(
         game_ids,
@@ -712,10 +709,12 @@ pub fn events_for_games(
         db_fielders,
         db_aurora_photos,
         db_ejections,
+        db_failed_ejections,
         db_door_prizes,
         db_door_prize_items,
+        db_efflorescences,
+        db_efflorescence_growths,
         db_wither,
-        db_efflorescence,
     )
     .map(
         |(
@@ -725,10 +724,12 @@ pub fn events_for_games(
             fielders,
             aurora_photos,
             ejections,
+            failed_ejections,
             door_prizes,
             door_prize_items,
-            wither,
             efflorescence,
+            efflorescence_growths,
+            wither,
         )| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
@@ -738,10 +739,12 @@ pub fn events_for_games(
                 fielders,
                 aurora_photos,
                 ejections,
+                failed_ejections,
                 door_prizes,
                 door_prize_items,
-                wither,
                 efflorescence,
+                efflorescence_growths,
+                wither,
             )
             .map(
                 |(
@@ -750,10 +753,12 @@ pub fn events_for_games(
                     fielders,
                     aurora_photo,
                     ejection,
+                    failed_ejection,
                     door_prizes,
                     door_prize_items,
-                    wither,
                     efflorescence,
+                    efflorescence_growths,
+                    wither,
                 )| {
                     to_db_format::row_to_event(
                         taxa,
@@ -762,10 +767,12 @@ pub fn events_for_games(
                         fielders,
                         aurora_photo,
                         ejection,
+                        failed_ejection,
                         door_prizes,
                         door_prize_items,
-                        wither,
                         efflorescence,
+                        efflorescence_growths,
+                        wither,
                     )
                 },
             )
@@ -921,6 +928,297 @@ pub fn insert_games(
     conn.transaction(|conn| insert_games_internal(conn, taxa, ingest_id, games))
 }
 
+fn insert_aurora_photos<'e>(
+    conn: &mut PgConnection,
+    taxa: &Taxa,
+    event_ids_by_game: &[(i64, Vec<i64>)],
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_aurora_photos = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_aurora_photos(taxa, *event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_aurora_photos_to_insert = new_aurora_photos.len();
+    let n_aurora_photos_inserted = diesel::copy_from(crate::schema::data_schema::data::aurora_photos::dsl::aurora_photos)
+        .from_insertable(&new_aurora_photos)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_aurora_photos_to_insert == n_aurora_photos_inserted,
+        "Event aurora photos insert should have inserted {} rows, but it inserted {}",
+        n_aurora_photos_to_insert,
+        n_aurora_photos_inserted,
+    );
+
+    Ok(())
+}
+
+fn insert_ejections<'e>(
+    conn: &mut PgConnection,
+    taxa: &Taxa,
+    event_ids_by_game: &[(i64, Vec<i64>)],
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_ejections = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_ejection(taxa, *event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_ejections_to_insert = new_ejections.len();
+    let n_ejections_inserted = diesel::copy_from(crate::schema::data_schema::data::ejections::dsl::ejections)
+        .from_insertable(&new_ejections)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_ejections_to_insert == n_ejections_inserted,
+        "Event ejections insert should have inserted {} rows, but it inserted {}",
+        n_ejections_to_insert,
+        n_ejections_inserted,
+    );
+
+    Ok(())
+}
+
+fn insert_failed_ejections<'e>(
+    conn: &mut PgConnection,
+    event_ids_by_game: &[(i64, Vec<i64>)],
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_failed_ejections = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_failed_ejection(*event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_failed_ejections_to_insert = new_failed_ejections.len();
+    let n_failed_ejections_inserted = diesel::copy_from(crate::schema::data_schema::data::failed_ejections::dsl::failed_ejections)
+        .from_insertable(&new_failed_ejections)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_failed_ejections_to_insert == n_failed_ejections_inserted,
+        "Event failed ejections insert should have inserted {} rows, but it inserted {}",
+        n_failed_ejections_to_insert,
+        n_failed_ejections_inserted,
+    );
+
+    Ok(())
+}
+
+fn insert_door_prizes<'e>(
+    conn: &mut PgConnection,
+    event_ids_by_game: &[(i64, Vec<i64>)],
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_door_prizes = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_door_prize(*event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_door_prizes_to_insert = new_door_prizes.len();
+    let n_door_prizes_inserted = diesel::copy_from(crate::schema::data_schema::data::door_prizes::dsl::door_prizes)
+        .from_insertable(&new_door_prizes)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_door_prizes_to_insert == n_door_prizes_inserted,
+        "Event door prizes insert should have inserted {} rows, but it inserted {}",
+        n_door_prizes_to_insert,
+        n_door_prizes_inserted,
+    );
+
+    let new_door_prize_items = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_door_prize_items(*event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_door_prize_items_to_insert = new_door_prize_items.len();
+    let n_door_prize_items_inserted = diesel::copy_from(crate::schema::data_schema::data::door_prize_items::dsl::door_prize_items)
+        .from_insertable(&new_door_prize_items)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_door_prize_items_to_insert == n_door_prize_items_inserted,
+        "Event door prize items insert should have inserted {} rows, but it inserted {}",
+        n_door_prize_items_to_insert,
+        n_door_prize_items_inserted,
+    );
+    
+    Ok(())
+}
+
+fn insert_efflorescences<'e>(
+    conn: &mut PgConnection,
+    taxa: &Taxa,
+    event_ids_by_game: &[(i64, Vec<i64>)],
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_efflorescences = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_efflorescence(*event_id, event)
+            })
+        })
+        .collect_vec();
+
+    let n_efflorescences_to_insert = new_efflorescences.len();
+    let n_efflorescences_inserted = diesel::copy_from(crate::schema::data_schema::data::efflorescence::dsl::efflorescence)
+        .from_insertable(&new_efflorescences)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_efflorescences_to_insert == n_efflorescences_inserted,
+        "Event efflorescences insert should have inserted {} rows, but it inserted {}",
+        n_efflorescences_to_insert,
+        n_efflorescences_inserted,
+    );
+
+    let new_efflorescence_growths = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
+            assert_eq!(game_id_a, game_id_b);
+            // Within this closure we're acting on all events in a single game
+            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                // Within this closure we're acting on a single event
+                to_db_format::event_to_efflorescence_growths(taxa, *event_id, event)
+            })
+        })
+        .collect_vec();
+    
+    let n_efflorescence_items_to_insert = new_efflorescence_growths.len();
+    let n_efflorescence_items_inserted = diesel::copy_from(crate::schema::data_schema::data::efflorescence_growth::dsl::efflorescence_growth)
+        .from_insertable(&new_efflorescence_growths)
+        .execute(conn)?;
+    
+    log_only_assert!(
+        n_efflorescence_items_to_insert == n_efflorescence_items_inserted,
+        "Event efflorescence growth insert should have inserted {} rows, but it inserted {}",
+        n_efflorescence_items_to_insert,
+        n_efflorescence_items_inserted,
+    );
+    
+    Ok(())
+}
+
+fn insert_pitcher_changes<'e>(
+    conn: &mut PgConnection,
+    taxa: &Taxa,
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_pitcher_changes: Vec<_> = completed_games
+        .iter()
+        .flat_map(|(game_id, game)| {
+            game.pitcher_changes.iter().map(|pitcher_change| {
+                to_db_format::pitcher_change_to_row(taxa, *game_id, pitcher_change)
+            })
+        })
+        .collect();
+
+    let n_pitcher_changes_to_insert = new_pitcher_changes.len();
+    let n_pitcher_changes_inserted = diesel::copy_from(crate::schema::data_schema::data::pitcher_changes::dsl::pitcher_changes)
+        .from_insertable(&new_pitcher_changes)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_pitcher_changes_to_insert == n_pitcher_changes_inserted,
+        "pitcher_changes insert should have inserted {} rows, but it inserted {}",
+        n_pitcher_changes_to_insert,
+        n_pitcher_changes_inserted,
+    );
+
+    Ok(())
+}
+
+fn insert_parties<'e>(
+    conn: &mut PgConnection,
+    taxa: &Taxa,
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_parties: Vec<_> = completed_games
+        .iter()
+        .flat_map(|(game_id, game)| {
+            game.parties
+                .iter()
+                .flat_map(|party| to_db_format::party_to_rows(taxa, *game_id, party))
+        })
+        .collect();
+
+    let n_parties_to_insert = new_parties.len();
+    let n_parties_inserted = diesel::copy_from(crate::schema::data_schema::data::parties::dsl::parties)
+        .from_insertable(&new_parties)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_parties_to_insert == n_parties_inserted,
+        "parties insert should have inserted {} rows, but it inserted {}",
+        n_parties_to_insert,
+        n_parties_inserted,
+    );
+
+    Ok(())
+}
+
+fn insert_withers<'e>(
+    conn: &mut PgConnection,
+    taxa: &Taxa,
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_withers: Vec<_> = completed_games
+        .iter()
+        .flat_map(|(game_id, game)| {
+            game.withers
+                .iter()
+                .map(|wither| to_db_format::wither_to_rows(taxa, *game_id, wither))
+        })
+        .collect();
+
+    let n_withers_to_insert = new_withers.len();
+    let n_withers_inserted = diesel::copy_from(crate::schema::data_schema::data::wither::dsl::wither)
+        .from_insertable(&new_withers)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_withers_to_insert == n_withers_inserted,
+        "withers insert should have inserted {} rows, but it inserted {}",
+        n_withers_to_insert,
+        n_withers_inserted,
+    );
+
+    Ok(())
+}
+
 fn insert_games_internal<'e>(
     conn: &mut PgConnection,
     taxa: &Taxa,
@@ -939,6 +1237,7 @@ fn insert_games_internal<'e>(
     use crate::data_schema::data::pitcher_changes::dsl as pitcher_changes_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
     use crate::data_schema::data::wither::dsl as withers_dsl;
+    use crate::data_schema::data::efflorescence::dsl as efflorescence_dsl;
 
     // First delete all games. If particular debug settings are turned on this may happen for every
     // game, but even in release mode we may need to delete partial games and replace them with
@@ -1272,174 +1571,36 @@ fn insert_games_internal<'e>(
     let insert_fielders_duration = (Utc::now() - insert_fielders_start).as_seconds_f64();
 
     let insert_aurora_photos_start = Utc::now();
-    let new_aurora_photos = iter::zip(&event_ids_by_game, &completed_games)
-        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
-            assert_eq!(game_id_a, game_id_b);
-            // Within this closure we're acting on all events in a single game
-            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
-                // Within this closure we're acting on a single event
-                to_db_format::event_to_aurora_photos(taxa, *event_id, event)
-            })
-        })
-        .collect_vec();
-
-    let n_aurora_photos_to_insert = new_aurora_photos.len();
-    let n_aurora_photos_inserted = diesel::copy_from(aurora_photos_dsl::aurora_photos)
-        .from_insertable(&new_aurora_photos)
-        .execute(conn)?;
-
-    log_only_assert!(
-        n_aurora_photos_to_insert == n_aurora_photos_inserted,
-        "Event aurora photos insert should have inserted {} rows, but it inserted {}",
-        n_aurora_photos_to_insert,
-        n_aurora_photos_inserted,
-    );
+    insert_aurora_photos(conn, taxa, &event_ids_by_game, &completed_games)?;
     let _insert_aurora_photos_duration = (Utc::now() - insert_aurora_photos_start).as_seconds_f64();
 
     let insert_ejections_start = Utc::now();
-    let new_ejections = iter::zip(&event_ids_by_game, &completed_games)
-        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
-            assert_eq!(game_id_a, game_id_b);
-            // Within this closure we're acting on all events in a single game
-            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
-                // Within this closure we're acting on a single event
-                to_db_format::event_to_ejection(taxa, *event_id, event)
-            })
-        })
-        .collect_vec();
-
-    let n_ejections_to_insert = new_ejections.len();
-    let n_ejections_inserted = diesel::copy_from(ejections_dsl::ejections)
-        .from_insertable(&new_ejections)
-        .execute(conn)?;
-
-    log_only_assert!(
-        n_ejections_to_insert == n_ejections_inserted,
-        "Event ejections insert should have inserted {} rows, but it inserted {}",
-        n_ejections_to_insert,
-        n_ejections_inserted,
-    );
+    insert_ejections(conn, taxa, &event_ids_by_game, &completed_games)?;
+    insert_failed_ejections(conn, &event_ids_by_game, &completed_games)?;
     let _insert_ejections_duration = (Utc::now() - insert_ejections_start).as_seconds_f64();
 
     let insert_door_prizes_start = Utc::now();
-    let new_door_prizes = iter::zip(&event_ids_by_game, &completed_games)
-        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
-            assert_eq!(game_id_a, game_id_b);
-            // Within this closure we're acting on all events in a single game
-            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
-                // Within this closure we're acting on a single event
-                to_db_format::event_to_door_prize(*event_id, event)
-            })
-        })
-        .collect_vec();
+    insert_door_prizes(conn, &event_ids_by_game, &completed_games)?;
+    let _insert_door_prizes_duration =
+        (Utc::now() - insert_door_prizes_start).as_seconds_f64();
 
-    let n_door_prizes_to_insert = new_door_prizes.len();
-    let n_door_prizes_inserted = diesel::copy_from(door_prizes_dsl::door_prizes)
-        .from_insertable(&new_door_prizes)
-        .execute(conn)?;
+    let insert_efflorescences_start = Utc::now();
+    insert_efflorescences(conn, taxa, &event_ids_by_game, &completed_games)?;
+    let _insert_efflorescences_duration =
+        (Utc::now() - insert_efflorescences_start).as_seconds_f64();
 
-    log_only_assert!(
-        n_door_prizes_to_insert == n_door_prizes_inserted,
-        "Event door prizes insert should have inserted {} rows, but it inserted {}",
-        n_door_prizes_to_insert,
-        n_door_prizes_inserted,
-    );
-    let _insert_door_prizes_duration = (Utc::now() - insert_door_prizes_start).as_seconds_f64();
-
-    let insert_door_prize_items_start = Utc::now();
-    let new_door_prize_items = iter::zip(&event_ids_by_game, &completed_games)
-        .flat_map(|((game_id_a, event_ids), (game_id_b, game))| {
-            assert_eq!(game_id_a, game_id_b);
-            // Within this closure we're acting on all events in a single game
-            iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
-                // Within this closure we're acting on a single event
-                to_db_format::event_to_door_prize_items(*event_id, event)
-            })
-        })
-        .collect_vec();
-
-    let n_door_prize_items_to_insert = new_door_prize_items.len();
-    let n_door_prize_items_inserted = diesel::copy_from(door_prize_items_dsl::door_prize_items)
-        .from_insertable(&new_door_prize_items)
-        .execute(conn)?;
-
-    log_only_assert!(
-        n_door_prize_items_to_insert == n_door_prize_items_inserted,
-        "Event door prize items insert should have inserted {} rows, but it inserted {}",
-        n_door_prize_items_to_insert,
-        n_door_prize_items_inserted,
-    );
-    let _insert_door_prize_items_duration =
-        (Utc::now() - insert_door_prize_items_start).as_seconds_f64();
-
+    // These ones are not attached to a DbEvent
     let insert_pitcher_changes_start = Utc::now();
-    let new_pitcher_changes: Vec<_> = completed_games
-        .iter()
-        .flat_map(|(game_id, game)| {
-            game.pitcher_changes.iter().map(|pitcher_change| {
-                to_db_format::pitcher_change_to_row(taxa, *game_id, pitcher_change)
-            })
-        })
-        .collect();
-
-    let n_pitcher_changes_to_insert = new_pitcher_changes.len();
-    let n_pitcher_changes_inserted = diesel::copy_from(pitcher_changes_dsl::pitcher_changes)
-        .from_insertable(&new_pitcher_changes)
-        .execute(conn)?;
-
-    log_only_assert!(
-        n_pitcher_changes_to_insert == n_pitcher_changes_inserted,
-        "pitcher_changes insert should have inserted {} rows, but it inserted {}",
-        n_pitcher_changes_to_insert,
-        n_pitcher_changes_inserted,
-    );
+    insert_pitcher_changes(conn, taxa, &completed_games)?;
     let _insert_pitcher_changes_duration =
         (Utc::now() - insert_pitcher_changes_start).as_seconds_f64();
 
     let insert_parties_start = Utc::now();
-    let new_parties: Vec<_> = completed_games
-        .iter()
-        .flat_map(|(game_id, game)| {
-            game.parties
-                .iter()
-                .flat_map(|party| to_db_format::party_to_rows(taxa, *game_id, party))
-        })
-        .collect();
-
-    let n_parties_to_insert = new_parties.len();
-    let n_parties_inserted = diesel::copy_from(parties_dsl::parties)
-        .from_insertable(&new_parties)
-        .execute(conn)?;
-
-    log_only_assert!(
-        n_parties_to_insert == n_parties_inserted,
-        "parties insert should have inserted {} rows, but it inserted {}",
-        n_parties_to_insert,
-        n_parties_inserted,
-    );
+    insert_parties(conn, taxa, &completed_games)?;
     let _insert_parties_duration = (Utc::now() - insert_parties_start).as_seconds_f64();
 
     let insert_withers_start = Utc::now();
-    let new_withers: Vec<_> = completed_games
-        .iter()
-        .flat_map(|(game_id, game)| {
-            game.withers
-                .iter()
-                .map(|wither| to_db_format::wither_to_rows(taxa, *game_id, wither))
-        })
-        .collect();
-
-    let n_withers_to_insert = new_withers.len();
-    let n_withers_inserted = diesel::copy_from(withers_dsl::wither)
-        .from_insertable(&new_withers)
-        .execute(conn)?;
-
-    log_only_assert!(
-        n_withers_to_insert == n_withers_inserted,
-        "withers insert should have inserted {} rows, but it inserted {}",
-        n_withers_to_insert,
-        n_withers_inserted,
-    );
+    insert_withers(conn, taxa, &completed_games)?;
     let _insert_withers_duration = (Utc::now() - insert_withers_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
@@ -2669,6 +2830,7 @@ pub struct PlayerAll {
 use crate::schema::data_schema::data::events::dsl as event_dsl;
 use crate::schema::data_schema::data::games::dsl as game_dsl;
 use diesel::helper_types as d;
+use mmolb_parsing::parsed_event::Efflorescence;
 
 type PlayerFilter<'q, Field> = d::And<
     d::Eq<Field, &'q str>,
