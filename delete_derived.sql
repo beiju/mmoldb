@@ -23,7 +23,6 @@ truncate table
     data.pitcher_changes,
     data.parties,
     data.wither,
-    info.raw_events,
 
     -- player
     data.modifications,

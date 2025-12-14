@@ -53,6 +53,7 @@ pub fn event_to_row<'e>(
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
         cheer: event.cheer.as_ref().map(|c| c.to_string()),
+        home_run_distance: event.home_run_distance,
     }
 }
 
@@ -898,6 +899,7 @@ pub fn row_to_event<'e>(
         pitch_zone: event.pitch_zone,
         described_as_sacrifice: event.described_as_sacrifice,
         is_toasty: event.is_toasty,
+        home_run_distance: event.home_run_distance,
         fielders,
         baserunners,
         pitcher_count: event.pitcher_count,

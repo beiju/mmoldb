@@ -563,6 +563,7 @@ struct EventDetailBuilder<'g> {
     pitch: Option<Pitch>,
     described_as_sacrifice: Option<bool>,
     is_toasty: Option<bool>,
+    home_run_distance: Option<i32>,
     fielders: Vec<EventDetailFielder<&'g str>>,
     advances: Vec<RunnerAdvance<&'g str>>,
     scores: Vec<&'g str>,
@@ -579,6 +580,11 @@ struct EventDetailBuilder<'g> {
 }
 
 impl<'g> EventDetailBuilder<'g> {
+    fn home_run_distance(mut self, home_run_distance: Option<u32>) -> Self {
+        self.home_run_distance = home_run_distance.map(|d| d as i32);
+        self
+    }
+
     fn fair_ball(mut self, fair_ball: FairBall<'g>, team: &TeamInGame<'g>) -> Self {
         self = self.pitch(fair_ball.pitch);
         self.fair_ball_event_index = Some(fair_ball.game_event_index);
@@ -1098,6 +1104,7 @@ impl<'g> EventDetailBuilder<'g> {
             pitch_zone: self.pitch.map(|pitch| pitch.pitch_zone as i32),
             described_as_sacrifice: self.described_as_sacrifice,
             is_toasty: self.is_toasty,
+            home_run_distance: self.home_run_distance,
             baserunners,
             pitcher_count: game.defending_team().pitcher_count,
             batter_count: game.batting_team().batter_count,
@@ -1749,6 +1756,7 @@ impl<'g> Game<'g> {
             pitch: None,
             described_as_sacrifice: None,
             is_toasty: None,
+            home_run_distance: None,
             scores: Vec::new(),
             steals: Vec::new(),
             runner_added: None,
@@ -2396,7 +2404,8 @@ impl<'g> Game<'g> {
         self.handle_season_3_missing_now_batting_after_mound_visit(raw_event, ingest_logs)?;
         self.handle_season_3_duplicate_now_batting(event, ingest_logs)?;
 
-        let detail_builder = self.detail_builder(self.state.clone(), game_event_index, raw_event);
+        let detail_builder = self.detail_builder(self.state.clone(), game_event_index, raw_event)
+            .home_run_distance(raw_event.home_run_distance);
 
         let result = match self.state.context.clone() {
             EventContext::ExpectInningStart => game_event!(

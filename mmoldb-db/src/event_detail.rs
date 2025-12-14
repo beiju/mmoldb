@@ -62,6 +62,7 @@ pub struct EventDetail<StrT: Clone> {
     pub pitch_zone: Option<i32>,
     pub described_as_sacrifice: Option<bool>,
     pub is_toasty: Option<bool>,
+    pub home_run_distance: Option<i32>,
 
     pub baserunners: Vec<EventDetailRunner<StrT>>,
     pub pitcher_count: i32,

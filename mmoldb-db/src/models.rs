@@ -133,6 +133,7 @@ pub struct NewEvent<'a> {
     // This is an owned string because it's generated at the last minute
     // TODO Set up a foreign relationship for cheers like weather has
     pub cheer: Option<String>,
+    pub home_run_distance: Option<i32>,
 }
 #[derive(Queryable, Selectable, Identifiable)]
 #[diesel(table_name = crate::data_schema::data::events)]
@@ -171,6 +172,7 @@ pub struct DbEvent {
     pub batter_count: i32,
     pub batter_subcount: i32,
     pub cheer: Option<String>,
+    pub home_run_distance: Option<i32>,
 }
 
 #[derive(Insertable)]

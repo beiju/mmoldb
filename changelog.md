@@ -8,6 +8,12 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+--------
+- New tables: `data.wither`, `data.efflorescence`, `data.efflorescence_growth`, 
+  and `data.failed_ejections`. See docs. (TODO update docs)
+- Added `home_run_distance` to `data.event`. 
+
 2025-10-05 Hotfix 1
 -------------------
 - Speed up status page so it doesn't time out
