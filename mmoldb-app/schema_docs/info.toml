@@ -86,31 +86,25 @@ left join info.raw_events on raw_events.game_id=events.game_id
 """
 
 [[table.column]]
-name = "id"
-type = "bigint"
+name = "mmolb_game_id"
+type = "text"
 description = """
-An arbitrary numeric ID. This table's primary key.
-"""
+The MMOLB ID of the game this raw event belongs to.
 
-[[table.column]]
-name = "game_id"
-type = "bigint"
-description = """
-The game this raw event belongs to. References `data.games`.
-
-These IDs are *not* stable. You should not store these ids between
-queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
-which you access by joining `data.games` on this column.
+You can get the database id for a game by joining `data.games` on
+`raw_events.mmolb_game_id = games.mmolb_game_id`.
 """
+is_non_nullable_view_field = true
 
 [[table.column]]
 name = "game_event_index"
-type = "integer"
+type = "bigint"
 description = """
 The index of this game event (starting at 0) in its game's event log.
 This is used in combination with `mmolb_game_id` to identify a game
 event.
 """
+is_non_nullable_view_field = true
 
 [[table.column]]
 name = "event_text"
@@ -120,6 +114,36 @@ The full text of this event, as it appeared on mmolb.com and in the
 API. Almost all the information in `data.events` was parsed from this
 message.
 """
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The `valid_from` of this game's raw data in `data.entities`.
+
+This is commonly shortly after the game finishes, but not always. You should
+not rely on this having any particular connection with the game's actual time.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "game_raw"
+type = "jsonb"
+description = """
+The raw data for this event's game. Some useful metadata is available here,
+such as Season and Day.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "event_raw"
+type = "jsonb"
+description = """
+The raw data for this event. Some useful metadata is available here, such as
+count_balls and count_strikes.
+"""
+is_non_nullable_view_field = true
 
 [[table]]
 name = "event_ingest_log"

@@ -8,7 +8,7 @@ create view info.raw_events as select
     e.valid_from,
     e.entity_id as mmolb_game_id,
     ev.game_event_index,
-    ev.event_raw->'message' as event_text,
+    ev.event_raw->>'message' as event_text,
     e.data as game_raw,
     ev.event_raw
 from data.entities e

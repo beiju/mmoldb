@@ -13,6 +13,9 @@ Upcoming
 - New tables: `data.wither`, `data.efflorescence`, `data.efflorescence_growth`, 
   and `data.failed_ejections`. See docs. (TODO update docs)
 - Added `home_run_distance` to `data.event`. 
+- `info.raw_events` is now a view into `data.entities`. As a consequence, 
+  `game_id` is no longer available. Use `mmolb_game_id` to join on instead.
+  `data.games` provides the mapping from `game_id` to `mmolb_game_id`.
 
 2025-10-05 Hotfix 1
 -------------------
