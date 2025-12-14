@@ -1,7 +1,7 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
 use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
 use crate::taxa::Taxa;
-use crate::{EfflorescenceForDb, PartyEvent, PitcherChange, WitherOutcome};
+use crate::{PartyEvent, PitcherChange, WitherOutcome};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};

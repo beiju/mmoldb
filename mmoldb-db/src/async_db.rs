@@ -4,7 +4,6 @@ use diesel::prelude::*;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use futures::{Stream, TryStreamExt};
 use futures::future::Either;
-use log::info;
 use crate::schema::data_schema::data::versions::dsl as versions_dsl;
 
 #[derive(Queryable, Selectable)]

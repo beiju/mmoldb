@@ -10,7 +10,6 @@ use miette::Diagnostic;
 use mmoldb_db::models::NewVersionIngestLog;
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{async_db, db, AsyncConnection, AsyncPgConnection, ConnectionPool, PgConnection, QueryError, QueryResult};
-use num::integer::Integer;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::iter;
@@ -126,7 +125,8 @@ impl<'a> VersionIngestLogs<'a> {
 pub struct Ingestor {
     pool: ConnectionPool,
     ingest_id: i64,
-    abort: CancellationToken,
+    // TODO Is this still working?
+    #[allow(dead_code)] abort: CancellationToken,
 }
 
 impl Ingestor {
@@ -586,7 +586,8 @@ impl IngestStage for FeedEventVersionStage1Ingest {
 
 pub struct Stage2Ingest<VersionIngest> {
     kind: &'static str,
-    version_ingest: VersionIngest,
+    // Kind of using this like a PhantomData
+    #[allow(unused)] version_ingest: VersionIngest,
 }
 
 pub trait IngestibleFromVersions {

@@ -1,7 +1,7 @@
 use crate::config::IngestibleConfig;
 use crate::ingest::{VersionIngestLogs};
 use crate::ingest_players::day_to_db;
-use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionStage1Ingest};
+use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::{HashMap, HashSet};
@@ -10,7 +10,7 @@ use log::{error};
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
-use mmoldb_db::models::{NewFeedEventProcessed, NewPlayerAttributeAugment, NewPlayerFeedVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewVersionIngestLog};
+use mmoldb_db::models::{NewFeedEventProcessed, NewPlayerAttributeAugment, NewPlayerParadigmShift, NewPlayerRecomposition, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{async_db, db, AsyncPgConnection, Connection, PgConnection, QueryResult};
 use std::fmt::{Display, Formatter};
@@ -476,11 +476,7 @@ pub fn chron_player_feed_as_new<'a>(
     let mut pending_inferred_recompositions = inferred_recompositions
         .get_mut(player_id)
         .map(|r| r.into_iter().peekable());
-
-    // This will *almost* always be equal to feed_items.len(), but not
-    // when there is an impermanent event
-    let mut max_permanent_feed_event_index_plus_one = 0;
-
+    
     let time = event.data.timestamp.naive_utc();
 
     check_player_name.clear_temporary_name_override();
@@ -502,7 +498,10 @@ pub fn chron_player_feed_as_new<'a>(
         );
     }
 
-    max_permanent_feed_event_index_plus_one = event.feed_event_index + 1;
+    // This will *almost* always be equal to feed_items.len(), but not
+    // when there is an impermanent event
+    // TODO Am I handling this right since I moved to single-event ingest?
+    let max_permanent_feed_event_index_plus_one = event.feed_event_index + 1;
 
     // Apply any inferred recompositions whose time is before this event's time
     if let Some(pending) = &mut pending_inferred_recompositions {

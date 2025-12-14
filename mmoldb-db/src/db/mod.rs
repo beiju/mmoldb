@@ -26,9 +26,9 @@ use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamFeedVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection};
 use crate::taxa::Taxa;
-use crate::{EfflorescenceForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
+use crate::{PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
 pub fn set_current_user_statement_timeout(
     conn: &mut PgConnection,
@@ -1231,19 +1231,11 @@ fn insert_games_internal<'e>(
     ingest_id: i64,
     games: &[GameForDb],
 ) -> QueryResult<InsertGamesTimings> {
-    use crate::data_schema::data::aurora_photos::dsl as aurora_photos_dsl;
-    use crate::data_schema::data::door_prize_items::dsl as door_prize_items_dsl;
-    use crate::data_schema::data::door_prizes::dsl as door_prizes_dsl;
-    use crate::data_schema::data::ejections::dsl as ejections_dsl;
     use crate::data_schema::data::event_baserunners::dsl as baserunners_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielders_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
-    use crate::data_schema::data::parties::dsl as parties_dsl;
-    use crate::data_schema::data::pitcher_changes::dsl as pitcher_changes_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
-    use crate::data_schema::data::wither::dsl as withers_dsl;
-    use crate::data_schema::data::efflorescence::dsl as efflorescence_dsl;
 
     // First delete all games. If particular debug settings are turned on this may happen for every
     // game, but even in release mode we may need to delete partial games and replace them with
@@ -1737,7 +1729,7 @@ pub fn game_and_raw_events(
         .event_log
         .iter()
         .enumerate()
-        .map(|(game_event_index, raw_event)| {
+        .map(|(game_event_index, _)| {
             let mut events = Vec::new();
             while let Some(event) =
                 raw_logs.next_if(|log| log.game_event_index.expect("All logs with a None game_event_index should have been extracted before this loop began") == game_event_index as i32)
@@ -2356,8 +2348,6 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
     new_player_feed_versions: impl IntoIterator<Item = &'container NewPlayerFeedVersionExt<'game>>,
 ) -> QueryResult<usize> {
-    use crate::data_schema::data::player_feed_versions::dsl as pfv_dsl;
-
     // Convert reference to tuple into tuple of references
     let new_player_feed_versions = new_player_feed_versions.into_iter()
         .map(|(a, b, c, d, e)| (a, b, c, d, e));
@@ -2836,7 +2826,6 @@ pub struct PlayerAll {
 use crate::schema::data_schema::data::events::dsl as event_dsl;
 use crate::schema::data_schema::data::games::dsl as game_dsl;
 use diesel::helper_types as d;
-use mmolb_parsing::parsed_event::Efflorescence;
 
 type PlayerFilter<'q, Field> = d::And<
     d::Eq<Field, &'q str>,
@@ -3055,7 +3044,7 @@ pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> QueryResult<
     sql_query("refresh materialized view info.entities_count").execute(conn)?;
     debug!("Updating info.entities_with_issues_count");
     sql_query("refresh materialized view info.entities_with_issues_count").execute(conn)?;
-    
+
     Ok(())
 }
 

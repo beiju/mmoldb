@@ -201,7 +201,7 @@ async fn paginated_ingest(
 }
 
 #[get("/ingest-timings/<ingest_id>")]
-pub async fn ingest_timings_page(ingest_id: i64, db: Db) -> Result<Template, AppError> {
+pub async fn ingest_timings_page(ingest_id: i64, _db: Db) -> Result<Template, AppError> {
     Ok(Template::render(
         "ingest-timings",
         context! {

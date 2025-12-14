@@ -6,19 +6,18 @@ mod worker;
 use worker::*;
 
 use chron::{Chron, ChronEntity};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use futures::{StreamExt, TryStreamExt, pin_mut};
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use miette::{WrapErr, IntoDiagnostic};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{PgConnection, db, ConnectionPool, AsyncPgConnection, AsyncConnection, async_db};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::hash::RandomState;
 use std::num::NonZero;
 use tokio::fs;
-use std::sync::{Arc, Mutex};
-use hashbrown::hash_map::Entry;
+use std::sync::{Arc};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::Notify;
@@ -83,7 +82,7 @@ pub async fn fetch_missed_games(
 pub async fn ingest_stage_2(
     pool: ConnectionPool,
     ingest_id: i64,
-    abort: CancellationToken,
+    _abort: CancellationToken,  // TODO Use this argument
     notify: Arc<Notify>,
     finish: CancellationToken,
 ) -> miette::Result<()> {

@@ -11,7 +11,6 @@ use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{IngestLog, PgConnection, QueryError, db};
 use thiserror::Error;
-use mmoldb_db::models::NewVersionIngestLog;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {

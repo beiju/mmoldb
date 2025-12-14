@@ -97,7 +97,8 @@ enum RecordsCacheUpdate {
     None,
     InProgress {
         started: DateTime<Utc>,
-        task: JoinHandle<()>,
+        // TODO Why is this unused?
+        #[allow(unused)] task: JoinHandle<()>,
     },
     Error(ComputeRecordsError),
 }

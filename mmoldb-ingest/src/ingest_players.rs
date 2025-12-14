@@ -14,11 +14,10 @@ use thiserror::Error;
 use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerFeedVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
+use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaSlot};
 use crate::config::IngestibleConfig;
 use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs, VersionStage1Ingest};
-use crate::ingest_player_feed::chron_player_feed_as_new;
 
 pub struct PlayerIngestFromVersions;
 
