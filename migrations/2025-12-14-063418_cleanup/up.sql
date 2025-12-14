@@ -10,3 +10,6 @@ create materialized view info.entities_count as (
     union
     select kind, count(1) as count from data.feed_events_processed group by kind
 );
+
+drop table data.player_feed_versions;
+drop table data.team_feed_versions;

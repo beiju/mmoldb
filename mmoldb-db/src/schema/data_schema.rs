@@ -302,17 +302,6 @@ pub mod data {
     }
 
     diesel::table! {
-        data.player_feed_versions (id) {
-            id -> Int8,
-            mmolb_player_id -> Text,
-            valid_from -> Timestamp,
-            valid_until -> Nullable<Timestamp>,
-            duplicates -> Int4,
-            num_entries -> Int4,
-        }
-    }
-
-    diesel::table! {
         data.player_modification_versions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
@@ -413,17 +402,6 @@ pub mod data {
             num_modifications -> Int4,
             occupied_equipment_slots -> Array<Nullable<Text>>,
             included_report_categories -> Array<Nullable<Int8>>,
-        }
-    }
-
-    diesel::table! {
-        data.team_feed_versions (id) {
-            id -> Int8,
-            mmolb_team_id -> Text,
-            valid_from -> Timestamp,
-            valid_until -> Nullable<Timestamp>,
-            duplicates -> Int4,
-            num_entries -> Int4,
         }
     }
 
@@ -545,14 +523,12 @@ pub mod data {
         player_attribute_augments,
         player_equipment_effect_versions,
         player_equipment_versions,
-        player_feed_versions,
         player_modification_versions,
         player_paradigm_shifts,
         player_recompositions,
         player_report_attribute_versions,
         player_report_versions,
         player_versions,
-        team_feed_versions,
         team_games_played,
         team_player_versions,
         team_versions,

@@ -463,7 +463,6 @@ fn players_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
         num_player_attribute_augments,
         num_player_paradigm_shifts,
         num_player_recompositions,
-        num_player_feed_versions,
         num_players_with_issues,
     } = db::players_stats(conn)?;
 
@@ -479,7 +478,6 @@ fn players_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
             Stat::new("Player attribute augments", num_player_attribute_augments),
             Stat::new("Player paradigm shifts", num_player_paradigm_shifts),
             Stat::new("Player recompositions", num_player_recompositions),
-            Stat::new("player feed versions", num_player_feed_versions),
             Stat::new("Players with issues", num_players_with_issues),
         ],
     })
@@ -490,7 +488,6 @@ fn teams_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
         num_team_versions,
         num_team_player_versions,
         num_team_games_played,
-        num_team_feed_versions,
         num_teams_with_issues,
     } = db::teams_stats(conn)?;
 
@@ -500,7 +497,6 @@ fn teams_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
             Stat::new("Team versions", num_team_versions),
             Stat::new("Team player versions", num_team_player_versions),
             Stat::new("Team games played", num_team_games_played),
-            Stat::new("Team feed versions", num_team_feed_versions),
             Stat::new("Teams with issues", num_teams_with_issues),
         ],
     })

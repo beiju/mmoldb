@@ -616,27 +616,6 @@ pub struct NewPlayerReportAttributeVersion<'a> {
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
-#[diesel(table_name = crate::data_schema::data::player_feed_versions)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbPlayerFeedVersion {
-    pub id: i64,
-    pub mmolb_player_id: String,
-    pub valid_from: NaiveDateTime,
-    pub valid_until: Option<NaiveDateTime>,
-    pub num_entries: i32,
-}
-
-#[derive(Clone, Debug, Insertable, PartialEq)]
-#[diesel(table_name = crate::data_schema::data::player_feed_versions)]
-#[diesel(treat_none_as_default_value = false)]
-pub struct NewPlayerFeedVersion<'a> {
-    pub mmolb_player_id: &'a str,
-    pub valid_from: NaiveDateTime,
-    pub valid_until: Option<NaiveDateTime>,
-    pub num_entries: i32,
-}
-
-#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::player_equipment_versions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbPlayerEquipmentVersion {
@@ -1017,16 +996,6 @@ pub struct DbParty {
     pub attribute: i64,
     pub value: i32,
     pub durability_loss: Option<i32>,
-}
-
-#[derive(Clone, Debug, Insertable, PartialEq)]
-#[diesel(table_name = crate::data_schema::data::team_feed_versions)]
-#[diesel(treat_none_as_default_value = false)]
-pub struct NewTeamFeedVersion<'a> {
-    pub mmolb_team_id: &'a str,
-    pub valid_from: NaiveDateTime,
-    pub valid_until: Option<NaiveDateTime>,
-    pub num_entries: i32,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]

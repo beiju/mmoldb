@@ -82,12 +82,6 @@ pub fn player_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
     player_versions.count().get_result(conn)
 }
 
-pub fn player_feed_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
-    use crate::data_schema::data::player_feed_versions::dsl::*;
-
-    player_feed_versions.count().get_result(conn)
-}
-
 pub fn team_versions_count(conn: &mut PgConnection) -> QueryResult<i64> {
     use crate::data_schema::data::team_versions::dsl::*;
 
@@ -1981,20 +1975,9 @@ pub fn get_player_ingest_start_cursor(
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {
     use crate::schema::data_schema::data as schema;
 
-    let player_version_with_embedded_feed_cutoff =
-        DateTime::parse_from_rfc3339("2025-07-28 12:00:00.000000Z")
-            .unwrap()
-            .naive_utc();
-
     // This must list all tables that have a valid_from derived from the `player` kind.
     let cursor: Option<(NaiveDateTime, String)> = [
         player_cursor_from_table!(conn, schema, player_versions)?,
-        player_cursor_from_table!(conn, schema, player_feed_versions)?.map(|(dt, id)| {
-            (
-                std::cmp::min(player_version_with_embedded_feed_cutoff, dt),
-                id,
-            )
-        }),
         player_cursor_from_table!(conn, schema, player_modification_versions)?,
         player_cursor_from_table!(conn, schema, player_equipment_versions)?,
         player_cursor_from_table!(conn, schema, player_equipment_effect_versions)?,
@@ -2037,25 +2020,6 @@ pub fn get_team_ingest_start_cursor(
     .fold(None, max_of_options);
 
     Ok(cursor)
-}
-
-pub fn get_player_feed_ingest_start_cursor(
-    conn: &mut PgConnection,
-) -> QueryResult<Option<(NaiveDateTime, String)>> {
-    use crate::schema::data_schema::data::player_feed_versions::dsl as player_feed_dsl;
-
-    player_feed_dsl::player_feed_versions
-        .select((
-            player_feed_dsl::valid_from,
-            player_feed_dsl::mmolb_player_id,
-        ))
-        .order_by((
-            player_feed_dsl::valid_from.desc(),
-            player_feed_dsl::mmolb_player_id.desc(),
-        ))
-        .limit(1)
-        .get_result(conn)
-        .optional()
 }
 
 pub fn get_modifications_table(
@@ -2785,11 +2749,11 @@ pub fn get_player_parties(
         .get_results(conn)
 }
 
+// TODO Update this
 pub fn roll_back_ingest_to_date(conn: &mut PgConnection, dt: NaiveDateTime) -> QueryResult<()> {
     use crate::schema::data_schema::data as schema;
 
     rollback_table!(conn, schema, player_versions, dt);
-    rollback_table!(conn, schema, player_feed_versions, dt);
     rollback_table!(conn, schema, player_modification_versions, dt);
     rollback_table!(conn, schema, player_equipment_versions, dt);
     rollback_table!(conn, schema, player_equipment_effect_versions, dt);
@@ -3120,7 +3084,6 @@ pub struct PlayersStats {
     pub num_player_attribute_augments: i64,
     pub num_player_paradigm_shifts: i64,
     pub num_player_recompositions: i64,
-    pub num_player_feed_versions: i64,
     pub num_players_with_issues: i64,
 }
 pub fn players_stats(conn: &mut PgConnection) -> QueryResult<PlayersStats> {
@@ -3145,8 +3108,6 @@ pub fn players_stats(conn: &mut PgConnection) -> QueryResult<PlayersStats> {
         .get_result(conn)?;
     let num_player_recompositions = player_recompositions::dsl::player_recompositions.select(count_star())
         .get_result(conn)?;
-    let num_player_feed_versions = player_feed_versions::dsl::player_feed_versions.select(count_star())
-        .get_result(conn)?;
 
     let num_players_with_issues = version_ingest_log::dsl::version_ingest_log
         .select(count_distinct(version_ingest_log::dsl::entity_id))
@@ -3164,7 +3125,6 @@ pub fn players_stats(conn: &mut PgConnection) -> QueryResult<PlayersStats> {
         num_player_attribute_augments,
         num_player_paradigm_shifts,
         num_player_recompositions,
-        num_player_feed_versions,
         num_players_with_issues,
     })
 }
@@ -3173,7 +3133,6 @@ pub struct TeamsStats {
     pub num_team_versions: i64,
     pub num_team_player_versions: i64,
     pub num_team_games_played: i64,
-    pub num_team_feed_versions: i64,
     pub num_teams_with_issues: i64,
 }
 pub fn teams_stats(conn: &mut PgConnection) -> QueryResult<TeamsStats> {
@@ -3186,8 +3145,6 @@ pub fn teams_stats(conn: &mut PgConnection) -> QueryResult<TeamsStats> {
         .get_result(conn)?;
     let num_team_games_played = team_games_played::dsl::team_games_played.select(count_star())
         .get_result(conn)?;
-    let num_team_feed_versions = team_feed_versions::dsl::team_feed_versions.select(count_star())
-        .get_result(conn)?;
 
     let num_teams_with_issues = version_ingest_log::dsl::version_ingest_log
         .select(count_distinct(version_ingest_log::dsl::entity_id))
@@ -3199,7 +3156,6 @@ pub fn teams_stats(conn: &mut PgConnection) -> QueryResult<TeamsStats> {
         num_team_versions,
         num_team_player_versions,
         num_team_games_played,
-        num_team_feed_versions,
         num_teams_with_issues,
     })
 }

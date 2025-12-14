@@ -29,6 +29,9 @@ Upcoming
   to the changelog at the time.)
 - Dramatically improve ingest speed and storage required. There are still 
   high memory usage issues, particularly with team feed ingest.
+  - This change also deletes the `data.team_feed_versions` and 
+    `data.player_feed_versions` tables. Those were for internal use and didn't
+    have anything useful in them anyway.
 - Improve speed of status page (again), and make the with-issues count update
   during ingest.
 
