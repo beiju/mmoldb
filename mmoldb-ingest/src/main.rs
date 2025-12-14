@@ -8,6 +8,8 @@ mod signal;
 mod config;
 mod partitioner;
 
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 use crate::ingest_teams::TeamIngest;
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
@@ -166,12 +168,41 @@ fn refresh_matviews(pool: ConnectionPool) -> miette::Result<()> {
     db::refresh_matviews(&mut conn).into_diagnostic()
 }
 
+fn refresh_entity_counting_matviews_repeatedly(pool: ConnectionPool, exit: Arc<(Mutex<bool>, Condvar)>) -> miette::Result<()> {
+    let mut conn = pool.get().into_diagnostic()?;
+    loop {
+        {
+            let (exit, exit_cond) = &*exit;
+            let (should_exit, _) = exit_cond.wait_timeout_while(
+                exit.lock().unwrap(),
+                Duration::from_secs(10),
+                |&mut should_exit| !should_exit,
+            ).unwrap();
+
+            if *should_exit {
+                break;
+            }
+        }
+
+        db::refresh_entity_counting_matviews(&mut conn).into_diagnostic()?;
+    }
+
+    Ok(())
+}
+
 async fn ingest_everything(
     pool: ConnectionPool,
     ingest_id: i64,
     abort: CancellationToken,
     config: &'static IngestConfig,
 ) -> miette::Result<()> {
+    let stop_entity_counting = Arc::new((Mutex::new(false), Condvar::new()));
+    let entity_counting_task = tokio::task::spawn_blocking({
+        let pool = pool.clone();
+        let stop_entity_counting = stop_entity_counting.clone();
+        || refresh_entity_counting_matviews_repeatedly(pool, stop_entity_counting)
+    });
+
     let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
 
     ingestor.ingest(TeamIngest::new(&config.team_ingest), config.use_local_cheap_cashews).await?;
@@ -188,6 +219,13 @@ async fn ingest_everything(
         info!("Beginning game ingest");
         ingest_games::ingest_games(pool.clone(), ingest_id, abort, config.use_local_cheap_cashews).await?;
     }
+
+    let (exit, exit_cond) = &*stop_entity_counting;
+    let mut should_exit = exit.lock().unwrap();
+    *should_exit = true;
+    exit_cond.notify_one();
+    info!("Waiting for entity counting task to finish");
+    entity_counting_task.await.into_diagnostic()??;
 
     info!("Refreshing materialized views");
     refresh_matviews(pool)?;

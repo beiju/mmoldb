@@ -27,7 +27,10 @@ Upcoming
   Those columns are now nullable in `data.team_versions` and will be `null` for
   all versions going forward. (This change is from a while ago, but wasn't added 
   to the changelog at the time.)
-- 
+- Dramatically improve ingest speed and storage required. There are still 
+  high memory usage issues, particularly with team feed ingest.
+- Improve speed of status page (again), and make the with-issues count update
+  during ingest.
 
 2025-10-05 Hotfix 1
 -------------------

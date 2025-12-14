@@ -336,53 +336,19 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             })
         });
 
-    let with_issues_query = db
+    let counts_query = db
         .run(move |conn| {
             conn.transaction(|conn| {
-                let counts = db::with_issues_counts(conn)?;
+                let counts = db::entity_counts(conn)?;
                 Ok::<_, AppError>(counts)
             })
         });
 
-    let games_query = db
-        .run(move |conn| {
-            conn.transaction(|conn| {
-                let num_games = db::game_count(conn)?;
-                Ok::<_, AppError>(num_games)
-            })
-        });
-
-    macro_rules! versions_query {
-        ($db:expr, $load_fn:path, $kind:expr) => {
-            $db
-                .run(move |conn| {
-                    conn.transaction(|conn| {
-                        let num_versions = $load_fn(conn)?;
-                        Ok::<_, AppError>(num_versions)
-                    })
-                })
-        };
-    }
-
-    let player_versions_query = versions_query!(db, db::player_versions_count, "player");
-    let player_feed_versions_query = versions_query!(db, db::player_feed_versions_count, "player_feed");
-    let team_versions_query = versions_query!(db, db::team_versions_count, "team");
-    let team_feed_versions_query = db.run(move |conn| {
-        conn.transaction(|conn| {
-            Ok::<_, AppError>(db::feed_event_versions_count(conn, "team_feed")?)
-        })
-    });
-
     let (
         (total_num_ingests, displayed_ingests),
-        with_issues,
-        total_games,
-        total_player_versions,
-        total_player_feed_versions,
-        total_team_versions,
-        total_team_feed_versions,
+        counts,
     ) =
-        futures::try_join!(ingests_query, with_issues_query, games_query, player_versions_query, player_feed_versions_query, team_versions_query, team_feed_versions_query)?;
+        futures::try_join!(ingests_query, counts_query)?;
 
     let number_of_ingests_not_shown = total_num_ingests - displayed_ingests.len() as i64;
     let ingests: Vec<_> = displayed_ingests
@@ -407,21 +373,21 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
     }
 
     impl<'url> IngestibleWithErrors<'url> {
-        pub fn new(name: &'static str, count_total: i64, count_with_errors: i64) -> Self {
+        pub fn new(name: &'static str, (count_total, count_with_errors): (i64, i64)) -> Self {
             Self { name, count_total, count_with_errors, total_url: None, with_errors_url: None }
         }
 
-        pub fn new_with_urls(name: &'static str, count_total: i64, count_with_errors: i64, total_url: Origin<'url>, with_errors_url: Origin<'url>) -> Self {
+        pub fn new_with_urls(name: &'static str, (count_total, count_with_errors): (i64, i64), total_url: Origin<'url>, with_errors_url: Origin<'url>) -> Self {
             Self { name, count_total, count_with_errors, total_url: Some(total_url), with_errors_url: Some(with_errors_url) }
         }
     }
     
     let ingestible_counts = [
-        IngestibleWithErrors::new_with_urls("games", total_games, with_issues.get("game").cloned().unwrap_or(0), uri!(games_page()), uri!(games_with_issues_page())),
-        IngestibleWithErrors::new("player versions", total_player_versions, with_issues.get("player").cloned().unwrap_or(0)),
-        IngestibleWithErrors::new("player feed versions", total_player_feed_versions, with_issues.get("player_feed").cloned().unwrap_or(0)),
-        IngestibleWithErrors::new("team versions", total_team_versions, with_issues.get("team").cloned().unwrap_or(0)),
-        IngestibleWithErrors::new("team feed event versions", total_team_feed_versions, with_issues.get("team_feed").cloned().unwrap_or(0)),
+        IngestibleWithErrors::new_with_urls("games", counts.get("game").cloned().unwrap_or((0, 0)), uri!(games_page()), uri!(games_with_issues_page())),
+        IngestibleWithErrors::new("player versions", counts.get("player").cloned().unwrap_or((0, 0))),
+        IngestibleWithErrors::new("player feed event versions", counts.get("player_feed").cloned().unwrap_or((0, 0))),
+        IngestibleWithErrors::new("team versions", counts.get("team").cloned().unwrap_or((0, 0))),
+        IngestibleWithErrors::new("team feed event versions", counts.get("team_feed").cloned().unwrap_or((0, 0))),
     ];
 
     Ok(Template::render(

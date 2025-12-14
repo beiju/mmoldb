@@ -103,21 +103,27 @@ pub fn feed_event_versions_count(conn: &mut PgConnection, of_kind: &str) -> Quer
         .get_result(conn)
 }
 
-pub fn with_issues_counts(conn: &mut PgConnection) -> QueryResult<HashMap<String, i64>> {
+pub fn entity_counts(conn: &mut PgConnection) -> QueryResult<HashMap<String, (i64, i64)>> {
     #[derive(QueryableByName)]
     pub struct IssueCounts {
         #[diesel(sql_type = Text)]
         pub kind: String,
-        #[diesel(sql_type = BigInt)]
-        pub entities_with_issues: i64,
+        #[diesel(sql_type = Nullable<BigInt>)]
+        pub entities_with_issues: Option<i64>,
+        #[diesel(sql_type = Nullable<BigInt>)]
+        pub count: Option<i64>,
     }
 
-    let results = sql_query("select * from info.entities_with_issues_count")
+    let results = sql_query("
+        select coalesce(ewi.kind, e.kind) as kind, ewi.entities_with_issues, e.count
+        from info.entities_with_issues_count ewi
+        full outer join info.entities_count e on e.kind=ewi.kind
+    ")
         .get_results::<IssueCounts>(conn)?;
 
     Ok(
         results.into_iter()
-            .map(|r| (r.kind, r.entities_with_issues))
+            .map(|r| (r.kind, (r.count.unwrap_or(0), r.entities_with_issues.unwrap_or(0))))
             .collect()
     )
 }
@@ -3044,9 +3050,17 @@ pub fn update_num_ingested(
     Ok(())
 }
 
-pub fn refresh_matviews(conn: &mut PgConnection) -> QueryResult<()> {
+pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> QueryResult<()> {
+    debug!("Updating info.entities_count");
+    sql_query("refresh materialized view info.entities_count").execute(conn)?;
     debug!("Updating info.entities_with_issues_count");
     sql_query("refresh materialized view info.entities_with_issues_count").execute(conn)?;
+    
+    Ok(())
+}
+
+pub fn refresh_matviews(conn: &mut PgConnection) -> QueryResult<()> {
+    refresh_entity_counting_matviews(conn)?;
     debug!("Updating data.offense_outcomes");
     sql_query("refresh materialized view data.offense_outcomes").execute(conn)?;
     debug!("Updating data.defense_outcomes");
