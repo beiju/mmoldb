@@ -173,18 +173,6 @@ pub mod data {
     }
 
     diesel::table! {
-        data.feed_events (id) {
-            id -> Int8,
-            kind -> Text,
-            entity_id -> Text,
-            feed_event_index -> Int4,
-            deleted_event_index -> Nullable<Int4>,
-            first_observed_at -> Timestamp,
-            data -> Jsonb,
-        }
-    }
-
-    diesel::table! {
         data.feed_events_processed (kind, entity_id, feed_event_index, valid_from) {
             kind -> Text,
             entity_id -> Text,
@@ -508,10 +496,10 @@ pub mod data {
         data.wither (id) {
             id -> Int8,
             game_id -> Int8,
-            struggle_game_event_index -> Int4,
+            attempt_game_event_index -> Int4,
             outcome_game_event_index -> Int4,
             team_emoji -> Text,
-            player_position -> Int8,
+            player_slot -> Int8,
             player_name -> Text,
             corrupted -> Bool,
             source_player_name -> Nullable<Text>,
@@ -549,7 +537,6 @@ pub mod data {
         events,
         failed_ejections,
         feed_event_versions,
-        feed_events,
         feed_events_processed,
         games,
         modifications,

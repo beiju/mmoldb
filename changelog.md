@@ -11,11 +11,23 @@ Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 Upcoming
 --------
 - New tables: `data.wither`, `data.efflorescence`, `data.efflorescence_growth`, 
-  and `data.failed_ejections`. See docs. (TODO update docs)
-- Added `home_run_distance` to `data.event`. 
+  and `data.failed_ejections`. See docs. (`data.wither` was added a while ago, 
+  but wasn't added to the changelog at the time.)
+  - In `data.wither`, `player_position` was renamed to `player_slot` and 
+    `struggle_event_index` was renamed to `attempt_event_index`.
+- Add `home_run_distance` to `data.event`. 
 - `info.raw_events` is now a view into `data.entities`. As a consequence, 
   `game_id` is no longer available. Use `mmolb_game_id` to join on instead.
   `data.games` provides the mapping from `game_id` to `mmolb_game_id`.
+- Rename `stars` in `data.player_report_attribute_versions` to `base_stars` and
+  add `base_total`, `modified_stars`, and `modified_total`. See the docs for 
+  details. (This change is from a while ago, but wasn't added to the changelog
+  at the time.)
+- `full_location` and `abbreviation` have been removed from the MMOLB API. 
+  Those columns are now nullable in `data.team_versions` and will be `null` for
+  all versions going forward. (This change is from a while ago, but wasn't added 
+  to the changelog at the time.)
+- 
 
 2025-10-05 Hotfix 1
 -------------------

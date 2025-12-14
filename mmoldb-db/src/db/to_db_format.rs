@@ -375,10 +375,10 @@ pub fn wither_to_rows<'e>(
 ) -> NewWither<'e> {
     NewWither {
         game_id,
-        struggle_game_event_index: wither.struggle_game_event_index,
+        attempt_game_event_index: wither.attempt_game_event_index,
         outcome_game_event_index: wither.outcome_game_event_index,
         team_emoji: wither.team_emoji,
-        player_position: taxa.slot_id(wither.player_position),
+        player_slot: taxa.slot_id(wither.player_slot),
         player_name: wither.player_name,
         source_player_name: wither.source_player_name,
         corrupted: wither.corrupted,
@@ -853,7 +853,7 @@ pub fn row_to_event<'e>(
                 team_emoji: wither.team_emoji,
                 target: PlacedPlayer {
                     name: wither.player_name,
-                    place: taxa.slot_from_id(wither.player_position).into(),
+                    place: taxa.slot_from_id(wither.player_slot).into(),
                 },
                 source_name: wither.source_player_name,
             })

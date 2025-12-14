@@ -858,6 +858,20 @@ nullable_explanation = """
 `null` for events where the crowd did not cheer.
 """
 
+[[table.column]]
+name = "home_run_distance"
+type = "integer"
+description = """
+The home run distance for this event, if applicable.
+
+This is expected on all HomeRun events after season 8. However, MMOLDB takes it
+directly from the event metadata, so it will be populated in the database
+whenever it's populated in the metadata.
+"""
+nullable_explanation = """
+`null` for events without a home run distance.
+"""
+
 [[table]]
 name = "event_baserunners"
 description = """
@@ -1185,8 +1199,7 @@ API changes.
 [[table]]
 name = "versions"
 description = """
-A mirror of Chron's `entities` endpoint for selected `kind`s. Currently holds
-every `kind` that MMOLDB uses except for `"game"`.
+A mirror of Chron's `entities` endpoint for selected `kind`s.
 
 NOTE: Unlike Chron, a given entity `kind` is either in this table or
 `data.entities`, not both. `kind`s for which MMOLDB uses historical data are
@@ -1198,8 +1211,7 @@ data are stored in `data.entities`. Not all Chron `kind`s are ingested.
 name = "kind"
 type = "text"
 description = """
-The kind of the entity, e.g. `"game"`, `"team"`, `"player"`, etc. Matches
-Chron's kind.
+The kind of the entity, e.g. `"team"`, `"player"`, etc. Matches Chron's kind.
 
 The type of this field may be changed in the future.
 """
@@ -1241,6 +1253,76 @@ The actual data of the entity. This is the data exactly as returned by the
 MMOLB API with no modification, so structure is subject to change whenever the
 API changes.
 """
+
+[[table]]
+name = "feed_event_versions"
+description = """
+Flattened storage for feed events. Like `data.versions`, but with a tiny layer
+of logic in front of it to split feeds into consituent events.
+"""
+
+[[table.column]]
+name = "kind"
+type = "text"
+description = """
+The kind of the entity this event belongs to, e.g. `"team-feed"`,
+`"player-feed"`, etc. Matches Chron's kind.
+
+The type of this field may be changed in the future.
+"""
+
+[[table.column]]
+name = "entity_id"
+type = "text"
+description = """
+The MMOLB id of the entity this event belongs to.
+"""
+
+[[table.column]]
+name = "feed_event_index"
+type = "integer"
+description = """
+The index of this event within the entity's feed.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest date that Chron observed this version of the event. This may not
+(and typically will not) line up perfectly with when this version was created
+because Chron can only poll so often.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest date after `valid_from` that Chron observed a different version
+of this event -- that is, the first date where we're sure this event was no
+longer valid. This may not (and typically will not) line up perfectly with when
+this version was actually invalidated because Chron can only poll so often.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "data"
+type = "jsonb"
+description = """
+The actual data of the event. This is the data exactly as returned by the
+MMOLB API with no modification aside from splitting a feed into events, so
+structure is subject to change whenever the API changes.
+"""
+
+[[table]]
+name = "feed_events_processed"
+description = """
+Bookkeeping data that MMOLDB uses during ingest. The columns are undocumented
+and may change at any time.
+"""
+allow_undocumented = true
 
 [[table]]
 name = "aurora_photos"
@@ -1396,6 +1478,55 @@ if one is given. References `taxa.slot`.
 """
 nullable_explanation = """
 `null` if the replacement is a bench player.
+"""
+
+[[table]]
+name = "failed_ejections"
+description = """
+Instances of ROBO-UMP failing to eject players, presumably due to Immovable.
+
+The messages for a failed ejection name two players, but don't say anything
+about the players' roles in the ejection. Accordingly, this table just stores
+two player names without any attempt to explain what they mean.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+failed ejection use the combination of its `mmolb_game_id` and
+`game_event_index`. You have to join the `data.events` table to access
+`game_event_index`, and from there join the `data.games` tables to access
+`mmolb_game_id`.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event this failed ejection happend on. References the
+`data.events` table.
+
+These IDs are *not* stable. You should not store these ids between queries, nor
+hard-code them into queries. Instead use the combination of `mmolb_game_id` and
+`game_event_index` as described in the documentation for `data.events`' `id`
+column.
+"""
+
+[[table.column]]
+name = "player_name_1"
+type = "text"
+description = """
+The first player name. See the table description for more.
+"""
+
+[[table.column]]
+name = "player_name_2"
+type = "text"
+description = """
+The second player name. See the table description for more.
 """
 
 [[table]]
@@ -1561,6 +1692,121 @@ about how suffixes work.
 """
 nullable_explanation = """
 `null` if this item does not have a suffix.
+"""
+
+[[table.column]]
+name = "equipped_by"
+type = "text"
+description = """
+Name of the player who equipped this item, if applicable. Only Greater League
+players automatically equip items. Greater League players do not always equip
+items.
+"""
+nullable_explanation = """
+`null` if no player automatically equipped this item.
+"""
+
+[[table.column]]
+name = "discarded_item_emoji"
+type = "text"
+description = """
+Emoji of the item that was discarded, if there was one.
+
+Item discards happen when a Greater League player equips an item in an already-
+occupied equipment slot.
+"""
+nullable_explanation = """
+`null` if no item was discarded as a result of this door prize. This should
+always be `null` if `equipped_by` is `null`.
+"""
+
+[[table.column]]
+name = "discarded_item_name"
+type = "text"
+description = """
+Name of the item that was discarded, if there was one.
+
+Item discards happen when a Greater League player equips an item in an already-
+occupied equipment slot.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how item names work.
+"""
+nullable_explanation = """
+`null` if no item was discarded as a result of this door prize. This should
+always be `null` if `equipped_by` is `null`.
+"""
+
+[[table.column]]
+name = "discarded_item_rare_name"
+type = "text"
+description = """
+Rare name of the item that was discarded, if there was one and it has one.
+
+Item discards happen when a Greater League player equips an item in an already-
+occupied equipment slot.
+
+See documentation for `rare_name` on `data.player_equipment_versions` for more
+about how rare names work.
+"""
+nullable_explanation = """
+`null` if no item was discarded as a result of this door prize, or if the
+discarded item has no rare name. This should always be `null` if `equipped_by`
+is `null`.
+"""
+
+[[table.column]]
+name = "discarded_item_prefix"
+type = "text"
+description = """
+Prefix of the item that was discarded, if there was one and it has one.
+
+Item discards happen when a Greater League player equips an item in an already-
+occupied equipment slot.
+
+See documentation for `prefixes` on `data.player_equipment_versions` for more
+about how suffixes work.
+"""
+nullable_explanation = """
+`null` if no item was discarded as a result of this door prize, or if the
+discarded item has no prefix. This should always be `null` if `equipped_by`
+is `null`.
+"""
+
+[[table.column]]
+name = "discarded_item_suffix"
+type = "text"
+description = """
+Suffix of the item that was discarded, if there was one and it has one.
+
+Item discards happen when a Greater League player equips an item in an already-
+occupied equipment slot.
+
+See documentation for `suffixes` on `data.player_equipment_versions` for more
+about how suffixes work.
+"""
+nullable_explanation = """
+`null` if no item was discarded as a result of this door prize, or if the
+discarded item has no suffix. This should always be `null` if `equipped_by`
+is `null`.
+"""
+
+[[table.column]]
+name = "prize_discarded"
+type = "boolean"
+description = """
+`true` if the prize item was discarded, `false` otherwise. Only applicable to
+Greater League players.
+
+Note that this is about the prize item itself being discarded. The
+`discarded_item_*` columns are about a player's existing item being discarded
+in favor of the prize item.
+
+This should be `false` if `equipped_by` is non-`null` (but not necessarily
+vice versa).
+"""
+nullable_explanation = """
+`null` for Lesser League players.
 """
 
 [[table]]
@@ -1782,6 +2028,264 @@ description = """
 Amount by which the attribute was boosted. As of mid-Season 5 this is always
 50, but it may change later. Stores values as they are displayed in the game log,
 meaning attributes are on the 0-100 scale.
+"""
+
+[[table.column]]
+name = "durability_loss"
+type = "integer"
+description = """
+The amount of durability that was lost, according to the game event.
+
+Note that there have been multiple display bugs affecting this value, so this
+is not necessarily accurate to how much durability the player actually lost.
+"""
+nullable_explanation = """
+`null` if this player lost no durability because of Prolific.
+"""
+
+[[table]]
+name = "wither"
+description = """
+Corruption attempts during Wither weather and their outcomes.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+wither event use the combination of its `mmolb_game_id` (which you access by
+joining `data.games` on the `game_id` column) and either
+`stuggle_game_event_index` or `outcome_game_event_index`.
+"""
+
+[[table.column]]
+name = "game_id"
+type = "bigint"
+description = """
+The id of the game this wither belongs to. References the `data.games`
+table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
+which you access by joining `data.games` on this column.
+"""
+
+[[table.column]]
+name = "attempt_game_event_index"
+type = "integer"
+description = """
+Wither events happen in 2 stages on consecutive events, which MMOLDB calls the
+"attempt" event and the "outcome" event. This is the index of the attempt
+event (starting at 0) in its game's event log.
+
+Either this or `outcome_game_event_index` is used in combination with
+`mmolb_game_id` to identify a particular wither.
+"""
+
+[[table.column]]
+name = "outcome_game_event_index"
+type = "integer"
+description = """
+Wither events happen in 2 stages on consecutive events, which MMOLDB calls the
+"attempt" event and the "outcome" event. This is the index of the outcome
+event (starting at 0) in its game's event log.
+
+Either this or `attempt_game_event_index` is used in combination with
+`mmolb_game_id` to identify a particular wither.
+"""
+
+[[table.column]]
+name = "team_emoji"
+type = "text"
+description = """
+The team emoji of the player who was targeted by the wither attempt.
+"""
+
+[[table.column]]
+name = "player_slot"
+type = "bigint"
+description = """
+The roster slot of the player who was targeted by the wither attempt.
+References `taxa.slot`.
+"""
+
+[[table.column]]
+name = "player_name"
+type = "text"
+description = """
+The name of the player who was targeted by the wither attempt.
+"""
+
+[[table.column]]
+name = "corrupted"
+type = "boolean"
+description = """
+`true` if the corruption attempt succeeded, `false` otherwise.
+"""
+
+[[table.column]]
+name = "source_player_name"
+type = "text"
+description = """
+The name of the player who attempted the wither.
+"""
+nullable_explanation = """
+`null` in season 6 when the source player's name was not part of the event.
+
+Corruption attempts are always from the active pitcher to the active batter or
+vice versa, so in cases where this is `null` you can identify what it should be
+by examining the active pitcher and batter.
+"""
+
+[[table.column]]
+name = "contain_attempted"
+type = "boolean"
+description = """
+`true` if the target attempted to contain the source, `false` otherwise.
+
+To see if the contain attempt succeeded, check if
+`contain_replacement_player_name` is `null`.
+
+This is always `false` if the corruption succeeded (`corrupted` is `true`).
+"""
+
+[[table.column]]
+name = "contain_replacement_player_name"
+type = "text"
+description = """
+The name of the player who replaces the contained player, if a contain attempt
+succeeded.
+"""
+nullable_explanation = """
+`null` if there was no contain, or if the contain attempt failed (e.g. due to
+Immovable).
+
+This is always `null` if the corruption succeeded (`corrupted` is `true`) or
+if there was no contain attempt (`contain_attempted` is `false`)
+"""
+
+[[table]]
+name = "efflorescence"
+description = """
+Efflorescence weather events, including Grow and Effloresce outcomes.
+
+`data.efflorescence_growth` is a child table of this one.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store
+efflorescence ids between queries, nor hard-code efflorescence ids into
+queries.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event this efflorescence occurred on. References the
+`data.events` table.
+
+Event IDs are *not* stable. You should not store event ids between queries, nor
+hard-code them into queries. Instead use the combination of `mmolb_game_id` and
+`game_event_index` as described in the documentation for `data.events`' `id`
+column.
+"""
+
+[[table.column]]
+name = "efflorescence_index"
+type = "integer"
+description = """
+Index of this efflorescence within the event. There can be two efflorescence in
+the event that the batter and pitcher are both new to the game.
+"""
+
+[[table.column]]
+name = "player_name"
+type = "text"
+description = """
+Name of the player this event happened to.
+"""
+
+[[table.column]]
+name = "effloresced"
+type = "boolean"
+description = """
+`true` if this player Effloresced. If this is `false`, then the player Grew
+instead. Details of the Growth are in `data.efflorescence_growth`.
+"""
+
+[[table]]
+name = "efflorescence_growth"
+description = """
+Attribute changes as a result of Efflorescence Growth.
+
+There is an entry in this table for each attribute that was changed as the
+result of a Growth.
+
+This table is a child of `data.efflorescence`.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store
+efflorescence growth ids between queries, nor hard-code efflorescence growth
+ids into queries.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event this efflorescence growth occurred on. References the
+`data.events` table.
+
+Event IDs are *not* stable. You should not store event ids between queries, nor
+hard-code them into queries. Instead use the combination of `mmolb_game_id` and
+`game_event_index` as described in the documentation for `data.events`' `id`
+column.
+"""
+
+[[table.column]]
+name = "efflorescence_index"
+type = "integer"
+description = """
+Index of this efflorescence event within the game event. There can be two
+efflorescence events in the event that the batter and pitcher are both new to
+the game.
+"""
+
+[[table.column]]
+name = "growth_index"
+type = "integer"
+description = """
+Index of this attribute change within the efflorescence event.
+
+As of this writing, there are always exactly two attribute changes per
+efflorescence growth.
+"""
+
+[[table.column]]
+name = "value"
+type = "double precision"
+description = """
+The amount this attribute changed by.
+
+This stores the value as displayed in the game log, and therefore uses the
+0-100 scale.
+"""
+
+[[table.column]]
+name = "attribute"
+type = "bigint"
+description = """
+The attribute that was changed. References `taxa.attribute`.
 """
 
 [[table]]
@@ -3252,10 +3756,56 @@ nullable_explanation = """
 """
 
 [[table.column]]
-name = "stars"
+name = "base_stars"
 type = "integer"
 description = """
-The number of stars the player has in this attribute.
+The number of base stars the player has in this attribute.
+
+This column used to be called `stars` before the update that made modified
+stars visible.
+"""
+nullable_explanation = """
+`null` for reports in the small window when only modified stars and totals
+were avaialble.
+"""
+
+[[table.column]]
+name = "base_total"
+type = "double precision"
+description = """
+The base value of this attribute, rounded to two decimal places.
+
+This uses the 0.0-1.0 range used in the MMOLB back-end. Multiply this value by
+100 to get the number displayed on the Player page.
+"""
+nullable_explanation = """
+`null` for reports from before totals were added, and for reports in the small
+window when only modified stars and totals were avaialble.
+"""
+
+[[table.column]]
+name = "modified_stars"
+type = "integer"
+description = """
+The number of stars the player has in this attribute after accounting for items
+and modifications (including Boons).
+"""
+nullable_explanation = """
+`null` for reports from before modified stars were added.
+"""
+
+[[table.column]]
+name = "modified_total"
+type = "double precision"
+description = """
+The value of this attribute after accounting for items and modifications
+(including Boons), rounded to two decimal places.
+
+This uses the 0.0-1.0 range used in the MMOLB back-end. Multiply this value by
+100 to get the number displayed on the Player page.
+"""
+nullable_explanation = """
+`null` for reports from before modified totals were added.
 """
 
 [[table]]
@@ -3354,7 +3904,11 @@ The team's location, e.g. "Baltimore".
 name = "full_location"
 type = "text"
 description = """
-The team's full location, e.g. "Baltimore, MD, USA".
+The team's full location, e.g. "Baltimore, MD, USA". This value has since been
+removed from the API and will not be populated for new team versions.
+"""
+nullable_explanation = """
+`null` after the value was removed from the API.
 """
 
 [[table.column]]
@@ -3365,6 +3919,12 @@ The team's three-letter abbreviation.
 
 As of s5d77, these are not displayed on the site anywhere. However, every team
 has one, automatically derived from the team name and location.
+
+This value has since been removed from the API and will not be populated for
+new team versions.
+"""
+nullable_explanation = """
+`null` after the value was removed from the API.
 """
 
 [[table.column]]

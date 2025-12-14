@@ -1044,10 +1044,10 @@ pub struct NewTeamGamePlayed<'a> {
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewWither<'a> {
     pub game_id: i64,
-    pub struggle_game_event_index: i32,
+    pub attempt_game_event_index: i32,
     pub outcome_game_event_index: i32,
     pub team_emoji: &'a str,
-    pub player_position: i64,
+    pub player_slot: i64,
     pub player_name: &'a str,
     pub source_player_name: Option<&'a str>,
     pub corrupted: bool,
@@ -1061,10 +1061,10 @@ pub struct NewWither<'a> {
 pub struct DbWither {
     pub id: i64,
     pub game_id: i64,
-    pub struggle_game_event_index: i32,
+    pub attempt_game_event_index: i32,
     pub outcome_game_event_index: i32,
     pub team_emoji: String,
-    pub player_position: i64,
+    pub player_slot: i64,
     pub player_name: String,
     pub source_player_name: Option<String>,
     pub corrupted: bool,

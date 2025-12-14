@@ -487,7 +487,7 @@ pub fn group_wither_table_results<'a>(
                     while let Some(child) =
                         wither_iter.next_if(|f|
                             f.game_id == game_event.game_id &&
-                                f.struggle_game_event_index == game_event.game_event_index
+                                f.attempt_game_event_index == game_event.game_event_index
                         ) {
                         children.push(child);
                     }
@@ -689,7 +689,7 @@ pub fn events_for_games(
         .filter(wither_dsl::game_id.eq_any(&game_ids))
         .order_by((
             wither_dsl::game_id,
-            wither_dsl::struggle_game_event_index,
+            wither_dsl::attempt_game_event_index,
         ))
         .select(DbWither::as_select())
         .load(conn)?;

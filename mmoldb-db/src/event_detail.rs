@@ -787,10 +787,10 @@ pub struct PartyEvent<StrT: Clone> {
 
 #[derive(Debug, Clone)]
 pub struct WitherOutcome<StrT: Clone> {
-    pub struggle_game_event_index: i32,
+    pub attempt_game_event_index: i32,
     pub outcome_game_event_index: i32,
     pub team_emoji: StrT,
-    pub player_position: TaxaSlot,
+    pub player_slot: TaxaSlot,
     pub player_name: StrT,
     pub source_player_name: Option<StrT>,
     pub corrupted: bool,

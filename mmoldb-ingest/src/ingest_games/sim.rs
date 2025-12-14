@@ -267,7 +267,7 @@ enum EventContext<'g> {
     },
     ExpectWitherOutcome {
         struggle: WitherStruggle<&'g str>,
-        struggle_game_event_index: usize,
+        attempt_game_event_index: usize,
         context_after: ContextAfterWitherOutcome<'g>,
     },
     ExpectInningEnd,
@@ -2655,7 +2655,7 @@ impl<'g> Game<'g> {
                         if let Some(struggle) = wither {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
-                                struggle_game_event_index: game_event_index,
+                                attempt_game_event_index: game_event_index,
                                 context_after: self.state.context.after_wither_outcome()?,
                             }
                         }
@@ -2682,7 +2682,7 @@ impl<'g> Game<'g> {
                         if let Some(struggle) = wither {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
-                                struggle_game_event_index: game_event_index,
+                                attempt_game_event_index: game_event_index,
                                 context_after: self.state.context.after_wither_outcome()?,
                             }
                         }
@@ -2737,7 +2737,7 @@ impl<'g> Game<'g> {
                         if let Some(struggle) = wither {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
-                                struggle_game_event_index: game_event_index,
+                                attempt_game_event_index: game_event_index,
                                 context_after: self.state.context.after_wither_outcome()?,
                             }
                         }
@@ -2764,7 +2764,7 @@ impl<'g> Game<'g> {
                         if let Some(struggle) = wither {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
-                                struggle_game_event_index: game_event_index,
+                                attempt_game_event_index: game_event_index,
                                 context_after: self.state.context.after_wither_outcome()?,
                             }
                         }
@@ -2819,7 +2819,7 @@ impl<'g> Game<'g> {
                         if let Some(struggle) = wither {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
-                                struggle_game_event_index: game_event_index,
+                                attempt_game_event_index: game_event_index,
                                 context_after: ContextAfterWitherOutcome::ExpectNowBatting,
                             }
                         }
@@ -2855,7 +2855,7 @@ impl<'g> Game<'g> {
                         if let Some(struggle) = wither {
                             self.state.context = EventContext::ExpectWitherOutcome {
                                 struggle: struggle.clone(),
-                                struggle_game_event_index: game_event_index,
+                                attempt_game_event_index: game_event_index,
                                 context_after: ContextAfterWitherOutcome::ExpectNowBatting,
                             }
                         }
@@ -3423,7 +3423,7 @@ impl<'g> Game<'g> {
                     None
                 },
             ),
-            EventContext::ExpectWitherOutcome { struggle, struggle_game_event_index, mut context_after } => game_event!(
+            EventContext::ExpectWitherOutcome { struggle, attempt_game_event_index, mut context_after } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::WeatherWither]
                 ParsedEventMessage::WeatherWither { team_emoji, player, corrupted, contained } => {
@@ -3542,10 +3542,10 @@ impl<'g> Game<'g> {
                     self.state.context = context_after.to_event_context();
 
                     Some(EventForTable::WitherOutcome(WitherOutcome {
-                        struggle_game_event_index: struggle_game_event_index as i32,
+                        attempt_game_event_index: attempt_game_event_index as i32,
                         outcome_game_event_index: game_event_index as i32,
                         team_emoji: struggle.team_emoji,
-                        player_position: struggle.target.place.into(),
+                        player_slot: struggle.target.place.into(),
                         player_name: struggle.target.name,
                         source_player_name: struggle.source_name,
                         corrupted: match corrupted {
