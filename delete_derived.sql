@@ -33,14 +33,12 @@ truncate table
     data.player_report_versions,
     data.player_report_attribute_versions,
     data.player_paradigm_shifts,
-    data.player_feed_versions,
     data.player_equipment_versions,
     data.player_equipment_effect_versions,
 
     -- team
     data.team_versions,
     data.team_player_versions,
-    data.team_feed_versions,
     data.team_games_played,
 
     -- generic
