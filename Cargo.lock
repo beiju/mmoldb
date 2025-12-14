@@ -1928,7 +1928,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.49.0"
-source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#cf967c04bb6f5f93f79a4e6078d06867a31ab248"
+source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#eb1550562e9c24c04fe51063039dfe863c758a70"
 dependencies = [
  "chrono",
  "indexmap 2.11.1",

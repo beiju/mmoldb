@@ -8,8 +8,10 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
---------
+2025-12-13
+----------
+- Docs are updated to catch up with a bunch of undocumented changes. Sorry this
+  took so long!
 - New tables: `data.wither`, `data.efflorescence`, `data.efflorescence_growth`, 
   and `data.failed_ejections`. See docs. (`data.wither` was added a while ago, 
   but wasn't added to the changelog at the time.)
@@ -34,6 +36,7 @@ Upcoming
     have anything useful in them anyway.
 - Improve speed of status page (again), and make the with-issues count update
   during ingest.
+- Fix almost all ingest errors
 
 2025-10-05 Hotfix 1
 -------------------
