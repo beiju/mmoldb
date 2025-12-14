@@ -380,10 +380,11 @@ pub fn chron_player_feed_as_new<'a>(
         hashes
     };
 
-    fn name_matches(a: &str, b: &str) -> bool {
+    fn name_matches(_a: &str, _b: &str) -> bool {
         // Multiple Stanleys Demir were generated during the s2
         // Falling Stars event and then Danny manually renamed them
-        a == b || (a.starts_with("Stanley Demir") && b.starts_with("Stanley Demir"))
+        // a == b || (a.starts_with("Stanley Demir") && b.starts_with("Stanley Demir"))
+        true // TODO Re-enable or delete this
     }
 
     // Option<expected name, Option<temporarily allowed name>>
@@ -476,7 +477,7 @@ pub fn chron_player_feed_as_new<'a>(
     let mut pending_inferred_recompositions = inferred_recompositions
         .get_mut(player_id)
         .map(|r| r.into_iter().peekable());
-    
+
     let time = event.data.timestamp.naive_utc();
 
     check_player_name.clear_temporary_name_override();
@@ -504,6 +505,8 @@ pub fn chron_player_feed_as_new<'a>(
     let max_permanent_feed_event_index_plus_one = event.feed_event_index + 1;
 
     // Apply any inferred recompositions whose time is before this event's time
+    // TODO Some way to not re-add these every time. The DB should dedup them but it's
+    //   a bunch of unnecessary work.
     if let Some(pending) = &mut pending_inferred_recompositions {
         while let Some((time, info)) = pending.next_if(|(dt, _)| *dt <= time) {
             let (season, day, player_name_before, player_name_after) = info;
