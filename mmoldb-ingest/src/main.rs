@@ -221,9 +221,11 @@ async fn ingest_everything(
     }
 
     let (exit, exit_cond) = &*stop_entity_counting;
-    let mut should_exit = exit.lock().unwrap();
-    *should_exit = true;
-    exit_cond.notify_one();
+    {
+        let mut should_exit = exit.lock().unwrap();
+        *should_exit = true;
+    }
+    exit_cond.notify_all();
     info!("Waiting for entity counting task to finish");
     entity_counting_task.await.into_diagnostic()??;
 
