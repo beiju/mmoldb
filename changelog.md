@@ -8,6 +8,10 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+2025-12-15 Hotfix
+-----------------
+- Poke `data.events_extended` until it realizes that `home_run_distance` exists
+
 2025-12-13
 ----------
 - Docs are updated to catch up with a bunch of undocumented changes. Sorry this
