@@ -1,7 +1,7 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
 use crate::taxa::Taxa;
-use crate::{PartyEvent, PitcherChange, WitherOutcome};
+use crate::{ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome};
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
@@ -384,6 +384,53 @@ pub fn wither_to_rows<'e>(
         corrupted: wither.corrupted,
         contain_attempted: wither.contain_attempted,
         contain_replacement_player_name: wither.contain_replacement_player_name,
+    }
+}
+
+pub fn consumption_contest_to_rows<'e>(
+    game_id: i64,
+    contest: &'e ConsumptionContestForDb<&'e str>,
+) -> NewConsumptionContest<'e> {
+    NewConsumptionContest {
+        game_id,
+        first_game_event_index: contest.first_game_event_index as i32,
+        last_game_event_index: contest.last_game_event_index as i32,
+        food_emoji: contest.food.food_emoji,
+        food: contest.food.food.into(),
+        batting_team_mmolb_id: contest.batting.team_mmolb_id,
+        batting_team_emoji: contest.batting.team.emoji,
+        batting_team_name: contest.batting.team.name,
+        batting_team_player_name: contest.batting.player_name,
+        batting_team_tokens: contest.batting.tokens as i32,
+        batting_team_prize_emoji: contest.batting.prize.map(|p| p.item_emoji),
+        batting_team_prize_name: contest.batting.prize.map(|p| p.item.into()),
+        batting_team_prize_rare_name: contest.batting.prize.and_then(|p| if let ItemAffixes::RareName(n) = p.affixes { Some(n) } else { None }),
+        batting_team_prize_prefix: contest.batting.prize.and_then(|p| if let ItemAffixes::PrefixSuffix(pre, _) = p.affixes { pre.map(Into::into) } else { None }),
+        batting_team_prize_suffix: contest.batting.prize.and_then(|p| if let ItemAffixes::PrefixSuffix(_, suf) = p.affixes { suf.map(Into::into) } else { None }),
+        defending_team_mmolb_id: contest.defending.team_mmolb_id,
+        defending_team_emoji: contest.defending.team.emoji,
+        defending_team_name: contest.defending.team.name,
+        defending_team_player_name: contest.defending.player_name,
+        defending_team_tokens: contest.defending.tokens as i32,
+        defending_team_prize_emoji: contest.defending.prize.map(|p| p.item_emoji),
+        defending_team_prize_name: contest.defending.prize.map(|p| p.item.into()),
+        defending_team_prize_rare_name: contest.defending.prize.and_then(|p| if let ItemAffixes::RareName(n) = p.affixes { Some(n) } else { None }),
+        defending_team_prize_prefix: contest.defending.prize.and_then(|p| if let ItemAffixes::PrefixSuffix(pre, _) = p.affixes { pre.map(Into::into) } else { None }),
+        defending_team_prize_suffix: contest.defending.prize.and_then(|p| if let ItemAffixes::PrefixSuffix(_, suf) = p.affixes { suf.map(Into::into) } else { None }),
+    }
+}
+
+pub fn consumption_contest_event_to_rows(
+    game_id: i64,
+    first_game_event_index: usize,
+    contest: &ConsumptionContestEventForDb,
+) -> NewConsumptionContestEvent {
+    NewConsumptionContestEvent {
+        game_id,
+        first_game_event_index: first_game_event_index as i32,
+        game_event_index: contest.game_event_index as i32,
+        batting_team_consumed: contest.batting_consumed as i32,
+        defending_team_consumed: contest.defending_consumed as i32,
     }
 }
 

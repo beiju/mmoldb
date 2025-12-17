@@ -28,7 +28,7 @@ use thiserror::Error;
 use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection};
 use crate::taxa::Taxa;
-use crate::{PartyEvent, PitcherChange, QueryError, WitherOutcome};
+use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
 pub fn set_current_user_statement_timeout(
     conn: &mut PgConnection,
@@ -805,6 +805,7 @@ pub struct CompletedGameForDb<'g> {
     pub pitcher_changes: Vec<PitcherChange<&'g str>>,
     pub parties: Vec<PartyEvent<&'g str>>,
     pub withers: Vec<WitherOutcome<&'g str>>,
+    pub consumption_contests: Vec<ConsumptionContestForDb<&'g str>>,
     pub logs: Vec<Vec<IngestLog>>,
     // This is used for verifying the round trip
     pub parsed_game: Vec<ParsedEventMessage<&'g str>>,
@@ -1219,6 +1220,59 @@ fn insert_withers<'e>(
     Ok(())
 }
 
+fn insert_consumption_contests<'e>(
+    conn: &mut PgConnection,
+    completed_games: &[(i64, &CompletedGameForDb)],
+) -> QueryResult<()> {
+    let new_consumption_contests: Vec<_> = completed_games
+        .iter()
+        .flat_map(|(game_id, game)| {
+            game.consumption_contests
+                .iter()
+                .map(|consumption_contest| to_db_format::consumption_contest_to_rows(*game_id, consumption_contest))
+        })
+        .collect();
+
+    let n_consumption_contests_to_insert = new_consumption_contests.len();
+    let n_consumption_contests_inserted = diesel::copy_from(crate::schema::data_schema::data::consumption_contests::dsl::consumption_contests)
+        .from_insertable(&new_consumption_contests)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_consumption_contests_to_insert == n_consumption_contests_inserted,
+        "Consumption contests insert should have inserted {} rows, but it inserted {}",
+        n_consumption_contests_to_insert,
+        n_consumption_contests_inserted,
+    );
+
+    let new_consumption_contest_events: Vec<_> = completed_games
+        .iter()
+        .flat_map(|(game_id, game)| {
+            game.consumption_contests
+                .iter()
+                .flat_map(|consumption_contest| {
+                    consumption_contest.events
+                        .iter()
+                        .map(|event| to_db_format::consumption_contest_event_to_rows(*game_id, consumption_contest.first_game_event_index, event))
+                })
+        })
+        .collect();
+
+    let n_consumption_contest_events_to_insert = new_consumption_contest_events.len();
+    let n_consumption_contest_events_inserted = diesel::copy_from(crate::schema::data_schema::data::consumption_contest_events::dsl::consumption_contest_events)
+        .from_insertable(&new_consumption_contest_events)
+        .execute(conn)?;
+
+    log_only_assert!(
+        n_consumption_contest_events_to_insert == n_consumption_contest_events_inserted,
+        "Consumption contest events insert should have inserted {} rows, but it inserted {}",
+        n_consumption_contest_events_to_insert,
+        n_consumption_contest_events_inserted,
+    );
+
+    Ok(())
+}
+
 fn insert_games_internal<'e>(
     conn: &mut PgConnection,
     taxa: &Taxa,
@@ -1594,6 +1648,10 @@ fn insert_games_internal<'e>(
     let insert_withers_start = Utc::now();
     insert_withers(conn, taxa, &completed_games)?;
     let _insert_withers_duration = (Utc::now() - insert_withers_start).as_seconds_f64();
+
+    let insert_consumption_contests_start = Utc::now();
+    insert_consumption_contests(conn, &completed_games)?;
+    let _insert_consumption_contests_duration = (Utc::now() - insert_consumption_contests_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,

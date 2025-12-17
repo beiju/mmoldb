@@ -1041,6 +1041,96 @@ pub struct DbWither {
     pub contain_replacement_player_name: Option<String>,
 }
 
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::consumption_contests)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewConsumptionContest<'a> {
+    pub game_id: i64,
+    pub first_game_event_index: i32,
+    pub last_game_event_index: i32,
+    pub food_emoji: &'a str,
+    pub food: &'a str,
+    
+    pub batting_team_mmolb_id: &'a str,
+    pub batting_team_emoji: &'a str,
+    pub batting_team_name: &'a str,
+    pub batting_team_player_name: &'a str,
+    pub batting_team_tokens: i32,
+    pub batting_team_prize_emoji: Option<&'a str>,
+    pub batting_team_prize_name: Option<&'a str>,
+    pub batting_team_prize_rare_name: Option<&'a str>,
+    pub batting_team_prize_prefix: Option<&'a str>,
+    pub batting_team_prize_suffix: Option<&'a str>,
+    
+    pub defending_team_mmolb_id: &'a str,
+    pub defending_team_emoji: &'a str,
+    pub defending_team_name: &'a str,
+    pub defending_team_player_name: &'a str,
+    pub defending_team_tokens: i32,
+    pub defending_team_prize_emoji: Option<&'a str>,
+    pub defending_team_prize_name: Option<&'a str>,
+    pub defending_team_prize_rare_name: Option<&'a str>,
+    pub defending_team_prize_prefix: Option<&'a str>,
+    pub defending_team_prize_suffix: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::consumption_contests)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbConsumptionContest {
+    pub id: i64,
+    pub game_id: i64,
+    pub first_game_event_index: i32,
+    pub last_game_event_index: i32,
+    pub food_emoji: String,
+    pub food: String,
+
+    pub batting_team_mmolb_id: String,
+    pub batting_team_emoji: String,
+    pub batting_team_name: String,
+    pub batting_team_player_name: String,
+    pub batting_team_tokens: i32,
+    pub batting_team_prize_emoji: Option<String>,
+    pub batting_team_prize_name: Option<String>,
+    pub batting_team_prize_rare_name: Option<String>,
+    pub batting_team_prize_prefix: Option<String>,
+    pub batting_team_prize_suffix: Option<String>,
+
+    pub defending_team_mmolb_id: String,
+    pub defending_team_emoji: String,
+    pub defending_team_name: String,
+    pub defending_team_player_name: String,
+    pub defending_team_tokens: i32,
+    pub defending_team_prize_emoji: Option<String>,
+    pub defending_team_prize_name: Option<String>,
+    pub defending_team_prize_rare_name: Option<String>,
+    pub defending_team_prize_prefix: Option<String>,
+    pub defending_team_prize_suffix: Option<String>,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::consumption_contest_events)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewConsumptionContestEvent {
+    pub game_id: i64,
+    pub first_game_event_index: i32,
+    pub game_event_index: i32,
+    pub batting_team_consumed: i32,
+    pub defending_team_consumed: i32,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::consumption_contest_events)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbConsumptionContestEvent {
+    pub id: i64,
+    pub game_id: i64,
+    pub first_game_event_index: i32,
+    pub game_event_index: i32,
+    pub batting_team_consumed: i32,
+    pub defending_team_consumed: i32,
+}
+
 #[derive(Clone, Debug, Insertable, PartialEq, AsChangeset, Identifiable)]
 #[diesel(table_name = crate::data_schema::data::feed_events_processed)]
 #[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id))]

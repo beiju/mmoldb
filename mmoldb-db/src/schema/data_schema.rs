@@ -13,6 +13,48 @@ pub mod data {
     }
 
     diesel::table! {
+        data.consumption_contest_events (id) {
+            id -> Int8,
+            game_id -> Int8,
+            first_game_event_index -> Int4,
+            game_event_index -> Int4,
+            batting_team_consumed -> Int4,
+            defending_team_consumed -> Int4,
+        }
+    }
+
+    diesel::table! {
+        data.consumption_contests (id) {
+            id -> Int8,
+            game_id -> Int8,
+            first_game_event_index -> Int4,
+            last_game_event_index -> Int4,
+            food_emoji -> Text,
+            food -> Text,
+            batting_team_mmolb_id -> Text,
+            batting_team_emoji -> Text,
+            batting_team_name -> Text,
+            batting_team_player_name -> Text,
+            batting_team_tokens -> Int4,
+            batting_team_prize_emoji -> Nullable<Text>,
+            batting_team_prize_name -> Nullable<Text>,
+            batting_team_prize_rare_name -> Nullable<Text>,
+            batting_team_prize_prefix -> Nullable<Text>,
+            batting_team_prize_suffix -> Nullable<Text>,
+            defending_team_mmolb_id -> Text,
+            defending_team_emoji -> Text,
+            defending_team_name -> Text,
+            defending_team_player_name -> Text,
+            defending_team_tokens -> Int4,
+            defending_team_prize_emoji -> Nullable<Text>,
+            defending_team_prize_name -> Nullable<Text>,
+            defending_team_prize_rare_name -> Nullable<Text>,
+            defending_team_prize_prefix -> Nullable<Text>,
+            defending_team_prize_suffix -> Nullable<Text>,
+        }
+    }
+
+    diesel::table! {
         data.door_prize_items (id) {
             id -> Int8,
             event_id -> Int8,
@@ -487,6 +529,8 @@ pub mod data {
     }
 
     diesel::joinable!(aurora_photos -> events (event_id));
+    diesel::joinable!(consumption_contest_events -> games (game_id));
+    diesel::joinable!(consumption_contests -> games (game_id));
     diesel::joinable!(door_prize_items -> events (event_id));
     diesel::joinable!(door_prizes -> events (event_id));
     diesel::joinable!(efflorescence -> events (event_id));
@@ -504,6 +548,8 @@ pub mod data {
 
     diesel::allow_tables_to_appear_in_same_query!(
         aurora_photos,
+        consumption_contest_events,
+        consumption_contests,
         door_prize_items,
         door_prizes,
         efflorescence,

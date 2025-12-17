@@ -9,7 +9,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, FieldingAttempt, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood, EmojiTeam, FieldingAttempt, Item, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
 use std::fmt::Formatter;
 use thiserror::Error;
 
@@ -804,4 +804,31 @@ pub struct EfflorescenceForDb<StrT: Clone> {
     pub efflorescence_index: i32,
     pub team_emoji: StrT,
     pub player_name: StrT,
+}
+
+
+#[derive(Debug, Clone)]
+pub struct PerTeamConsumptionContestForDb<StrT: Clone> {
+    pub team_mmolb_id: StrT,
+    pub team: EmojiTeam<StrT>,
+    pub player_name: StrT,
+    pub tokens: u32,
+    pub prize: Option<Item<StrT>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsumptionContestEventForDb {
+    pub game_event_index: usize,
+    pub batting_consumed: u32,
+    pub defending_consumed: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsumptionContestForDb<StrT: Clone> {
+    pub first_game_event_index: usize,
+    pub last_game_event_index: usize,
+    pub food: EmojiFood<StrT>,
+    pub batting: PerTeamConsumptionContestForDb<StrT>,
+    pub defending: PerTeamConsumptionContestForDb<StrT>,
+    pub events: Vec<ConsumptionContestEventForDb>,
 }

@@ -422,6 +422,7 @@ fn prepare_completed_game_for_db(
     let mut pitcher_changes = Vec::new();
     let mut parties = Vec::new();
     let mut withers = Vec::new();
+    let mut consumption_contests = Vec::new();
     for event in detail_events {
         if let Some(event) = event {
             match event {
@@ -431,6 +432,7 @@ fn prepare_completed_game_for_db(
                 }
                 EventForTable::Party(party) => parties.push(party),
                 EventForTable::WitherOutcome(wither) => withers.push(wither),
+                EventForTable::ConsumptionContest(consumption_contest) => consumption_contests.push(consumption_contest),
             }
         }
     }
@@ -442,6 +444,7 @@ fn prepare_completed_game_for_db(
         pitcher_changes,
         parties,
         withers,
+        consumption_contests,
         logs: all_logs,
         parsed_game,
         stadium_name,

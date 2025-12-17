@@ -5,12 +5,12 @@ use miette::Diagnostic;
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType, TopBottom};
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WitherResult, WitherStruggle};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
 };
-use mmoldb_db::{BestEffortSlot, BestEffortSlottedPlayer, EventDetail, EventDetailFielder, EventDetailRunner, IngestLog, PartyEvent, PitcherChange, WitherOutcome};
+use mmoldb_db::{BestEffortSlot, BestEffortSlottedPlayer, ConsumptionContestEventForDb, ConsumptionContestForDb, EventDetail, EventDetailFielder, EventDetailRunner, IngestLog, PartyEvent, PerTeamConsumptionContestForDb, PitcherChange, WitherOutcome};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::fmt::Write;
@@ -278,6 +278,13 @@ enum EventContext<'g> {
     ExpectGameEnd,
     ExpectFinalScore,
     Finished,
+    ExpectConsumptionContest {
+        first_game_event_index: usize,
+        batting_team_player: EmojiPlayer<&'g str>,
+        pitching_team_player: EmojiPlayer<&'g str>,
+        emoji_food: EmojiFood<&'g str>,
+        updates: Vec<ConsumptionContestEventForDb>
+    }
 }
 
 impl<'g> EventContext<'g> {
@@ -317,6 +324,7 @@ impl BatterStats {
 pub struct TeamInGame<'g> {
     team_name: &'g str,
     team_emoji: &'g str,
+    mmolb_team_id: &'g str,
     // I need another field to store the automatic runner because it's
     // not always the batter who most recently stepped up, in the case
     // of automatic runners after an inning-ending CS
@@ -1146,6 +1154,7 @@ pub enum EventForTable<StrT: Clone> {
     PitcherChange(PitcherChange<StrT>),
     Party(PartyEvent<StrT>),
     WitherOutcome(WitherOutcome<StrT>),
+    ConsumptionContest(ConsumptionContestForDb<StrT>),
 }
 
 fn map_fielder_location(place: Place) -> Option<TaxaFielderLocation> {
@@ -1415,6 +1424,7 @@ impl<'g> Game<'g> {
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
+                mmolb_team_id: &game_data.away_team_id,
                 automatic_runner: None,
                 active_pitcher: BestEffortSlottedPlayer {
                     name: away_pitcher_name,
@@ -1433,6 +1443,7 @@ impl<'g> Game<'g> {
             home: TeamInGame {
                 team_name: home_team_name,
                 team_emoji: home_team_emoji,
+                mmolb_team_id: &game_data.home_team_id,
                 automatic_runner: None,
                 active_pitcher: BestEffortSlottedPlayer {
                     name: home_pitcher_name,
@@ -3000,6 +3011,17 @@ impl<'g> Game<'g> {
                     self.process_mound_visit(team, ingest_logs, *mound_visit_type, ContextAfterMoundVisitOutcome::ExpectNowBatting);
                     None
                 },
+                [ParsedEventMessageDiscriminants::WeatherConsumption]
+                ParsedEventMessage::WeatherConsumption(WeatherConsumptionEvents::StartContest { batting_team_player, pitching_team_player, emoji_food }) => {
+                    self.state.context = EventContext::ExpectConsumptionContest {
+                        first_game_event_index: game_event_index,
+                        batting_team_player: *batting_team_player,
+                        pitching_team_player: *pitching_team_player,
+                        emoji_food: *emoji_food,
+                        updates: Vec::new(),
+                    };
+                    None
+                },
             ),
             EventContext::ExpectFairBallOutcome(batter_name, fair_ball) => game_event!(
                 (previous_event, event),
@@ -3872,6 +3894,304 @@ impl<'g> Game<'g> {
                 }
             ),
             EventContext::Finished => game_event!((previous_event, event)),
+            EventContext::ExpectConsumptionContest {
+                first_game_event_index,
+                batting_team_player: contest_batting_team_player,
+                pitching_team_player: contest_pitching_team_player,
+                emoji_food: contest_emoji_food,
+                mut updates,
+            } => game_event!(
+                (previous_event, event),
+                [ParsedEventMessageDiscriminants::WeatherConsumption]
+                ParsedEventMessage::WeatherConsumption(WeatherConsumptionEvents::Consumes {
+                    batting_team_player,
+                    batting_team_progress,
+                    pitching_team_player,
+                    pitching_team_progress,
+                    food_emoji,
+                    food,
+                    batting_team_score,
+                    pitching_team_score,
+                }) => {
+                    if contest_batting_team_player.emoji != batting_team_player.emoji {
+                        ingest_logs.warn(format!(
+                            "Mismatch in batting team emoji: Contest had {}, event had {}",
+                            contest_batting_team_player.emoji,
+                            batting_team_player.emoji,
+                        ))
+                    }
+                    if contest_batting_team_player.name != batting_team_player.name {
+                        ingest_logs.warn(format!(
+                            "Mismatch in batting team player name: Contest had {}, event had {}",
+                            contest_batting_team_player.name,
+                            batting_team_player.name,
+                        ))
+                    }
+                    if contest_pitching_team_player.emoji != pitching_team_player.emoji {
+                        ingest_logs.warn(format!(
+                            "Mismatch in defending team emoji: Contest had {}, event had {}",
+                            contest_pitching_team_player.emoji,
+                            pitching_team_player.emoji,
+                        ))
+                    }
+                    if contest_pitching_team_player.name != pitching_team_player.name {
+                        ingest_logs.warn(format!(
+                            "Mismatch in defending team player name: Contest had {}, event had {}",
+                            contest_pitching_team_player.name,
+                            pitching_team_player.name,
+                        ))
+                    }
+                    if let Some(food_emoji) = food_emoji {
+                        if contest_emoji_food.food_emoji != *food_emoji {
+                            ingest_logs.warn(format!(
+                                "Mismatch in food emoji: Contest had {}, event had {}",
+                                contest_emoji_food.food_emoji,
+                                food_emoji,
+                            ))
+                        }
+                    }
+                    if contest_emoji_food.food != *food {
+                        ingest_logs.warn(format!(
+                            "Mismatch in food: Contest had {}, event had {}",
+                            contest_emoji_food.food,
+                            food,
+                        ))
+                    }
+                    
+                    let batting_team_score_before: u32 = updates.iter()
+                        .map(|updates| updates.batting_consumed)
+                        .sum();
+                    let pitching_team_score_before: u32 = updates.iter()
+                        .map(|updates| updates.defending_consumed)
+                        .sum();
+                    
+                    if batting_team_score_before + batting_team_progress != *batting_team_score {
+                        ingest_logs.warn(format!(
+                            "Batting team score before ({batting_team_score_before}) plus batting \
+                            team progress ({batting_team_progress}) did not equal batting team \
+                            score after ({batting_team_score})",
+                        ));
+                    }
+                    if pitching_team_score_before + pitching_team_progress != *pitching_team_score {
+                        ingest_logs.warn(format!(
+                            "Pitching team score before ({pitching_team_score_before}) plus \
+                            pitching team progress ({pitching_team_progress}) did not equal \
+                            pitching team score after ({pitching_team_score})",
+                        ));
+                    }
+
+                    updates.push(ConsumptionContestEventForDb {
+                        game_event_index,
+                        batting_consumed: *batting_team_progress,
+                        defending_consumed: *pitching_team_progress,
+                    });
+
+                    // The `updates` variable is a clone. We need to write it back to state.context,
+                    // which also requires writing the rest of the context.
+                    self.state.context = EventContext::ExpectConsumptionContest {
+                        first_game_event_index,
+                        batting_team_player: contest_batting_team_player,
+                        pitching_team_player: contest_pitching_team_player,
+                        emoji_food: contest_emoji_food,
+                        updates,
+                    };
+
+                    None
+                },
+                [ParsedEventMessageDiscriminants::WeatherConsumption]
+                ParsedEventMessage::WeatherConsumption(WeatherConsumptionEvents::EndContest {
+                    winning_score,
+                    food_emoji,
+                    food,
+                    winning_player,
+                    winning_team,
+                    winning_tokens,
+                    winning_prize,
+                    losing_team,
+                    losing_tokens
+                }) => {
+                    if let Some(food_emoji) = food_emoji {
+                        if contest_emoji_food.food_emoji != *food_emoji {
+                            ingest_logs.warn(format!(
+                                "Mismatch in food emoji: Contest had {}, event had {}",
+                                contest_emoji_food.food_emoji,
+                                food_emoji,
+                            ))
+                        }
+                    }
+                    if contest_emoji_food.food != *food {
+                        ingest_logs.warn(format!(
+                            "Mismatch in food: Contest had {}, event had {}",
+                            contest_emoji_food.food,
+                            food,
+                        ))
+                    }
+
+                    let batting_team_score: u32 = updates.iter()
+                        .map(|updates| updates.batting_consumed)
+                        .sum();
+                    let pitching_team_score: u32 = updates.iter()
+                        .map(|updates| updates.defending_consumed)
+                        .sum();
+
+                    let batting_team_matches_winner = *winning_score == batting_team_score &&
+                        winning_player.emoji == contest_batting_team_player.emoji &&
+                        winning_player.name == contest_batting_team_player.name;
+
+                    let pitching_team_matches_winner = *winning_score == pitching_team_score &&
+                        winning_player.emoji == contest_pitching_team_player.emoji &&
+                        winning_player.name == contest_pitching_team_player.name;
+
+                    let outcome = if batting_team_matches_winner && pitching_team_matches_winner {
+                        ingest_logs.error(format!(
+                            "Can't tell which team won the contest. Both the batting team \
+                            ({contest_batting_team_player} with {batting_team_score}) and the \
+                            pitching team ({contest_pitching_team_player} with \
+                            {pitching_team_score}) match the winning player ({winning_player} with \
+                            {winning_score})",
+                        ));
+                        None
+                    } else if batting_team_matches_winner {
+                        ingest_logs.info("Batting team won the contest");
+                    
+                        if self.batting_team().team_emoji != winning_team.emoji {
+                            ingest_logs.error(format!(
+                                "We deduced that the batting team won, but the winning team's \
+                                emoji ({}) did not match the current batting team's emoji \
+                                emoji ({})",
+                                winning_team.emoji,
+                                self.batting_team().team_emoji,
+                            ));
+                        }
+                    
+                        if self.batting_team().team_name != winning_team.name {
+                            ingest_logs.error(format!(
+                                "We deduced that the batting team won, but the winning team's \
+                                name ({}) did not match the current batting team's name \
+                                name ({})",
+                                winning_team.name,
+                                self.batting_team().team_name,
+                            ));
+                        }
+                    
+                        if self.defending_team().team_emoji != losing_team.emoji {
+                            ingest_logs.error(format!(
+                                "We deduced that the defending team lost, but the losing team's \
+                                emoji ({}) did not match the current defending team's emoji \
+                                emoji ({})",
+                                losing_team.emoji,
+                                self.defending_team().team_emoji,
+                            ));
+                        }
+                    
+                        if self.defending_team().team_name != losing_team.name {
+                            ingest_logs.error(format!(
+                                "We deduced that the defending team lost, but the losing team's \
+                                name ({}) did not match the current defending team's name \
+                                name ({})",
+                                losing_team.name,
+                                self.defending_team().team_name,
+                            ));
+                        }
+                        Some((winning_tokens, Some(winning_prize), losing_tokens, None))
+                    } else if pitching_team_matches_winner {
+                        // TODO Save the whole contest to the db
+                        ingest_logs.info("Pitching team won the contest");
+
+                        if self.defending_team().team_emoji != winning_team.emoji {
+                            ingest_logs.error(format!(
+                                "We deduced that the defending team won, but the winning team's \
+                                emoji ({}) did not match the current defending team's emoji \
+                                emoji ({})",
+                                winning_team.emoji,
+                                self.defending_team().team_emoji,
+                            ));
+                        }
+
+                        if self.defending_team().team_name != winning_team.name {
+                            ingest_logs.error(format!(
+                                "We deduced that the defending team won, but the winning team's \
+                                name ({}) did not match the current defending team's name \
+                                name ({})",
+                                winning_team.name,
+                                self.defending_team().team_name,
+                            ));
+                        }
+
+                        if self.batting_team().team_emoji != losing_team.emoji {
+                            ingest_logs.error(format!(
+                                "We deduced that the batting team lost, but the losing team's \
+                                emoji ({}) did not match the current batting team's emoji \
+                                emoji ({})",
+                                losing_team.emoji,
+                                self.batting_team().team_emoji,
+                            ));
+                        }
+
+                        if self.batting_team().team_name != losing_team.name {
+                            ingest_logs.error(format!(
+                                "We deduced that the batting team lost, but the losing team's \
+                                name ({}) did not match the current batting team's name \
+                                name ({})",
+                                losing_team.name,
+                                self.batting_team().team_name,
+                            ));
+                        }
+                        Some((losing_tokens, None, winning_tokens, Some(winning_prize)))
+                    } else {
+                        ingest_logs.error(format!(
+                            "Can't tell which team won the contest. Neither the batting team \
+                            ({contest_batting_team_player} with {batting_team_score}) nor the \
+                            pitching team ({contest_pitching_team_player} with \
+                            {pitching_team_score}) match the winning player ({winning_player} with \
+                            {winning_score})",
+                        ));
+                        None
+                    };
+                    
+                    if self.batting_team().team_emoji != contest_batting_team_player.emoji {
+                        ingest_logs.error(format!(
+                            "Batting team player's emoji ({}) did not match expected batting team \
+                            emoji ({})",
+                            contest_batting_team_player.emoji,
+                            self.batting_team().team_emoji,
+                        ));
+                    }
+
+                    self.state.context = EventContext::ExpectNowBatting;
+
+                    if let Some((batting_tokens, batting_prize, defending_tokens, defending_prize)) = outcome {
+                        Some(EventForTable::ConsumptionContest(ConsumptionContestForDb {
+                            first_game_event_index,
+                            last_game_event_index: game_event_index,
+                            food: contest_emoji_food,
+                            batting: PerTeamConsumptionContestForDb {
+                                team_mmolb_id: self.batting_team().mmolb_team_id,
+                                team: EmojiTeam {
+                                    emoji: self.batting_team().team_emoji,
+                                    name: self.batting_team().team_name,
+                                },
+                                player_name: contest_batting_team_player.name,
+                                tokens: *batting_tokens,
+                                prize: batting_prize.copied(),
+                            },
+                            defending: PerTeamConsumptionContestForDb {
+                                team_mmolb_id: self.defending_team().mmolb_team_id,
+                                team: EmojiTeam {
+                                    emoji: self.defending_team().team_emoji,
+                                    name: self.defending_team().team_name,
+                                },
+                                player_name: contest_pitching_team_player.name,
+                                tokens: *defending_tokens,
+                                prize: defending_prize.copied(),
+                            },
+                            events: updates,
+                        }))
+                    } else {
+                        None
+                    }
+                }
+            ),
         }?;
 
         self.state.prev_event_type = this_event_discriminant;
