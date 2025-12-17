@@ -812,6 +812,7 @@ pub struct PerTeamConsumptionContestForDb<StrT: Clone> {
     pub team_mmolb_id: StrT,
     pub team: EmojiTeam<StrT>,
     pub player_name: StrT,
+    pub score: u32,
     pub tokens: u32,
     pub prize: Option<Item<StrT>>,
 }

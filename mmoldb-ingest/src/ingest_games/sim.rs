@@ -248,6 +248,25 @@ impl<'g> ContextAfterWitherOutcome<'g> {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum ContextAfterConsumptionContest {
+    ExpectNowBatting,
+    ExpectGameEnd,
+}
+
+impl ContextAfterConsumptionContest {
+    pub fn to_event_context(self) -> EventContext<'static> {
+        match self {
+            ContextAfterConsumptionContest::ExpectNowBatting => {
+                EventContext::ExpectNowBatting
+            }
+            ContextAfterConsumptionContest::ExpectGameEnd => {
+                EventContext::ExpectGameEnd
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum EventContext<'g> {
     ExpectInningStart,
@@ -283,7 +302,8 @@ enum EventContext<'g> {
         batting_team_player: EmojiPlayer<&'g str>,
         pitching_team_player: EmojiPlayer<&'g str>,
         emoji_food: EmojiFood<&'g str>,
-        updates: Vec<ConsumptionContestEventForDb>
+        updates: Vec<ConsumptionContestEventForDb>,
+        context_after: ContextAfterConsumptionContest,
     }
 }
 
@@ -3014,6 +3034,7 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::WeatherConsumption]
                 ParsedEventMessage::WeatherConsumption(WeatherConsumptionEvents::StartContest { batting_team_player, pitching_team_player, emoji_food }) => {
                     self.state.context = EventContext::ExpectConsumptionContest {
+                        context_after: ContextAfterConsumptionContest::ExpectNowBatting,
                         first_game_event_index: game_event_index,
                         batting_team_player: *batting_team_player,
                         pitching_team_player: *pitching_team_player,
@@ -3737,6 +3758,18 @@ impl<'g> Game<'g> {
                     self.state.context = EventContext::ExpectFinalScore;
                     None
                 },
+                [ParsedEventMessageDiscriminants::WeatherConsumption]
+                ParsedEventMessage::WeatherConsumption(WeatherConsumptionEvents::StartContest { batting_team_player, pitching_team_player, emoji_food }) => {
+                    self.state.context = EventContext::ExpectConsumptionContest {
+                        context_after: ContextAfterConsumptionContest::ExpectGameEnd,
+                        first_game_event_index: game_event_index,
+                        batting_team_player: *batting_team_player,
+                        pitching_team_player: *pitching_team_player,
+                        emoji_food: *emoji_food,
+                        updates: Vec::new(),
+                    };
+                    None
+                },
             ),
             EventContext::ExpectFinalScore => game_event!(
                 (previous_event, event),
@@ -3900,6 +3933,7 @@ impl<'g> Game<'g> {
                 pitching_team_player: contest_pitching_team_player,
                 emoji_food: contest_emoji_food,
                 mut updates,
+                context_after,
             } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::WeatherConsumption]
@@ -3989,6 +4023,7 @@ impl<'g> Game<'g> {
                     // The `updates` variable is a clone. We need to write it back to state.context,
                     // which also requires writing the rest of the context.
                     self.state.context = EventContext::ExpectConsumptionContest {
+                        context_after,
                         first_game_event_index,
                         batting_team_player: contest_batting_team_player,
                         pitching_team_player: contest_pitching_team_player,
@@ -4093,9 +4128,8 @@ impl<'g> Game<'g> {
                                 self.defending_team().team_name,
                             ));
                         }
-                        Some((winning_tokens, Some(winning_prize), losing_tokens, None))
+                        Some((*winning_score, winning_tokens, Some(winning_prize), pitching_team_score, losing_tokens, None))
                     } else if pitching_team_matches_winner {
-                        // TODO Save the whole contest to the db
                         ingest_logs.info("Pitching team won the contest");
 
                         if self.defending_team().team_emoji != winning_team.emoji {
@@ -4137,7 +4171,7 @@ impl<'g> Game<'g> {
                                 self.batting_team().team_name,
                             ));
                         }
-                        Some((losing_tokens, None, winning_tokens, Some(winning_prize)))
+                        Some((batting_team_score, losing_tokens, None, *winning_score, winning_tokens, Some(winning_prize)))
                     } else {
                         ingest_logs.error(format!(
                             "Can't tell which team won the contest. Neither the batting team \
@@ -4158,9 +4192,18 @@ impl<'g> Game<'g> {
                         ));
                     }
 
-                    self.state.context = EventContext::ExpectNowBatting;
+                    if self.defending_team().team_emoji != contest_pitching_team_player.emoji {
+                        ingest_logs.error(format!(
+                            "Defending team player's emoji ({}) did not match expected defending \
+                            team emoji ({})",
+                            contest_pitching_team_player.emoji,
+                            self.defending_team().team_emoji,
+                        ));
+                    }
 
-                    if let Some((batting_tokens, batting_prize, defending_tokens, defending_prize)) = outcome {
+                    self.state.context = context_after.to_event_context();
+
+                    if let Some((batting_score, batting_tokens, batting_prize, defending_score, defending_tokens, defending_prize)) = outcome {
                         Some(EventForTable::ConsumptionContest(ConsumptionContestForDb {
                             first_game_event_index,
                             last_game_event_index: game_event_index,
@@ -4172,6 +4215,7 @@ impl<'g> Game<'g> {
                                     name: self.batting_team().team_name,
                                 },
                                 player_name: contest_batting_team_player.name,
+                                score: batting_score,
                                 tokens: *batting_tokens,
                                 prize: batting_prize.copied(),
                             },
@@ -4182,6 +4226,7 @@ impl<'g> Game<'g> {
                                     name: self.defending_team().team_name,
                                 },
                                 player_name: contest_pitching_team_player.name,
+                                score: defending_score,
                                 tokens: *defending_tokens,
                                 prize: defending_prize.copied(),
                             },
@@ -4190,6 +4235,143 @@ impl<'g> Game<'g> {
                     } else {
                         None
                     }
+                },
+                [ParsedEventMessageDiscriminants::WeatherConsumption]
+                ParsedEventMessage::WeatherConsumption(WeatherConsumptionEvents::EndContestTie {
+                    final_score,
+                    food_emoji,
+                    food,
+                    batting_team,
+                    batting_team_tokens,
+                    batting_team_prize,
+                    pitching_team,
+                    pitching_team_tokens,
+                    pitching_team_prize
+                }) => {
+                    if let Some(food_emoji) = food_emoji {
+                        if contest_emoji_food.food_emoji != *food_emoji {
+                            ingest_logs.warn(format!(
+                                "Mismatch in food emoji: Contest had {}, event had {}",
+                                contest_emoji_food.food_emoji,
+                                food_emoji,
+                            ))
+                        }
+                    }
+                    if contest_emoji_food.food != *food {
+                        ingest_logs.warn(format!(
+                            "Mismatch in food: Contest had {}, event had {}",
+                            contest_emoji_food.food,
+                            food,
+                        ))
+                    }
+
+                    let batting_team_score: u32 = updates.iter()
+                        .map(|updates| updates.batting_consumed)
+                        .sum();
+                    let pitching_team_score: u32 = updates.iter()
+                        .map(|updates| updates.defending_consumed)
+                        .sum();
+
+                    if *final_score != batting_team_score {
+                        ingest_logs.error(format!(
+                            "The end contest message says the final score was a tie at \
+                            {final_score}, but we counted {batting_team_score} for the batting \
+                            team",
+                        ));
+                    }
+
+                    if *final_score != pitching_team_score {
+                        ingest_logs.error(format!(
+                            "The end contest message says the final score was a tie at \
+                            {final_score}, but we counted {pitching_team_score} for the defending \
+                            team",
+                        ));
+                    }
+
+                    if self.batting_team().team_emoji != batting_team.emoji {
+                        ingest_logs.error(format!(
+                            "Named batting team's emoji ({}) did not match the current batting \
+                            team's emoji emoji ({})",
+                            batting_team.emoji,
+                            self.batting_team().team_emoji,
+                        ));
+                    }
+
+                    if self.batting_team().team_name != batting_team.name {
+                        ingest_logs.error(format!(
+                            "Named batting team's name ({}) did not match the current batting \
+                            team's name name ({})",
+                            batting_team.name,
+                            self.batting_team().team_name,
+                        ));
+                    }
+
+                    if self.defending_team().team_emoji != pitching_team.emoji {
+                        ingest_logs.error(format!(
+                            "Named defending team's emoji ({}) did not match the current defending \
+                            team's emoji emoji ({})",
+                            pitching_team.emoji,
+                            self.defending_team().team_emoji,
+                        ));
+                    }
+
+                    if self.defending_team().team_name != pitching_team.name {
+                        ingest_logs.error(format!(
+                            "Named defending team's name ({}) did not match the current defending \
+                            team's name name ({})",
+                            pitching_team.name,
+                            self.defending_team().team_name,
+                        ));
+                    }
+
+                    if self.batting_team().team_emoji != contest_batting_team_player.emoji {
+                        ingest_logs.error(format!(
+                            "Batting team player's emoji ({}) did not match expected batting team \
+                            emoji ({})",
+                            contest_batting_team_player.emoji,
+                            self.batting_team().team_emoji,
+                        ));
+                    }
+
+                    if self.defending_team().team_emoji != contest_pitching_team_player.emoji {
+                        ingest_logs.error(format!(
+                            "Defending team player's emoji ({}) did not match expected defending \
+                            team emoji ({})",
+                            contest_pitching_team_player.emoji,
+                            self.defending_team().team_emoji,
+                        ));
+                    }
+
+                    self.state.context = context_after.to_event_context();
+
+                    Some(EventForTable::ConsumptionContest(ConsumptionContestForDb {
+                        first_game_event_index,
+                        last_game_event_index: game_event_index,
+                        food: contest_emoji_food,
+                        batting: PerTeamConsumptionContestForDb {
+                            team_mmolb_id: self.batting_team().mmolb_team_id,
+                            team: EmojiTeam {
+                                emoji: self.batting_team().team_emoji,
+                                name: self.batting_team().team_name,
+                            },
+                            player_name: contest_batting_team_player.name,
+                            score: *final_score,
+                            tokens: *batting_team_tokens,
+                            prize: Some(*batting_team_prize),
+                        },
+                        defending: PerTeamConsumptionContestForDb {
+                            team_mmolb_id: self.defending_team().mmolb_team_id,
+                            team: EmojiTeam {
+                                emoji: self.defending_team().team_emoji,
+                                name: self.defending_team().team_name,
+                            },
+                            player_name: contest_pitching_team_player.name,
+                            score: *final_score,
+                            tokens: *pitching_team_tokens,
+                            prize: Some(*pitching_team_prize),
+                        },
+                        events: updates,
+                    }))
                 }
             ),
         }?;
