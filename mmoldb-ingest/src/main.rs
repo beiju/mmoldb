@@ -203,22 +203,7 @@ async fn ingest_everything(
         || refresh_entity_counting_matviews_repeatedly(pool, stop_entity_counting)
     });
 
-    let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
-
-    ingestor.ingest(TeamIngest::new(&config.team_ingest), config.use_local_cheap_cashews).await?;
-    ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest), config.use_local_cheap_cashews).await?;
-    ingestor.ingest(PlayerIngest::new(&config.player_ingest), config.use_local_cheap_cashews).await?;
-    ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest), config.use_local_cheap_cashews).await?;
-    
-    if config.fetch_known_missing_games {
-        info!("Fetching any missing games in known-game-ids.txt");
-        ingest_games::fetch_missed_games(pool.clone()).await?;
-    }
-
-    if config.game_ingest.enable {
-        info!("Beginning game ingest");
-        ingest_games::ingest_games(pool.clone(), ingest_id, abort, config.use_local_cheap_cashews).await?;
-    }
+    let result = ingest_while_counting_task_runs(pool.clone(), ingest_id, abort, config).await;
 
     let (exit, exit_cond) = &*stop_entity_counting;
     {
@@ -232,6 +217,37 @@ async fn ingest_everything(
     info!("Refreshing materialized views");
     refresh_matviews(pool)?;
 
-    info!("Ingest complete");
+    if result.is_ok() {
+        info!("Ingest complete");
+    } else {
+        info!("Ingest complete with error");
+    }
+
+    result
+}
+
+async fn ingest_while_counting_task_runs(
+    pool: ConnectionPool,
+    ingest_id: i64,
+    abort: CancellationToken,
+    config: &'static IngestConfig,
+) -> miette::Result<()> {
+    let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
+
+    ingestor.ingest(TeamIngest::new(&config.team_ingest), config.use_local_cheap_cashews).await?;
+    ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest), config.use_local_cheap_cashews).await?;
+    ingestor.ingest(PlayerIngest::new(&config.player_ingest), config.use_local_cheap_cashews).await?;
+    ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest), config.use_local_cheap_cashews).await?;
+
+    if config.fetch_known_missing_games {
+        info!("Fetching any missing games in known-game-ids.txt");
+        ingest_games::fetch_missed_games(pool.clone()).await?;
+    }
+
+    if config.game_ingest.enable {
+        info!("Beginning game ingest");
+        ingest_games::ingest_games(pool.clone(), ingest_id, abort, config.use_local_cheap_cashews).await?;
+    }
+
     Ok(())
 }
