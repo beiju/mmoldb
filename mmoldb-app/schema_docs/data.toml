@@ -2289,10 +2289,360 @@ The attribute that was changed. References `taxa.attribute`.
 """
 
 [[table]]
+name = "consumption_contests"
+description = """
+Consumption contest records. This holds the information about a consumption
+contest as a whole, like the participants and outcome.
+
+For the events within a consumption contest, see
+`data.consumption_contest_events`.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+consumption contest use the combination of its `mmolb_game_id` (which you
+access by joining `data.games` on the `game_id` column) and either
+`first_game_event_index` or `last_game_event_index`.
+"""
+
+[[table.column]]
+name = "game_id"
+type = "bigint"
+description = """
+The id of the game this consumption contest belongs to. References the
+`data.games` table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
+which you access by joining `data.games` on this column.
+"""
+
+[[table.column]]
+name = "first_game_event_index"
+type = "integer"
+description = """
+Consumption contests are spread over 5 game events. This is the index of the
+first event, which announces the contest, participants, and food.
+
+Either this or `last_game_event_index` is used in combination with
+`mmolb_game_id` to identify a particular consumption contest. Also, this is
+used to associate a consumption contest with its events.
+"""
+
+[[table.column]]
+name = "last_game_event_index"
+type = "integer"
+description = """
+Consumption contests are spread over 5 game events. This is the index of the
+last event, which announces the winner(s) and prize(s). (In the event of a
+tie, both teams get a prize.)
+
+Either this or `first_game_event_index` is used in combination with
+`mmolb_game_id` to identify a particular consumption contest.
+"""
+
+[[table.column]]
+name = "food_emoji"
+type = "text"
+description = """
+The emoji associated with the food eaten in this consumption contest.
+"""
+
+[[table.column]]
+name = "food"
+type = "text"
+description = """
+The name of the food eaten in this consumption contest.
+"""
+
+[[table.column]]
+name = "batting_team_player_name"
+type = "text"
+description = """
+Name of the player who represents the batting team in this consumption contest.
+"""
+
+[[table.column]]
+name = "batting_team_total_consumed"
+type = "integer"
+description = """
+Total amount of food items consumed by the batting team's representative in
+this consumption contest.
+"""
+
+[[table.column]]
+name = "batting_team_tokens"
+type = "integer"
+description = """
+Tokens earned by the batting team in this consumption contest.
+
+Both teams earn tokens from a consumption contest.
+"""
+
+[[table.column]]
+name = "batting_team_prize_emoji"
+type = "text"
+description = """
+Emoji of the item the batting team won as a prize, if any.
+"""
+nullable_explanation = """
+`null` if the batting team did not win a prize. Teams win a prize if they win
+or tie the consumption contest.
+"""
+
+[[table.column]]
+name = "batting_team_prize_name"
+type = "text"
+description = """
+Name of the item the batting team won as a prize, if any.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how item names work.
+"""
+nullable_explanation = """
+`null` if the batting team did not win a prize. Teams win a prize if they win
+or tie the consumption contest.
+"""
+
+[[table.column]]
+name = "batting_team_prize_rare_name"
+type = "text"
+description = """
+Rare name of the item the batting team won as a prize, if any.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how rare names work.
+"""
+nullable_explanation = """
+`null` if the batting team did not win a prize. Teams win a prize if they win 
+or tie the consumption contest.
+
+Also `null` if the item the batting team won was not Rare or better. As of the 
+end of Season 9 this has happened exactly once, in [a game][g] on Season 9, 
+Day 1.
+
+[g]: https://mmolb.com/watch/69409776b5f71d23c819c208?event=475
+"""
+
+[[table.column]]
+name = "batting_team_prize_prefix"
+type = "text"
+description = """
+The prefix of the item the batting team won. Note that unlike general items, 
+items won in a consumption contest may have at most one prefix.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how item prefixes work.
+"""
+nullable_explanation = """
+`null` if the batting team did not win a prize, or if the prize they won did 
+not have a prefix. Teams win a prize if they win or tie the consumption 
+contest.
+"""
+
+[[table.column]]
+name = "batting_team_prize_suffix"
+type = "text"
+description = """
+The suffix of the item the batting team won. Note that unlike general items, 
+items won in a consumption contest may have at most one suffix.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how item suffixes work.
+"""
+nullable_explanation = """
+`null` if the batting team did not win a prize, or if the prize they won did 
+not have a suffix. Teams win a prize if they win or tie the consumption 
+contest.
+"""
+
+[[table.column]]
+name = "defending_team_player_name"
+type = "text"
+description = """
+Name of the player who represents the defending team in this consumption
+contest.
+"""
+
+[[table.column]]
+name = "defending_team_total_consumed"
+type = "integer"
+description = """
+Total amount of food items consumed by the defending team's representative in
+this consumption contest.
+"""
+
+[[table.column]]
+name = "defending_team_tokens"
+type = "integer"
+description = """
+Tokens earned by the defending team in this consumption contest.
+
+Both teams earn tokens from a consumption contest.
+"""
+
+[[table.column]]
+name = "defending_team_prize_emoji"
+type = "text"
+description = """
+Emoji of the item the defending team won as a prize, if any.
+"""
+nullable_explanation = """
+`null` if the defending team did not win a prize. Teams win a prize if they win
+or tie the consumption contest.
+"""
+
+[[table.column]]
+name = "defending_team_prize_name"
+type = "text"
+description = """
+Name of the item the defending team won as a prize, if any.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how item names work.
+"""
+nullable_explanation = """
+`null` if the defending team did not win a prize. Teams win a prize if they win
+or tie the consumption contest.
+"""
+
+[[table.column]]
+name = "defending_team_prize_rare_name"
+type = "text"
+description = """
+Rare name of the item the defending team won as a prize, if any.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how rare names work.
+"""
+nullable_explanation = """
+`null` if the defending team did not win a prize. Teams win a prize if they win 
+or tie the consumption contest.
+
+Also `null` if the item the defending team won was not Rare or better. As of
+the end of Season 9 this has not happend, although it has happened [once][g]
+for the batting team.
+
+[g]: https://mmolb.com/watch/69409776b5f71d23c819c208?event=475
+"""
+
+[[table.column]]
+name = "defending_team_prize_prefix"
+type = "text"
+description = """
+The prefix of the item the defending team won. Note that unlike general items, 
+items won in a consumption contest may have at most one prefix.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how item prefixes work.
+"""
+nullable_explanation = """
+`null` if the defending team did not win a prize, or if the prize they won did 
+not have a prefix. Teams win a prize if they win or tie the consumption 
+contest.
+"""
+
+[[table.column]]
+name = "defending_team_prize_suffix"
+type = "text"
+description = """
+The suffix of the item the defending team won. Note that unlike general items, 
+items won in a consumption contest may have at most one suffix.
+
+See documentation for `name` on `data.player_equipment_versions` for more about
+how item suffixes work.
+"""
+nullable_explanation = """
+`null` if the defending team did not win a prize, or if the prize they won did 
+not have a suffix. Teams win a prize if they win or tie the consumption 
+contest.
+"""
+
+[[table]]
+name = "consumption_contest_events"
+description = """
+Individual events within a consumption contest. As of this writing at the end
+of Season 9, every consumption contest has exactly three events.
+"""
+
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+consumption contest event use the combination of its `mmolb_game_id` (which you
+access by joining `data.games` on the `game_id` column) and its
+`game_event_index`.
+"""
+
+[[table.column]]
+name = "game_id"
+type = "bigint"
+description = """
+The id of the game this consumption contest event belongs to. References the
+`data.games` table.
+
+These IDs are *not* stable. You should not store these ids between
+queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
+which you access by joining `data.games` on this column.
+"""
+
+[[table.column]]
+name = "first_game_event_index"
+type = "integer"
+description = """
+The index of the first event in this consumption contest. This column exists
+specifically for the purpose of joining to `data.consumption_contests`.
+
+To associate a consumption contest event with its containing consumption
+contest, use a query like:
+
+```
+select *
+from data.consumption_contest_events cce
+left join data.consumption_contests cc on cc.game_id=cce.game_id
+	and cc.first_game_event_index=cce.first_game_event_index
+```
+
+then you can use `cc.x` to refer to column `x` on `data.consumption_contests`
+and `cce.y` to refer to column `y` on `data.consumption_contest_events`.
+"""
+
+[[table.column]]
+name = "game_event_index"
+type = "integer"
+description = """
+The index of this consumption contest event.
+
+This is used in combination with `mmolb_game_id` (which you get by joining 
+`data.games` on `game_id`) to identify a particular consumption contest event.
+"""
+
+[[table.column]]
+name = "batting_team_consumed"
+type = "integer"
+description = """
+The amount of food the batting team's representative consumed on this event.
+"""
+
+[[table.column]]
+name = "defending_team_consumed"
+type = "integer"
+description = """
+The amount of food the defending team's representative consumed on this event.
+"""
+
+[[table]]
 name = "modifications"
 description = """
-The possible player modifications, including Greater and Lesser boons (which
-are special categories of modifications).
+The possible player and team modifications, including Greater and Lesser boons
+(which are just special categories of modifications).
 
 MMOLB doesn't provide a machine-readable description of modifications' effects,
 and no work has yet been done on parsing them from the description. If you want

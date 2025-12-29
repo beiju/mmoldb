@@ -344,7 +344,6 @@ impl BatterStats {
 pub struct TeamInGame<'g> {
     team_name: &'g str,
     team_emoji: &'g str,
-    mmolb_team_id: &'g str,
     // I need another field to store the automatic runner because it's
     // not always the batter who most recently stepped up, in the case
     // of automatic runners after an inning-ending CS
@@ -1444,7 +1443,6 @@ impl<'g> Game<'g> {
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
-                mmolb_team_id: &game_data.away_team_id,
                 automatic_runner: None,
                 active_pitcher: BestEffortSlottedPlayer {
                     name: away_pitcher_name,
@@ -1463,7 +1461,6 @@ impl<'g> Game<'g> {
             home: TeamInGame {
                 team_name: home_team_name,
                 team_emoji: home_team_emoji,
-                mmolb_team_id: &game_data.home_team_id,
                 automatic_runner: None,
                 active_pitcher: BestEffortSlottedPlayer {
                     name: home_pitcher_name,
@@ -4203,30 +4200,20 @@ impl<'g> Game<'g> {
 
                     self.state.context = context_after.to_event_context();
 
-                    if let Some((batting_score, batting_tokens, batting_prize, defending_score, defending_tokens, defending_prize)) = outcome {
+                    if let Some((batting_team_consumed, batting_tokens, batting_prize, defending_team_consumed, defending_tokens, defending_prize)) = outcome {
                         Some(EventForTable::ConsumptionContest(ConsumptionContestForDb {
                             first_game_event_index,
                             last_game_event_index: game_event_index,
                             food: contest_emoji_food,
                             batting: PerTeamConsumptionContestForDb {
-                                team_mmolb_id: self.batting_team().mmolb_team_id,
-                                team: EmojiTeam {
-                                    emoji: self.batting_team().team_emoji,
-                                    name: self.batting_team().team_name,
-                                },
                                 player_name: contest_batting_team_player.name,
-                                score: batting_score,
+                                total_consumed: batting_team_consumed,
                                 tokens: *batting_tokens,
                                 prize: batting_prize.copied(),
                             },
                             defending: PerTeamConsumptionContestForDb {
-                                team_mmolb_id: self.defending_team().mmolb_team_id,
-                                team: EmojiTeam {
-                                    emoji: self.defending_team().team_emoji,
-                                    name: self.defending_team().team_name,
-                                },
                                 player_name: contest_pitching_team_player.name,
-                                score: defending_score,
+                                total_consumed: defending_team_consumed,
                                 tokens: *defending_tokens,
                                 prize: defending_prize.copied(),
                             },
@@ -4349,24 +4336,14 @@ impl<'g> Game<'g> {
                         last_game_event_index: game_event_index,
                         food: contest_emoji_food,
                         batting: PerTeamConsumptionContestForDb {
-                            team_mmolb_id: self.batting_team().mmolb_team_id,
-                            team: EmojiTeam {
-                                emoji: self.batting_team().team_emoji,
-                                name: self.batting_team().team_name,
-                            },
                             player_name: contest_batting_team_player.name,
-                            score: *final_score,
+                            total_consumed: *final_score,
                             tokens: *batting_team_tokens,
                             prize: Some(*batting_team_prize),
                         },
                         defending: PerTeamConsumptionContestForDb {
-                            team_mmolb_id: self.defending_team().mmolb_team_id,
-                            team: EmojiTeam {
-                                emoji: self.defending_team().team_emoji,
-                                name: self.defending_team().team_name,
-                            },
                             player_name: contest_pitching_team_player.name,
-                            score: *final_score,
+                            total_consumed: *final_score,
                             tokens: *pitching_team_tokens,
                             prize: Some(*pitching_team_prize),
                         },

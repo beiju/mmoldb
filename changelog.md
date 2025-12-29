@@ -8,6 +8,10 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+--------
+- Consumption contest support
+
 2025-12-15 Hotfix
 -----------------
 - Poke `data.events_extended` until it realizes that `home_run_distance` exists

@@ -1,12 +1,5 @@
 -- this statement should delete all derived data
 truncate table
-    -- ingest
-    info.event_ingest_log,
-    info.ingest_timings,
-    info.ingests,
-    info.ingest_counts,
-    info.version_ingest_log,
-
     -- game
     data.weather,
     data.games,
@@ -23,6 +16,9 @@ truncate table
     data.pitcher_changes,
     data.parties,
     data.wither,
+    data.consumption_contests,
+    data.consumption_contest_events,
+    info.event_ingest_log,
 
     -- player
     data.modifications,

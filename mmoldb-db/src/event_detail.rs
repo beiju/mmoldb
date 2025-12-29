@@ -9,7 +9,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood, EmojiTeam, FieldingAttempt, Item, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood, FieldingAttempt, Item, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
 use std::fmt::Formatter;
 use thiserror::Error;
 
@@ -809,10 +809,8 @@ pub struct EfflorescenceForDb<StrT: Clone> {
 
 #[derive(Debug, Clone)]
 pub struct PerTeamConsumptionContestForDb<StrT: Clone> {
-    pub team_mmolb_id: StrT,
-    pub team: EmojiTeam<StrT>,
     pub player_name: StrT,
-    pub score: u32,
+    pub total_consumed: u32,
     pub tokens: u32,
     pub prize: Option<Item<StrT>>,
 }
