@@ -56,6 +56,9 @@ pub enum IngestFatalError {
 
     #[error("couldn't dispatch version to worker")]
     SendFailed(#[source] SendError<ChronEntity<serde_json::Value>>),
+
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
 }
 
 pub struct VersionIngestLogs<'a> {
@@ -122,6 +125,58 @@ impl<'a> VersionIngestLogs<'a> {
     }
 }
 
+#[derive(Debug, Error, Diagnostic)]
+#[error("in stage {stage_name}: {error}")]
+pub struct IngestStageError {
+    pub stage_name: String,
+    #[source]
+    pub error: IngestFatalError,
+}
+
+#[derive(Debug, Error, Diagnostic, Default)]
+#[error("error(s) in ingest")]
+pub struct IngestErrorContainer {
+    #[related]
+    pub errors: Vec<IngestStageError>,
+}
+
+impl IntoIterator for IngestErrorContainer {
+    type Item = IngestStageError;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.errors.into_iter()
+    }
+}
+
+impl IngestErrorContainer {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn from_result(result: Result<(), IngestFatalError>, stage_name: String) -> Self {
+        let mut me = Self::new();
+        if let Err(error) = result {
+            me.errors.push(IngestStageError { stage_name, error });
+        }
+        me
+    }
+
+    pub fn append<T>(&mut self, result: Result<T, IngestStageError>) -> Option<T> {
+        match result {
+            Ok(value) => Some(value),
+            Err(error) => {
+                self.errors.push(error);
+                None
+            }
+        }
+    }
+
+    pub fn extend(&mut self, other: impl IntoIterator<Item=IngestStageError>) {
+        self.errors.extend(other);
+    }
+}
+
 pub struct Ingestor {
     pool: ConnectionPool,
     ingest_id: i64,
@@ -142,10 +197,11 @@ impl Ingestor {
         }
     }
 
-    pub async fn ingest<I: Ingestable + 'static>(&self, ingestible: I, use_local_cheap_cashews: bool) -> Result<(), IngestFatalError> {
+    pub async fn ingest<I: Ingestable + 'static>(&self, ingestible: I, use_local_cheap_cashews: bool) -> IngestErrorContainer {
+        let mut errs = IngestErrorContainer::new();
         let config = ingestible.config();
         if !config.enable {
-            return Ok(());
+            return errs;
         }
 
         let parallelism = config.ingest_parallelism
@@ -168,7 +224,7 @@ impl Ingestor {
             .collect_vec();
 
         let mut waker = None;
-        let running_stages = stages_with_task_names.iter()
+        let running_stages_result = stages_with_task_names.iter()
             .map(|(stage, task_name)| {
                 let prev_stage_finished = CancellationToken::new();
                 let task = tokio::task::Builder::new()
@@ -187,20 +243,35 @@ impl Ingestor {
                             prev_stage_finished: prev_stage_finished.clone(),
                         }
                     }))?;
-                Ok((task, prev_stage_finished))
+                Ok((task_name, task, prev_stage_finished))
             })
             .collect::<Result<Vec<_>, _>>()
-            .map_err(IngestFatalError::TaskSpawnError)?;
+            .map_err(|err| IngestStageError {
+                stage_name: "Spawning stages".to_string(),
+                error: IngestFatalError::TaskSpawnError(err),
+            });
+
+        let Some(running_stages) = errs.append(running_stages_result) else {
+            return errs;
+        };
 
         debug!("Waiting for {} {} ingest stages to finish", running_stages.len(), I::KIND);
 
-        for (stage, prev_stage_finished) in running_stages {
+        for (task_name, stage, prev_stage_finished) in running_stages {
             prev_stage_finished.cancel();
-            // TODO intelligently handle concurrent errors
-            stage.await.map_err(IngestFatalError::JoinError)??;
+            match stage.await {
+                Ok(other_errs) => {
+                    errs.extend(other_errs);
+                },
+
+                Err(join_err) => errs.errors.push(IngestStageError {
+                    stage_name: task_name.to_string(),
+                    error: IngestFatalError::JoinError(join_err),
+                })
+            }
         }
 
-        Ok(())
+        errs
     }
 }
 
@@ -219,7 +290,7 @@ pub struct StageArgs {
 pub trait IngestStage {
     fn name(&self) -> &'static str;
 
-    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=Result<(), IngestFatalError>> + Send>>;
+    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=IngestErrorContainer> + Send>>;
 }
 
 pub trait Ingestable {
@@ -316,8 +387,13 @@ impl IngestStage for VersionStage1Ingest {
     }
 
     // Treat this as boilerplate
-    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=Result<(), IngestFatalError>> + Send>> {
-        Box::pin(VersionStage1Ingest::run(self, args))
+    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=IngestErrorContainer> + Send>> {
+        Box::pin(async {
+            let kind = self.kind;  // For move semantics reasons
+            let result = VersionStage1Ingest::run(self, args).await;
+            IngestErrorContainer::from_result(result, format!("{} Stage 1", kind))
+        })
+
     }
 }
 
@@ -579,8 +655,12 @@ impl IngestStage for FeedEventVersionStage1Ingest {
     }
 
     // Treat this as boilerplate
-    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=Result<(), IngestFatalError>> + Send>> {
-        Box::pin(FeedEventVersionStage1Ingest::run(self, args))
+    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=IngestErrorContainer> + Send>> {
+        Box::pin(async {
+            let kind = self.kind;  // For move semantics reasons
+            let result = FeedEventVersionStage1Ingest::run(self, args).await;
+            IngestErrorContainer::from_result(result, format!("{} Stage 1", kind))
+        })
     }
 }
 
@@ -606,6 +686,10 @@ pub trait IngestibleFromVersions {
 impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest<VersionIngest>  {
     pub fn new(kind: &'static str, version_ingest: VersionIngest) -> Self {
         Stage2Ingest { kind, version_ingest }
+    }
+
+    pub fn full_name(&self) -> String {
+        format!("{} Stage 2", self.kind)
     }
 
     async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
@@ -860,8 +944,12 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> IngestStage 
         "Stage 2"
     }
 
-    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=Result<(), IngestFatalError>> + Send>> {
-        Box::pin(Stage2Ingest::run(self, args))
+    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=IngestErrorContainer> + Send>> {
+        Box::pin(async {
+            let kind = self.kind;  // For move semantics reasons
+            let result = Stage2Ingest::run(self, args).await;
+            IngestErrorContainer::from_result(result, format!("{} Stage 2", kind))
+        })
     }
 }
 

@@ -4,25 +4,13 @@ use chron::ChronEntity;
 use chrono::Utc;
 use itertools::{Itertools, izip, Either};
 use log::{debug, error, info};
-use miette::{Context, Diagnostic};
+use miette::Context;
 use mmolb_parsing::enums::EventType;
 use serde::de::IntoDeserializer;
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{IngestLog, PgConnection, QueryError, db};
-use thiserror::Error;
-
-#[derive(Debug, Error, Diagnostic)]
-pub enum IngestFatalError {
-    #[error(transparent)]
-    DeserializeError(#[from] serde_json::Error),
-
-    #[error(transparent)]
-    DbError(#[from] QueryError),
-
-    #[error(transparent)]
-    JoinError(#[from] tokio::task::JoinError),
-}
+use mmoldb_db::{IngestLog, PgConnection, db};
+use crate::IngestFatalError;
 
 pub trait GameExt {
     /// Returns true for any game which will never be updated. This includes all

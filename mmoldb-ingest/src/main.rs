@@ -14,8 +14,8 @@ use crate::ingest_teams::TeamIngest;
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use futures::pin_mut;
-use log::{debug, info};
-use miette::{Context, IntoDiagnostic};
+use log::{debug, error, info};
+use miette::{GraphicalReportHandler, IntoDiagnostic};
 use mmoldb_db::{db, ConnectionPool};
 use tokio_util::sync::CancellationToken;
 use config::IngestConfig;
@@ -88,15 +88,36 @@ async fn main() -> miette::Result<()> {
         info!("Starting ingest {why}");
         previous_ingest_start_time = Some(ingest_start);
 
-        run_one_ingest(pool.clone(), config).await?;
+        run_one_ingest(pool.clone(), config).await;
     }
 
     Ok(())
 }
 
-async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> miette::Result<()> {
+async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> () {
+    let mut errs = IngestErrorContainer::new();
     let ingest_start_time = Utc::now();
-    let mut conn = pool.get().into_diagnostic()?;
+
+    let mut conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(err) => {
+            error!(
+                "Error getting database connection for ingest. This ingest will be skipped. \
+                Error: {:?}", err
+            );
+            return;
+        }
+    };
+
+    let ingest_id = match db::start_ingest(&mut conn, ingest_start_time) {
+        Ok(ingest_id) => ingest_id,
+        Err(err) => {
+            error!(
+                "Error saving ingest to database. This ingest will be skipped. Error: {:?}", err
+            );
+            return;
+        }
+    };
 
     if let Some(statement_timeout) = config.set_postgres_statement_timeout {
         if statement_timeout < 0 {
@@ -104,30 +125,34 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
         } else if statement_timeout > 0 {
             info!(
             "Setting our account's statement timeout to {statement_timeout} ({})",
-            chrono_humanize::HumanTime::from(chrono::Duration::seconds(statement_timeout))
+            HumanTime::from(chrono::Duration::seconds(statement_timeout))
                 .to_text_en(Accuracy::Precise, Tense::Present),
         );
         } else {
             // Postgres interprets 0 as no timeout
             info!("Setting our account's statement timeout to no timeout");
         }
-        db::set_current_user_statement_timeout(&mut conn, statement_timeout).into_diagnostic()?;
+        let result = db::set_current_user_statement_timeout(&mut conn, statement_timeout)
+            .map_err(|error| IngestStageError {
+                stage_name: "Setting statement timeout".to_string(),
+                error: IngestFatalError::DbError(error),
+            });
+        errs.append(result);
     }
-
-    let ingest_id = db::start_ingest(&mut conn, ingest_start_time).into_diagnostic()?;
 
     let abort = CancellationToken::new();
     let ingest_task = ingest_everything(pool.clone(), ingest_id, abort.clone(), config);
     pin_mut!(ingest_task);
 
-    let (is_aborted, result) = tokio::select! {
+    let is_aborted = tokio::select! {
         ingest_result = &mut ingest_task => {
-            (ingest_result.is_err(), ingest_result)
+            errs.extend(ingest_result);
+            false
         }
         _ = signal::wait_for_signal() => {
             debug!("Signaling abort token");
             abort.cancel();
-            (true, Ok(()))
+            true
         }
     };
 
@@ -136,40 +161,80 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
     // await it in this case.
     if abort.is_cancelled() {
         debug!("Waiting for ingest task to shut down after abort signal");
-        ingest_task.await
-            .wrap_err("While waiting for ingest task to shut down after abort signal")?;
+        errs.extend(ingest_task.await);
     }
 
-    let err_message = result.err().map(|err| format!("{:?}", err));
+    let err_message = if errs.errors.is_empty() {
+        None
+    } else {
+        let grh = GraphicalReportHandler::new()
+            .with_cause_chain()
+            .with_show_related_as_nested(true);
+        let mut str = String::new();
+        grh.render_report(&mut str, &errs).unwrap();
+        Some(str)
+    };
 
     let ingest_end_time = Utc::now();
     let duration = HumanTime::from(ingest_end_time - ingest_start_time);
     if is_aborted {
-        db::mark_ingest_aborted(&mut conn, ingest_id, ingest_end_time, err_message.as_deref()).into_diagnostic()?;
-        info!(
-            "Aborted ingest in {}",
-            duration.to_text_en(Accuracy::Precise, Tense::Present)
-        );
+        match db::mark_ingest_aborted(&mut conn, ingest_id, ingest_end_time, err_message.as_deref()) {
+            Ok(()) => {
+                info!(
+                    "Aborted ingest in {}",
+                    duration.to_text_en(Accuracy::Precise, Tense::Present)
+                );
+            }
+            Err(error) => {
+                error!(
+                    "Error marking ingest as aborted. The ingest is actually aborted, but the \
+                    outcome won't be recorded in the database. Error: {error:?}"
+                );
+                if let Some(msg) = err_message {
+                    error!("The error message we failed to save to the database is: {msg}")
+                }
+            }
+        }
     } else {
-        db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, err_message.as_deref()).into_diagnostic()?;
-        info!(
-            "Finished ingest in {}",
-            duration.to_text_en(Accuracy::Precise, Tense::Present)
-        );
+        match db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, err_message.as_deref()) {
+            Ok(()) => {
+                info!(
+                    "Finished ingest in {}",
+                    duration.to_text_en(Accuracy::Precise, Tense::Present)
+                );
+            }
+            Err(error) => {
+                error!(
+                    "Error marking ingest as finished. The ingest is actually finished, but the \
+                    outcome won't be recorded in the database. Error: {error:?}"
+                );
+                if let Some(msg) = err_message {
+                    error!("The error message we failed to save to the database is: {msg}")
+                }
+            }
+        }
     }
 
-    // Don't return `result` -- we already handled it, and returning it will
+    // Don't return `errs` -- we already handled it, and returning it will
     // make the process exit
-    Ok(())
 }
 
-fn refresh_matviews(pool: ConnectionPool) -> miette::Result<()> {
-    let mut conn = pool.get().into_diagnostic()?;
-    db::refresh_matviews(&mut conn).into_diagnostic()
+fn refresh_matviews(pool: ConnectionPool) -> Result<(), IngestStageError> {
+    let mut conn = pool.get()
+        .map_err(|error| IngestStageError {
+            stage_name: "Refresh matviews".to_string(),
+            error: IngestFatalError::DbPoolError(error),
+        })?;
+    db::refresh_matviews(&mut conn)
+        .map_err(|error| IngestStageError {
+            stage_name: "Refresh matviews".to_string(),
+            error: IngestFatalError::DbError(error),
+        })
 }
 
-fn refresh_entity_counting_matviews_repeatedly(pool: ConnectionPool, exit: Arc<(Mutex<bool>, Condvar)>) -> miette::Result<()> {
-    let mut conn = pool.get().into_diagnostic()?;
+fn refresh_entity_counting_matviews_repeatedly(pool: ConnectionPool, exit: Arc<(Mutex<bool>, Condvar)>) -> Result<(), IngestFatalError> {
+    let mut conn = pool.get()
+        .map_err(IngestFatalError::DbPoolError)?;
     loop {
         {
             let (exit, exit_cond) = &*exit;
@@ -184,7 +249,7 @@ fn refresh_entity_counting_matviews_repeatedly(pool: ConnectionPool, exit: Arc<(
             }
         }
 
-        db::refresh_entity_counting_matviews(&mut conn).into_diagnostic()?;
+        db::refresh_entity_counting_matviews(&mut conn).map_err(IngestFatalError::DbError)?;
     }
 
     Ok(())
@@ -195,7 +260,7 @@ async fn ingest_everything(
     ingest_id: i64,
     abort: CancellationToken,
     config: &'static IngestConfig,
-) -> miette::Result<()> {
+) -> IngestErrorContainer {
     let stop_entity_counting = Arc::new((Mutex::new(false), Condvar::new()));
     let entity_counting_task = tokio::task::spawn_blocking({
         let pool = pool.clone();
@@ -203,7 +268,7 @@ async fn ingest_everything(
         || refresh_entity_counting_matviews_repeatedly(pool, stop_entity_counting)
     });
 
-    let result = ingest_while_counting_task_runs(pool.clone(), ingest_id, abort, config).await;
+    let mut errs = ingest_while_counting_task_runs(pool.clone(), ingest_id, abort, config).await;
 
     let (exit, exit_cond) = &*stop_entity_counting;
     {
@@ -212,18 +277,32 @@ async fn ingest_everything(
     }
     exit_cond.notify_all();
     info!("Waiting for entity counting task to finish");
-    entity_counting_task.await.into_diagnostic()??;
-
-    info!("Refreshing materialized views");
-    refresh_matviews(pool)?;
-
-    if result.is_ok() {
-        info!("Ingest complete");
-    } else {
-        info!("Ingest complete with error");
+    match entity_counting_task.await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            errs.errors.push(IngestStageError {
+                stage_name: "Counting task".to_string(),
+                error,
+            })
+        }
+        Err(error) => {
+            errs.errors.push(IngestStageError {
+                stage_name: "Counting task".to_string(),
+                error: IngestFatalError::JoinError(error),
+            })
+        }
     }
 
-    result
+    info!("Refreshing materialized views");
+    errs.append(refresh_matviews(pool));
+
+    if errs.errors.is_empty() {
+        info!("Ingest complete");
+    } else {
+        error!("Ingest complete with errors: {errs:?}");
+    }
+
+    errs
 }
 
 async fn ingest_while_counting_task_runs(
@@ -231,23 +310,29 @@ async fn ingest_while_counting_task_runs(
     ingest_id: i64,
     abort: CancellationToken,
     config: &'static IngestConfig,
-) -> miette::Result<()> {
+) -> IngestErrorContainer {
+    let mut errs = IngestErrorContainer::new();
     let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
 
-    ingestor.ingest(TeamIngest::new(&config.team_ingest), config.use_local_cheap_cashews).await?;
-    ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest), config.use_local_cheap_cashews).await?;
-    ingestor.ingest(PlayerIngest::new(&config.player_ingest), config.use_local_cheap_cashews).await?;
-    ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest), config.use_local_cheap_cashews).await?;
+    errs.extend(ingestor.ingest(TeamIngest::new(&config.team_ingest), config.use_local_cheap_cashews).await);
+    errs.extend(ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest), config.use_local_cheap_cashews).await);
+    errs.extend(ingestor.ingest(PlayerIngest::new(&config.player_ingest), config.use_local_cheap_cashews).await);
+    errs.extend(ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest), config.use_local_cheap_cashews).await);
 
     if config.fetch_known_missing_games {
         info!("Fetching any missing games in known-game-ids.txt");
-        ingest_games::fetch_missed_games(pool.clone()).await?;
+        if let Err(error) = ingest_games::fetch_missed_games(pool.clone()).await {
+            errs.errors.push(IngestStageError {
+                stage_name: "Fetch known missing games".to_string(),
+                error,
+            });
+        }
     }
 
     if config.game_ingest.enable {
         info!("Beginning game ingest");
-        ingest_games::ingest_games(pool.clone(), ingest_id, abort, config.use_local_cheap_cashews).await?;
+        errs.extend(ingest_games::ingest_games(pool.clone(), ingest_id, abort, config.use_local_cheap_cashews).await);
     }
 
-    Ok(())
+    errs
 }

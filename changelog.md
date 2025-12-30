@@ -10,7 +10,7 @@ Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
 Upcoming
 --------
-- Consumption contest support
+- Consumption contest support. See documentation for details.
 
 2025-12-15 Hotfix
 -----------------
