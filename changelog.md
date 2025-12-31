@@ -8,9 +8,10 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
---------
+2025-12-31
+----------
 - Consumption contest support. See documentation for details.
+- Fixed a bunch of parse errors. Thanks WoofyJack for the help!
 
 2025-12-15 Hotfix
 -----------------
