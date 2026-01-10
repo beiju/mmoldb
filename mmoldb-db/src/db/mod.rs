@@ -17,7 +17,7 @@ use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
@@ -3062,9 +3062,9 @@ pub fn update_num_ingested(
 }
 
 pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> QueryResult<()> {
-    debug!("Updating info.entities_count");
+    trace!("Updating info.entities_count");
     sql_query("refresh materialized view info.entities_count").execute(conn)?;
-    debug!("Updating info.entities_with_issues_count");
+    trace!("Updating info.entities_with_issues_count");
     sql_query("refresh materialized view info.entities_with_issues_count").execute(conn)?;
 
     Ok(())

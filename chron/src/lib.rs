@@ -1,7 +1,6 @@
 use std::future;
 use chrono::{DateTime, Utc};
 use futures::{Stream, StreamExt, stream, TryStreamExt};
-use futures::future::Either;
 use log::{debug, warn};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
@@ -9,6 +8,12 @@ use thiserror::Error;
 
 const CUTOVER_DATE: &str = "2025-09-13T22:02:43.355548Z";
 const CUTBACK_DATE: &str = "2025-10-27T11:16:00.000Z";
+
+// This is one millisecond after the last game Chron has before it ran out of disk space in
+// December 2025. All the other entities have times that are later, so I can be sure that they're
+// accurate for this game. I can't be sure that they're accurate for the next game, so that's why
+// I chose to use this cutoff date.
+const CUTOVER_DATE_2: &str = "2025-12-28T00:47:38.244248Z";
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum ChronStreamError {
@@ -152,29 +157,50 @@ impl Chron {
         free_cashews_url: &'static str,
         cheap_cashews_url: &'static str,
     ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
-        let cutover_date = DateTime::parse_from_rfc3339(CUTOVER_DATE)
-            .expect("Hard-coded cutover date must parse")
-            .with_timezone(&Utc);
-        let cutback_date = DateTime::parse_from_rfc3339(CUTBACK_DATE)
-            .expect("Hard-coded cutback date must parse")
-            .with_timezone(&Utc);
 
-        if start_at.is_none_or(|s| s < cutover_date) {
-            Either::Left(
-                self.items(free_cashews_url, kind, max_retries, start_at, Some(cutover_date))
-                    .chain(self.items(cheap_cashews_url, kind, max_retries, Some(cutover_date), Some(cutback_date)))
-                    .chain(self.items(free_cashews_url, kind, max_retries, Some(cutback_date), None))
-            )
-        } else if start_at.is_none_or(|s| s < cutback_date) {
-            Either::Right(Either::Left(
-                self.items(cheap_cashews_url, kind, max_retries, start_at, Some(cutback_date))
-                    .chain(self.items(free_cashews_url, kind, max_retries, Some(cutback_date), None))
-            ))
-        } else {
-            Either::Right(Either::Right(
-                self.items(free_cashews_url, kind, max_retries, start_at, None)
-            ))
+        let segments = vec![
+            // Start with freecashews and stick with it until CUTOVER_DATE
+            (free_cashews_url, Some(CUTOVER_DATE)),
+            // Then go with cheapcashews until CUTBACK_DATE
+            (cheap_cashews_url, Some(CUTBACK_DATE)),
+            // Then back to freecashews until CUTOVER_DATE_2
+            (free_cashews_url, Some(CUTOVER_DATE_2)),
+            // Finally (for now) back to cheapcashews with no end date
+            (cheap_cashews_url, None),
+        ];
+
+        // The for loop below requires that segment_end not be None except for the last. That's
+        // enforced here
+        assert!(segments.iter().rev().skip(1).all(|(_, end_time)| end_time.is_some()));
+        assert!(segments.iter().rev().take(1).all(|(_, end_time)| end_time.is_none()));
+
+        // I tried to write this with combinators but it bounced off my brain
+        let mut streams = Vec::new();
+        let mut segment_start = start_at;
+        for (url, segment_end_str) in segments {
+            let segment_end = segment_end_str.map(|segment_end_str| {
+                DateTime::parse_from_rfc3339(segment_end_str)
+                    .expect("Hard-coded cutover or cutback date must parse")
+                    .with_timezone(&Utc)
+            });
+
+            // If this segment starts after it ends, it's gotta be empty
+            if segment_start.is_some_and(|segment_start| segment_end.is_some_and(|segment_end| segment_start > segment_end)) {
+                continue;
+            }
+
+            // Otherwise, we should do some API calls about it
+            debug!("Making paginated Chron API call for kind={kind} to {url} from date {segment_start:?} to {segment_end:?}");
+            streams.push(self.items(url, kind, max_retries, segment_start, segment_end));
+
+            // Next segment starts when this one ends. Note that this assignment does not happen if
+            // the start date is after the end date due to the continue; above. That's important.
+            // This also breaks if a non-terminal segment has a None segment_end, which is checked
+            // before this loop begins.
+            segment_start = segment_end;
         }
+
+        stream::iter(streams).flatten()
     }
 
     fn items(

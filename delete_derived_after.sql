@@ -1,17 +1,24 @@
-delete from data.games where season >= 6 or (season = 5 and day > 1000);
+\set Date '2025-12-28T00:47:38.244248Z'
 
-delete from info.version_ingest_log where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_modification_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_attribute_augments where time > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_recompositions where time > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_report_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_report_attribute_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_paradigm_shifts where time > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_feed_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_equipment_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.player_equipment_effect_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.team_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.team_player_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.team_feed_versions where valid_from > '2025-10-09T04:00:00.963000+00:00';
-delete from data.team_games_played where time > '2025-10-09T04:00:00.963000+00:00';
+-- There's a lot of `on delete cascade` on this table, so this deletes quite a lot
+delete from data.games where from_version >= :Date;
+
+delete from data.player_versions where valid_from >= :Date;
+delete from data.player_modification_versions where valid_from >= :Date;
+-- TODO Add from_version column to player_attribute_augments and friends so that this delete can be accurate
+delete from data.player_attribute_augments where time >= :Date;
+delete from data.player_recompositions where time >= :Date;
+delete from data.player_report_versions where valid_from >= :Date;
+delete from data.player_report_attribute_versions where valid_from >= :Date;
+delete from data.player_paradigm_shifts where time >= :Date;
+delete from data.player_equipment_versions where valid_from >= :Date;
+delete from data.player_equipment_effect_versions where valid_from >= :Date;
+delete from data.team_versions where valid_from >= :Date;
+delete from data.team_player_versions where valid_from >= :Date;
+delete from data.team_games_played where time >= :Date;
+delete from data.feed_events_processed where valid_from >= :Date;
+delete from info.version_ingest_log where valid_from >= :Date;
+
+-- The big ones
+delete from data.versions where valid_from >= :Date;
+delete from data.entities where valid_from >= :Date;
