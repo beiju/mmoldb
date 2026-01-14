@@ -15,7 +15,7 @@ use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
-use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaSlot};
+use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaModificationType, TaxaSlot};
 use crate::config::IngestibleConfig;
 use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs, VersionStage1Ingest};
 
@@ -48,8 +48,8 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
                     .data
                     .modifications
                     .iter()
-                    .chain(version.data.lesser_boon.as_ref())
-                    .chain(version.data.greater_boon.as_ref())
+                    .chain(version.data.lesser_boon.iter())
+                    .chain(version.data.greater_boon.iter())
                     .map(|m| {
                         // TODO Do this for extra_fields in other types
                         if !m.extra_fields.is_empty() {
@@ -325,18 +325,33 @@ fn chron_player_as_new<'a>(
         }
     };
 
-    let modifications = entity
-        .data
-        .modifications
-        .iter()
-        .enumerate()
-        .map(|(i, m)| NewPlayerModificationVersion {
+    let make_modification = |i, m, ty| {
+        NewPlayerModificationVersion {
             mmolb_player_id: &entity.entity_id,
             valid_from: entity.valid_from.naive_utc(),
             valid_until: None,
             modification_index: i as i32,
             modification_id: get_modification_id(m),
-        })
+            modification_type: taxa.modification_type_id(ty),
+        }
+    };
+
+    let modifications = entity
+        .data
+        .modifications
+        .iter()
+        .enumerate()
+        .map(|(i, m)| make_modification(i, m, TaxaModificationType::Modification))
+        .chain(
+            entity.data.lesser_boon.iter()
+                .enumerate()
+                .map(|(i, m)| make_modification(i, m, TaxaModificationType::LesserBoon)),
+        )
+        .chain(
+            entity.data.greater_boon.iter()
+                .enumerate()
+                .map(|(i, m)| make_modification(i, m, TaxaModificationType::GreaterBoon)),
+        )
         .collect_vec();
 
     let slot = match &entity.data.position {
@@ -425,9 +440,7 @@ fn chron_player_as_new<'a>(
         mmolb_team_id: entity.data.team_id.as_deref(),
         slot,
         durability: entity.data.durability,
-        greater_boon: entity.data.greater_boon.as_ref().map(get_modification_id),
-        lesser_boon: entity.data.lesser_boon.as_ref().map(get_modification_id),
-        num_modifications: entity.data.modifications.len() as i32,
+        num_modifications: modifications.len() as i32,
         occupied_equipment_slots,
         included_report_categories,
     };

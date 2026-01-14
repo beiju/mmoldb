@@ -381,6 +381,7 @@ pub struct NewPlayerModificationVersion<'a> {
     pub mmolb_player_id: &'a str,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
+    pub modification_type: i64,
     pub modification_index: i32,
     pub modification_id: i64,
 }
@@ -393,6 +394,7 @@ pub struct DbPlayerModificationVersion {
     pub mmolb_player_id: String,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
+    pub modification_type: i64,
     pub modification_index: i32,
     pub modification_id: i64,
 }
@@ -419,8 +421,6 @@ pub struct NewPlayerVersion<'a> {
     pub mmolb_team_id: Option<&'a str>,
     pub slot: Option<i64>,
     pub durability: f64,
-    pub greater_boon: Option<i64>,
-    pub lesser_boon: Option<i64>,
     pub num_modifications: i32,
     pub occupied_equipment_slots: Vec<&'a str>,
     pub included_report_categories: Vec<i64>,
@@ -449,8 +449,6 @@ pub struct DbPlayerVersion {
     pub mmolb_team_id: Option<String>,
     pub slot: Option<i64>,
     pub durability: f64,
-    pub greater_boon: Option<i64>,
-    pub lesser_boon: Option<i64>,
     pub num_modifications: i32,
     pub occupied_equipment_slots: Vec<Option<String>>,
     pub included_report_categories: Vec<Option<i64>>,
@@ -902,14 +900,14 @@ pub struct NewDoorPrizeItem<'a> {
     pub emoji: &'a str,
     pub name: &'a str,
     pub rare_name: Option<&'a str>,
-    pub prefix: Option<&'a str>,
-    pub suffix: Option<&'a str>,
+    pub prefixes: Vec<&'a str>,
+    pub suffixes: Vec<&'a str>,
     pub equipped_by: Option<&'a str>,
     pub discarded_item_emoji: Option<&'a str>,
     pub discarded_item_name: Option<&'a str>,
     pub discarded_item_rare_name: Option<&'a str>,
-    pub discarded_item_prefix: Option<&'a str>,
-    pub discarded_item_suffix: Option<&'a str>,
+    pub discarded_item_prefixes: Vec<&'a str>,
+    pub discarded_item_suffixes: Vec<&'a str>,
     pub prize_discarded: Option<bool>,
 }
 
@@ -924,14 +922,17 @@ pub struct DbDoorPrizeItem {
     pub emoji: String,
     pub name: String,
     pub rare_name: Option<String>,
-    pub prefix: Option<String>,
-    pub suffix: Option<String>,
+    // diesel enforces that elements in arrays must be nullable, because postgres
+    // doesn't provide the tools necessary to ensure they're non-nullable
+    pub prefixes: Vec<Option<String>>,
+    pub suffixes: Vec<Option<String>>,
     pub equipped_by: Option<String>,
     pub discarded_item_emoji: Option<String>,
     pub discarded_item_name: Option<String>,
     pub discarded_item_rare_name: Option<String>,
-    pub discarded_item_prefix: Option<String>,
-    pub discarded_item_suffix: Option<String>,
+    // see above about the Option
+    pub discarded_item_prefixes: Vec<Option<String>>,
+    pub discarded_item_suffixes: Vec<Option<String>>,
     pub prize_discarded: Option<bool>,
 }
 
@@ -1057,8 +1058,8 @@ pub struct NewConsumptionContest<'a> {
     pub batting_team_prize_emoji: Option<&'a str>,
     pub batting_team_prize_name: Option<&'a str>,
     pub batting_team_prize_rare_name: Option<&'a str>,
-    pub batting_team_prize_prefix: Option<&'a str>,
-    pub batting_team_prize_suffix: Option<&'a str>,
+    pub batting_team_prize_prefixes: Vec<&'a str>,
+    pub batting_team_prize_suffixes: Vec<&'a str>,
     
     pub defending_team_player_name: &'a str,
     pub defending_team_total_consumed: i32,
@@ -1066,8 +1067,8 @@ pub struct NewConsumptionContest<'a> {
     pub defending_team_prize_emoji: Option<&'a str>,
     pub defending_team_prize_name: Option<&'a str>,
     pub defending_team_prize_rare_name: Option<&'a str>,
-    pub defending_team_prize_prefix: Option<&'a str>,
-    pub defending_team_prize_suffix: Option<&'a str>,
+    pub defending_team_prize_prefixes: Vec<&'a str>,
+    pub defending_team_prize_suffixes: Vec<&'a str>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -1087,8 +1088,8 @@ pub struct DbConsumptionContest {
     pub batting_team_prize_emoji: Option<String>,
     pub batting_team_prize_name: Option<String>,
     pub batting_team_prize_rare_name: Option<String>,
-    pub batting_team_prize_prefix: Option<String>,
-    pub batting_team_prize_suffix: Option<String>,
+    pub batting_team_prize_prefixes: Vec<Option<String>>,
+    pub batting_team_prize_suffixes: Vec<Option<String>>,
 
     pub defending_team_player_name: String,
     pub defending_team_total_consumed: i32,
@@ -1096,8 +1097,8 @@ pub struct DbConsumptionContest {
     pub defending_team_prize_emoji: Option<String>,
     pub defending_team_prize_name: Option<String>,
     pub defending_team_prize_rare_name: Option<String>,
-    pub defending_team_prize_prefix: Option<String>,
-    pub defending_team_prize_suffix: Option<String>,
+    pub defending_team_prize_prefixes: Vec<Option<String>>,
+    pub defending_team_prize_suffixes: Vec<Option<String>>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]

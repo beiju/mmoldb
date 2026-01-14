@@ -75,8 +75,6 @@ pub struct ApiPlayerVersion {
     pub mmolb_team_id: Option<String>,
     pub slot: Option<TaxaSlot>,
     pub durability: f64,
-    pub greater_boon: Option<ApiModification>,
-    pub lesser_boon: Option<ApiModification>,
     pub modifications: Vec<Option<ApiModification>>,
     pub equipment: HashMap<String, Option<ApiEquipment>>,
     pub reports: HashMap<TaxaAttributeCategory, Option<ApiReport>>,
@@ -173,8 +171,6 @@ pub async fn player_versions<'a>(
             let mod_ids = player_modifications
                 .iter()
                 .map(|pm| pm.modification_id)
-                .chain(players.iter().map(|pm| pm.greater_boon).flatten())
-                .chain(players.iter().map(|pm| pm.lesser_boon).flatten())
                 .collect_vec();
             let modifications = mmoldb_db::db::get_modifications(conn, &mod_ids)?;
 
@@ -576,22 +572,7 @@ pub async fn player_versions<'a>(
             mmolb_team_id: player.mmolb_team_id.clone(),
             slot: player.slot.map(|s| taxa.slot_from_id(s)),
             durability: player.durability,
-            greater_boon: player.greater_boon.and_then(|m| {
-                if let Some(api_mod) = modifications_table.get(&m) {
-                    Some(api_mod.clone())
-                } else {
-                    warn!("Unrecognized greater boon id {}", m);
-                    None
-                }
-            }),
-            lesser_boon: player.lesser_boon.and_then(|m| {
-                if let Some(api_mod) = modifications_table.get(&m) {
-                    Some(api_mod.clone())
-                } else {
-                    warn!("Unrecognized lesser boon id {}", m);
-                    None
-                }
-            }),
+            // TODO Separate out fields for both boon types and mods
             modifications: modifications.clone(),
             equipment: equipment.clone(),
             reports: reports.clone(),

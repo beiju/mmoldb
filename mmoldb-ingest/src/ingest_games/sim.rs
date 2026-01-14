@@ -4209,13 +4209,13 @@ impl<'g> Game<'g> {
                                 player_name: contest_batting_team_player.name,
                                 total_consumed: batting_team_consumed,
                                 tokens: *batting_tokens,
-                                prize: batting_prize.copied(),
+                                prize: batting_prize.cloned(),
                             },
                             defending: PerTeamConsumptionContestForDb {
                                 player_name: contest_pitching_team_player.name,
                                 total_consumed: defending_team_consumed,
                                 tokens: *defending_tokens,
-                                prize: defending_prize.copied(),
+                                prize: defending_prize.cloned(),
                             },
                             events: updates,
                         }))
@@ -4339,13 +4339,13 @@ impl<'g> Game<'g> {
                             player_name: contest_batting_team_player.name,
                             total_consumed: *final_score,
                             tokens: *batting_team_tokens,
-                            prize: Some(*batting_team_prize),
+                            prize: Some(batting_team_prize.clone()),
                         },
                         defending: PerTeamConsumptionContestForDb {
                             player_name: contest_pitching_team_player.name,
                             total_consumed: *final_score,
                             tokens: *pitching_team_tokens,
-                            prize: Some(*pitching_team_prize),
+                            prize: Some(pitching_team_prize.clone()),
                         },
                         events: updates,
                     }))

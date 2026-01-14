@@ -37,16 +37,16 @@ pub mod data {
             batting_team_prize_emoji -> Nullable<Text>,
             batting_team_prize_name -> Nullable<Text>,
             batting_team_prize_rare_name -> Nullable<Text>,
-            batting_team_prize_prefix -> Nullable<Text>,
-            batting_team_prize_suffix -> Nullable<Text>,
             defending_team_player_name -> Text,
             defending_team_total_consumed -> Int4,
             defending_team_tokens -> Int4,
             defending_team_prize_emoji -> Nullable<Text>,
             defending_team_prize_name -> Nullable<Text>,
             defending_team_prize_rare_name -> Nullable<Text>,
-            defending_team_prize_prefix -> Nullable<Text>,
-            defending_team_prize_suffix -> Nullable<Text>,
+            batting_team_prize_prefixes -> Array<Nullable<Text>>,
+            batting_team_prize_suffixes -> Array<Nullable<Text>>,
+            defending_team_prize_prefixes -> Array<Nullable<Text>>,
+            defending_team_prize_suffixes -> Array<Nullable<Text>>,
         }
     }
 
@@ -59,15 +59,15 @@ pub mod data {
             emoji -> Text,
             name -> Text,
             rare_name -> Nullable<Text>,
-            prefix -> Nullable<Text>,
-            suffix -> Nullable<Text>,
             equipped_by -> Nullable<Text>,
             discarded_item_emoji -> Nullable<Text>,
             discarded_item_name -> Nullable<Text>,
             discarded_item_rare_name -> Nullable<Text>,
-            discarded_item_prefix -> Nullable<Text>,
-            discarded_item_suffix -> Nullable<Text>,
             prize_discarded -> Nullable<Bool>,
+            prefixes -> Array<Nullable<Text>>,
+            suffixes -> Array<Nullable<Text>>,
+            discarded_item_prefixes -> Array<Nullable<Text>>,
+            discarded_item_suffixes -> Array<Nullable<Text>>,
         }
     }
 
@@ -343,6 +343,7 @@ pub mod data {
         data.player_modification_versions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
+            modification_type -> Int8,
             modification_index -> Int4,
             valid_from -> Timestamp,
             valid_until -> Nullable<Timestamp>,
@@ -435,8 +436,6 @@ pub mod data {
             mmolb_team_id -> Nullable<Text>,
             slot -> Nullable<Int8>,
             durability -> Float8,
-            greater_boon -> Nullable<Int8>,
-            lesser_boon -> Nullable<Int8>,
             num_modifications -> Int4,
             occupied_equipment_slots -> Array<Nullable<Text>>,
             included_report_categories -> Array<Nullable<Int8>>,
