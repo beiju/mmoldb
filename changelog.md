@@ -8,6 +8,31 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+--------
+
+- Season 10 support! Season 10 is a major change to MMOLB and incited the 
+  following changes in MMOLB:
+  - Columns `greater_boon` and `lesser_boon` are removed from 
+    `data.player_versions`, as you can now have multiple of each (at least 
+    according to the API). 
+  - Boons are now treated as a special category of modification (even more 
+    than they already were). They show in `data.player_modification_versions`,
+    which has gained a new column, `modification_type`, to indicate whether 
+    this modification is a greater boon, a lesser boon, or neither.
+  - Added `taxa.modification_type` to support the above change.
+  - Items earned from door prizes and consumption contests can now have 
+    multiple of the same type of affix (i.e. multiple prefixes or multiple 
+    suffixes). The following columns have been renamed to be plural and
+    changed from a nullable text column to an array:
+    - In `data.door_prize_items`: `prefix`, `suffix`, `discarded_item_prefix`,
+      and `discarded_item_suffix`.
+    - In `data.consumption_contests`: `batting_team_prize_prefix`, 
+      `batting_team_prize_suffix`, `defending_team_prize_prefix`, and 
+      `defending_team_prize_suffix`.
+- Fix many deserialization and parse errors, huge thanks once more to 
+  WoofyJack.
+
 2025-12-31
 ----------
 - Consumption contest support. See documentation for details.
