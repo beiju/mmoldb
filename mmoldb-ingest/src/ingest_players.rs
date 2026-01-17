@@ -447,7 +447,6 @@ fn chron_player_as_new<'a>(
             );
             None
         }
-
     });
 
     let player = NewPlayerVersion {
@@ -476,7 +475,100 @@ fn chron_player_as_new<'a>(
         xp: entity.data.xp.as_ref().ok().map(|xp| *xp as i32),
         name_suffix: entity.data.suffix.as_ref().ok().and_then(|x| x.as_deref()),
     };
-    
+
+    // Emit errors for internal inconsistencies in the talk. This block doesn't add any
+    // data for the db
+    if let Some(talk) = &entity.data.talk {
+        for category in [&talk.batting, &talk.pitching, &talk.defense, &talk.baserunning] {
+            if let Some(category) = category {
+                if let Ok(expected_attributes) = &category.attributes {
+                    // Check that everything in `expected_attributes` is also in the category, and
+                    // that the values match
+                    for (attr, value) in expected_attributes {
+                        match category.stars.get(attr) {
+                            None => {
+                                ingest_logs.warn(format!(
+                                    "Attribute {} appeared in the attributes section of the {:?} \
+                                    talk, but not the stars section.",
+                                    <Attribute as Into<&'static str>>::into(*attr),
+                                    // TODO I've requested derives for Into<&'static str> on category
+                                    //   too, update that to match once it exists
+                                    category,
+                                ));
+                            }
+                            Some(TalkStars::Complex(ComplexTalkStars { base_total, .. })) => {
+                                // I'm writing this as a super-strict comparison so I can detect
+                                // how equal the equalities are. It may need to be relaxed in
+                                // the near future.
+                                if base_total != value {
+                                    ingest_logs.warn(format!(
+                                        "Base {} value in the attributes section of the talk ({}) \
+                                        did not exactly match the value in the stars section ({})",
+                                        <Attribute as Into<&'static str>>::into(*attr),
+                                        base_total,
+                                        value,
+                                    ));
+                                }
+                            }
+                            Some(TalkStars::Intermediate { .. }) => {
+                                ingest_logs.warn(
+                                    "Expected Complex talk objects in all player versions whose \
+                                    talk pages have an attributes section, but this is an \
+                                    Intermediate talk object"
+                                );
+                            }
+                            Some(TalkStars::Simple(_)) => {
+                                ingest_logs.warn(
+                                    "Expected Complex talk objects in all player versions whose \
+                                    talk pages have an attributes section, but this is a Simple \
+                                    talk object"
+                                );
+                            }
+                        }
+                    }
+
+                    // Check that everything in the category is also in expected_attributes. No
+                    // need to check that the values match, that would be redundant
+                    for (attr, _) in &category.stars {
+                        match expected_attributes.get(attr) {
+                            None => {
+                                ingest_logs.warn(format!(
+                                    "Attribute {} appeared in the stars section of the {:?} \
+                                    talk, but not the attributes section.",
+                                    <Attribute as Into<&'static str>>::into(*attr),
+                                    // TODO I've requested derives for Into<&'static str> on category
+                                    //   too, update that to match once it exists
+                                    category,
+                                ));
+                            }
+                            Some(_) => {}
+                        }
+                    }
+                }
+
+                for (attr, stars) in &category.stars {
+                    match stars {
+                        TalkStars::Complex(ComplexTalkStars { attribute, .. }) => {
+                            if attribute != &attr.to_string() {
+                                ingest_logs.warn(format!(
+                                    "Attribute property of a talk page attribute ({}) did not \
+                                    match the object key for this attribute's object ({}).",
+                                    attribute,
+                                    <Attribute as Into<&'static str>>::into(*attr),
+                                ));
+                            }
+                        }
+                        TalkStars::Intermediate { .. } => {}
+                        TalkStars::Simple(_) => {}
+                    }
+                }
+            }
+        }
+    }
+
+    // Emit errors for internal inconsistencies in the talk's stars. This block doesn't add any
+    // data for the db
+
     let mut report_versions = Vec::new();
     if let Ok(attrs) = &entity.data.attribute_stars {
         for (category, attrs) in attrs {
