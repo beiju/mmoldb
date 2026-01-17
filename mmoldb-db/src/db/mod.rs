@@ -26,7 +26,7 @@ use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection, NewPlayerPitchTypeVersion};
 use crate::taxa::Taxa;
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -2216,6 +2216,7 @@ type NewPlayerVersionExt<'a> = (
         NewPlayerEquipmentVersion<'a>,
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
     )>,
+    Vec<NewPlayerPitchTypeVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 );
 
@@ -2320,6 +2321,23 @@ fn insert_player_equipment(
     Ok(num_inserted)
 }
 
+
+fn insert_player_pitch_types(
+    conn: &mut PgConnection,
+    new_player_pitch_types: Vec<&Vec<NewPlayerPitchTypeVersion>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_pitch_type_versions::dsl as pptv_dsl;
+
+    let new_player_pitch_types = new_player_pitch_types
+        .into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(pptv_dsl::player_pitch_type_versions)
+        .from_insertable(new_player_pitch_types)
+        .execute(conn)
+}
 pub fn insert_to_error<'container, InsertableT: 'container>(
     f: impl Fn(&mut PgConnection, &'container [InsertableT]) -> QueryResult<usize> + Copy,
     conn: &mut PgConnection,
@@ -2557,7 +2575,7 @@ pub fn insert_player_versions<'container, 'game: 'container>(
 
     // Reference to tuple into tuple of references
     let new_player_versions = new_player_versions.into_iter()
-        .map(|(a, b, c, d, e)| (a, b, c, d, e));
+        .map(|(a, b, c, d, e, f)| (a, b, c, d, e, f));
 
     let preprocess_start = Utc::now();
     let (
@@ -2565,6 +2583,7 @@ pub fn insert_player_versions<'container, 'game: 'container>(
         new_player_modification_versions,
         new_player_report_attributes,
         new_player_equipment,
+        new_player_pitch_types,
         new_ingest_logs,
     ): (
         Vec<&NewPlayerVersion>,
@@ -2576,6 +2595,7 @@ pub fn insert_player_versions<'container, 'game: 'container>(
                 Vec<NewPlayerEquipmentEffectVersion>,
             )>,
         >,
+        Vec<&Vec<NewPlayerPitchTypeVersion>>,
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
@@ -2603,6 +2623,11 @@ pub fn insert_player_versions<'container, 'game: 'container>(
     let insert_player_equipment_duration =
         (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
+    let insert_player_pitch_types_start = Utc::now();
+    insert_player_pitch_types(conn, new_player_pitch_types)?;
+    let insert_player_pitch_types_duration =
+        (Utc::now() - insert_player_pitch_types_start).as_seconds_f64();
+
     let insert_ingest_logs_start = Utc::now();
     insert_nested_ingest_logs(conn, new_ingest_logs)?;
     let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
@@ -2610,6 +2635,7 @@ pub fn insert_player_versions<'container, 'game: 'container>(
     info!(
         "preprocess_duration: {preprocess_duration:.2}, \
         insert_player_equipment_duration: {insert_player_equipment_duration:.2}, \
+        insert_player_pitch_types_duration: {insert_player_pitch_types_duration:.2}, \
         insert_player_reports_duration: {insert_player_reports_duration:.2}, \
         insert_player_modifications_duration: {insert_player_modifications_duration:.2}, \
         insert_player_version_duration: {insert_player_version_duration:.2}, \

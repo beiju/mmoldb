@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::iter;
 use std::sync::Arc;
 use chrono::NaiveDateTime;
 use futures::Stream;
@@ -13,7 +14,7 @@ use thiserror::Error;
 use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
+use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerPitchTypeVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaModificationType, TaxaSlot};
 use crate::config::IngestibleConfig;
 use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs, VersionStage1Ingest};
@@ -297,6 +298,7 @@ fn chron_player_as_new<'a>(
         NewPlayerEquipmentVersion<'a>,
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
     )>,
+    Vec<NewPlayerPitchTypeVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
     let mut ingest_logs = VersionIngestLogs::new(PlayerIngest::KIND, &entity.entity_id, entity.valid_from);
@@ -701,11 +703,139 @@ fn chron_player_as_new<'a>(
         Err(AddedLater) => Vec::new(), // No equipment
     };
 
+    // First, try to get pitch types out of BaseAttributes, since it's the most accurate source.
+    // Leave pitch_types as an empty vec if that doesn't succeed for any reason.
+    let pitch_types = if let Ok(base_attributes) = &entity.data.base_attributes {
+        if base_attributes.pitch_types.len() == base_attributes.pitch_selection.len() {
+            if let Ok(pitch_types) = &entity.data.pitch_types {
+                if pitch_types.len() == base_attributes.pitch_types.len() {
+                    for (index, (root_ty, base_attributes_ty)) in iter::zip(pitch_types.iter(), base_attributes.pitch_types.iter()).enumerate() {
+                        if root_ty != base_attributes_ty {
+                            ingest_logs.warn(format!(
+                                "{}th pitch type in BaseAttributes ({}) does not match the \
+                                corresponding pitch type in the root object ({})",
+                                index,
+                                base_attributes_ty,
+                                root_ty,
+                            ));
+                        }
+                    }
+                } else {
+                    ingest_logs.warn(format!(
+                        "PitchTypes in BaseAttributes has length {}, but PitchTypes on the root \
+                        object has length {} (expected equal length)",
+                        base_attributes.pitch_types.len(),
+                        pitch_types.len()
+                    ));
+                }
+            }
+
+            if let Ok(pitch_selection) = &entity.data.pitch_selection {
+                if pitch_selection.len() == base_attributes.pitch_selection.len() {
+                    for (index, (root_freq, base_attributes_freq)) in iter::zip(pitch_selection.iter(), base_attributes.pitch_selection.iter()).enumerate() {
+                        // Formatting as string is the most straightforward way to check the kind
+                        // of correspondence we want
+                        if format!("{:.2}", root_freq) != format!("{:.2}", base_attributes_freq) {
+                            ingest_logs.warn(format!(
+                                "{}th pitch frequency in BaseAttributes ({}) does not match the \
+                                corresponding pitch frequency in the root object ({})",
+                                index,
+                                base_attributes_freq,
+                                root_freq,
+                            ));
+                        }
+                    }
+                } else {
+                    ingest_logs.warn(format!(
+                        "PitchSelection in BaseAttributes has length {}, but PitchSelection on the \
+                        root object has length {} (expected equal length)",
+                        base_attributes.pitch_selection.len(),
+                        pitch_selection.len()
+                    ));
+                }
+            }
+
+            iter::zip(&base_attributes.pitch_types, &base_attributes.pitch_selection)
+                .enumerate()
+                .map(|(index, (ty, freq))| NewPlayerPitchTypeVersion {
+                    mmolb_player_id: &entity.entity_id,
+                    pitch_type_index: index as i32,
+                    valid_from: entity.valid_from.naive_utc(),
+                    valid_until: None,
+                    pitch_type: taxa.pitch_type_id((*ty).into()),
+                    frequency: *freq,
+                    // This source is full precision as of this writing
+                    expect_full_precision: true,
+                })
+                .collect_vec()
+        } else {
+             ingest_logs.error(format!(
+                 "Can't extract pitch types from BaseAttributes: PitchTypes was length {}, but \
+                 PitchSelection was length {} (expected equal length)",
+                 base_attributes.pitch_types.len(),
+                 base_attributes.pitch_selection.len()
+             ));
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    // If we don't have pitch types yet, try to get them out of the root object
+    let pitch_types = if pitch_types.is_empty() {
+        if let Ok(pitch_types) = &entity.data.pitch_types {
+            if let Ok(pitch_selection) = &entity.data.pitch_selection {
+                if pitch_types.len() == pitch_selection.len() {
+                    iter::zip(pitch_types, pitch_selection)
+                        .enumerate()
+                        .map(|(index, (ty, freq))| NewPlayerPitchTypeVersion {
+                            mmolb_player_id: &entity.entity_id,
+                            pitch_type_index: index as i32,
+                            valid_from: entity.valid_from.naive_utc(),
+                            valid_until: None,
+                            pitch_type: taxa.pitch_type_id((*ty).into()),
+                            frequency: *freq,
+                            // This source is not full precision as of this writing
+                            expect_full_precision: false,
+                        })
+                        .collect_vec()
+                } else {
+                    ingest_logs.error(format!(
+                        "Can't extract pitch types from object root: PitchTypes was length {}, but \
+                        PitchSelection was length {} (expected equal length)",
+                        pitch_types.len(),
+                        pitch_selection.len()
+                    ));
+                    Vec::new()
+                }
+            } else {
+                ingest_logs.warn(format!(
+                    "Can't extract pitch types from object root: PitchTypes exists with {} \
+                    entries, but PitchSelection does not exist.",
+                    pitch_types.len()
+                ));
+                Vec::new()
+            }
+        } else if let Ok(pitch_selection) = &entity.data.pitch_selection {
+            ingest_logs.warn(format!(
+                "Can't extract pitch types from object root: PitchSelection exists with {} \
+                entries, but PitchTypes does not exist.",
+                pitch_selection.len()
+            ));
+            Vec::new()
+        } else {
+            Vec::new()
+        }
+    } else {
+        pitch_types
+    };
+
     (
         player,
         modifications,
         report_versions,
         equipment,
+        pitch_types,
         ingest_logs.into_vec(),
     )
 }

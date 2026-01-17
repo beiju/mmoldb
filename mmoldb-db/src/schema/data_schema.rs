@@ -367,6 +367,20 @@ pub mod data {
     }
 
     diesel::table! {
+        data.player_pitch_type_versions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            pitch_type_index -> Int4,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            pitch_type -> Int8,
+            frequency -> Float8,
+            expect_full_precision -> Bool,
+        }
+    }
+
+    diesel::table! {
         data.player_recompositions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
@@ -567,6 +581,7 @@ pub mod data {
         player_equipment_versions,
         player_modification_versions,
         player_paradigm_shifts,
+        player_pitch_type_versions,
         player_recompositions,
         player_report_attribute_versions,
         player_report_versions,

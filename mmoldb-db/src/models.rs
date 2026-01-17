@@ -1189,3 +1189,30 @@ pub struct DbEfflorescenceGrowth {
     pub value: f64,
     pub attribute: i64,
 }
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_pitch_type_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPlayerPitchTypeVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub pitch_type_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub pitch_type: i64,
+    pub frequency: f64,
+    pub expect_full_precision: bool,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::player_pitch_type_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerPitchTypeVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub pitch_type_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub pitch_type: i64,
+    pub frequency: f64,
+    pub expect_full_precision: bool,
+}
