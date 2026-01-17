@@ -282,9 +282,6 @@ name = "bitflags"
 version = "2.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "block-buffer"
@@ -1927,8 +1924,8 @@ dependencies = [
 
 [[package]]
 name = "mmolb_parsing"
-version = "0.54.0"
-source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#86efa54549621ca5684882a678d254eaf5c79382"
+version = "0.55.0"
+source = "git+https://github.com/unnamed-girl/mmolb_parsing.git#4823ad76b9335089e7e6a11cfe971e3c60160962"
 dependencies = [
  "chrono",
  "indexmap 2.11.1",
@@ -1936,7 +1933,6 @@ dependencies = [
  "nom 8.0.0",
  "nom-language",
  "phf 0.12.1",
- "ron",
  "serde",
  "serde_cow",
  "serde_json",
@@ -3025,19 +3021,6 @@ checksum = "5cc890925dc79370c28eb15c9957677093fdb7e8c44966d189f38cedb995ee68"
 dependencies = [
  "devise",
  "quote",
-]
-
-[[package]]
-name = "ron"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "beceb6f7bf81c73e73aeef6dd1356d9a1b2b4909e1f0fc3e59b034f9572d7b7f"
-dependencies = [
- "base64 0.22.1",
- "bitflags 2.9.4",
- "serde",
- "serde_derive",
- "unicode-ident",
 ]
 
 [[package]]

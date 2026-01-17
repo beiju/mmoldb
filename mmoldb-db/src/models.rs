@@ -562,7 +562,7 @@ pub struct DbPlayerReportVersion {
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
-    pub quote: String,
+    pub quote: Option<String>,
     pub included_attributes: Vec<Option<i64>>,
 }
 
@@ -578,7 +578,7 @@ pub struct NewPlayerReportVersion<'a> {
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
-    pub quote: &'a str,
+    pub quote: Option<&'a str>,
     pub included_attributes: Vec<i64>,
 }
 

@@ -30,6 +30,11 @@ Upcoming
     - In `data.consumption_contests`: `batting_team_prize_prefix`, 
       `batting_team_prize_suffix`, `defending_team_prize_prefix`, and 
       `defending_team_prize_suffix`.
+  - The Clubhouse is gone from MMOLB, and with it went quotes. The `quote` 
+    column of `data.player_report_versions` is now nullable, and will be `null`
+    for any player versions in s10 and later. The overall structure of player
+    reports remains the same, even though "reports" aren't a discrete concept 
+    any more, for backwards compatibility.
 - Fix many deserialization and parse errors, huge thanks once more to 
   WoofyJack.
 

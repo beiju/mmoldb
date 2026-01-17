@@ -5,10 +5,9 @@ use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{error, warn};
-use mmolb_parsing::enums::{Day, EquipmentSlot, Handedness, Position};
+use mmolb_parsing::enums::{Attribute, Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
-use mmolb_parsing::player::{PlayerEquipment, TalkCategory, TalkStars};
-use serde_json::Value;
+use mmolb_parsing::player::{Player, PlayerEquipment, TalkCategory, TalkStars};
 use thiserror::Error;
 
 use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
@@ -72,7 +71,7 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
         db::insert_player_versions(conn, &new_versions)
     }
 
-    async fn stream_versions_at_cursor(conn: &mut AsyncPgConnection, kind: &str, cursor: Option<(NaiveDateTime, String)>) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<Value>>>> {
+    async fn stream_versions_at_cursor(conn: &mut AsyncPgConnection, kind: &str, cursor: Option<(NaiveDateTime, String)>) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<serde_json::Value>>>> {
         async_db::stream_versions_at_cursor(conn, kind, cursor).await
     }
 }
@@ -402,24 +401,39 @@ fn chron_player_as_new<'a>(
     // Important, because they can be returned in arbitrary order
     occupied_equipment_slots.sort();
 
-    // No sort necessary because order is hard-coded
-    let included_report_categories = entity
-        .data
-        .talk
-        .as_ref()
-        .map(|t| {
-            [
-                t.batting.as_ref().map(|_| TaxaAttributeCategory::Batting),
-                t.pitching.as_ref().map(|_| TaxaAttributeCategory::Pitching),
-                t.defense.as_ref().map(|_| TaxaAttributeCategory::Defense),
-                t.baserunning.as_ref().map(|_| TaxaAttributeCategory::Baserunning),
-            ]
-                .into_iter()
-                .flatten()
-                .map(|category| taxa.attribute_category_id(category))
-                .collect_vec()
-        })
-        .unwrap_or_default();
+    let included_report_categories = if let Some(_) = entity.data.attribute_stars.as_ref().ok() {
+        // If this field exists, that means all "talk" pages are revealed
+        // (aka this is past the time of talk pages)
+        [
+            TaxaAttributeCategory::Batting,
+            TaxaAttributeCategory::Pitching,
+            TaxaAttributeCategory::Defense,
+            TaxaAttributeCategory::Baserunning,
+        ]
+            .into_iter()
+            .map(|category| taxa.attribute_category_id(category))
+            .collect_vec()
+
+    } else {
+        // No sort necessary because order is hard-coded
+        entity
+            .data
+            .talk
+            .as_ref()
+            .map(|t| {
+                [
+                    t.batting.as_ref().map(|_| TaxaAttributeCategory::Batting),
+                    t.pitching.as_ref().map(|_| TaxaAttributeCategory::Pitching),
+                    t.defense.as_ref().map(|_| TaxaAttributeCategory::Defense),
+                    t.baserunning.as_ref().map(|_| TaxaAttributeCategory::Baserunning),
+                ]
+                    .into_iter()
+                    .flatten()
+                    .map(|category| taxa.attribute_category_id(category))
+                    .collect_vec()
+            })
+            .unwrap_or_default()
+    };
 
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
@@ -446,9 +460,93 @@ fn chron_player_as_new<'a>(
     };
     
     let mut report_versions = Vec::new();
-    if let Some(talk) = &entity.data.talk {
+    if let Ok(attrs) = &entity.data.attribute_stars {
+        for (category, attrs) in attrs {
+            let included_attributes = attrs
+                .iter()
+                .map(|(attribute, _)| taxa.attribute_id((*attribute).into()))
+                .collect_vec();
+
+            let report_version = NewPlayerReportVersion {
+                mmolb_player_id: &entity.entity_id,
+                category: taxa.attribute_category_id((*category).into()),
+                valid_from: entity.valid_from.naive_utc(),
+                valid_until: None,
+                season: None,
+                day_type: None,
+                day: None,
+                superstar_day: None,
+                quote: None,
+                included_attributes,
+            };
+
+            let report_attribute_versions = attrs
+                .iter()
+                .map(|(attribute, stars)| {
+                    // Every value in attribute_stars is expected to match with the corresponding
+                    // value in base_attributes
+                    if let Some(base_attrs) = entity.data.base_attributes.as_ref().ok() {
+                        if let Some(base_attr) = base_attrs.attributes.get(attribute) {
+                            match stars {
+                                TalkStars::Complex { base_total, .. } => {
+                                    // I'm writing this as a super-strict comparison so I can detect
+                                    // how equal the equalities are. It may need to be relaxed in
+                                    // the near future.
+                                    if base_total != base_attr {
+                                        ingest_logs.warn(format!(
+                                            "Base {} value in BaseAttributes ({}) did not exactly \
+                                            match the value in AttributeStars ({})",
+                                            <Attribute as Into<&'static str>>::into(*attribute),
+                                            base_total,
+                                            base_attr,
+                                        ))
+                                    }
+                                }
+                                TalkStars::Intermediate { .. } => {
+                                    ingest_logs.warn(format!(
+                                        "Expected all attribute entries within AttributeStars to \
+                                        be in the Complex format, but {} within {:?} was in the \
+                                        Intermediate format",
+                                        <Attribute as Into<&'static str>>::into(*attribute),
+                                        // TODO I've requested derives for Into<&'static str> on category
+                                        //   too, update that to match once it exists
+                                        category,
+                                    ));
+                                }
+                                TalkStars::Simple(_) => {
+                                    ingest_logs.warn(format!(
+                                        "Expected all attribute entries within AttributeStars to \
+                                        be in the Complex format, but {} within {:?} was in the \
+                                        Simple format",
+                                        <Attribute as Into<&'static str>>::into(*attribute),
+                                        // TODO I've requested derives for Into<&'static str> on category
+                                        //   too, update that to match once it exists
+                                        category,
+                                    ));
+                                }
+                            }
+                        } else {
+                            ingest_logs.warn(format!(
+                                "BaseAttributes field on player entity exists, but does not \
+                                contain an entry for attribute {}. An entry was expected because \
+                                this attribute appears in the {:?} section of AttributeStars.",
+                                <Attribute as Into<&'static str>>::into(*attribute),
+                                // TODO I've requested derives for Into<&'static str> on category
+                                //   too, update that to match once it exists
+                                category,
+                            ));
+                        }
+                    }
+
+                    player_report_attribute_version_as_new((*category).into(), entity, taxa, attribute, stars)
+                })
+                .collect_vec();
+
+            report_versions.push((report_version, report_attribute_versions))
+        }
+    } else if let Some(talk) = &entity.data.talk {
         if let Some(report) = &talk.batting {
-            report_versions.push(report_as_new(
+            report_versions.push(report_from_talk(
                 TaxaAttributeCategory::Batting,
                 report,
                 entity,
@@ -456,7 +554,7 @@ fn chron_player_as_new<'a>(
             ));
         }
         if let Some(report) = &talk.pitching {
-            report_versions.push(report_as_new(
+            report_versions.push(report_from_talk(
                 TaxaAttributeCategory::Pitching,
                 report,
                 entity,
@@ -464,7 +562,7 @@ fn chron_player_as_new<'a>(
             ));
         }
         if let Some(report) = &talk.defense {
-            report_versions.push(report_as_new(
+            report_versions.push(report_from_talk(
                 TaxaAttributeCategory::Defense,
                 report,
                 entity,
@@ -472,7 +570,7 @@ fn chron_player_as_new<'a>(
             ));
         }
         if let Some(report) = &talk.baserunning {
-            report_versions.push(report_as_new(
+            report_versions.push(report_from_talk(
                 TaxaAttributeCategory::Baserunning,
                 report,
                 entity,
@@ -624,7 +722,7 @@ fn chron_player_as_new<'a>(
     )
 }
 
-fn report_as_new<'e>(
+fn report_from_talk<'e>(
     category: TaxaAttributeCategory,
     report: &'e TalkCategory,
     entity: &'e ChronEntity<mmolb_parsing::player::Player>,
@@ -665,41 +763,45 @@ fn report_as_new<'e>(
         day_type,
         day,
         superstar_day,
-        quote: &report.quote,
+        quote: Some(&report.quote),
         included_attributes,
     };
 
     let report_attribute_versions = report
         .stars
         .iter()
-        .map(|(attribute, stars)| NewPlayerReportAttributeVersion {
-            mmolb_player_id: &entity.entity_id,
-            category: taxa.attribute_category_id(category),
-            attribute: taxa.attribute_id((*attribute).into()),
-            valid_from: entity.valid_from.naive_utc(),
-            valid_until: None,
-            base_stars: match stars {
-                TalkStars::Simple(stars) => Some(*stars as i32),
-                TalkStars::Intermediate { .. } => None,
-                TalkStars::Complex { base_stars, .. } => Some(*base_stars as i32),
-            },
-            base_total: match stars {
-                TalkStars::Simple(_) => None,
-                TalkStars::Intermediate { .. } => None,
-                TalkStars::Complex { base_total, .. } => Some(*base_total),
-            },
-            modified_stars: match stars {
-                TalkStars::Simple(_) => None,
-                TalkStars::Intermediate { stars, .. } => Some(*stars as i32),
-                TalkStars::Complex { stars, .. } => Some(*stars as i32)
-            },
-            modified_total: match stars {
-                TalkStars::Simple(_) => None,
-                TalkStars::Intermediate { total, .. } => Some(*total),
-                TalkStars::Complex { total, .. } => Some(*total),
-            },
-        })
+        .map(|(attribute, stars)| player_report_attribute_version_as_new(category, entity, taxa, attribute, stars))
         .collect_vec();
 
     (report_version, report_attribute_versions)
+}
+
+fn player_report_attribute_version_as_new<'a>(category: TaxaAttributeCategory, entity: &'a ChronEntity<Player>, taxa: &Taxa, attribute: &'a Attribute, stars: &'a TalkStars) -> NewPlayerReportAttributeVersion<'a> {
+    NewPlayerReportAttributeVersion {
+        mmolb_player_id: &entity.entity_id,
+        category: taxa.attribute_category_id(category),
+        attribute: taxa.attribute_id((*attribute).into()),
+        valid_from: entity.valid_from.naive_utc(),
+        valid_until: None,
+        base_stars: match stars {
+            TalkStars::Simple(stars) => Some(*stars as i32),
+            TalkStars::Intermediate { .. } => None,
+            TalkStars::Complex { base_stars, .. } => Some(*base_stars as i32),
+        },
+        base_total: match stars {
+            TalkStars::Simple(_) => None,
+            TalkStars::Intermediate { .. } => None,
+            TalkStars::Complex { base_total, .. } => Some(*base_total),
+        },
+        modified_stars: match stars {
+            TalkStars::Simple(_) => None,
+            TalkStars::Intermediate { stars, .. } => Some(*stars as i32),
+            TalkStars::Complex { stars, .. } => Some(*stars as i32)
+        },
+        modified_total: match stars {
+            TalkStars::Simple(_) => None,
+            TalkStars::Intermediate { total, .. } => Some(*total),
+            TalkStars::Complex { total, .. } => Some(*total),
+        },
+    }
 }

@@ -409,7 +409,7 @@ pub mod data {
             day_type -> Nullable<Int8>,
             day -> Nullable<Int4>,
             superstar_day -> Nullable<Int4>,
-            quote -> Text,
+            quote -> Nullable<Text>,
             included_attributes -> Array<Nullable<Int8>>,
         }
     }
