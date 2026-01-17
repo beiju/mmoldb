@@ -424,6 +424,7 @@ pub struct NewPlayerVersion<'a> {
     pub num_modifications: i32,
     pub occupied_equipment_slots: Vec<&'a str>,
     pub included_report_categories: Vec<i64>,
+    pub priority: Option<f64>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -452,6 +453,7 @@ pub struct DbPlayerVersion {
     pub num_modifications: i32,
     pub occupied_equipment_slots: Vec<Option<String>>,
     pub included_report_categories: Vec<Option<i64>>,
+    pub priority: Option<f64>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]

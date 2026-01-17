@@ -7,7 +7,7 @@ use itertools::Itertools;
 use log::{error, warn};
 use mmolb_parsing::enums::{Attribute, Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
-use mmolb_parsing::player::{Player, PlayerEquipment, TalkCategory, TalkStars};
+use mmolb_parsing::player::{PlayerEquipment, TalkCategory, TalkStars};
 use thiserror::Error;
 
 use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
@@ -435,6 +435,19 @@ fn chron_player_as_new<'a>(
             .unwrap_or_default()
     };
 
+    let priority = entity.data.base_attributes.as_ref().ok().and_then(|base_attributes| {
+        if let Some(priority) = base_attributes.attributes.get(&Attribute::Priority) {
+            Some(*priority)
+        } else {
+            ingest_logs.warn(
+                "Player version had BaseAttributes, but BaseAttributes did not contain the \
+                Priority attribute",
+            );
+            None
+        }
+
+    });
+
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
         valid_from: entity.valid_from.naive_utc(),
@@ -457,6 +470,7 @@ fn chron_player_as_new<'a>(
         num_modifications: modifications.len() as i32,
         occupied_equipment_slots,
         included_report_categories,
+        priority,
     };
     
     let mut report_versions = Vec::new();
@@ -776,7 +790,7 @@ fn report_from_talk<'e>(
     (report_version, report_attribute_versions)
 }
 
-fn player_report_attribute_version_as_new<'a>(category: TaxaAttributeCategory, entity: &'a ChronEntity<Player>, taxa: &Taxa, attribute: &'a Attribute, stars: &'a TalkStars) -> NewPlayerReportAttributeVersion<'a> {
+fn player_report_attribute_version_as_new<'a>(category: TaxaAttributeCategory, entity: &'a ChronEntity<mmolb_parsing::player::Player>, taxa: &Taxa, attribute: &'a Attribute, stars: &'a TalkStars) -> NewPlayerReportAttributeVersion<'a> {
     NewPlayerReportAttributeVersion {
         mmolb_player_id: &entity.entity_id,
         category: taxa.attribute_category_id(category),

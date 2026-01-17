@@ -35,6 +35,7 @@ Upcoming
     for any player versions in s10 and later. The overall structure of player
     reports remains the same, even though "reports" aren't a discrete concept 
     any more, for backwards compatibility.
+  - Added `priority` to `data.player_versions`. 
 - Fix many deserialization and parse errors, huge thanks once more to 
   WoofyJack.
 
