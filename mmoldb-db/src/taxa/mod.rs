@@ -426,6 +426,36 @@ impl TryFrom<mmolb_parsing::enums::Place> for TaxaFielderLocation {
 
 taxa! {
     #[
+        schema = crate::taxa_schema::taxa::slot_type,
+        table = crate::taxa_schema::taxa::slot_type::dsl::slot_type,
+        id_column = crate::taxa_schema::taxa::slot_type::dsl::id,
+    ]
+    pub enum TaxaSlotType {
+        Batter = 1,
+        Pitcher = 2,
+    }
+}
+
+impl From<mmolb_parsing::enums::PositionType> for TaxaSlotType {
+    fn from(value: mmolb_parsing::enums::PositionType) -> Self {
+        match value {
+            mmolb_parsing::enums::PositionType::Pitcher => TaxaSlotType::Pitcher,
+            mmolb_parsing::enums::PositionType::Batter => TaxaSlotType::Batter,
+        }
+    }
+}
+
+impl Into<mmolb_parsing::enums::PositionType> for TaxaSlotType {
+    fn into(self) -> mmolb_parsing::enums::PositionType {
+        match self {
+            TaxaSlotType::Batter => mmolb_parsing::enums::PositionType::Batter,
+            TaxaSlotType::Pitcher => mmolb_parsing::enums::PositionType::Pitcher,
+        }
+    }
+}
+
+taxa! {
+    #[
         schema = crate::taxa_schema::taxa::slot,
         table = crate::taxa_schema::taxa::slot::dsl::slot,
         id_column = crate::taxa_schema::taxa::slot::dsl::id,
@@ -1456,6 +1486,7 @@ taxa! {
 pub struct Taxa {
     event_type_mapping: EnumMap<TaxaEventType, i64>,
     fielder_location_mapping: EnumMap<TaxaFielderLocation, i64>,
+    slot_type_mapping: EnumMap<TaxaSlotType, i64>,
     slot_mapping: EnumMap<TaxaSlot, i64>,
     fair_ball_type_mapping: EnumMap<TaxaFairBallType, i64>,
     base_mapping: EnumMap<TaxaBase, i64>,
@@ -1481,6 +1512,7 @@ impl Taxa {
             // fielder_location_mapping must appear before slot_mapping in the initializer
             // (it doesn't matter what order it is in the struct declaration)
             fielder_location_mapping: TaxaFielderLocation::make_id_mapping(conn)?,
+            slot_type_mapping: TaxaSlotType::make_id_mapping(conn)?,
             slot_mapping: TaxaSlot::make_id_mapping(conn)?,
             fair_ball_type_mapping: TaxaFairBallType::make_id_mapping(conn)?,
             base_mapping: TaxaBase::make_id_mapping(conn)?,
@@ -1508,6 +1540,10 @@ impl Taxa {
 
     pub fn fielder_location_id(&self, ty: TaxaFielderLocation) -> i64 {
         self.fielder_location_mapping[ty]
+    }
+
+    pub fn slot_type_id(&self, ty: TaxaSlotType) -> i64 {
+        self.slot_type_mapping[ty]
     }
 
     pub fn slot_id(&self, ty: TaxaSlot) -> i64 {
@@ -1577,11 +1613,19 @@ impl Taxa {
             .0
     }
 
+    pub fn slot_type_from_id(&self, id: i64) -> TaxaSlotType {
+        self.slot_type_mapping
+            .iter()
+            .find(|(_, ty_id)| id == **ty_id)
+            .expect("TODO Handle unknown slot type")
+            .0
+    }
+
     pub fn slot_from_id(&self, id: i64) -> TaxaSlot {
         self.slot_mapping
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
-            .expect("TODO Handle unknown position")
+            .expect("TODO Handle unknown slot")
             .0
     }
 

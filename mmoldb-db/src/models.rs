@@ -638,6 +638,9 @@ pub struct DbPlayerEquipmentVersion {
     pub suffixes: Vec<Option<String>>,
     pub rarity: Option<String>,
     pub num_effects: i32,
+    pub durability: Option<i32>,
+    pub prefix_position_type: Option<i64>,
+    pub specialized: Option<bool>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -658,6 +661,9 @@ pub struct NewPlayerEquipmentVersion<'a> {
     pub suffixes: Vec<String>,
     pub rarity: Option<String>,
     pub num_effects: i32,
+    pub durability: Option<i32>,
+    pub prefix_position_type: Option<i64>,
+    pub specialized: Option<bool>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -673,6 +679,7 @@ pub struct DbPlayerEquipmentEffectVersion {
     pub attribute: i64,
     pub effect_type: i64,
     pub value: f64,
+    pub tier: Option<i32>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -687,6 +694,7 @@ pub struct NewPlayerEquipmentEffectVersion<'a> {
     pub attribute: i64,
     pub effect_type: i64,
     pub value: f64,
+    pub tier: Option<i32>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]

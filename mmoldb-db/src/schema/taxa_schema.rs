@@ -147,6 +147,13 @@ pub mod taxa {
         }
     }
 
+    diesel::table! {
+        taxa.slot_type (id) {
+            id -> Int8,
+            name -> Text,
+        }
+    }
+
     diesel::joinable!(attribute -> attribute_category (category));
     diesel::joinable!(slot -> fielder_location (location));
 
@@ -167,5 +174,6 @@ pub mod taxa {
         pitch_type,
         pitcher_change_source,
         slot,
+        slot_type,
     );
 }

@@ -315,6 +315,7 @@ pub mod data {
             attribute -> Int8,
             effect_type -> Int8,
             value -> Float8,
+            tier -> Nullable<Int4>,
         }
     }
 
@@ -336,6 +337,9 @@ pub mod data {
             suffixes -> Array<Nullable<Text>>,
             rarity -> Nullable<Text>,
             num_effects -> Int4,
+            durability -> Nullable<Int4>,
+            prefix_position_type -> Nullable<Int8>,
+            specialized -> Nullable<Bool>,
         }
     }
 

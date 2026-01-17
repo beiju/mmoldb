@@ -31,6 +31,7 @@ truncate table
     data.player_paradigm_shifts,
     data.player_equipment_versions,
     data.player_equipment_effect_versions,
+    data.player_pitch_type_versions,
 
     -- team
     data.team_versions,

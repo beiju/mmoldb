@@ -1,3 +1,116 @@
+alter table data.player_equipment_effect_versions
+    drop column tier;
+
+drop trigger on_insert_player_equipment_effect_versions_trigger on data.player_equipment_effect_versions;
+drop function data.on_insert_player_equipment_effect_versions;
+create function data.on_insert_player_equipment_effect_versions()
+    returns trigger as $$
+begin
+    -- check if the currently-valid version is exactly identical to the new version
+    -- the list of columns must exactly match the ones in data.player_feed_versions or
+    -- we'll miss changes
+    perform 1
+    from data.player_equipment_effect_versions peev
+    where peev.mmolb_player_id = NEW.mmolb_player_id
+      and peev.equipment_slot = NEW.equipment_slot
+      and peev.effect_index = NEW.effect_index
+      and peev.valid_until is null
+      -- note: "is not distinct from" is like "=" except for how it treats nulls.
+      -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
+      and peev.attribute is not distinct from NEW.attribute
+      and peev.effect_type is not distinct from NEW.effect_type
+      and peev.value is not distinct from NEW.value;
+
+    -- if there was an exact match, suppress this insert
+    if FOUND then
+        update data.player_equipment_effect_versions
+        set duplicates = duplicates + 1
+        where mmolb_player_id = NEW.mmolb_player_id
+          and equipment_slot = NEW.equipment_slot
+          and effect_index = NEW.effect_index
+          and valid_until is null;
+
+        return null;
+    end if;
+
+    -- otherwise, close out the currently-valid version...
+    update data.player_equipment_effect_versions
+    set valid_until = NEW.valid_from
+    where mmolb_player_id = NEW.mmolb_player_id
+      and equipment_slot = NEW.equipment_slot
+      and effect_index = NEW.effect_index
+      and valid_until is null;
+
+    -- ...and return the new row so it gets inserted as normal
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger on_insert_player_equipment_effect_versions_trigger
+    before insert on data.player_equipment_effect_versions
+    for each row
+execute function data.on_insert_player_equipment_effect_versions();
+
+alter table data.player_equipment_versions
+    drop column durability,
+    drop column prefix_position_type,
+    drop column specialized;
+
+drop trigger on_insert_player_equipment_versions_trigger on data.player_equipment_versions;
+drop function data.on_insert_player_equipment_versions;
+
+create function data.on_insert_player_equipment_versions()
+    returns trigger as $$
+begin
+    -- check if the currently-valid version is exactly identical to the new version
+    -- the list of columns must exactly match the ones in data.player_feed_versions or
+    -- we'll miss changes
+    perform 1
+    from data.player_equipment_versions pev
+    where pev.mmolb_player_id = NEW.mmolb_player_id
+      and pev.equipment_slot = NEW.equipment_slot
+      and pev.valid_until is null
+      -- note: "is not distinct from" is like "=" except for how it treats nulls.
+      -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
+      and pev.emoji is not distinct from NEW.emoji
+      and pev.name is not distinct from NEW.name
+      and pev.special_type is not distinct from NEW.special_type
+      and pev.description is not distinct from NEW.description
+      and pev.rare_name is not distinct from NEW.rare_name
+      and pev.cost is not distinct from NEW.cost
+      and pev.prefixes is not distinct from NEW.prefixes
+      and pev.suffixes is not distinct from NEW.suffixes
+      and pev.rarity is not distinct from NEW.rarity
+      and pev.num_effects is not distinct from NEW.num_effects;
+
+    -- if there was an exact match, suppress this insert
+    if FOUND then
+        update data.player_equipment_versions
+        set duplicates = duplicates + 1
+        where mmolb_player_id = NEW.mmolb_player_id
+          and equipment_slot = NEW.equipment_slot
+          and valid_until is null;
+
+        return null;
+    end if;
+
+    -- otherwise, close out the currently-valid version...
+    update data.player_equipment_versions
+    set valid_until = NEW.valid_from
+    where mmolb_player_id = NEW.mmolb_player_id
+      and equipment_slot = NEW.equipment_slot
+      and valid_until is null;
+
+    -- ...and return the new row so it gets inserted as normal
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger on_insert_player_equipment_versions_trigger
+    before insert on data.player_equipment_versions
+    for each row
+execute function data.on_insert_player_equipment_versions();
+
 alter table data.player_versions
     drop column priority,
     drop column xp,
@@ -103,3 +216,5 @@ drop table data.player_pitch_type_versions;
 
 alter table data.player_report_versions
     alter column quote set not null;
+
+drop table taxa.slot_type;

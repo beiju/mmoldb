@@ -640,6 +640,9 @@ fn chron_player_as_new<'a>(
                             ),
                             rarity,
                             num_effects: equipment.effects.as_ref().map_or(0, |e| e.len() as i32),
+                            durability: equipment.durability.ok().map(|d| d as i32),
+                            prefix_position_type: equipment.prefix_position_type.ok().map(|pt| taxa.slot_type_id(pt.into())),
+                            specialized: equipment.specialized.ok(),
                         };
 
                         let effects = match equipment.effects {
@@ -692,6 +695,7 @@ fn chron_player_as_new<'a>(
                                         attribute: taxa.attribute_id(attribute.into()),
                                         effect_type: taxa.effect_type_id(effect_type.into()),
                                         value: effect.value,
+                                        tier: effect.tier.ok().map(|tier| tier as i32),
                                     })
                                 })
                                 .collect_vec(),

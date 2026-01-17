@@ -51,7 +51,7 @@ pub struct ApiReport {
     pub day_type: Option<TaxaDayType>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
-    pub quote: String,
+    pub quote: Option<String>,
     pub attributes: HashMap<TaxaAttribute, Option<ApiReportAttribute>>,
 }
 
