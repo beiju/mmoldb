@@ -473,6 +473,8 @@ fn chron_player_as_new<'a>(
         occupied_equipment_slots,
         included_report_categories,
         priority,
+        xp: entity.data.xp.as_ref().ok().map(|xp| *xp as i32),
+        name_suffix: entity.data.suffix.as_ref().ok().and_then(|x| x.as_deref()),
     };
     
     let mut report_versions = Vec::new();

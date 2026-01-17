@@ -454,6 +454,8 @@ pub mod data {
             occupied_equipment_slots -> Array<Nullable<Text>>,
             included_report_categories -> Array<Nullable<Int8>>,
             priority -> Nullable<Float8>,
+            xp -> Nullable<Int4>,
+            name_suffix -> Nullable<Text>,
         }
     }
 
