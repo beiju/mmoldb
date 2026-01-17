@@ -1187,7 +1187,6 @@ taxa! {
         derive = (Serialize)
     ]
     pub enum TaxaAttributeCategory {
-        Generic = 0,
         Batting = 1,
         Pitching = 2,
         Defense = 3,
@@ -1202,7 +1201,6 @@ impl From<mmolb_parsing::enums::AttributeCategory> for TaxaAttributeCategory {
             mmolb_parsing::enums::AttributeCategory::Pitching => Self::Pitching,
             mmolb_parsing::enums::AttributeCategory::Defense => Self::Defense,
             mmolb_parsing::enums::AttributeCategory::Baserunning => Self::Baserunning,
-            mmolb_parsing::enums::AttributeCategory::Generic => Self::Generic,
         }
     }
 }

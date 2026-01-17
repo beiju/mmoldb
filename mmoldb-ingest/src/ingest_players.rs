@@ -7,7 +7,7 @@ use itertools::Itertools;
 use log::{error, warn};
 use mmolb_parsing::enums::{Attribute, Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
-use mmolb_parsing::player::{PlayerEquipment, TalkCategory, TalkStars};
+use mmolb_parsing::player::{ComplexTalkStars, PlayerEquipment, TalkCategory, TalkStars};
 use thiserror::Error;
 
 use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
@@ -501,43 +501,17 @@ fn chron_player_as_new<'a>(
                     // value in base_attributes
                     if let Some(base_attrs) = entity.data.base_attributes.as_ref().ok() {
                         if let Some(base_attr) = base_attrs.attributes.get(attribute) {
-                            match stars {
-                                TalkStars::Complex { base_total, .. } => {
-                                    // I'm writing this as a super-strict comparison so I can detect
-                                    // how equal the equalities are. It may need to be relaxed in
-                                    // the near future.
-                                    if base_total != base_attr {
-                                        ingest_logs.warn(format!(
-                                            "Base {} value in BaseAttributes ({}) did not exactly \
-                                            match the value in AttributeStars ({})",
-                                            <Attribute as Into<&'static str>>::into(*attribute),
-                                            base_total,
-                                            base_attr,
-                                        ))
-                                    }
-                                }
-                                TalkStars::Intermediate { .. } => {
-                                    ingest_logs.warn(format!(
-                                        "Expected all attribute entries within AttributeStars to \
-                                        be in the Complex format, but {} within {:?} was in the \
-                                        Intermediate format",
-                                        <Attribute as Into<&'static str>>::into(*attribute),
-                                        // TODO I've requested derives for Into<&'static str> on category
-                                        //   too, update that to match once it exists
-                                        category,
-                                    ));
-                                }
-                                TalkStars::Simple(_) => {
-                                    ingest_logs.warn(format!(
-                                        "Expected all attribute entries within AttributeStars to \
-                                        be in the Complex format, but {} within {:?} was in the \
-                                        Simple format",
-                                        <Attribute as Into<&'static str>>::into(*attribute),
-                                        // TODO I've requested derives for Into<&'static str> on category
-                                        //   too, update that to match once it exists
-                                        category,
-                                    ));
-                                }
+                            // I'm writing this as a super-strict comparison so I can detect
+                            // how equal the equalities are. It may need to be relaxed in
+                            // the near future.
+                            if &stars.base_total != base_attr {
+                                ingest_logs.warn(format!(
+                                    "Base {} value in BaseAttributes ({}) did not exactly \
+                                    match the value in AttributeStars ({})",
+                                    <Attribute as Into<&'static str>>::into(*attribute),
+                                    stars.base_total,
+                                    base_attr,
+                                ))
                             }
                         } else {
                             ingest_logs.warn(format!(
@@ -552,7 +526,7 @@ fn chron_player_as_new<'a>(
                         }
                     }
 
-                    player_report_attribute_version_as_new((*category).into(), entity, taxa, attribute, stars)
+                    player_report_attribute_version_as_new_from_complex((*category).into(), entity, taxa, attribute, stars)
                 })
                 .collect_vec();
 
@@ -790,7 +764,13 @@ fn report_from_talk<'e>(
     (report_version, report_attribute_versions)
 }
 
-fn player_report_attribute_version_as_new<'a>(category: TaxaAttributeCategory, entity: &'a ChronEntity<mmolb_parsing::player::Player>, taxa: &Taxa, attribute: &'a Attribute, stars: &'a TalkStars) -> NewPlayerReportAttributeVersion<'a> {
+fn player_report_attribute_version_as_new<'a>(
+    category: TaxaAttributeCategory,
+    entity: &'a ChronEntity<mmolb_parsing::player::Player>,
+    taxa: &Taxa,
+    attribute: &'a Attribute,
+    stars: &'a TalkStars,
+) -> NewPlayerReportAttributeVersion<'a> {
     NewPlayerReportAttributeVersion {
         mmolb_player_id: &entity.entity_id,
         category: taxa.attribute_category_id(category),
@@ -800,22 +780,42 @@ fn player_report_attribute_version_as_new<'a>(category: TaxaAttributeCategory, e
         base_stars: match stars {
             TalkStars::Simple(stars) => Some(*stars as i32),
             TalkStars::Intermediate { .. } => None,
-            TalkStars::Complex { base_stars, .. } => Some(*base_stars as i32),
+            TalkStars::Complex(ComplexTalkStars { base_stars, .. }) => Some(*base_stars as i32),
         },
         base_total: match stars {
             TalkStars::Simple(_) => None,
             TalkStars::Intermediate { .. } => None,
-            TalkStars::Complex { base_total, .. } => Some(*base_total),
+            TalkStars::Complex(ComplexTalkStars { base_total, .. }) => Some(*base_total),
         },
         modified_stars: match stars {
             TalkStars::Simple(_) => None,
             TalkStars::Intermediate { stars, .. } => Some(*stars as i32),
-            TalkStars::Complex { stars, .. } => Some(*stars as i32)
+            TalkStars::Complex(ComplexTalkStars { stars, .. }) => Some(*stars as i32)
         },
         modified_total: match stars {
             TalkStars::Simple(_) => None,
             TalkStars::Intermediate { total, .. } => Some(*total),
-            TalkStars::Complex { total, .. } => Some(*total),
+            TalkStars::Complex(ComplexTalkStars { total, .. }) => Some(*total),
         },
+    }
+}
+
+fn player_report_attribute_version_as_new_from_complex<'a>(
+    category: TaxaAttributeCategory,
+    entity: &'a ChronEntity<mmolb_parsing::player::Player>,
+    taxa: &Taxa,
+    attribute: &'a Attribute,
+    stars: &'a ComplexTalkStars,
+) -> NewPlayerReportAttributeVersion<'a> {
+    NewPlayerReportAttributeVersion {
+        mmolb_player_id: &entity.entity_id,
+        category: taxa.attribute_category_id(category),
+        attribute: taxa.attribute_id((*attribute).into()),
+        valid_from: entity.valid_from.naive_utc(),
+        valid_until: None,
+        base_stars: Some(stars.base_stars as i32),
+        base_total: Some(stars.base_total),
+        modified_stars: Some(stars.stars as i32),
+        modified_total: Some(stars.total),
     }
 }
