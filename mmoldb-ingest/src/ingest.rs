@@ -810,7 +810,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 let trimmed_version = VersionIngest::trim_unused(&version.data);
 
                 let now = Utc::now();
-                if last_print + chrono::Duration::seconds(5) > now {
+                if last_print + chrono::Duration::seconds(5) < now {
                     info!("{} cache has {} items and occupies {} bytes", self.kind, cache.len(), cache.allocation_size());
                     last_print = now;
                 }

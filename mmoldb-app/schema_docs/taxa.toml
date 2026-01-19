@@ -308,6 +308,31 @@ nullable_explanation = """
 """
 
 [[table]]
+name = "slot_type"
+description = """
+Player slot type: either Batter or Pitcher.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a slot type. When this appears as a foreign key you are
+encouraged to join this `taxa` and use its `name` column, rather than directly
+using slot type ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this slot type. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+
+This is also the human-friendly name for each slot category.
+"""
+
+[[table]]
 name = "base"
 description = """
 A base. Like from baseball.
@@ -589,7 +614,7 @@ name = "id"
 type = "bigint"
 description = """
 An arbitrary ID for an attribute category. When this appears as a foreign key
-you are encouraged to join this `taxa` and use its `name`column, rather than
+you are encouraged to join this `taxa` and use its `name` column, rather than
 directly using attribute category ids in your queries or results.
 """
 
@@ -696,4 +721,35 @@ The code-friendly name for this handedness. Guaranteed to contain alphanumeric
 characters only and start with a letter.
 
 This is also the human-friendly name for each handedness.
+"""
+
+[[table]]
+name = "modification_type"
+description = """
+Whether this modification is a Greater Boon, Lesser Boon, or just a regular
+modification.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a modification type. When this appears as a foreign key you
+are encouraged to join this `taxa` and use its `name`column, rather than
+directly using modification type ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this modification type. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this modification type.
 """
