@@ -22,19 +22,19 @@ begin
     -- if there was an exact match, suppress this insert
     if FOUND then
         return null;
-end if;
+    end if;
 
     -- otherwise, close out the currently-valid version...
-update data.player_report_attribute_versions
-set valid_until = NEW.valid_from
-where mmolb_player_id = NEW.mmolb_player_id
-  and category = NEW.category
-  and attribute = NEW.attribute
-  and valid_until is null;
+    update data.player_report_attribute_versions
+    set valid_until = NEW.valid_from
+    where mmolb_player_id = NEW.mmolb_player_id
+      and category = NEW.category
+      and attribute = NEW.attribute
+      and valid_until is null;
 
--- ...and return the new row so it gets inserted as normal
-return NEW;
-end;
+    -- ...and return the new row so it gets inserted as normal
+    return NEW;
+    end;
 $$ language plpgsql;
 
 create trigger on_insert_player_report_attribute_version_trigger

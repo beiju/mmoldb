@@ -600,6 +600,7 @@ pub struct DbPlayerReportAttributeVersion {
     pub valid_until: Option<NaiveDateTime>,
     pub base_stars: Option<i32>,
     pub base_total: Option<f64>,
+    pub base_subtotal: Option<f64>,
     pub modified_stars: Option<i32>,
     pub modified_total: Option<f64>,
 }
@@ -615,6 +616,7 @@ pub struct NewPlayerReportAttributeVersion<'a> {
     pub valid_until: Option<NaiveDateTime>,
     pub base_stars: Option<i32>,
     pub base_total: Option<f64>,
+    pub base_subtotal: Option<f64>,
     pub modified_stars: Option<i32>,
     pub modified_total: Option<f64>,
 }

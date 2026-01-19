@@ -803,10 +803,17 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let mut conn = args.pool.get()?;
         let taxa = Taxa::new(&mut conn)?;
 
+        let mut last_print = Utc::now();
         let mut cache = HashMap::new();
         let chunk_stream = tokio_stream::wrappers::ReceiverStream::new(version_recv)
             .filter_map(|version| std::future::ready({
                 let trimmed_version = VersionIngest::trim_unused(&version.data);
+
+                let now = Utc::now();
+                if last_print + chrono::Duration::seconds(5) > now {
+                    info!("{} cache has {} items and occupies {} bytes", self.kind, cache.len(), cache.allocation_size());
+                    last_print = now;
+                }
 
                 match cache.entry(version.entity_id.clone()) {
                     Entry::Vacant(vacant) => {

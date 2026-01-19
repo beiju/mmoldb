@@ -44,3 +44,6 @@ truncate table
     info.ingest_timings,
     info.ingest_counts,
     info.ingests;
+
+refresh materialized view info.entities_count;
+refresh materialized view info.entities_with_issues_count;

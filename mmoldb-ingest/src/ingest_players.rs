@@ -2,11 +2,12 @@ use std::fmt::Display;
 use std::iter;
 use std::sync::Arc;
 use chrono::NaiveDateTime;
+use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{error, warn};
-use mmolb_parsing::enums::{Attribute, Day, EquipmentSlot, Handedness, Position};
+use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
 use mmolb_parsing::player::{ComplexTalkStars, PlayerEquipment, TalkCategory, TalkStars};
 use thiserror::Error;
@@ -479,33 +480,38 @@ fn chron_player_as_new<'a>(
     // Emit errors for internal inconsistencies in the talk. This block doesn't add any
     // data for the db
     if let Some(talk) = &entity.data.talk {
-        for category in [&talk.batting, &talk.pitching, &talk.defense, &talk.baserunning] {
-            if let Some(category) = category {
-                if let Ok(expected_attributes) = &category.attributes {
+        for (category, category_talk) in [
+            (AttributeCategory::Batting, &talk.batting),
+            (AttributeCategory::Pitching, &talk.pitching),
+            (AttributeCategory::Defense, &talk.defense),
+            (AttributeCategory::Baserunning, &talk.baserunning),
+        ] {
+            if let Some(category_talk) = category_talk {
+                if let Ok(expected_attributes) = &category_talk.attributes {
                     // Check that everything in `expected_attributes` is also in the category, and
                     // that the values match
                     for (attr, value) in expected_attributes {
-                        match category.stars.get(attr) {
+                        match category_talk.stars.get(attr) {
                             None => {
                                 ingest_logs.warn(format!(
                                     "Attribute {} appeared in the attributes section of the {:?} \
                                     talk, but not the stars section.",
                                     <Attribute as Into<&'static str>>::into(*attr),
-                                    // TODO I've requested derives for Into<&'static str> on category
-                                    //   too, update that to match once it exists
-                                    category,
+                                    <AttributeCategory as Into<&'static str>>::into(category),
                                 ));
                             }
-                            Some(TalkStars::Complex(ComplexTalkStars { base_total, .. })) => {
+                            // Attributes section of talk page has modified attributes
+                            Some(TalkStars::Complex(ComplexTalkStars { total, .. })) => {
                                 // I'm writing this as a super-strict comparison so I can detect
                                 // how equal the equalities are. It may need to be relaxed in
                                 // the near future.
-                                if base_total != value {
+                                if total != value {
                                     ingest_logs.warn(format!(
-                                        "Base {} value in the attributes section of the talk ({}) \
-                                        did not exactly match the value in the stars section ({})",
+                                        "Modified {} value in the attributes section of the talk \
+                                        ({}) did not exactly match the value in the stars section \
+                                        ({})",
                                         <Attribute as Into<&'static str>>::into(*attr),
-                                        base_total,
+                                        total,
                                         value,
                                     ));
                                 }
@@ -529,16 +535,14 @@ fn chron_player_as_new<'a>(
 
                     // Check that everything in the category is also in expected_attributes. No
                     // need to check that the values match, that would be redundant
-                    for (attr, _) in &category.stars {
+                    for (attr, _) in &category_talk.stars {
                         match expected_attributes.get(attr) {
                             None => {
                                 ingest_logs.warn(format!(
                                     "Attribute {} appeared in the stars section of the {:?} \
                                     talk, but not the attributes section.",
                                     <Attribute as Into<&'static str>>::into(*attr),
-                                    // TODO I've requested derives for Into<&'static str> on category
-                                    //   too, update that to match once it exists
-                                    category,
+                                    <AttributeCategory as Into<&'static str>>::into(category),
                                 ));
                             }
                             Some(_) => {}
@@ -546,10 +550,10 @@ fn chron_player_as_new<'a>(
                     }
                 }
 
-                for (attr, stars) in &category.stars {
+                for (attr, stars) in &category_talk.stars {
                     match stars {
                         TalkStars::Complex(ComplexTalkStars { attribute, .. }) => {
-                            if attribute != &attr.to_string() {
+                            if attribute != attr {
                                 ingest_logs.warn(format!(
                                     "Attribute property of a talk page attribute ({}) did not \
                                     match the object key for this attribute's object ({}).",
@@ -595,34 +599,44 @@ fn chron_player_as_new<'a>(
                 .map(|(attribute, stars)| {
                     // Every value in attribute_stars is expected to match with the corresponding
                     // value in base_attributes
-                    if let Some(base_attrs) = entity.data.base_attributes.as_ref().ok() {
+                    let base_subtotal = if let Some(base_attrs) = entity.data.base_attributes.as_ref().ok() {
                         if let Some(base_attr) = base_attrs.attributes.get(attribute) {
                             // I'm writing this as a super-strict comparison so I can detect
                             // how equal the equalities are. It may need to be relaxed in
                             // the near future.
-                            if &stars.base_total != base_attr {
-                                ingest_logs.warn(format!(
+                            if float_ne!(&stars.base_total, base_attr, abs <= 1e-12) {
+                                // TODO Apply augments to base_attr and then this should be able
+                                //   to be changed back to a warning
+                                ingest_logs.info(format!(
                                     "Base {} value in BaseAttributes ({}) did not exactly \
-                                    match the value in AttributeStars ({})",
+                                    match the value in AttributeStars ({}). Assuming for now that \
+                                    this is because of augments.",
                                     <Attribute as Into<&'static str>>::into(*attribute),
-                                    stars.base_total,
                                     base_attr,
+                                    stars.base_total,
                                 ))
                             }
+                            Some(*base_attr)
                         } else {
                             ingest_logs.warn(format!(
                                 "BaseAttributes field on player entity exists, but does not \
                                 contain an entry for attribute {}. An entry was expected because \
                                 this attribute appears in the {:?} section of AttributeStars.",
                                 <Attribute as Into<&'static str>>::into(*attribute),
-                                // TODO I've requested derives for Into<&'static str> on category
-                                //   too, update that to match once it exists
-                                category,
+                                <AttributeCategory as Into<&'static str>>::into(*category),
                             ));
+                            None
                         }
-                    }
+                    } else {
+                        ingest_logs.warn(format!(
+                            "AttributeStars field on player entity exists, but BaseAttributes does \
+                            not. base_subtotal will be unexpectededly null for {}.",
+                            <Attribute as Into<&'static str>>::into(*attribute),
+                        ));
+                        None
+                    };
 
-                    player_report_attribute_version_as_new_from_complex((*category).into(), entity, taxa, attribute, stars)
+                    player_report_attribute_version_as_new_from_new_format((*category).into(), entity, taxa, attribute, stars, base_subtotal)
                 })
                 .collect_vec();
 
@@ -833,7 +847,9 @@ fn chron_player_as_new<'a>(
                     for (index, (root_freq, base_attributes_freq)) in iter::zip(pitch_selection.iter(), base_attributes.pitch_selection.iter()).enumerate() {
                         // Formatting as string is the most straightforward way to check the kind
                         // of correspondence we want
-                        if format!("{:.2}", root_freq) != format!("{:.2}", base_attributes_freq) {
+                        // It's 3 decimal digits because that becomes 1 digit after formatting as a
+                        // percentage, which is how it's displayed on the player page
+                        if format!("{:.3}", root_freq) != format!("{:.3}", base_attributes_freq) {
                             ingest_logs.warn(format!(
                                 "{}th pitch frequency in BaseAttributes ({}) does not match the \
                                 corresponding pitch frequency in the root object ({})",
@@ -1015,6 +1031,9 @@ fn player_report_attribute_version_as_new<'a>(
             TalkStars::Intermediate { .. } => None,
             TalkStars::Complex(ComplexTalkStars { base_total, .. }) => Some(*base_total),
         },
+        // This never exists in this format. There's a different helper for the new format
+        // where this is (usually) Some.
+        base_subtotal: None,
         modified_stars: match stars {
             TalkStars::Simple(_) => None,
             TalkStars::Intermediate { stars, .. } => Some(*stars as i32),
@@ -1028,12 +1047,13 @@ fn player_report_attribute_version_as_new<'a>(
     }
 }
 
-fn player_report_attribute_version_as_new_from_complex<'a>(
+fn player_report_attribute_version_as_new_from_new_format<'a>(
     category: TaxaAttributeCategory,
     entity: &'a ChronEntity<mmolb_parsing::player::Player>,
     taxa: &Taxa,
     attribute: &'a Attribute,
     stars: &'a ComplexTalkStars,
+    base_subtotal: Option<f64>,
 ) -> NewPlayerReportAttributeVersion<'a> {
     NewPlayerReportAttributeVersion {
         mmolb_player_id: &entity.entity_id,
@@ -1043,6 +1063,7 @@ fn player_report_attribute_version_as_new_from_complex<'a>(
         valid_until: None,
         base_stars: Some(stars.base_stars as i32),
         base_total: Some(stars.base_total),
+        base_subtotal,
         modified_stars: Some(stars.stars as i32),
         modified_total: Some(stars.total),
     }

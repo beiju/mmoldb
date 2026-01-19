@@ -411,6 +411,7 @@ pub mod data {
             valid_until -> Nullable<Timestamp>,
             base_stars -> Nullable<Int4>,
             base_total -> Nullable<Float8>,
+            base_subtotal -> Nullable<Float8>,
             modified_stars -> Nullable<Int4>,
             modified_total -> Nullable<Float8>,
         }

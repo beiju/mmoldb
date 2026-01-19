@@ -13,6 +13,7 @@ Upcoming
 
 - Season 10 support! Season 10 is a major change to MMOLB and incited the 
   following changes in MMOLB:
+  - Adds `priority`, `xp`, and `name_suffix` columns to `data.player_versions`.
   - Columns `greater_boon` and `lesser_boon` are removed from 
     `data.player_versions`, as you can now have multiple of each (at least 
     according to the API). 
@@ -20,7 +21,7 @@ Upcoming
     than they already were). They show in `data.player_modification_versions`,
     which has gained a new column, `modification_type`, to indicate whether 
     this modification is a greater boon, a lesser boon, or neither.
-  - Added `taxa.modification_type` to support the above change.
+  - Adds `taxa.modification_type` to support the above change.
   - Items earned from door prizes and consumption contests can now have 
     multiple of the same type of affix (i.e. multiple prefixes or multiple 
     suffixes). The following columns have been renamed to be plural and
@@ -35,7 +36,12 @@ Upcoming
     for any player versions in s10 and later. The overall structure of player
     reports remains the same, even though "reports" aren't a discrete concept 
     any more, for backwards compatibility.
-  - Added `priority` to `data.player_versions`. 
+  - Adds new table `data.player_pitch_type_versions` with information on the
+    player's pitch types and frequency. See docs for details (TODO docs).
+  - Adds `durability`, `prefix_position_type`, and `specialized` columns to 
+    `data.player_equipment_versions`. See docs for details (TODO docs).
+  - Adds `tier` column to `data.player_equipment_effect_versions`. See docs 
+    for details (TODO docs).
 - Fix many deserialization and parse errors, huge thanks once more to 
   WoofyJack.
 
