@@ -3853,6 +3853,10 @@ attributes as of `valid_from` and until sometime before `valid_until`). The
 season and day of a report does *not* update live, even after the Season 4
 change. For post-s4-ss reports, the season and day is not particularly useful.
 
+As of Season 10, the clubhouse does not exist and all attributes are revealed.
+The database structure is unchanged for backwards compatibility. For player
+version from Season 10 and later, all 4 reports will always exist.
+
 See the documentation of `data.player_versions` for a description of how to use
 `valid_from` and `valid_until`.
 
@@ -3982,6 +3986,10 @@ type = "text"
 description = """
 The quote from this player report.
 """
+nullable_explanation = """
+`null` for player versions from Season 10 and later, which no longer have
+quotes.
+"""
 
 [[table.column]]
 name = "included_attributes"
@@ -4008,6 +4016,10 @@ display the player's current attributes (for our purposes, this means the
 attributes as of `valid_from` and until sometime before `valid_until`). The
 season and day of a report does *not* update live, even after the Season 4
 change. For post-s4-ss reports, the season and day is not particularly useful.
+
+While Priority is technically an attribute, it is treated so differently to the
+other attributes that it never appears in this table. See the `priority` column
+on `data.player_versions` for the player's priority, when available.
 
 See the documentation of `data.player_versions` for a description of how to use
 `valid_from` and `valid_until`.
@@ -4096,7 +4108,8 @@ were avaialble.
 name = "base_total"
 type = "double precision"
 description = """
-The base value of this attribute, rounded to two decimal places.
+The base value of this attribute, rounded to two decimal places. This uses the
+pre-s10 definition of "base attribute", which includes augments.
 
 This uses the 0.0-1.0 range used in the MMOLB back-end. Multiply this value by
 100 to get the number displayed on the Player page.
@@ -4104,6 +4117,26 @@ This uses the 0.0-1.0 range used in the MMOLB back-end. Multiply this value by
 nullable_explanation = """
 `null` for reports from before totals were added, and for reports in the small
 window when only modified stars and totals were avaialble.
+"""
+
+[[table.column]]
+name = "base_subtotal"
+type = "double precision"
+description = """
+The s10-and-later base value of this attribute, rounded to two decimal places.
+Season 10 introduced a new definition of base attributes which does not include
+Season 10 augments, but which is confusingly also called the "base". To avoid
+ambiguity, MMOLDB refers to this as the "base subtotal" and previous meaning of
+"base attributes" as "base total".
+
+At least one attribute, Luck, is at least sometimes provided at full precision.
+It is unknown when and why this happens and how reliable it is.
+
+This uses the 0.0-1.0 range used in the MMOLB back-end. Multiply this value by
+100 to get the number displayed on the Player page.
+"""
+nullable_explanation = """
+`null` for reports from before Season 10.
 """
 
 [[table.column]]
