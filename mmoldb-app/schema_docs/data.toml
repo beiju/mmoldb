@@ -3034,6 +3034,11 @@ description = """
 Records instances of modifications on players. This connects
 `data.player_versions` to `data.modifications`.
 
+Previously, this table only contained regular modifications, and Boons were on
+the player object. As of Season 10, players are allowed to have multiple of
+each category of boon, so boons are now in this table as well. Use the
+`modification_type` column to filter to only regular modifications.
+
 See the documentation of `data.player_versions` for a description of how to use
 `valid_from` and `valid_until`.
 
@@ -3052,7 +3057,7 @@ description = """
 An arbitrary numeric ID. These IDs are *not* stable. You should not store these
 ids between queries, nor hard-code them into queries. To identify a particular
 modification on a particular player use the combination of its
-`mmolb_player_id` and `modification_index`.
+`mmolb_player_id`, `modification_type`, and `modification_index`.
 """
 
 [[table.column]]
@@ -3065,12 +3070,24 @@ associate players with their modifications.
 """
 
 [[table.column]]
+name = "modification_type"
+type = "bigint"
+description = """
+The type of this modification: Greater Boon, Lesser Boon, or neither.
+References `taxa.modification_type`. A
+`(mmolb_player_id, modification_type, modification_index)` triple uniquely and
+stably identifies a modification on a player.
+"""
+
+[[table.column]]
 name = "modification_index"
 type = "integer"
 description = """
-The index of this modification in the player's modifications list. A
-`(mmolb_player_id, modification_index)` pair uniquely and stably identifies a
-modification on a player.
+The index of this modification in the player's list of greater boons, lesser
+boons, or regular modifications list. Check `modification_type` to see which of
+those lists thsi index is indexing. A
+`(mmolb_player_id, modification_type, modification_index)` triple uniquely and
+stably identifies a modification on a player.
 """
 
 [[table.column]]
