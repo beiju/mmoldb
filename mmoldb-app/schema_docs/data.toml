@@ -2698,7 +2698,8 @@ your query. Remember to group that in parentheses if you're adding it to other
 `where` clauses that are combined using `or`.
 
 Much of the player information is in child tables:
-- `data.player_modification_versions` has the player modifications.
+- `data.player_modification_versions` has the player modifications. This now
+  includes Greater and Lesser boons, which were formerly on the player object.
 - `data.player_equipment_versions` has the equipment equipped by each player.
 - `data.player_equipment_effect_versions` has the attribute effects on each
   piece of equipment.
@@ -2797,7 +2798,7 @@ The player's first name.
 
 Players names are usually found in full when they appear in other tables. You
 can assemble the player's full name with the expression 
-`first_name || ' ' || last_name`.
+`first_name || ' ' || last_name || coalesce(' ' || name_suffix, '')`.
 """
 
 [[table.column]]
@@ -2808,7 +2809,28 @@ The player's last name.
 
 Players names are usually found in full when they appear in other tables. You
 can assemble the player's full name with the expression 
-`first_name || ' ' || last_name`.
+`first_name || ' ' || last_name || coalesce(' ' || name_suffix, '')`.
+"""
+
+[[table.column]]
+name = "name_suffix"
+type = "text"
+description = """
+The player's name suffix (a roman numeral indicating how many times this player
+has been Recomposed without a name change).
+
+Note that not all roman numerals that appear at the end of player names are
+name suffixes. For example, several players have the last name "II", and the
+various Stanley Demir clones from the Falling Stars exhibition had roman
+numerals manually apended to their last names.
+
+Players names are usually found in full when they appear in other tables. You
+can assemble the player's full name with the expression
+`first_name || ' ' || last_name || coalesce(' ' || name_suffix, '')`.
+"""
+nullable_explanation = """
+`null` if this player does not have a name suffix. As noted above, this does
+not necessarily mean the player's full name does not end in a roman numeral.
 """
 
 [[table.column]]
@@ -2946,35 +2968,33 @@ reaches 0, the player Retires.
 """
 
 [[table.column]]
-name = "greater_boon"
-type = "bigint"
+name = "priority"
+type = "double precision"
 description = """
-The player's Greater Boon, if they have one. This references 
-`data.modifications`.
+The player's Priority, which is the attribute that governs their lineup order.
+Unlike most attribute values, Priority is (currently) provided at full
+precision. This may change in the future.
 
-Modification ids (including boons) are *not* stable. You should not store 
-these ids between queries, nor hard-code them into queries. Always join to 
-`data.modifications` and use the modification name (and emoji and description 
-if you like) instead.
+Priority uses the same scale that the back-end uses for other attributes. A
+backend value of 1.0 corresponds to a (theoretical) displayed value of 100.
 """
 nullable_explanation = """
-`null` if this player does not have a Greater Boon.
+`null` for player versions before Season 10, which is when this attribute was
+added to the player object.
 """
 
 [[table.column]]
-name = "lesser_boon"
-type = "bigint"
+name = "xp"
+type = "integer"
 description = """
-The player's Lesser Boon, if they have one. This references 
-`data.modifications`.
-
-Modification ids (including boons) are *not* stable. You should not store 
-these ids between queries, nor hard-code them into queries. Always join to 
-`data.modifications` and use the modification name (and emoji and description 
-if you like) instead.
+The player's current XP. XP is a value that's not currently displayed on the
+MMOLB site, but it governs when the player levels up. Players gain XP at the
+end of every game their team plays, whether that player played in the game or
+not.
 """
 nullable_explanation = """
-`null` if this player does not have a Lesser Boon.
+`null` for player versions before Season 10, which is when this value was
+added to the player object.
 """
 
 [[table.column]]
@@ -4628,7 +4648,7 @@ description = """
 The name of the player's Greater Boon, if they have one.
 
 In the event that there are multiple versions of a boon with the same name, as
-has happened with the Partier boon, you can use `greater_boon_id` to 
+has happened with the Partier boon, you can use `greater_boon_id` to
 distinguish them.
 """
 nullable_explanation = """
@@ -4658,7 +4678,7 @@ description = """
 The name of the player's Lesser Boon, if they have one.
 
 In the event that there are multiple versions of a boon with the same name, as
-has happened with the Partier boon, you can use `lesser_boon_id` to 
+has happened with the Partier boon, you can use `lesser_boon_id` to
 distinguish them.
 """
 nullable_explanation = """
