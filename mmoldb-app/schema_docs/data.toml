@@ -3319,6 +3319,37 @@ nullable_explanation = """
 """
 
 [[table.column]]
+name = "durability"
+type = "integer"
+description = """
+The item's durability, which is referred to in the UI as "Infusion Potential".
+"""
+nullable_explanation = """
+`null` for items in the pre-s10 format, which did not have a durability.
+"""
+
+[[table.column]]
+name = "prefix_position_type"
+type = "bigint"
+description = """
+Which position this item is meant for, as indicated by its name. For example,
+"Pitcher's Pendant" vs "Slugger's Charm". References `taxa.slot_type`.
+"""
+nullable_explanation = """
+`null` for items in the pre-s10 format, which did not have a prefix_position_type.
+"""
+
+[[table.column]]
+name = "specialized"
+type = "boolean"
+description = """
+A value which is, for now, always `true` for equipment where it exists.
+"""
+nullable_explanation = """
+`null` for items in the pre-s10 format, which did not have a specialized value.
+"""
+
+[[table.column]]
 name = "num_effects"
 type = "integer"
 description = """
@@ -3440,6 +3471,18 @@ The value of the effect. This is stored exactly as stored in the MMOLB
 API (*not* the UI). This means that attribute values range from 0.05 to 0.20.
 
 Note that this is a different scale from attribute augment values.
+"""
+
+[[table.column]]
+name = "tier"
+type = "integer"
+description = """
+The tier of the effect. For post-s10 items, each effect has a teir which
+determines the range its `value` can occupy. Infusing an effect increases its
+`tier` by 1 and re-rolls its `value` within the new tier's (higher) range.
+"""
+nullable_explanation = """
+`null` for item versions from before Season 10.
 """
 
 [[table]]
