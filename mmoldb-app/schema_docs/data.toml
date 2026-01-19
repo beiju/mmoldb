@@ -4165,6 +4165,120 @@ nullable_explanation = """
 """
 
 [[table]]
+name = "player_pitch_type_versions"
+description = """
+The player's known pitch types and their frequencies, if available. These
+values became available starting partway through Season 6.
+
+Does not contain information about the bonuses the pitchers have gained to
+their pitch types and categories. When those are added, they will be in a
+separate table to account for the fact that players can have bonuses to pitch
+types they have forgotten.
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`. There can be a break in versions in this table without
+a corresponding break in versions in `data.player_versions` and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+player pitch type use the combination of its `mmolb_player_id` and
+`pitch_type_index`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player whose pitch type this is. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their pitch types.
+"""
+
+[[table.column]]
+name = "pitch_type_index"
+type = "integer"
+description = """
+The index of this pitch type within the player's list of pitch types. A
+`(mmolb_player_id, pitch_type_index)` pair uniquely and stably identifies a
+single player pitch type.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the pitch type was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the pitch type was observed, i.e. the
+earliest time we know this version is no longer valid. The latest time we know
+this version *is* valid is not exposed because nobody's requested it yet. If
+you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "integer"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "pitch_type"
+type = "bigint"
+description = """
+Which pitch type this is. References `taxa.pitch_type`.
+
+Pitch types are e.g. "Fastball", "Slider", etc. Pitch categories (e.g.
+"Breaking", "Offspeed", etc.) are not yet captured in MMOLDB.
+"""
+
+[[table.column]]
+name = "frequency"
+type = "double precision"
+description = """
+The nominal frequency with which the player throws this pitch. It's currently
+unknown whether Wisdom and Intuition modifiy these values.
+
+Values are expressed as a proportion, and all `frequency`s for a given player
+at a given time should add to 1.0.
+"""
+
+[[table.column]]
+name = "expect_full_precision"
+type = "boolean"
+description = """
+Indicates whether `frequency` came from a source that's been observed to show
+full precision. If this is `false`, `frequency` is rounded to 3 decimal places
+(which becomes 1 decimal place after converting to a percentage).
+
+This is a best-effort guess based purely on the location in the API from which
+the value was taken. The API may start rounding this value as well, in which
+case `expect_full_precision` may still be `true` even if the value is rounded.
+"""
+
+[[table]]
 name = "team_versions"
 description = """
 Historical and current team information.
