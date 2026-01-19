@@ -8,12 +8,15 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
---------
+2025-01-19
+----------
 
 - Season 10 support! Season 10 is a major change to MMOLB and incited the 
   following changes in MMOLB:
   - Adds `priority`, `xp`, and `name_suffix` columns to `data.player_versions`.
+    See docs for details. **In particular, note that building a player's full 
+    name from their `player_versions` row has changed.** This will affect any
+    queries that correlate player versions with game events.
   - Columns `greater_boon` and `lesser_boon` are removed from 
     `data.player_versions`, as you can now have multiple of each (at least 
     according to the API). 
@@ -37,11 +40,13 @@ Upcoming
     reports remains the same, even though "reports" aren't a discrete concept 
     any more, for backwards compatibility.
   - Adds new table `data.player_pitch_type_versions` with information on the
-    player's pitch types and frequency. See docs for details (TODO docs).
+    player's pitch types and frequency. Pitch type and pitch category bonuses
+    are not yet available. Let us know in the MMOLDB discord channel if you 
+    want to use these bonuses so we know to prioritize that work.
   - Adds `durability`, `prefix_position_type`, and `specialized` columns to 
-    `data.player_equipment_versions`. See docs for details (TODO docs).
+    `data.player_equipment_versions`. See docs for details.
   - Adds `tier` column to `data.player_equipment_effect_versions`. See docs 
-    for details (TODO docs).
+    for details.
 - Fix many deserialization and parse errors, huge thanks once more to 
   WoofyJack.
 
