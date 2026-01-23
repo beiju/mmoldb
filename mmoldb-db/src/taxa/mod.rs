@@ -1036,29 +1036,63 @@ impl From<mmolb_parsing::enums::FieldingErrorType> for TaxaFieldingErrorType {
 
 taxa! {
     #[
+        schema = crate::taxa_schema::taxa::pitch_category,
+        table = crate::taxa_schema::taxa::pitch_category::dsl::pitch_category,
+        id_column = crate::taxa_schema::taxa::pitch_category::dsl::id,
+        derive = (Serialize,)
+    ]
+    pub enum TaxaPitchCategory {
+        Fast = 1,
+        Breaking = 2,
+        Offspeed = 3,
+    }
+}
+
+impl Into<mmolb_parsing::enums::PitchCategory> for TaxaPitchCategory {
+    fn into(self) -> mmolb_parsing::enums::PitchCategory {
+        match self {
+            Self::Fast => mmolb_parsing::enums::PitchCategory::Fast,
+            Self::Breaking => mmolb_parsing::enums::PitchCategory::Breaking,
+            Self::Offspeed => mmolb_parsing::enums::PitchCategory::Offspeed,
+        }
+    }
+}
+
+impl From<mmolb_parsing::enums::PitchCategory> for TaxaPitchCategory {
+    fn from(value: mmolb_parsing::enums::PitchCategory) -> Self {
+        match value {
+            mmolb_parsing::enums::PitchCategory::Fast => Self::Fast,
+            mmolb_parsing::enums::PitchCategory::Breaking => Self::Breaking,
+            mmolb_parsing::enums::PitchCategory::Offspeed => Self::Offspeed,
+        }
+    }
+}
+
+taxa! {
+    #[
         schema = crate::taxa_schema::taxa::pitch_type,
         table = crate::taxa_schema::taxa::pitch_type::dsl::pitch_type,
         id_column = crate::taxa_schema::taxa::pitch_type::dsl::id,
         derive = (Serialize,)
     ]
     pub enum TaxaPitchType {
-        #[display_name: &'a str = "Fastball", abbreviation: &'a str = "FF"]
+        #[display_name: &'a str = "Fastball", abbreviation: &'a str = "FF", category: i64 = 1]
         Fastball = 1,
-        #[display_name: &'a str = "Sinker", abbreviation: &'a str = "SI"]
+        #[display_name: &'a str = "Sinker", abbreviation: &'a str = "SI", category: i64 = 1]
         Sinker = 2,
-        #[display_name: &'a str = "Slider", abbreviation: &'a str = "SL"]
+        #[display_name: &'a str = "Slider", abbreviation: &'a str = "SL", category: i64 = 2]
         Slider = 3,
-        #[display_name: &'a str = "Changeup", abbreviation: &'a str = "CH"]
+        #[display_name: &'a str = "Changeup", abbreviation: &'a str = "CH", category: i64 = 3]
         Changeup = 4,
-        #[display_name: &'a str = "Curveball", abbreviation: &'a str = "CU"]
+        #[display_name: &'a str = "Curveball", abbreviation: &'a str = "CU", category: i64 = 2]
         Curveball = 5,
-        #[display_name: &'a str = "Cutter", abbreviation: &'a str = "FC"]
+        #[display_name: &'a str = "Cutter", abbreviation: &'a str = "FC", category: i64 = 1]
         Cutter = 6,
-        #[display_name: &'a str = "Sweeper", abbreviation: &'a str = "ST"]
+        #[display_name: &'a str = "Sweeper", abbreviation: &'a str = "ST", category: i64 = 2]
         Sweeper = 7,
-        #[display_name: &'a str = "Knuckle curve", abbreviation: &'a str = "KC"]
+        #[display_name: &'a str = "Knuckle curve", abbreviation: &'a str = "KC", category: i64 = 2]
         KnuckleCurve = 8,
-        #[display_name: &'a str = "Splitter", abbreviation: &'a str = "FS"]
+        #[display_name: &'a str = "Splitter", abbreviation: &'a str = "FS", category: i64 = 3]
         Splitter = 9,
     }
 }
@@ -1471,12 +1505,14 @@ taxa! {
         id_column = crate::taxa_schema::taxa::modification_type::dsl::id,
         derive = (Serialize)
     ]
+    // If you change the names here, you need to update the insert trigger on
+    // data.player_versions (specifically where it deletes past-the-end modifications)
     pub enum TaxaModificationType {
         #[display_name: &'a str = "Modification"]
         Modification = 0,
-        #[display_name: &'a str = "Mound visit"]
+        #[display_name: &'a str = "Lesser Boon"]
         LesserBoon = 1,
-        #[display_name: &'a str = "Pitching change"]
+        #[display_name: &'a str = "Greater Boon"]
         GreaterBoon = 2,
     }
 }
@@ -1492,6 +1528,7 @@ pub struct Taxa {
     base_mapping: EnumMap<TaxaBase, i64>,
     base_description_format_mapping: EnumMap<TaxaBaseDescriptionFormat, i64>,
     fielding_error_type_mapping: EnumMap<TaxaFieldingErrorType, i64>,
+    pitch_category_mapping: EnumMap<TaxaPitchCategory, i64>,
     pitch_type_mapping: EnumMap<TaxaPitchType, i64>,
     handedness_mapping: EnumMap<TaxaHandedness, i64>,
     day_type_mapping: EnumMap<TaxaDayType, i64>,
@@ -1518,6 +1555,7 @@ impl Taxa {
             base_mapping: TaxaBase::make_id_mapping(conn)?,
             base_description_format_mapping: TaxaBaseDescriptionFormat::make_id_mapping(conn)?,
             fielding_error_type_mapping: TaxaFieldingErrorType::make_id_mapping(conn)?,
+            pitch_category_mapping: TaxaPitchCategory::make_id_mapping(conn)?,
             pitch_type_mapping: TaxaPitchType::make_id_mapping(conn)?,
             handedness_mapping: TaxaHandedness::make_id_mapping(conn)?,
             day_type_mapping: TaxaDayType::make_id_mapping(conn)?,
@@ -1572,6 +1610,10 @@ impl Taxa {
 
     pub fn day_type_id(&self, ty: TaxaDayType) -> i64 {
         self.day_type_mapping[ty]
+    }
+
+    pub fn pitch_category_id(&self, ty: TaxaPitchCategory) -> i64 {
+        self.pitch_category_mapping[ty]
     }
 
     pub fn pitch_type_id(&self, ty: TaxaPitchType) -> i64 {

@@ -26,7 +26,7 @@ use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection, NewPlayerPitchTypeVersion};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection, NewPlayerPitchTypeVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchCategoryBonusVersion};
 use crate::taxa::Taxa;
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -2217,6 +2217,8 @@ type NewPlayerVersionExt<'a> = (
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
     )>,
     Vec<NewPlayerPitchTypeVersion<'a>>,
+    Vec<NewPlayerPitchTypeBonusVersion<'a>>,
+    Vec<NewPlayerPitchCategoryBonusVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 );
 
@@ -2321,7 +2323,6 @@ fn insert_player_equipment(
     Ok(num_inserted)
 }
 
-
 fn insert_player_pitch_types(
     conn: &mut PgConnection,
     new_player_pitch_types: Vec<&Vec<NewPlayerPitchTypeVersion>>,
@@ -2338,6 +2339,41 @@ fn insert_player_pitch_types(
         .from_insertable(new_player_pitch_types)
         .execute(conn)
 }
+
+fn insert_player_pitch_type_bonuses(
+    conn: &mut PgConnection,
+    new_player_pitch_type_bonuses: Vec<&Vec<NewPlayerPitchTypeBonusVersion>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_pitch_type_bonus_versions::dsl as pptbv_dsl;
+
+    let new_player_pitch_type_bonuses = new_player_pitch_type_bonuses
+        .into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(pptbv_dsl::player_pitch_type_bonus_versions)
+        .from_insertable(new_player_pitch_type_bonuses)
+        .execute(conn)
+}
+
+fn insert_player_pitch_category_bonuses(
+    conn: &mut PgConnection,
+    new_player_pitch_category_bonuses: Vec<&Vec<NewPlayerPitchCategoryBonusVersion>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_pitch_category_bonus_versions::dsl as ppcbv_dsl;
+
+    let new_player_pitch_category_bonuses = new_player_pitch_category_bonuses
+        .into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(ppcbv_dsl::player_pitch_category_bonus_versions)
+        .from_insertable(new_player_pitch_category_bonuses)
+        .execute(conn)
+}
+
 pub fn insert_to_error<'container, InsertableT: 'container>(
     f: impl Fn(&mut PgConnection, &'container [InsertableT]) -> QueryResult<usize> + Copy,
     conn: &mut PgConnection,
@@ -2575,7 +2611,7 @@ pub fn insert_player_versions<'container, 'game: 'container>(
 
     // Reference to tuple into tuple of references
     let new_player_versions = new_player_versions.into_iter()
-        .map(|(a, b, c, d, e, f)| (a, b, c, d, e, f));
+        .map(|(a, b, c, d, e, f, g, h)| (a, b, c, d, e, f, g, h));
 
     let preprocess_start = Utc::now();
     let (
@@ -2584,6 +2620,8 @@ pub fn insert_player_versions<'container, 'game: 'container>(
         new_player_report_attributes,
         new_player_equipment,
         new_player_pitch_types,
+        new_player_pitch_type_bonuses,
+        new_player_pitch_category_bonuses,
         new_ingest_logs,
     ): (
         Vec<&NewPlayerVersion>,
@@ -2596,6 +2634,8 @@ pub fn insert_player_versions<'container, 'game: 'container>(
             )>,
         >,
         Vec<&Vec<NewPlayerPitchTypeVersion>>,
+        Vec<&Vec<NewPlayerPitchTypeBonusVersion>>,
+        Vec<&Vec<NewPlayerPitchCategoryBonusVersion>>,
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
@@ -2628,6 +2668,16 @@ pub fn insert_player_versions<'container, 'game: 'container>(
     let insert_player_pitch_types_duration =
         (Utc::now() - insert_player_pitch_types_start).as_seconds_f64();
 
+    let insert_player_pitch_type_bonuses_start = Utc::now();
+    insert_player_pitch_type_bonuses(conn, new_player_pitch_type_bonuses)?;
+    let insert_player_pitch_type_bonuses_duration =
+        (Utc::now() - insert_player_pitch_type_bonuses_start).as_seconds_f64();
+
+    let insert_player_pitch_category_bonuses_start = Utc::now();
+    insert_player_pitch_category_bonuses(conn, new_player_pitch_category_bonuses)?;
+    let insert_player_pitch_category_bonuses_duration =
+        (Utc::now() - insert_player_pitch_category_bonuses_start).as_seconds_f64();
+
     let insert_ingest_logs_start = Utc::now();
     insert_nested_ingest_logs(conn, new_ingest_logs)?;
     let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
@@ -2636,6 +2686,8 @@ pub fn insert_player_versions<'container, 'game: 'container>(
         "preprocess_duration: {preprocess_duration:.2}, \
         insert_player_equipment_duration: {insert_player_equipment_duration:.2}, \
         insert_player_pitch_types_duration: {insert_player_pitch_types_duration:.2}, \
+        insert_player_pitch_type_bonuses_duration: {insert_player_pitch_type_bonuses_duration:.2}, \
+        insert_player_pitch_category_bonuses_duration: {insert_player_pitch_category_bonuses_duration:.2}, \
         insert_player_reports_duration: {insert_player_reports_duration:.2}, \
         insert_player_modifications_duration: {insert_player_modifications_duration:.2}, \
         insert_player_version_duration: {insert_player_version_duration:.2}, \

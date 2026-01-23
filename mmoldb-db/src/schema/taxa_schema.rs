@@ -118,11 +118,19 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.pitch_category (id) {
+            id -> Int8,
+            name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.pitch_type (id) {
             id -> Int8,
             name -> Text,
             display_name -> Text,
             abbreviation -> Text,
+            category -> Int8,
         }
     }
 
@@ -155,6 +163,7 @@ pub mod taxa {
     }
 
     diesel::joinable!(attribute -> attribute_category (category));
+    diesel::joinable!(pitch_type -> pitch_category (category));
     diesel::joinable!(slot -> fielder_location (location));
 
     diesel::allow_tables_to_appear_in_same_query!(
@@ -171,6 +180,7 @@ pub mod taxa {
         handedness,
         leagues,
         modification_type,
+        pitch_category,
         pitch_type,
         pitcher_change_source,
         slot,

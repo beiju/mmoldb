@@ -15,7 +15,7 @@ use thiserror::Error;
 use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerPitchTypeVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
+use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaModificationType, TaxaSlot};
 use crate::config::IngestibleConfig;
 use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs, VersionStage1Ingest};
@@ -300,6 +300,8 @@ fn chron_player_as_new<'a>(
         Vec<NewPlayerEquipmentEffectVersion<'a>>,
     )>,
     Vec<NewPlayerPitchTypeVersion<'a>>,
+    Vec<NewPlayerPitchTypeBonusVersion<'a>>,
+    Vec<NewPlayerPitchCategoryBonusVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
     let mut ingest_logs = VersionIngestLogs::new(PlayerIngest::KIND, &entity.entity_id, entity.valid_from);
@@ -416,7 +418,6 @@ fn chron_player_as_new<'a>(
             .into_iter()
             .map(|category| taxa.attribute_category_id(category))
             .collect_vec()
-
     } else {
         // No sort necessary because order is hard-coded
         entity
@@ -449,33 +450,6 @@ fn chron_player_as_new<'a>(
             None
         }
     });
-
-    let player = NewPlayerVersion {
-        mmolb_player_id: &entity.entity_id,
-        valid_from: entity.valid_from.naive_utc(),
-        valid_until: None,
-        first_name: &entity.data.first_name,
-        last_name: &entity.data.last_name,
-        batting_handedness: get_handedness_id(&entity.data.bats, &mut ingest_logs),
-        pitching_handedness: get_handedness_id(&entity.data.throws, &mut ingest_logs),
-        home: &entity.data.home,
-        birthseason: entity.data.birthseason as i32,
-        birthday_type,
-        birthday_day,
-        birthday_superstar_day,
-        likes: &entity.data.likes,
-        dislikes: &entity.data.dislikes,
-        number: entity.data.number as i32,
-        mmolb_team_id: entity.data.team_id.as_deref(),
-        slot,
-        durability: entity.data.durability,
-        num_modifications: modifications.len() as i32,
-        occupied_equipment_slots,
-        included_report_categories,
-        priority,
-        xp: entity.data.xp.as_ref().ok().map(|xp| *xp as i32),
-        name_suffix: entity.data.suffix.as_ref().ok().and_then(|x| x.as_deref()),
-    };
 
     // Emit errors for internal inconsistencies in the talk. This block doesn't add any
     // data for the db
@@ -968,12 +942,93 @@ fn chron_player_as_new<'a>(
         pitch_types
     };
 
+    let pitch_type_bonuses = if let Ok(bonuses) = &entity.data.pitch_type_bonuses {
+        bonuses
+            .iter()
+            .flat_map(|(maybe_pitch_type, bonus)| {
+                match maybe_pitch_type {
+                    Ok(pitch_type) => Some(NewPlayerPitchTypeBonusVersion {
+                        mmolb_player_id: &entity.entity_id,
+                        pitch_type: taxa.pitch_type_id((*pitch_type).into()),
+                        valid_from: entity.valid_from.naive_utc(),
+                        valid_until: None,
+                        bonus: *bonus,
+                    }),
+                    Err(err) => {
+                        ingest_logs.error(format!("Unrecognized pitch type {err} in PitchTypeBonuses"));
+                        None
+                    }
+                }
+            })
+            .collect_vec()
+    } else {
+        Vec::new()
+    };
+
+    let pitch_category_bonuses = if let Ok(bonuses) = &entity.data.pitch_category_bonuses {
+        bonuses
+            .iter()
+            .flat_map(|(maybe_pitch_category, bonus)| {
+                match maybe_pitch_category {
+                    Ok(pitch_category) => Some(NewPlayerPitchCategoryBonusVersion {
+                        mmolb_player_id: &entity.entity_id,
+                        pitch_category: taxa.pitch_category_id((*pitch_category).into()),
+                        valid_from: entity.valid_from.naive_utc(),
+                        valid_until: None,
+                        bonus: *bonus,
+                    }),
+                    Err(err) => {
+                        ingest_logs.error(format!("Unrecognized pitch type {err} in PitchTypeBonuses"));
+                        None
+                    }
+                }
+            })
+            .collect_vec()
+    } else {
+        Vec::new()
+    };
+
+    let player = NewPlayerVersion {
+        mmolb_player_id: &entity.entity_id,
+        valid_from: entity.valid_from.naive_utc(),
+        valid_until: None,
+        first_name: &entity.data.first_name,
+        last_name: &entity.data.last_name,
+        batting_handedness: get_handedness_id(&entity.data.bats, &mut ingest_logs),
+        pitching_handedness: get_handedness_id(&entity.data.throws, &mut ingest_logs),
+        home: &entity.data.home,
+        birthseason: entity.data.birthseason as i32,
+        birthday_type,
+        birthday_day,
+        birthday_superstar_day,
+        likes: &entity.data.likes,
+        dislikes: &entity.data.dislikes,
+        number: entity.data.number as i32,
+        mmolb_team_id: entity.data.team_id.as_deref(),
+        slot,
+        durability: entity.data.durability,
+        num_modifications: entity.data.modifications.len() as i32,
+        num_greater_boons: entity.data.greater_boon.len() as i32,
+        num_lesser_boons: entity.data.lesser_boon.len() as i32,
+        num_pitch_types: entity.data.pitch_types.as_ref().map_or(0, |pt| pt.len()) as i32,
+        occupied_equipment_slots,
+        included_report_categories,
+        included_pitch_type_bonuses: pitch_type_bonuses.iter().map(|bonus| bonus.pitch_type).collect(),
+        priority,
+        xp: entity.data.xp.as_ref().ok().map(|xp| *xp as i32),
+        name_suffix: entity.data.suffix.as_ref().ok().and_then(|x| x.as_deref()),
+        level: entity.data.level.as_ref().ok().map(|level| *level as i32),
+        included_pitch_category_bonuses: pitch_category_bonuses.iter().map(|bonus| bonus.pitch_category).collect(),
+    };
+
     (
         player,
         modifications,
         report_versions,
         equipment,
         pitch_types,
+        pitch_type_bonuses,
+        pitch_category_bonuses,
         ingest_logs.into_vec(),
     )
 }

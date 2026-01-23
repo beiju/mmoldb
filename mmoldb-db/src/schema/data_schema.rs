@@ -371,6 +371,18 @@ pub mod data {
     }
 
     diesel::table! {
+        data.player_pitch_category_bonus_versions (id) {
+            id -> Int8,
+            mmolb_player_id -> Text,
+            pitch_category -> Int8,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            bonus -> Float8,
+        }
+    }
+
+    diesel::table! {
         data.player_pitch_type_bonus_versions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
@@ -473,6 +485,12 @@ pub mod data {
             priority -> Nullable<Float8>,
             xp -> Nullable<Int4>,
             name_suffix -> Nullable<Text>,
+            level -> Nullable<Int4>,
+            num_greater_boons -> Int4,
+            num_lesser_boons -> Int4,
+            num_pitch_types -> Int4,
+            included_pitch_type_bonuses -> Array<Nullable<Int8>>,
+            included_pitch_category_bonuses -> Array<Nullable<Int8>>,
         }
     }
 
@@ -600,6 +618,7 @@ pub mod data {
         player_equipment_versions,
         player_modification_versions,
         player_paradigm_shifts,
+        player_pitch_category_bonus_versions,
         player_pitch_type_bonus_versions,
         player_pitch_type_versions,
         player_recompositions,

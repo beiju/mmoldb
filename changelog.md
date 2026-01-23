@@ -8,7 +8,20 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-2025-01-19
+Upcoming
+--------
+- Fixes issues with closing out versions of boons and pitch types. These issues
+  only ever existed on the staging server, so if you only use the connection 
+  info from beiju.mmoldb.me you were unaffected.
+- Adds `level` to `data.player_versions`, along with several columns that are
+  meant for MMOLDB internal use. See docs for details (TODO docs).
+- Adds `data.player_pitch_type_bonus_versions` and 
+  `data.player_pitch_category_bonus_versions`, which contain the information 
+  you would think. 
+- Adds `taxa.pitch_category`.
+- Adds `category` column to `taxa.pitch_type`.
+
+2025-01-19 (staging only)
 ----------
 
 - Season 10 support! Season 10 is a major change to MMOLB and incited the 

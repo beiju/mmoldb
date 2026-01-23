@@ -421,12 +421,18 @@ pub struct NewPlayerVersion<'a> {
     pub mmolb_team_id: Option<&'a str>,
     pub slot: Option<i64>,
     pub durability: f64,
-    pub num_modifications: i32,
-    pub occupied_equipment_slots: Vec<&'a str>,
-    pub included_report_categories: Vec<i64>,
     pub priority: Option<f64>,
     pub xp: Option<i32>,
     pub name_suffix: Option<&'a str>,
+    pub level: Option<i32>,
+    pub num_modifications: i32,
+    pub num_greater_boons: i32,
+    pub num_lesser_boons: i32,
+    pub num_pitch_types: i32,
+    pub occupied_equipment_slots: Vec<&'a str>,
+    pub included_report_categories: Vec<i64>,
+    pub included_pitch_type_bonuses: Vec<i64>,
+    pub included_pitch_category_bonuses: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -452,12 +458,18 @@ pub struct DbPlayerVersion {
     pub mmolb_team_id: Option<String>,
     pub slot: Option<i64>,
     pub durability: f64,
-    pub num_modifications: i32,
-    pub occupied_equipment_slots: Vec<Option<String>>,
-    pub included_report_categories: Vec<Option<i64>>,
     pub priority: Option<f64>,
     pub xp: Option<i32>,
     pub name_suffix: Option<String>,
+    pub level: Option<i32>,
+    pub num_modifications: i32,
+    pub num_greater_boons: i32,
+    pub num_lesser_boons: i32,
+    pub num_pitch_types: i32,
+    pub occupied_equipment_slots: Vec<Option<String>>,
+    pub included_report_categories: Vec<Option<i64>>,
+    pub included_pitch_type_bonuses: Vec<Option<i64>>,
+    pub included_pitch_category_bonuses: Vec<Option<i64>>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -1229,4 +1241,50 @@ pub struct DbPlayerPitchTypeVersion {
     pub pitch_type: Option<i64>,
     pub frequency: f64,
     pub expect_full_precision: bool,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_pitch_type_bonus_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPlayerPitchTypeBonusVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub pitch_type: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub bonus: f64,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::player_pitch_type_bonus_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerPitchTypeBonusVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub pitch_type: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub bonus: f64,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq)]
+#[diesel(table_name = crate::data_schema::data::player_pitch_category_bonus_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewPlayerPitchCategoryBonusVersion<'a> {
+    pub mmolb_player_id: &'a str,
+    pub pitch_category: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub bonus: f64,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::player_pitch_category_bonus_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbPlayerPitchCategoryBonusVersion {
+    pub id: i64,
+    pub mmolb_player_id: String,
+    pub pitch_category: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub bonus: f64,
 }
