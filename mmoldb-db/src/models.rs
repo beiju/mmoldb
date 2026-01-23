@@ -1212,7 +1212,7 @@ pub struct NewPlayerPitchTypeVersion<'a> {
     pub pitch_type_index: i32,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
-    pub pitch_type: i64,
+    pub pitch_type: Option<i64>,
     pub frequency: f64,
     pub expect_full_precision: bool,
 }
@@ -1226,7 +1226,7 @@ pub struct DbPlayerPitchTypeVersion {
     pub pitch_type_index: i32,
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
-    pub pitch_type: i64,
+    pub pitch_type: Option<i64>,
     pub frequency: f64,
     pub expect_full_precision: bool,
 }

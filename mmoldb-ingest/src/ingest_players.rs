@@ -821,7 +821,27 @@ fn chron_player_as_new<'a>(
         if base_attributes.pitch_types.len() == base_attributes.pitch_selection.len() {
             if let Ok(pitch_types) = &entity.data.pitch_types {
                 if pitch_types.len() == base_attributes.pitch_types.len() {
-                    for (index, (root_ty, base_attributes_ty)) in iter::zip(pitch_types.iter(), base_attributes.pitch_types.iter()).enumerate() {
+                    for (index, (root_ty_result, base_attributes_ty_result)) in iter::zip(pitch_types.iter(), base_attributes.pitch_types.iter()).enumerate() {
+                        let root_ty = match root_ty_result {
+                            Ok(root_ty) => root_ty,
+                            Err(err) => {
+                                ingest_logs.error(format!(
+                                    "{index}th pitch type in root object was unrecognized: {err}",
+                                ));
+                                continue;
+                            }
+                        };
+                        
+                        let base_attributes_ty = match base_attributes_ty_result {
+                            Ok(base_attributes_ty) => base_attributes_ty,
+                            Err(err) => {
+                                ingest_logs.error(format!(
+                                    "{index}th pitch type in BaseAttributes was unrecognized: {err}",
+                                ));
+                                continue;
+                            }
+                        };
+                        
                         if root_ty != base_attributes_ty {
                             ingest_logs.warn(format!(
                                 "{}th pitch type in BaseAttributes ({}) does not match the \
@@ -876,7 +896,9 @@ fn chron_player_as_new<'a>(
                     pitch_type_index: index as i32,
                     valid_from: entity.valid_from.naive_utc(),
                     valid_until: None,
-                    pitch_type: taxa.pitch_type_id((*ty).into()),
+                    // If this is not ok(), an error should already have been logged while doing
+                    // the consistency check above
+                    pitch_type: ty.as_ref().ok().map(|ty| taxa.pitch_type_id((*ty).into())),
                     frequency: *freq,
                     // This source is full precision as of this writing
                     expect_full_precision: true,
@@ -907,7 +929,9 @@ fn chron_player_as_new<'a>(
                             pitch_type_index: index as i32,
                             valid_from: entity.valid_from.naive_utc(),
                             valid_until: None,
-                            pitch_type: taxa.pitch_type_id((*ty).into()),
+                            // If this is not ok(), an error should already have been logged while doing
+                            // the consistency check above
+                            pitch_type: ty.as_ref().ok().map(|ty| taxa.pitch_type_id((*ty).into())),
                             frequency: *freq,
                             // This source is not full precision as of this writing
                             expect_full_precision: false,
