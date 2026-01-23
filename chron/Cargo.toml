@@ -15,5 +15,5 @@ serde_json = "1.0.140"
 futures = "0.3.31"
 thiserror = "2.0.12"
 miette = "7.6.0"
-reqwest = "0.12.22"
+reqwest = { version = "0.13.1", features = ["query", "json", "gzip", "brotli", "zstd"] }
 tokio = "1.46.1"
