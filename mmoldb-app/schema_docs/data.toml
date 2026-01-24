@@ -2998,6 +2998,17 @@ added to the player object.
 """
 
 [[table.column]]
+name = "level"
+type = "integer"
+description = """
+The player's current level.
+"""
+nullable_explanation = """
+`null` for player versions before Season 10, which is when this value was
+added to the player object.
+"""
+
+[[table.column]]
 name = "num_modifications"
 type = "integer"
 description = """
@@ -3006,6 +3017,37 @@ The number of modifications the player has.
 This is used internally by MMOLDB itself, and is not likely to be useful to
 users. To see player modifications, use the
 `data.player_modification_versions` table.
+"""
+
+[[table.column]]
+name = "num_greater_boons"
+type = "integer"
+description = """
+The number of greater boons the player has.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see player boons, use the `data.player_modification_versions` table.
+"""
+
+[[table.column]]
+name = "num_lesser_boons"
+type = "integer"
+description = """
+The number of lesser boons the player has.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see player boons, use the `data.player_modification_versions` table.
+"""
+
+[[table.column]]
+name = "num_pitch_types"
+type = "integer"
+description = """
+The number of pitch types the player knows.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see player pitch types, use the `data.player_pitch_type_versions`
+table.
 """
 
 [[table.column]]
@@ -3026,6 +3068,28 @@ A list of which clubhouse reports are included on this player.
 
 This is used internally by MMOLDB itself, and is not likely to be useful to
 users. To see player reports, use the `data.player_report_versions` table.
+"""
+
+[[table.column]]
+name = "included_pitch_type_bonuses"
+type = "ARRAY" # TODO Add support for specific array types
+description = """
+A list of which pitch types this player has bonuses for.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see player pitch type bonuses, use the
+`data.player_pitch_type_bonus_versions` table.
+"""
+
+[[table.column]]
+name = "included_pitch_category_bonuses"
+type = "ARRAY" # TODO Add support for specific array types
+description = """
+A list of which pitch categories this player has bonuses for.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see player pitch category bonuses, use the
+`data.player_pitch_category_bonus_versions` table.
 """
 
 [[table]]
@@ -4170,10 +4234,9 @@ description = """
 The player's known pitch types and their frequencies, if available. These
 values became available starting partway through Season 6.
 
-Does not contain information about the bonuses the pitchers have gained to
-their pitch types and categories. When those are added, they will be in a
-separate table to account for the fact that players can have bonuses to pitch
-types they have forgotten.
+For information about the bonuses this player has to certain pitch types and
+categories, see `data.player_pitch_type_bonus_versions` and
+`data.player_pitch_category_bonus_versions`.
 
 See the documentation of `data.player_versions` for a description of how to use
 `valid_from` and `valid_until`.
@@ -4248,10 +4311,11 @@ Currently being used to debug MMOLDB itself. This field may be deleted soon.
 name = "pitch_type"
 type = "bigint"
 description = """
-Which pitch type this is. References `taxa.pitch_type`.
-
-Pitch types are e.g. "Fastball", "Slider", etc. Pitch categories (e.g.
-"Breaking", "Offspeed", etc.) are not yet captured in MMOLDB.
+Which pitch type this is. References `taxa.pitch_type`. To get the pitch type's
+category, references the `category` column of `taxa.pitch_type`.
+"""
+nullable_explanation = """
+`null` if this pitch type was not recognized. This represents an ingest error.
 """
 
 [[table.column]]
@@ -4276,6 +4340,179 @@ full precision. If this is `false`, `frequency` is rounded to 3 decimal places
 This is a best-effort guess based purely on the location in the API from which
 the value was taken. The API may start rounding this value as well, in which
 case `expect_full_precision` may still be `true` even if the value is rounded.
+"""
+
+[[table]]
+name = "player_pitch_type_bonus_versions"
+description = """
+The bonuses players have to certain pitch types. This may not have an entry for
+every pitch type the player knows, and it may have entries for pitch types the
+player no longer knows (including newly-drafted players who were automatically
+leveled).
+
+For the bonuses this player has to pitch *categories*, see
+`data.player_pitch_category_bonus_versions`.
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`. There can be a break in versions in this table without
+a corresponding break in versions in `data.player_versions` and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+player pitch type bonus use the combination of its `mmolb_player_id` and
+`pitch_type`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player whose pitch type this is. Use this to join on
+`data.player_versions` (using `valid_from` and `valid_until` accordingly) to
+associate players with their pitch type bonuses.
+"""
+
+[[table.column]]
+name = "pitch_type"
+type = "bigint"
+description = """
+The pitch type that this bonus applies to. A `(mmolb_player_id, pitch_type)`
+pair uniquely and stably identifies a single player pitch type bonus.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the pitch type bonus was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the pitch type bonus was observed,
+i.e. the earliest time we know this version is no longer valid. The latest time
+we know this version *is* valid is not exposed because nobody's requested it
+yet. If you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "integer"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "bonus"
+type = "double precision"
+description = """
+The value of the bonus to this pitch type.
+"""
+
+[[table]]
+name = "player_pitch_category_bonus_versions"
+description = """
+The bonuses players have to certain pitch categories. This may not have an
+entry for every pitch category the player knows, and it may have entries for
+pitch categories the player no longer knows (including newly-drafted players
+who were automatically leveled).
+
+For the bonuses this player has to pitch *types*, see
+`data.player_pitch_type_bonus_versions`.
+
+See the documentation of `data.player_versions` for a description of how to use
+`valid_from` and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.player_versions`. There can be a break in versions in this table without
+a corresponding break in versions in `data.player_versions` and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+player pitch category use the combination of its `mmolb_player_id` and
+`pitch_category`.
+"""
+
+[[table.column]]
+name = "mmolb_player_id"
+type = "text"
+description = """
+The MMOLB id for the player whose pitch category bonus this is. Use this to
+join on `data.player_versions` (using `valid_from` and `valid_until`
+accordingly) to associate players with their pitch category bonuses.
+"""
+
+[[table.column]]
+name = "pitch_category"
+type = "bigint"
+description = """
+The pitch category that this bonus applies to. A
+`(mmolb_player_id, pitch_category)` pair uniquely and stably identifies a
+single player pitch category bonus.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the pitch category bonus was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the pitch category bonus was observed,
+i.e. the earliest time we know this version is no longer valid. The latest time
+we know this version *is* valid is not exposed because nobody's requested it
+yet. If you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "integer"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "bonus"
+type = "double precision"
+description = """
+The value of the bonus to this pitch category.
 """
 
 [[table]]
