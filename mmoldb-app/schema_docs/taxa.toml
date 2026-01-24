@@ -427,10 +427,37 @@ This is (currently) also the human-friendly name.
 """
 
 [[table]]
+name = "pitch_category"
+description = """
+Pitch category. Every pitch type falls into a category, and pitchers can
+recieve bonuses to certain pitch categories.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a pitch category. When this appears as a
+foreign key you are encouraged to join this `taxa` and use its `name`
+column, rather than directly using pitch category ids in your
+queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this pitch category. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+
+This is also the human-friendly name for each pitch category.
+"""
+
+[[table]]
 name = "pitch_type"
 description = """
 Pitch type, as described by the pitch information at the right side of
-a pitch event.
+a pitch event or as a pitcher's known pitch types.
 """
 
 [[table.column]]
@@ -463,6 +490,13 @@ name = "abbreviation"
 type = "text"
 description = """
 The standard baseball abbreviation for this pitch type.
+"""
+
+[[table.column]]
+name = "category"
+type = "bigint"
+description = """
+This pitch type's category. References `taxa.pitch_category`.
 """
 
 [[table]]
