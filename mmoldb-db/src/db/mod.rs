@@ -2041,6 +2041,9 @@ pub fn get_player_ingest_start_cursor(
         player_cursor_from_table!(conn, schema, player_equipment_effect_versions)?,
         player_cursor_from_table!(conn, schema, player_report_versions)?,
         player_cursor_from_table!(conn, schema, player_report_attribute_versions)?,
+        player_cursor_from_table!(conn, schema, player_pitch_type_versions)?,
+        player_cursor_from_table!(conn, schema, player_pitch_type_bonus_versions)?,
+        player_cursor_from_table!(conn, schema, player_pitch_category_bonus_versions)?,
     ]
     .into_iter()
     // Compute the latest of all cursors
