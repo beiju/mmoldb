@@ -1,4 +1,3 @@
-use log::error;
 use miette::Diagnostic;
 use rocket::http::Status;
 use rocket::response::Responder;

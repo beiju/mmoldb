@@ -11,11 +11,6 @@ use mmoldb_db::ConnectionPool;
 use mmoldb_db::taxa::TaxaAttribute;
 
 #[derive(Debug, Clone, Serialize)]
-pub struct DisplayDate {
-
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct GameTime {
     pub time: DateTime<Utc>,
     pub season: i32,

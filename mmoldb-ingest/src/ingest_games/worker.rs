@@ -301,7 +301,7 @@ fn diagnostic_to_string(err: miette::Report) -> String {
 
 fn prepare_game_for_db(
     entity: &ChronEntity<mmolb_parsing::Game>,
-) -> Result<GameForDb, IngestFatalError> {
+) -> Result<GameForDb<'_>, IngestFatalError> {
     Ok(if !entity.data.is_terminal() {
         GameForDb::Ongoing {
             game_id: &entity.entity_id,
@@ -351,7 +351,7 @@ fn prepare_game_for_db(
 
 fn prepare_completed_game_for_db(
     entity: &ChronEntity<mmolb_parsing::Game>,
-) -> Result<CompletedGameForDb, SimStartupError> {
+) -> Result<CompletedGameForDb<'_>, SimStartupError> {
     let parsed_game = mmolb_parsing::process_game(&entity.data, &entity.entity_id);
 
     // I'm adding enumeration to parsed, then stripping it out for

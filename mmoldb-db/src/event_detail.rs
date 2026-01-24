@@ -288,7 +288,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
     // Every such runner must have a base_before of Some
     fn runners_out_iter(
         &self,
-    ) -> impl Iterator<Item = Result<(&str, BaseNameVariant), MissingBaseDescriptionFormat>> {
+    ) -> impl Iterator<Item = Result<(&str, BaseNameVariant), MissingBaseDescriptionFormat<'_>>> {
         self.baserunners
             .iter()
             .filter(|runner| runner.is_out)
@@ -308,11 +308,11 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             })
     }
 
-    fn runners_out(&self) -> Result<Vec<(&str, BaseNameVariant)>, MissingBaseDescriptionFormat> {
+    fn runners_out(&self) -> Result<Vec<(&str, BaseNameVariant)>, MissingBaseDescriptionFormat<'_>> {
         self.runners_out_iter().collect()
     }
 
-    pub fn to_parsed(&self) -> Result<ParsedEventMessage<&str>, ToParsedError> {
+    pub fn to_parsed(&self) -> Result<ParsedEventMessage<&str>, ToParsedError<'_>> {
         let exactly_one_runner_out = || {
             let runners_out = self
                 .runners_out()
