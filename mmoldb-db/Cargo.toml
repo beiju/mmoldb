@@ -11,7 +11,7 @@ path = "src/lib.rs"
 chron = { path = "../chron" }
 diesel = { version = "~2", features = ["chrono", "postgres", "64-column-tables", "serde_json", "numeric", "r2d2"] }
 diesel_migrations = "~2"
-diesel-async = { version = "0.6.1", features = ["postgres"] }
+diesel-async = { version = "0.7.4", features = ["postgres"] }
 percent-encoding = "2.3.1"
 serde = { version = "1.0.219", features = ["derive"] }
 figment = { version = "0.10.19", features = ["env"] }

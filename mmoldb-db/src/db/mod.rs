@@ -12,7 +12,7 @@ pub use versions::*;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::dsl::{count, count_distinct, count_star, max, min};
+use diesel::dsl::{count, count_star, max, min};
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
@@ -72,7 +72,7 @@ pub fn game_with_issues_count(conn: &mut PgConnection) -> QueryResult<i64> {
 
     dsl::event_ingest_log
         .filter(dsl::log_level.lt(3)) // Selects warnings and higher
-        .select(diesel::dsl::count_distinct(dsl::game_id))
+        .select(count(dsl::game_id).aggregate_distinct())
         .get_result(conn)
 }
 
@@ -3193,7 +3193,7 @@ pub fn games_stats(conn: &mut PgConnection) -> QueryResult<GamesStats> {
         .get_result(conn)?;
 
     let num_games_with_issues = event_ingest_log::dsl::event_ingest_log
-        .select(count_distinct(event_ingest_log::dsl::game_id))
+        .select(count(event_ingest_log::dsl::game_id).aggregate_distinct())
         .filter(event_ingest_log::dsl::log_level.le(2))
         .get_result(conn)?;
 
@@ -3246,7 +3246,7 @@ pub fn players_stats(conn: &mut PgConnection) -> QueryResult<PlayersStats> {
         .get_result(conn)?;
 
     let num_players_with_issues = version_ingest_log::dsl::version_ingest_log
-        .select(count_distinct(version_ingest_log::dsl::entity_id))
+        .select(count(version_ingest_log::dsl::entity_id).aggregate_distinct())
         .filter(version_ingest_log::dsl::kind.eq("player"))
         .filter(version_ingest_log::dsl::log_level.le(2))
         .get_result(conn)?;
@@ -3283,7 +3283,7 @@ pub fn teams_stats(conn: &mut PgConnection) -> QueryResult<TeamsStats> {
         .get_result(conn)?;
 
     let num_teams_with_issues = version_ingest_log::dsl::version_ingest_log
-        .select(count_distinct(version_ingest_log::dsl::entity_id))
+        .select(count(version_ingest_log::dsl::entity_id).aggregate_distinct())
         .filter(version_ingest_log::dsl::kind.eq("team"))
         .filter(version_ingest_log::dsl::log_level.le(2))
         .get_result(conn)?;
