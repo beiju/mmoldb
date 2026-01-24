@@ -4,7 +4,7 @@ volumes:
 
 services:
   app:
-#    image: mcr.microsoft.com/devcontainers/rust:1-1-bookworm
+#    image: mcr.microsoft.com/devcontainers/rust:2-1-trixie
     build:
       context: .
       dockerfile: Dockerfile
