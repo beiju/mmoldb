@@ -8,16 +8,16 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
---------
+2025-01-23
+----------
 - Fixes issues with closing out versions of boons and pitch types. These issues
   only ever existed on the staging server, so if you only use the connection 
   info from beiju.mmoldb.me you were unaffected.
 - Adds `level` to `data.player_versions`, along with several columns that are
-  meant for MMOLDB internal use. See docs for details (TODO docs).
+  meant for MMOLDB internal use. See docs for details.
 - Adds `data.player_pitch_type_bonus_versions` and 
   `data.player_pitch_category_bonus_versions`, which contain the information 
-  you would think. 
+  you would think. See docs for details.
 - Adds `taxa.pitch_category`.
 - Adds `category` column to `taxa.pitch_type`.
 
