@@ -2797,8 +2797,8 @@ description = """
 The player's first name.
 
 Players names are usually found in full when they appear in other tables. You
-can assemble the player's full name with the expression 
-`first_name || ' ' || last_name || coalesce(' ' || name_suffix, '')`.
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.player_versions` row as an argument.
 """
 
 [[table.column]]
@@ -2808,8 +2808,8 @@ description = """
 The player's last name.
 
 Players names are usually found in full when they appear in other tables. You
-can assemble the player's full name with the expression 
-`first_name || ' ' || last_name || coalesce(' ' || name_suffix, '')`.
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.player_versions` row as an argument.
 """
 
 [[table.column]]
@@ -2825,8 +2825,8 @@ various Stanley Demir clones from the Falling Stars exhibition had roman
 numerals manually apended to their last names.
 
 Players names are usually found in full when they appear in other tables. You
-can assemble the player's full name with the expression
-`first_name || ' ' || last_name || coalesce(' ' || name_suffix, '')`.
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.player_versions` row as an argument.
 """
 nullable_explanation = """
 `null` if this player does not have a name suffix. As noted above, this does
@@ -4947,8 +4947,8 @@ description = """
 The player's first name.
 
 Players names are usually found in full when they appear in other tables. You
-can assemble the player's full name with the expression
-`first_name || ' ' || last_name`.
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.player_versions_extended` row as an argument.
 """
 is_non_nullable_view_field = true
 
@@ -4959,10 +4959,24 @@ description = """
 The player's last name.
 
 Players names are usually found in full when they appear in other tables. You
-can assemble the player's full name with the expression
-`first_name || ' ' || last_name`.
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.player_versions_extended` row as an argument.
 """
 is_non_nullable_view_field = true
+
+[[table.column]]
+name = "name_suffix"
+type = "text"
+description = """
+The player's name suffix (Roman numeral) if they have one.
+
+Players names are usually found in full when they appear in other tables. You
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.player_versions_extended` row as an argument.
+"""
+nullable_explanation = """
+`null` if this player doesn't have a name suffix.
+"""
 
 [[table.column]]
 name = "mmolb_team_id"
@@ -4992,6 +5006,47 @@ season, as well as when the player is damaged by a falling star. When it
 reaches 0, the player Retires.
 """
 is_non_nullable_view_field = true
+
+[[table.column]]
+name = "priority"
+type = "double precision"
+description = """
+The player's Priority, which is the attribute that governs their lineup order.
+Unlike most attribute values, Priority is (currently) provided at full
+precision. This may change in the future.
+
+Priority uses the same scale that the back-end uses for other attributes. A
+backend value of 1.0 corresponds to a (theoretical) displayed value of 100.
+"""
+nullable_explanation = """
+`null` for player versions before Season 10, which is when this attribute was
+added to the player object.
+"""
+
+[[table.column]]
+name = "xp"
+type = "integer"
+description = """
+The player's current XP. XP is a value that's not currently displayed on the
+MMOLB site, but it governs when the player levels up. Players gain XP at the
+end of every game their team plays, whether that player played in the game or
+not.
+"""
+nullable_explanation = """
+`null` for player versions before Season 10, which is when this value was
+added to the player object.
+"""
+
+[[table.column]]
+name = "level"
+type = "integer"
+description = """
+The player's current level.
+"""
+nullable_explanation = """
+`null` for player versions before Season 10, which is when this value was
+added to the player object.
+"""
 
 [[table.column]]
 name = "position"
@@ -5070,66 +5125,6 @@ an ingest error.
 """
 
 [[table.column]]
-name = "greater_boon_id"
-type = "bigint"
-description = """
-The player's Greater Boon, if they have one. This references
-`data.modifications`.
-
-Modification ids (including boons) are *not* stable. You should not store
-these ids between queries, nor hard-code them into queries. Always join to
-`data.modifications` and use the modification name (and emoji and description
-if you like) instead.
-"""
-nullable_explanation = """
-`null` if this player does not have a Greater Boon.
-"""
-
-[[table.column]]
-name = "greater_boon"
-type = "text"
-description = """
-The name of the player's Greater Boon, if they have one.
-
-In the event that there are multiple versions of a boon with the same name, as
-has happened with the Partier boon, you can use `greater_boon_id` to
-distinguish them.
-"""
-nullable_explanation = """
-`null` if this player does not have a Greater Boon.
-"""
-
-[[table.column]]
-name = "lesser_boon_id"
-type = "bigint"
-description = """
-The player's Lesser Boon, if they have one. This references
-`data.modifications`.
-
-Modification ids (including boons) are *not* stable. You should not store
-these ids between queries, nor hard-code them into queries. Always join to
-`data.modifications` and use the modification name (and emoji and description
-if you like) instead.
-"""
-nullable_explanation = """
-`null` if this player does not have a Lesser Boon.
-"""
-
-[[table.column]]
-name = "lesser_boon"
-type = "text"
-description = """
-The name of the player's Lesser Boon, if they have one.
-
-In the event that there are multiple versions of a boon with the same name, as
-has happened with the Partier boon, you can use `lesser_boon_id` to
-distinguish them.
-"""
-nullable_explanation = """
-`null` if this player does not have a Lesser Boon.
-"""
-
-[[table.column]]
 name = "modification_ids"
 type = "ARRAY"
 description = """
@@ -5141,6 +5136,17 @@ Modification ids (including boons) are *not* stable. You should not store
 these ids between queries, nor hard-code them into queries. Always join to
 `data.modifications` and use the modification name (and emoji and description
 if you like) instead.
+"""
+is_non_nullable_view_field = true
+
+[[table.column]]
+name = "modification_types"
+type = "ARRAY"
+description = """
+An array of the players' modification types: 'GreaterBoon', 'LesserBoon', or
+'Modification'. This tells you whether the corresponding modification in
+`modifications` or `modification_ids` is a boon. If the player has no
+modifications, this is the empty array.
 """
 is_non_nullable_view_field = true
 
@@ -5498,7 +5504,7 @@ a Cap equipped, but it has no attributes, this is the empty array.
 name = "luck_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Luck.
+If reported, the number of base stars the player has in Luck.
 """
 nullable_explanation = """
 `null` if this player version has no reported Luck.
@@ -5508,7 +5514,7 @@ nullable_explanation = """
 name = "aiming_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Aiming.
+If reported, the number of base stars the player has in Aiming.
 """
 nullable_explanation = """
 `null` if this player version has no reported Aiming.
@@ -5518,7 +5524,7 @@ nullable_explanation = """
 name = "contact_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Contact.
+If reported, the number of base stars the player has in Contact.
 """
 nullable_explanation = """
 `null` if this player version has no reported Contact.
@@ -5528,7 +5534,7 @@ nullable_explanation = """
 name = "cunning_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Cunning.
+If reported, the number of base stars the player has in Cunning.
 """
 nullable_explanation = """
 `null` if this player version has no reported Cunning.
@@ -5538,7 +5544,7 @@ nullable_explanation = """
 name = "determination_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Determination.
+If reported, the number of base stars the player has in Determination.
 """
 nullable_explanation = """
 `null` if this player version has no reported Determination.
@@ -5548,7 +5554,7 @@ nullable_explanation = """
 name = "discipline_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Discipline.
+If reported, the number of base stars the player has in Discipline.
 """
 nullable_explanation = """
 `null` if this player version has no reported Discipline.
@@ -5558,7 +5564,7 @@ nullable_explanation = """
 name = "insight_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Insight.
+If reported, the number of base stars the player has in Insight.
 """
 nullable_explanation = """
 `null` if this player version has no reported Insight.
@@ -5568,7 +5574,7 @@ nullable_explanation = """
 name = "intimidation_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Intimidation.
+If reported, the number of base stars the player has in Intimidation.
 """
 nullable_explanation = """
 `null` if this player version has no reported Intimidation.
@@ -5578,7 +5584,7 @@ nullable_explanation = """
 name = "lift_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Lift.
+If reported, the number of base stars the player has in Lift.
 """
 nullable_explanation = """
 `null` if this player version has no reported Lift.
@@ -5588,7 +5594,7 @@ nullable_explanation = """
 name = "muscle_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Muscle.
+If reported, the number of base stars the player has in Muscle.
 """
 nullable_explanation = """
 `null` if this player version has no reported Muscle.
@@ -5598,7 +5604,7 @@ nullable_explanation = """
 name = "selflessness_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Selflessness.
+If reported, the number of base stars the player has in Selflessness.
 """
 nullable_explanation = """
 `null` if this player version has no reported Selflessness.
@@ -5608,7 +5614,7 @@ nullable_explanation = """
 name = "vision_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Vision.
+If reported, the number of base stars the player has in Vision.
 """
 nullable_explanation = """
 `null` if this player version has no reported Vision.
@@ -5618,7 +5624,7 @@ nullable_explanation = """
 name = "wisdom_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Wisdom.
+If reported, the number of base stars the player has in Wisdom.
 """
 nullable_explanation = """
 `null` if this player version has no reported Wisdom.
@@ -5628,7 +5634,7 @@ nullable_explanation = """
 name = "accuracy_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Accuracy.
+If reported, the number of base stars the player has in Accuracy.
 """
 nullable_explanation = """
 `null` if this player version has no reported Accuracy.
@@ -5638,7 +5644,7 @@ nullable_explanation = """
 name = "control_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Control.
+If reported, the number of base stars the player has in Control.
 """
 nullable_explanation = """
 `null` if this player version has no reported Control.
@@ -5648,7 +5654,7 @@ nullable_explanation = """
 name = "defiance_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Defiance.
+If reported, the number of base stars the player has in Defiance.
 """
 nullable_explanation = """
 `null` if this player version has no reported Defiance.
@@ -5658,7 +5664,7 @@ nullable_explanation = """
 name = "guts_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Guts.
+If reported, the number of base stars the player has in Guts.
 """
 nullable_explanation = """
 `null` if this player version has no reported Guts.
@@ -5668,7 +5674,7 @@ nullable_explanation = """
 name = "presence_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Presence.
+If reported, the number of base stars the player has in Presence.
 """
 nullable_explanation = """
 `null` if this player version has no reported Presence.
@@ -5678,7 +5684,7 @@ nullable_explanation = """
 name = "persuasion_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Persuasion.
+If reported, the number of base stars the player has in Persuasion.
 """
 nullable_explanation = """
 `null` if this player version has no reported Persuasion.
@@ -5688,7 +5694,7 @@ nullable_explanation = """
 name = "rotation_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Rotation.
+If reported, the number of base stars the player has in Rotation.
 """
 nullable_explanation = """
 `null` if this player version has no reported Rotation.
@@ -5698,7 +5704,7 @@ nullable_explanation = """
 name = "stamina_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Stamina.
+If reported, the number of base stars the player has in Stamina.
 """
 nullable_explanation = """
 `null` if this player version has no reported Stamina.
@@ -5708,7 +5714,7 @@ nullable_explanation = """
 name = "stuff_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Stuff.
+If reported, the number of base stars the player has in Stuff.
 """
 nullable_explanation = """
 `null` if this player version has no reported Stuff.
@@ -5718,17 +5724,39 @@ nullable_explanation = """
 name = "velocity_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Velocity.
+If reported, the number of base stars the player has in Velocity.
 """
 nullable_explanation = """
 `null` if this player version has no reported Velocity.
 """
 
 [[table.column]]
+name = "deception_stars"
+type = "integer"
+description = """
+If reported, the number of base stars the player has in Deception.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Deception, including all
+versions before Season 10.
+"""
+
+[[table.column]]
+name = "intuition_stars"
+type = "integer"
+description = """
+If reported, the number of base stars the player has in Intuition.
+"""
+nullable_explanation = """
+`null` if this player version has no reported Intuition, including all
+versions before Season 10.
+"""
+
+[[table.column]]
 name = "acrobatics_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Acrobatics.
+If reported, the number of base stars the player has in Acrobatics.
 """
 nullable_explanation = """
 `null` if this player version has no reported Acrobatics.
@@ -5738,7 +5766,7 @@ nullable_explanation = """
 name = "agility_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Agility.
+If reported, the number of base stars the player has in Agility.
 """
 nullable_explanation = """
 `null` if this player version has no reported Agility.
@@ -5748,7 +5776,7 @@ nullable_explanation = """
 name = "arm_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Arm.
+If reported, the number of base stars the player has in Arm.
 """
 nullable_explanation = """
 `null` if this player version has no reported Arm.
@@ -5758,7 +5786,7 @@ nullable_explanation = """
 name = "awareness_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Awareness.
+If reported, the number of base stars the player has in Awareness.
 """
 nullable_explanation = """
 `null` if this player version has no reported Awareness.
@@ -5768,7 +5796,7 @@ nullable_explanation = """
 name = "composure_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Composure.
+If reported, the number of base stars the player has in Composure.
 """
 nullable_explanation = """
 `null` if this player version has no reported Composure.
@@ -5778,7 +5806,7 @@ nullable_explanation = """
 name = "dexterity_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Dexterity.
+If reported, the number of base stars the player has in Dexterity.
 """
 nullable_explanation = """
 `null` if this player version has no reported Dexterity.
@@ -5788,7 +5816,7 @@ nullable_explanation = """
 name = "patience_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Patience.
+If reported, the number of base stars the player has in Patience.
 """
 nullable_explanation = """
 `null` if this player version has no reported Patience.
@@ -5798,7 +5826,7 @@ nullable_explanation = """
 name = "reaction_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Reaction.
+If reported, the number of base stars the player has in Reaction.
 """
 nullable_explanation = """
 `null` if this player version has no reported Reaction.
@@ -5808,7 +5836,7 @@ nullable_explanation = """
 name = "greed_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Greed.
+If reported, the number of base stars the player has in Greed.
 """
 nullable_explanation = """
 `null` if this player version has no reported Greed.
@@ -5818,7 +5846,7 @@ nullable_explanation = """
 name = "performance_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Performance.
+If reported, the number of base stars the player has in Performance.
 """
 nullable_explanation = """
 `null` if this player version has no reported Performance.
@@ -5828,7 +5856,7 @@ nullable_explanation = """
 name = "speed_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Speed.
+If reported, the number of base stars the player has in Speed.
 """
 nullable_explanation = """
 `null` if this player version has no reported Speed.
@@ -5838,7 +5866,7 @@ nullable_explanation = """
 name = "stealth_stars"
 type = "integer"
 description = """
-If reported, the number of stars the player has in Stealth.
+If reported, the number of base stars the player has in Stealth.
 """
 nullable_explanation = """
 `null` if this player version has no reported Stealth.

@@ -8,6 +8,29 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+2025-01-25
+----------
+- Reinstates `data.player_versions_extended` with the following changes:
+  - Adds `priority`, `xp`, `level`, and `name_suffix` columns. **In particular,
+    note that building a player's full name from their 
+    `player_versions_extended` row has changed.** This will affect any queries 
+    that correlate player versions with game events. 
+  - Removes `greater_boon`, `greater_boon_id`, `lesser_boon`, and 
+    `lesser_boon_id` columns, as players can now have multiple of each. 
+    Instead, those boons are in `modification_ids` and `modifications`, as well
+    as the new `modification_types` which tells you whether this modification 
+    is a boon. Note that boons have always been just a special category of 
+    modifications.
+  
+  Further changes may come to `data.player_versions_extended` later on, for 
+  example to add support for more than just base stars in attributes and/or
+  player pitch type information.
+- Adds a utility function `player_full_name` which builds a player's full name
+  from a `data.player_versions` row, a `data.player_versions_extended` row, or
+  a first name, last name, and name suffix as three separate arguments. This 
+  function will be kept up to date with any changes to player name rendering,
+  such as the addition of `name_suffix` in Season 10.
+
 2025-01-23
 ----------
 - Fixes issues with closing out versions of boons and pitch types. These issues
