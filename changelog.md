@@ -30,8 +30,10 @@ Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
   a first name, last name, and name suffix as three separate arguments. This 
   function will be kept up to date with any changes to player name rendering,
   such as the addition of `name_suffix` in Season 10.
+- If you don't keep up with the staging server, also take a look at the next
+  two sections of changelogs, since those changes will be new to you as well.
 
-2025-01-23
+2025-01-23 (staging only)
 ----------
 - Fixes issues with closing out versions of boons and pitch types. These issues
   only ever existed on the staging server, so if you only use the connection 
