@@ -3909,9 +3909,51 @@ impl<'g> Game<'g> {
                     // TODO Don't ignore reflection shatters
                     None
                 },
-                [ParsedEventMessageDiscriminants::WeatherReflection]
+                [ParsedEventMessageDiscriminants::LinealBeltTransfer]
                 ParsedEventMessage::LinealBeltTransfer { .. } => {
                     // TODO Don't ignore lineal belt
+                    None
+                },
+                [ParsedEventMessageDiscriminants::WeatherSimulacrum]
+                ParsedEventMessage::WeatherSimulacrum { simulacrum_team, real_team, tokens_earnt } => {
+                    if simulacrum_team.emoji == real_team.emoji &&
+                        simulacrum_team.name == real_team.name {
+                        ingest_logs.warn(format!(
+                            "Can't tell who got the Simulacrum weather payout because \
+                            {simulacrum_team} and {real_team} have the same name and emoji. \
+                            Recording it as nobody."
+                        ));
+                    } else if real_team.emoji == self.home.team_emoji &&
+                        real_team.name == self.home.team_name &&
+                        simulacrum_team.emoji == self.away.team_emoji &&
+                        simulacrum_team.name == self.away.team_name  {
+                        if self.home_team_earned_coins.is_some() {
+                            ingest_logs.warn(format!(
+                                "Somehow the {real_team} earned coins before the end-of-game event \
+                                during Simulacrum weather. The coins total will be incorrect.,\
+                            "));
+                        }
+                        self.home_team_earned_coins = Some(*tokens_earnt as i32);
+                    } else if real_team.emoji == self.away.team_emoji &&
+                        real_team.name == self.away.team_name &&
+                        simulacrum_team.emoji == self.home.team_emoji &&
+                        simulacrum_team.name == self.home.team_name  {
+                        if self.home_team_earned_coins.is_some() {
+                            ingest_logs.warn(format!(
+                                "Somehow the {real_team} earned coins before the end-of-game event \
+                                during Simulacrum weather. The coins total will be incorrect.,\
+                            "));
+                        }
+                        self.home_team_earned_coins = Some(*tokens_earnt as i32);
+                    } else {
+                        ingest_logs.warn(format!(
+                            "Can't tell who got the Simulacrum weather payout because \
+                            {simulacrum_team} and {real_team} do not match {} {} and {} {}. \
+                            Recording it as nobody.",
+                            self.home.team_emoji, self.home.team_name,
+                            self.away.team_emoji, self.away.team_name,
+                        ));
+                    }
                     None
                 },
                 // TODO see if there's a way to make the error message say which bug(s) we

@@ -8,6 +8,13 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+--------
+- Adds support for Simulacrum weather (this just means adding the coins to the
+  `(home|away)team_coins_earned` column of `data.games`).
+- Fixes some parse errors due to "21th" and farther innings and due to players 
+  whose name ends with "V". Thanks WoofyJack!
+
 2025-01-25
 ----------
 - Reinstates `data.player_versions_extended` with the following changes:
