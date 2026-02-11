@@ -24,6 +24,12 @@ pub use ingest::*;
 use crate::ingest_player_feed::PlayerFeedIngest;
 use crate::ingest_players::PlayerIngest;
 use crate::ingest_team_feed::TeamFeedIngest;
+use std::alloc;
+use cap::Cap;
+use humansize::{format_size, BINARY};
+
+#[global_allocator]
+static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::MAX);
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
@@ -232,21 +238,23 @@ fn refresh_matviews(pool: ConnectionPool) -> Result<(), IngestStageError> {
         })
 }
 
+fn block_until_exit(exit: Arc<(Mutex<bool>, Condvar)>, timeout: Duration) -> bool {
+    let (exit, exit_cond) = &*exit;
+    let (should_exit, _) = exit_cond.wait_timeout_while(
+        exit.lock().unwrap(),
+        timeout,
+        |&mut should_exit| !should_exit,
+    ).unwrap();
+
+    *should_exit
+}
+
 fn refresh_entity_counting_matviews_repeatedly(pool: ConnectionPool, exit: Arc<(Mutex<bool>, Condvar)>) -> Result<(), IngestFatalError> {
     let mut conn = pool.get()
         .map_err(IngestFatalError::DbPoolError)?;
     loop {
-        {
-            let (exit, exit_cond) = &*exit;
-            let (should_exit, _) = exit_cond.wait_timeout_while(
-                exit.lock().unwrap(),
-                Duration::from_secs(10),
-                |&mut should_exit| !should_exit,
-            ).unwrap();
-
-            if *should_exit {
-                break;
-            }
+        if block_until_exit(exit.clone(), Duration::from_secs(10)) {
+            break;
         }
 
         db::refresh_entity_counting_matviews(&mut conn).map_err(IngestFatalError::DbError)?;
@@ -266,6 +274,19 @@ async fn ingest_everything(
         let pool = pool.clone();
         let stop_entity_counting = stop_entity_counting.clone();
         || refresh_entity_counting_matviews_repeatedly(pool, stop_entity_counting)
+    });
+
+    let memory_tracking_task = tokio::task::spawn_blocking({
+        let stop_entity_counting = stop_entity_counting.clone();
+        move || {
+            loop {
+                if block_until_exit(stop_entity_counting.clone(), Duration::from_secs(10)) {
+                    break;
+                }
+
+                println!("Total memory allocated: {}", format_size(ALLOCATOR.allocated(), BINARY));
+            }
+        }
     });
 
     let mut errs = ingest_while_counting_task_runs(pool.clone(), ingest_id, abort, config).await;
@@ -290,6 +311,14 @@ async fn ingest_everything(
                 stage_name: "Counting task".to_string(),
                 error: IngestFatalError::JoinError(error),
             })
+        }
+    }
+
+    info!("Waiting for memory tracking task to finish");
+    match memory_tracking_task.await {
+        Ok(()) => {}
+        Err(error) => {
+            error!("Error joining memory counting task: {}", error)
         }
     }
 

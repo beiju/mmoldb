@@ -34,3 +34,5 @@ ascii = "1.1.0"
 tokio-stream = { version = "0.1.17", features = ["io-util"] }
 serde_path_to_error = "0.1.20"
 float_eq = "1.0.1"
+cap = "0.1.2"
+humansize = "2.1.3"

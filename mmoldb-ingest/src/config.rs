@@ -11,6 +11,7 @@ pub struct IngestibleConfig {
     pub insert_raw_entity_batch_size: usize,
     pub process_batch_size: usize,
     pub ingest_parallelism: Option<NonZero<usize>>,
+    pub debug_db_insert_delay: f64,
 }
 
 impl Default for IngestibleConfig {
@@ -21,6 +22,7 @@ impl Default for IngestibleConfig {
             insert_raw_entity_batch_size: 1000,
             process_batch_size: 1000,
             ingest_parallelism: None,
+            debug_db_insert_delay: 0.0,
         }
     }
 }

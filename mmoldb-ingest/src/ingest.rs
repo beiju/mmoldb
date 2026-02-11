@@ -838,7 +838,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
         let mut num_ingested = 0;
         while let Some(raw_versions) = chunk_stream.next().await {
-            num_ingested += self.ingest_page(&taxa, raw_versions, &mut conn, worker_idx)?;
+            num_ingested += self.ingest_page(&taxa, raw_versions, &mut conn, worker_idx, args.config.debug_db_insert_delay)?;
 
             db::update_num_ingested(&mut conn, args.ingest_id, self.kind, num_ingested)?;
         }
@@ -848,7 +848,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         Ok(())
     }
 
-    fn ingest_page(&self, taxa: &Taxa, raw_versions: Vec<ChronEntity<serde_json::Value>>, conn: &mut PgConnection, worker_id: usize) -> Result<i32, IngestFatalError> {
+    fn ingest_page(&self, taxa: &Taxa, raw_versions: Vec<ChronEntity<serde_json::Value>>, conn: &mut PgConnection, worker_id: usize, debug_db_insert_delay: f64) -> Result<i32, IngestFatalError> {
         debug!(
             "Starting ingest of {} {}(s) on worker {worker_id}",
             raw_versions.len(), self.kind
@@ -913,6 +913,9 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let entities_len = entities.len();
         let mut total_inserted = 0;
         for batch in batch_by_entity(entities) {
+            if debug_db_insert_delay > 0. {
+                std::thread::sleep(std::time::Duration::from_secs_f64(debug_db_insert_delay));
+            }
             let to_insert = batch.len();
             info!(
                 "Sending {} new {} versions out of {} to the database.",
