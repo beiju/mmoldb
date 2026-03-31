@@ -1,0 +1,1 @@
+create unique index entities_with_issues_count_unique_kind on info.entities_with_issues_count (kind);

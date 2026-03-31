@@ -1,0 +1,1 @@
+drop index info.entities_with_issues_count_unique_kind;
