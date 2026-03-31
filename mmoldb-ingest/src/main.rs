@@ -268,7 +268,9 @@ fn refresh_entity_counting_matviews_repeatedly(pool: ConnectionPool, exit: Arc<(
             break;
         }
 
-        db::refresh_entity_counting_matviews(&mut conn).map_err(IngestFatalError::DbError)?;
+        for err in db::refresh_entity_counting_matviews(&mut conn) {
+            error!("Error in entity counting task: {err:?}");
+        }
     }
 
     Ok(())
