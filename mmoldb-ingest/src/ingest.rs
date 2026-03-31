@@ -162,7 +162,7 @@ impl IngestErrorContainer {
         me
     }
 
-    pub fn append<T>(&mut self, result: Result<T, IngestStageError>) -> Option<T> {
+    pub fn push<T>(&mut self, result: Result<T, IngestStageError>) -> Option<T> {
         match result {
             Ok(value) => Some(value),
             Err(error) => {
@@ -170,6 +170,10 @@ impl IngestErrorContainer {
                 None
             }
         }
+    }
+
+    pub fn push_err(&mut self, err: IngestStageError) {
+        self.errors.push(err);
     }
 
     pub fn extend(&mut self, other: impl IntoIterator<Item=IngestStageError>) {
@@ -251,7 +255,7 @@ impl Ingestor {
                 error: IngestFatalError::TaskSpawnError(err),
             });
 
-        let Some(running_stages) = errs.append(running_stages_result) else {
+        let Some(running_stages) = errs.push(running_stages_result) else {
             return errs;
         };
 

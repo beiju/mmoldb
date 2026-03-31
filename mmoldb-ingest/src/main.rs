@@ -143,7 +143,7 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
                 stage_name: "Setting statement timeout".to_string(),
                 error: IngestFatalError::DbError(error),
             });
-        errs.append(result);
+        errs.push(result);
     }
 
     let abort = CancellationToken::new();
@@ -225,17 +225,28 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
     // make the process exit
 }
 
-fn refresh_matviews(pool: ConnectionPool) -> Result<(), IngestStageError> {
-    let mut conn = pool.get()
-        .map_err(|error| IngestStageError {
+fn refresh_matviews(pool: ConnectionPool) -> IngestErrorContainer {
+    let mut errs = IngestErrorContainer::new();
+
+    let mut conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            errs.push_err(IngestStageError {
+                stage_name: "Refresh matviews".to_string(),
+                error: IngestFatalError::DbPoolError(e),
+            });
+            return errs;
+        }
+    };
+    
+    for err in db::refresh_matviews(&mut conn) {
+        errs.push_err(IngestStageError {
             stage_name: "Refresh matviews".to_string(),
-            error: IngestFatalError::DbPoolError(error),
-        })?;
-    db::refresh_matviews(&mut conn)
-        .map_err(|error| IngestStageError {
-            stage_name: "Refresh matviews".to_string(),
-            error: IngestFatalError::DbError(error),
-        })
+            error: IngestFatalError::DbError(err),
+        });
+    }
+    
+    errs
 }
 
 fn block_until_exit(exit: Arc<(Mutex<bool>, Condvar)>, timeout: Duration) -> bool {
@@ -323,7 +334,7 @@ async fn ingest_everything(
     }
 
     info!("Refreshing materialized views");
-    errs.append(refresh_matviews(pool));
+    errs.extend(refresh_matviews(pool));
 
     if errs.errors.is_empty() {
         info!("Ingest complete");

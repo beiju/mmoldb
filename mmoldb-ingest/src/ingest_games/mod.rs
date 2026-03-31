@@ -101,7 +101,7 @@ pub async fn ingest_stage_2(
             stage_name: "game Stage 2 coordinator".to_string(),
             error: IngestFatalError::AsyncDbPoolError(error),
         });
-    let Some(mut async_conn) = errs.append(async_conn_result) else {
+    let Some(mut async_conn) = errs.push(async_conn_result) else {
         return errs;
     };
 
@@ -134,7 +134,7 @@ pub async fn ingest_stage_2(
                         error: IngestFatalError::TaskSpawnError(error),
                     });
 
-                errs.append(task_result)
+                errs.push(task_result)
                     .map(|task| (name.as_str(), send, task))
             })
             .collect_vec();
@@ -145,13 +145,13 @@ pub async fn ingest_stage_2(
                 error: IngestFatalError::DbError(error),
             });
 
-        let tasks = if let Some(stream) = errs.append(stream_result) {
+        let tasks = if let Some(stream) = errs.push(stream_result) {
             let result = dispatch_to_stage_2_workers(&partitioner, tasks, stream).await
                 .map_err(|error| IngestStageError {
                     stage_name: "game Stage 2 coordinator".to_string(),
                     error,
                 });
-            errs.append(result)
+            errs.push(result)
         } else {
             Some(tasks)
         };
@@ -171,13 +171,13 @@ pub async fn ingest_stage_2(
                         stage_name: name.to_string(),
                         error: IngestFatalError::JoinError(error),
                     });
-                if let Some(task_result) = errs.append(join_result) {
+                if let Some(task_result) = errs.push(join_result) {
                     let task_result = task_result
                         .map_err(|error| IngestStageError {
                             stage_name: name.to_string(),
                             error,
                         });
-                    errs.append(task_result);
+                    errs.push(task_result);
                 }
             }
         }
@@ -252,7 +252,7 @@ pub async fn ingest_games(
             stage_name: "game Stage 2 coordinator".to_string(),
             error: IngestFatalError::TaskSpawnError(err),
         });
-    let stage_2_task = errs.append(stage_2_task_result);
+    let stage_2_task = errs.push(stage_2_task_result);
 
     info!("Launched process games task");
     info!("Beginning raw game ingest");
@@ -262,7 +262,7 @@ pub async fn ingest_games(
             stage_name: "game Stage 1".to_string(),
             error: IngestFatalError::DbPoolError(err),
         });
-    if let Some(mut ingest_conn) = errs.append(ingest_conn_result) {
+    if let Some(mut ingest_conn) = errs.push(ingest_conn_result) {
         tokio::select! {
             result = ingest_raw_games(&mut ingest_conn, notify, use_local_cheap_cashews) => {
                 let result = result
@@ -271,7 +271,7 @@ pub async fn ingest_games(
                         error,
                     });
                 
-                errs.append(result);
+                errs.push(result);
 
                 // Tell process games workers to stop waiting and exit
                 finish.cancel();
@@ -291,7 +291,7 @@ pub async fn ingest_games(
                 stage_name: "game Stage 2 coordinator".to_string(),
                 error: IngestFatalError::JoinError(error),
             });
-        if let Some(stage_2_task_result) = errs.append(stage_2_task_result) {
+        if let Some(stage_2_task_result) = errs.push(stage_2_task_result) {
             errs.extend(stage_2_task_result);
         }
     }

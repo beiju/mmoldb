@@ -3142,25 +3142,41 @@ pub fn update_num_ingested(
     Ok(())
 }
 
-pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> QueryResult<()> {
+pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> Vec<QueryError> {
+    let mut errs = Vec::new();
+    
     trace!("Refreshing materialized view info.entities_count");
-    sql_query("refresh materialized view concurrently info.entities_count").execute(conn)?;
+    if let Err(e) = sql_query("refresh materialized view info.entities_count").execute(conn) {
+        errs.push(e);
+    }
+    
     trace!("Refreshing materialized view info.entities_with_issues_count");
-    sql_query("refresh materialized view concurrently info.entities_with_issues_count").execute(conn)?;
+    if let Err(e) = sql_query("refresh materialized view concurrently info.entities_with_issues_count").execute(conn) {
+        errs.push(e);
+    }
 
-    Ok(())
+    errs
 }
 
-pub fn refresh_matviews(conn: &mut PgConnection) -> QueryResult<()> {
-    refresh_entity_counting_matviews(conn)?;
+pub fn refresh_matviews(conn: &mut PgConnection) -> Vec<QueryError> {
+    let mut errs = refresh_entity_counting_matviews(conn);
+    
     info!("Refreshing materialized view data.offense_outcomes");
-    sql_query("refresh materialized view concurrently data.offense_outcomes").execute(conn)?;
+    if let Err(e) = sql_query("refresh materialized view concurrently data.offense_outcomes").execute(conn) {
+        errs.push(e);
+    }
+    
     info!("Refreshing materialized view data.defense_outcomes");
-    sql_query("refresh materialized view concurrently data.defense_outcomes").execute(conn)?;
+    if let Err(e) = sql_query("refresh materialized view concurrently data.defense_outcomes").execute(conn) {
+        errs.push(e);
+    }
+    
     info!("Refreshing materialized view data.player_versions_extended");
-    sql_query("refresh materialized view concurrently data.player_versions_extended").execute(conn)?;
+    if let Err(e) = sql_query("refresh materialized view concurrently data.player_versions_extended").execute(conn) {
+        errs.push(e);
+    }
 
-    Ok(())
+    errs
 }
 
 pub struct GamesStats {
