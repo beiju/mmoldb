@@ -3143,22 +3143,22 @@ pub fn update_num_ingested(
 }
 
 pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> QueryResult<()> {
-    trace!("Updating info.entities_count");
-    sql_query("refresh materialized view info.entities_count").execute(conn)?;
-    trace!("Updating info.entities_with_issues_count");
-    sql_query("refresh materialized view info.entities_with_issues_count").execute(conn)?;
+    trace!("Refreshing materialized view info.entities_count");
+    sql_query("refresh materialized view concurrently info.entities_count").execute(conn)?;
+    trace!("Refreshing materialized view info.entities_with_issues_count");
+    sql_query("refresh materialized view concurrently info.entities_with_issues_count").execute(conn)?;
 
     Ok(())
 }
 
 pub fn refresh_matviews(conn: &mut PgConnection) -> QueryResult<()> {
     refresh_entity_counting_matviews(conn)?;
-    debug!("Updating data.offense_outcomes");
-    sql_query("refresh materialized view data.offense_outcomes").execute(conn)?;
-    debug!("Updating data.defense_outcomes");
-    sql_query("refresh materialized view data.defense_outcomes").execute(conn)?;
-    debug!("Updating data.player_versions_extended");
-    sql_query("refresh materialized view data.player_versions_extended").execute(conn)?;
+    info!("Refreshing materialized view data.offense_outcomes");
+    sql_query("refresh materialized view concurrently data.offense_outcomes").execute(conn)?;
+    info!("Refreshing materialized view data.defense_outcomes");
+    sql_query("refresh materialized view concurrently data.defense_outcomes").execute(conn)?;
+    info!("Refreshing materialized view data.player_versions_extended");
+    sql_query("refresh materialized view concurrently data.player_versions_extended").execute(conn)?;
 
     Ok(())
 }
