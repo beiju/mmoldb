@@ -8,6 +8,11 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+2025-04-04
+----------
+- Fix some parsing bugs in game ingest.
+- S11 player support is still forthcoming, thanks for your patience.
+
 2025-03-28
 ----------
 - Adds support for Simulacrum weather (this just means adding the coins to the

@@ -3959,6 +3959,7 @@ impl<'g> Game<'g> {
                 [ParsedEventMessageDiscriminants::WeatherSimulacrumOffseason]
                 ParsedEventMessage::WeatherSimulacrumOffseason => {
                     // Nothing to do for this event type
+                    None
                 },
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for
