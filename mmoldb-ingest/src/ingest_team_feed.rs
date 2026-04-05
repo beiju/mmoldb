@@ -35,7 +35,7 @@ impl IngestibleFromVersions for TeamFeedIngestFromVersions {
         version.clone()
     }
 
-    fn insert_batch(conn: &mut PgConnection, _: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize> {
+    fn insert_batch(conn: &mut PgConnection, _: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
         let new_versions = versions.iter()
             .map(|team| chron_team_feed_as_new(&team.entity_id, team.valid_from, &team.data))
             .collect_vec();
@@ -179,7 +179,13 @@ pub fn chron_team_feed_as_new<'a>(
         ParsedTeamFeedEventText::Released { .. } |
         ParsedTeamFeedEventText::Retirement { .. } |
         ParsedTeamFeedEventText::PlayerGrewInEfflorescence { .. } |
-        ParsedTeamFeedEventText::PlayerEffloresce { .. } => None,
+        ParsedTeamFeedEventText::PlayerEffloresce { .. } |
+        ParsedTeamFeedEventText::DeliveryDiscarded { .. } |
+        ParsedTeamFeedEventText::ConsumptionContestToPlayer { .. } |
+        ParsedTeamFeedEventText::ConsumptionContestToTeam { .. } |
+        ParsedTeamFeedEventText::PlayersSwapped { .. }  |
+        ParsedTeamFeedEventText::PlayersPurified { .. } |
+        ParsedTeamFeedEventText::ElectionAppliedLevelUps { .. } => None,
     };
 
     (processed, game_outcome, ingest_logs.into_vec())

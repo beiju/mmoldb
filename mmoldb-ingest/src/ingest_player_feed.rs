@@ -39,7 +39,7 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
         version.clone()
     }
 
-    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize> {
+    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
         let new_versions = versions.iter()
             .map(|player| chron_player_feed_as_new(taxa, &player.entity_id, player.valid_from, &player.data, None))
             .collect_vec();
@@ -801,6 +801,12 @@ pub fn chron_player_feed_as_new<'a>(
             // Nothing to do yet
         }
         ParsedPlayerFeedEventText::PlayerMoved { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::PlayerGrewInEfflorescence { .. } => {
+            // Nothing to do yet
+        }
+        ParsedPlayerFeedEventText::PlayerEffloresce { .. } => {
             // Nothing to do yet
         }
     }

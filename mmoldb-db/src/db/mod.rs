@@ -2428,7 +2428,7 @@ fn insert_to_error_internal<'container, InsertableT: 'container>(
 pub fn insert_player_feed_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
     new_player_feed_versions: impl IntoIterator<Item = &'container NewPlayerFeedVersionExt<'game>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     // Convert reference to tuple into tuple of references
     let new_player_feed_versions = new_player_feed_versions.into_iter()
         .map(|(a, b, c, d, e)| (a, b, c, d, e));
@@ -2447,16 +2447,22 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_feed_versions);
 
+    let mut full_total = 0;
+    let mut full_inserted = 0;
+
     // Insert new records
-    insert_player_attribute_augments(conn, new_player_attribute_augments)?;
-    insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
-    insert_player_recompositions(conn, new_player_recompositions)?;
+    full_total += new_player_attribute_augments.len();
+    full_inserted += insert_player_attribute_augments(conn, new_player_attribute_augments)?;
+    full_total += new_player_paradigm_shifts.len();
+    full_inserted += insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
+    full_total += new_player_recompositions.len();
+    full_inserted += insert_player_recompositions(conn, new_player_recompositions)?;
     insert_nested_ingest_logs(conn, ingest_logs)?;
 
     // This is last so that we don't mark them as processed if there were db errors
-    let num_inserted = insert_feed_events_processed(conn, new_player_feed_events_processed)?;
+    insert_feed_events_processed(conn, new_player_feed_events_processed)?;
 
-    Ok(num_inserted)
+    Ok((full_total, full_inserted))
 }
 
 type NewTeamFeedVersionExt<'a> = (
@@ -2497,7 +2503,7 @@ fn insert_feed_events_processed(
 pub fn insert_team_feed_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
     new_team_feed_versions: impl IntoIterator<Item = &'container NewTeamFeedVersionExt<'game>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     let new_team_feed_versions = new_team_feed_versions.into_iter()
         .map(|(a, b, c)| (a, b, c));
 
@@ -2512,13 +2518,14 @@ pub fn insert_team_feed_versions<'container, 'game: 'container>(
     ) = itertools::multiunzip(new_team_feed_versions);
 
     // Insert new records
-    insert_new_team_games_played(conn, new_team_games_played)?;
+    let total = new_team_games_played.len();
+    let inserted = insert_new_team_games_played(conn, new_team_games_played)?;
     insert_nested_ingest_logs(conn, ingest_logs)?;
 
     // This is last so that we don't mark them as processed if there were db errors
-    let num_inserted = insert_feed_events_processed(conn, new_team_feed_events_processed)?;
+    insert_feed_events_processed(conn, new_team_feed_events_processed)?;
 
-    Ok(num_inserted)
+    Ok((total, inserted))
 }
 
 fn insert_player_recompositions(
@@ -2611,7 +2618,7 @@ fn insert_player_modifications(
 pub fn insert_player_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
     new_player_versions: impl IntoIterator<Item = &'container NewPlayerVersionExt<'game>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
     // Reference to tuple into tuple of references
@@ -2645,45 +2652,56 @@ pub fn insert_player_versions<'container, 'game: 'container>(
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
 
+    let mut total_versions = 0;
+    let mut inserted_versions = 0;
+
     // Insert new records
     let insert_player_version_start = Utc::now();
-    let num_player_insertions = diesel::copy_from(pv_dsl::player_versions)
+    total_versions += new_player_versions.len();
+    inserted_versions += diesel::copy_from(pv_dsl::player_versions)
         .from_insertable(new_player_versions)
         .execute(conn)?;
     let insert_player_version_duration =
         (Utc::now() - insert_player_version_start).as_seconds_f64();
 
     let insert_player_modifications_start = Utc::now();
-    insert_player_modifications(conn, new_player_modification_versions)?;
+    total_versions += new_player_modification_versions.len();
+    inserted_versions += insert_player_modifications(conn, new_player_modification_versions)?;
     let insert_player_modifications_duration =
         (Utc::now() - insert_player_modifications_start).as_seconds_f64();
 
     let insert_player_reports_start = Utc::now();
-    insert_player_report_versions(conn, new_player_report_attributes)?;
+    total_versions += new_player_report_attributes.len();
+    inserted_versions += insert_player_report_versions(conn, new_player_report_attributes)?;
     let insert_player_reports_duration =
         (Utc::now() - insert_player_reports_start).as_seconds_f64();
 
     let insert_player_equipment_start = Utc::now();
-    insert_player_equipment(conn, new_player_equipment)?;
+    total_versions += new_player_equipment.len();
+    inserted_versions += insert_player_equipment(conn, new_player_equipment)?;
     let insert_player_equipment_duration =
         (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
     let insert_player_pitch_types_start = Utc::now();
-    insert_player_pitch_types(conn, new_player_pitch_types)?;
+    total_versions += new_player_pitch_types.len();
+    inserted_versions += insert_player_pitch_types(conn, new_player_pitch_types)?;
     let insert_player_pitch_types_duration =
         (Utc::now() - insert_player_pitch_types_start).as_seconds_f64();
 
     let insert_player_pitch_type_bonuses_start = Utc::now();
-    insert_player_pitch_type_bonuses(conn, new_player_pitch_type_bonuses)?;
+    total_versions += new_player_pitch_type_bonuses.len();
+    inserted_versions += insert_player_pitch_type_bonuses(conn, new_player_pitch_type_bonuses)?;
     let insert_player_pitch_type_bonuses_duration =
         (Utc::now() - insert_player_pitch_type_bonuses_start).as_seconds_f64();
 
     let insert_player_pitch_category_bonuses_start = Utc::now();
-    insert_player_pitch_category_bonuses(conn, new_player_pitch_category_bonuses)?;
+    total_versions += new_player_pitch_category_bonuses.len();
+    inserted_versions += insert_player_pitch_category_bonuses(conn, new_player_pitch_category_bonuses)?;
     let insert_player_pitch_category_bonuses_duration =
         (Utc::now() - insert_player_pitch_category_bonuses_start).as_seconds_f64();
 
     let insert_ingest_logs_start = Utc::now();
+    // Don't add this to totals
     insert_nested_ingest_logs(conn, new_ingest_logs)?;
     let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
 
@@ -2699,7 +2717,7 @@ pub fn insert_player_versions<'container, 'game: 'container>(
         insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
     );
 
-    Ok(num_player_insertions)
+    Ok((total_versions, inserted_versions))
 }
 
 pub fn get_player_versions(
@@ -3082,7 +3100,7 @@ fn insert_team_player_versions(
 pub fn insert_team_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
     new_team_versions: impl IntoIterator<Item = &'container NewTeamVersionExt<'game>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::team_versions::dsl as tv_dsl;
 
     // Convert reference to tuple to tuple of references
@@ -3095,15 +3113,20 @@ pub fn insert_team_versions<'container, 'game: 'container>(
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_team_versions);
 
+    let mut total = 0;
+    let mut inserted = 0;
+
     // Insert new records
     let insert_team_version_start = Utc::now();
-    let num_team_insertions = diesel::copy_from(tv_dsl::team_versions)
+    total += new_team_versions.len();
+    inserted += diesel::copy_from(tv_dsl::team_versions)
         .from_insertable(new_team_versions)
         .execute(conn)?;
     let insert_team_version_duration = (Utc::now() - insert_team_version_start).as_seconds_f64();
 
     let insert_team_player_versions_start = Utc::now();
-    insert_team_player_versions(conn, new_team_player_versions)?;
+    total += new_team_player_versions.len();
+    inserted += insert_team_player_versions(conn, new_team_player_versions)?;
     let insert_team_player_versions_duration =
         (Utc::now() - insert_team_player_versions_start).as_seconds_f64();
 
@@ -3117,7 +3140,7 @@ pub fn insert_team_versions<'container, 'game: 'container>(
         insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
     );
 
-    Ok(num_team_insertions)
+    Ok((total, inserted))
 }
 
 pub fn update_num_ingested(

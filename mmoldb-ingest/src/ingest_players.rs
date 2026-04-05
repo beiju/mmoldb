@@ -41,7 +41,7 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
         }
     }
 
-    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize> {
+    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
         // Collect all modifications that appear in this batch so we can ensure they're all added
         let unique_modifications = versions
             .iter()

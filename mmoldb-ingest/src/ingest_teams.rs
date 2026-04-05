@@ -74,7 +74,7 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
         }
     }
 
-    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize> {
+    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
         let new_team_versions = versions.iter()
             .map(|team| chron_team_as_new(taxa, &team.entity_id, team.valid_from, &team.data))
             .collect_vec();

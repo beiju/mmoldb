@@ -679,7 +679,7 @@ pub trait IngestibleFromVersions {
 
     fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>;
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value;
-    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<usize>;
+    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)>;
     fn stream_versions_at_cursor(
         conn: &mut AsyncPgConnection,
         kind: &str,
@@ -926,17 +926,16 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 to_insert, self.kind, entities_len,
             );
 
-            let inserted = VersionIngest::insert_batch(conn, taxa, &batch)?;
+            let (total, inserted) = VersionIngest::insert_batch(conn, taxa, &batch)?;
             total_inserted += inserted as i32;
 
             info!(
-                "Sent {} new {} versions out of {} to the database. \
-                {inserted} versions were actually inserted, the rest were duplicates. \
-                Currently processing {} versions from {human_time_ago}.",
+                "Sent rows for {} new {} versions out of {} to the database. \
+                {inserted}/{total} rows were actually inserted, the rest were \
+                duplicates. Currently processing versions from {human_time_ago}.",
                 to_insert,
                 self.kind,
                 entities_len,
-                self.kind,
             );
         }
 

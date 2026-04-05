@@ -2207,7 +2207,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.61.0"
-source = "git+https://github.com/beiju/mmolb_parsing.git?branch=feature%2Fs11-fixes#123fc50f19718ea2e25bf0b63b4a34a54d8b85aa"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=feature%2Fs11-fixes#b534bd3d3ca43dbaf5703f00937a44e09c34ddbd"
 dependencies = [
  "chrono",
  "indexmap 2.13.0",
