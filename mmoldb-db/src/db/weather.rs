@@ -96,6 +96,8 @@ fn create_weather_table_inner(
             }
         })
         .unique_by(|w| (w.name, w.emoji, w.tooltip))
+        // Sort them to avoid a deadlock when multiple tasks try to insert the same value
+        .sorted_by_key(|w| (w.name, w.emoji, w.tooltip))
         .collect_vec();
 
     // Note: This check not just for optimization, it's also necessary for

@@ -2129,6 +2129,8 @@ pub fn insert_modifications(
             emoji,
             description,
         })
+        // Sort them to avoid a deadlock when multiple tasks try to insert the same value
+        .sorted_by_key(|m| (m.name, m.emoji, m.description))
         .collect_vec();
 
     let to_insert_len = to_insert.len();
