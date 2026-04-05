@@ -10,6 +10,7 @@ use log::{error, warn};
 use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position};
 use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
 use mmolb_parsing::player::{ComplexTalkStars, PlayerEquipment, TalkCategory, TalkStars};
+use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
@@ -51,6 +52,8 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
                     .iter()
                     .chain(version.data.lesser_boon.iter())
                     .chain(version.data.greater_boon.iter())
+                    .chain(version.data.lesser_boons.iter().flat_map(|b| b.iter()))
+                    .chain(version.data.greater_boons.iter().flat_map(|b| b.iter()))
                     .map(|m| {
                         // TODO Do this for extra_fields in other types
                         if !m.extra_fields.is_empty() {
@@ -340,6 +343,26 @@ fn chron_player_as_new<'a>(
         }
     };
 
+    let num_lesser_boon_singular = entity.data.lesser_boon.iter().count() > 0;
+    let num_lesser_boons_plural = entity.data.lesser_boons.iter().count() > 0;
+    if num_lesser_boon_singular && num_lesser_boons_plural {
+        ingest_logs.error(format!(
+            "Player {num_lesser_boon_singular} boon(s) lesser_boon (singular) and \
+            {num_lesser_boons_plural} in lesser_boons (plural), expected only one \
+            or the other"
+        ));
+    }
+
+    let num_greater_boon_singular = entity.data.greater_boon.iter().count() > 0;
+    let num_greater_boons_plural = entity.data.greater_boons.iter().count() > 0;
+    if num_greater_boon_singular && num_greater_boons_plural {
+        ingest_logs.error(format!(
+            "Player {num_greater_boon_singular} boon(s) greater_boon (singular) and \
+            {num_greater_boons_plural} in greater_boons (plural), expected only one \
+            or the other"
+        ));
+    }
+
     let modifications = entity
         .data
         .modifications
@@ -353,6 +376,18 @@ fn chron_player_as_new<'a>(
         )
         .chain(
             entity.data.greater_boon.iter()
+                .enumerate()
+                .map(|(i, m)| make_modification(i, m, TaxaModificationType::GreaterBoon)),
+        )
+        .chain(
+            entity.data.lesser_boons.iter()
+                .flat_map(|v| v.iter())
+                .enumerate()
+                .map(|(i, m)| make_modification(i, m, TaxaModificationType::LesserBoon)),
+        )
+        .chain(
+            entity.data.greater_boons.iter()
+                .flat_map(|v| v.iter())
                 .enumerate()
                 .map(|(i, m)| make_modification(i, m, TaxaModificationType::GreaterBoon)),
         )
@@ -439,7 +474,7 @@ fn chron_player_as_new<'a>(
             .unwrap_or_default()
     };
 
-    let priority = entity.data.base_attributes.as_ref().ok().and_then(|base_attributes| {
+    let priority_from_base_attributes = entity.data.base_attributes.as_ref().ok().and_then(|base_attributes| {
         if let Some(priority) = base_attributes.attributes.get(&Attribute::Priority) {
             Some(*priority)
         } else {
@@ -450,6 +485,22 @@ fn chron_player_as_new<'a>(
             None
         }
     });
+
+    let priority = match (priority_from_base_attributes, entity.data.priority.clone()) {
+        (None, Err(AddedLater)) => None,
+        (None, Ok(priority)) => Some(priority),
+        (Some(priority), Err(AddedLater)) => Some(priority),
+        (Some(from_base_attributes), Ok(from_root)) => {
+            if from_base_attributes != from_root {
+                ingest_logs.warn(format!(
+                    "Player version had priority {from_base_attributes} in BaseAttributes \
+                    but priority {from_root} on the root object",
+                ));
+            }
+            // Root was added most recently, so I trust it more in the case that they disagree
+            Some(from_root)
+        },
+    };
 
     // Emit errors for internal inconsistencies in the talk. This block doesn't add any
     // data for the db
@@ -544,11 +595,100 @@ fn chron_player_as_new<'a>(
         }
     }
 
-    // Emit errors for internal inconsistencies in the talk's stars. This block doesn't add any
-    // data for the db
-
     let mut report_versions = Vec::new();
-    if let Ok(attrs) = &entity.data.attribute_stars {
+    if let Ok(bonuses) = &entity.data.base_attribute_bonuses {
+        // Then we're in the s11 variant
+
+        // player_report_version is basically obsolete now, so we just stamp out the formulaic template
+        let mut reports = AttributeCategory::iter()
+            .map(|cat| (cat, (NewPlayerReportVersion {
+                mmolb_player_id: &entity.entity_id,
+                category: taxa.attribute_category_id(cat.into()),
+                valid_from: entity.valid_from.naive_utc(),
+                valid_until: None,
+                season: None,
+                day_type: None,
+                day: None,
+                superstar_day: None,
+                quote: None,
+                included_attributes: vec![], // To be populated later
+            }, HashMap::<Attribute, _>::new())))
+            .collect::<HashMap<_, _>>();
+
+        for attr in Attribute::iter() {
+            // In this version of the player object, all categorized attributes'
+            // values are present at all times. If they're not mentioned in the
+            // object, they're zero.
+            let Ok(cat) = AttributeCategory::try_from(attr) else {
+                if attr != Attribute::Priority {
+                    ingest_logs.warn(format!(
+                        "Unexpected uncategorized attribute {attr}.",
+                    ));
+                }
+                continue;
+            };
+
+            let (report, report_attributes) = reports.get_mut(&cat)
+                .expect("`reports` must have an entry for every AttributeCategory");
+
+            report.included_attributes
+                .push(taxa.attribute_id(attr.into()));
+
+            let prev = report_attributes.insert(attr, NewPlayerReportAttributeVersion {
+                mmolb_player_id: &entity.entity_id,
+                category: taxa.attribute_category_id(cat.into()),
+                attribute: taxa.attribute_id(attr.into()),
+                valid_from: entity.valid_from.naive_utc(),
+                valid_until: None,
+                base_stars: None,
+                // This one incudes augments
+                base_total: Some(0.0),
+                // This one doesn't
+                base_subtotal: Some(0.0),
+                modified_stars: None,
+                modified_total: None,
+            });
+            assert!(prev.is_none(), "This loop should never overwrite hashmap entries");
+        }
+
+        for bonus in bonuses {
+            let Ok(cat) = AttributeCategory::try_from(bonus.attribute) else {
+                ingest_logs.warn(format!(
+                    "Unexpected uncategorized attribute in BaseAttributeBonuses: {}.",
+                    bonus.attribute
+                ));
+                continue;
+            };
+
+            let (_, report_attributes) = reports.get_mut(&cat)
+                .expect("`reports` must have an entry for every AttributeCategory");
+
+            let report_attr = report_attributes.get_mut(&bonus.attribute)
+                .expect("`report_attributes` must have an entry for every Attribute in its category");
+
+            *report_attr.base_total.as_mut()
+                .expect("base_total must be set in this code path") += bonus.amount;
+
+            *report_attr.base_subtotal.as_mut()
+                .expect("base_subtotal must be set in this code path") += bonus.amount;
+        }
+
+        // base_total needs to incorporate newstyle augments
+        match &entity.data.augment_history {
+            Ok(augs) => assert!(augs.is_empty(), "TODO Fill in the code that should go here"),
+            Err(AddedLater) => {
+                ingest_logs.error("Player in season 11 format must have augment history");
+            }
+        }
+
+        // Collect the attribute_reports and the report objects into the expected format
+        report_versions = reports.into_iter()
+            .map(|(_, (report, report_attributes))| {
+                (report, report_attributes.into_values().collect())
+            })
+            .collect();
+    } else if let Ok(attrs) = &entity.data.attribute_stars {
+        // Then we're in the s9? s10? something around there variant
         for (category, attrs) in attrs {
             let included_attributes = attrs
                 .iter()
@@ -1007,6 +1147,8 @@ fn chron_player_as_new<'a>(
         mmolb_team_id: entity.data.team_id.as_deref(),
         slot,
         durability: entity.data.durability.as_ref().ok().copied(),
+        lesser_durability: entity.data.lesser_durability.as_ref().ok().copied().map(|i| i as _),
+        greater_durability: entity.data.greater_durability.as_ref().ok().copied().map(|i| i as _),
         num_modifications: entity.data.modifications.len() as i32,
         num_greater_boons: entity.data.greater_boon.len() as i32,
         num_lesser_boons: entity.data.lesser_boon.len() as i32,

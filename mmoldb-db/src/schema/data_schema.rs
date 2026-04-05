@@ -491,6 +491,8 @@ pub mod data {
             num_pitch_types -> Int4,
             included_pitch_type_bonuses -> Array<Nullable<Int8>>,
             included_pitch_category_bonuses -> Array<Nullable<Int8>>,
+            lesser_durability -> Nullable<Int4>,
+            greater_durability -> Nullable<Int4>,
         }
     }
 
