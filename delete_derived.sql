@@ -32,6 +32,8 @@ truncate table
     data.player_equipment_versions,
     data.player_equipment_effect_versions,
     data.player_pitch_type_versions,
+    data.player_pitch_type_bonus_versions,
+    data.player_pitch_category_bonus_versions,
 
     -- team
     data.team_versions,

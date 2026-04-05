@@ -1006,7 +1006,7 @@ fn chron_player_as_new<'a>(
         number: entity.data.number as i32,
         mmolb_team_id: entity.data.team_id.as_deref(),
         slot,
-        durability: entity.data.durability,
+        durability: entity.data.durability.as_ref().ok().copied(),
         num_modifications: entity.data.modifications.len() as i32,
         num_greater_boons: entity.data.greater_boon.len() as i32,
         num_lesser_boons: entity.data.lesser_boon.len() as i32,

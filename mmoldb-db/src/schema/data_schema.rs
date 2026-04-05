@@ -478,7 +478,7 @@ pub mod data {
             number -> Int4,
             mmolb_team_id -> Nullable<Text>,
             slot -> Nullable<Int8>,
-            durability -> Float8,
+            durability -> Nullable<Float8>,
             num_modifications -> Int4,
             occupied_equipment_slots -> Array<Nullable<Text>>,
             included_report_categories -> Array<Nullable<Int8>>,

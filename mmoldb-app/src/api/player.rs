@@ -74,7 +74,7 @@ pub struct ApiPlayerVersion {
     pub number: i32,
     pub mmolb_team_id: Option<String>,
     pub slot: Option<TaxaSlot>,
-    pub durability: f64,
+    pub durability: Option<f64>,
     pub modifications: Vec<Option<ApiModification>>,
     pub equipment: HashMap<String, Option<ApiEquipment>>,
     pub reports: HashMap<TaxaAttributeCategory, Option<ApiReport>>,

@@ -21,7 +21,7 @@ pub struct PlayerContext<'r, 't> {
     pitching_handedness: Option<&'t str>,
     likes: &'r str,
     dislikes: &'r str,
-    durability: f64,
+    durability: Option<f64>,
     slot: Option<&'r str>,
 }
 
