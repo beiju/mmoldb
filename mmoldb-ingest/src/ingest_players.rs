@@ -343,23 +343,23 @@ fn chron_player_as_new<'a>(
         }
     };
 
-    let num_lesser_boon_singular = entity.data.lesser_boon.iter().count() > 0;
-    let num_lesser_boons_plural = entity.data.lesser_boons.iter().count() > 0;
-    if num_lesser_boon_singular && num_lesser_boons_plural {
+    let num_lesser_boon_singular = entity.data.lesser_boon.iter().count();
+    let num_lesser_boons_plural = entity.data.lesser_boons.as_ref().map_or(0, Vec::len);
+    if num_lesser_boon_singular > 0 && num_lesser_boons_plural > 0 {
         ingest_logs.error(format!(
-            "Player {num_lesser_boon_singular} boon(s) lesser_boon (singular) and \
-            {num_lesser_boons_plural} in lesser_boons (plural), expected only one \
-            or the other"
+            "Player has {num_lesser_boon_singular} boon(s) in lesser_boon (singular) \
+            and {num_lesser_boons_plural} in lesser_boons (plural), expected only \
+            one or the other"
         ));
     }
 
-    let num_greater_boon_singular = entity.data.greater_boon.iter().count() > 0;
-    let num_greater_boons_plural = entity.data.greater_boons.iter().count() > 0;
-    if num_greater_boon_singular && num_greater_boons_plural {
+    let num_greater_boon_singular = entity.data.greater_boon.iter().count();
+    let num_greater_boons_plural = entity.data.greater_boons.as_ref().map_or(0, Vec::len);
+    if num_greater_boon_singular > 0 && num_greater_boons_plural > 0 {
         ingest_logs.error(format!(
-            "Player {num_greater_boon_singular} boon(s) greater_boon (singular) and \
-            {num_greater_boons_plural} in greater_boons (plural), expected only one \
-            or the other"
+            "Player has {num_greater_boon_singular} boon(s) in greater_boon (singular) \
+            and {num_greater_boons_plural} in greater_boons (plural), expected only \
+            one or the other"
         ));
     }
 
@@ -441,7 +441,7 @@ fn chron_player_as_new<'a>(
     // Important, because they can be returned in arbitrary order
     occupied_equipment_slots.sort();
 
-    let included_report_categories = if let Some(_) = entity.data.attribute_stars.as_ref().ok() {
+    let included_report_categories = if entity.data.attribute_stars.is_ok() || entity.data.base_attribute_bonuses.is_ok() {
         // If this field exists, that means all "talk" pages are revealed
         // (aka this is past the time of talk pages)
         [
@@ -675,7 +675,28 @@ fn chron_player_as_new<'a>(
 
         // base_total needs to incorporate newstyle augments
         match &entity.data.augment_history {
-            Ok(augs) => assert!(augs.is_empty(), "TODO Fill in the code that should go here"),
+            Ok(augs) => {
+                for aug in augs {
+                    let Ok(cat) = AttributeCategory::try_from(aug.attribute) else {
+                        ingest_logs.warn(format!(
+                            "Unexpected uncategorized attribute in AppliedAugments: {}.",
+                            aug.attribute
+                        ));
+                        continue;
+                    };
+
+                    let (_, report_attributes) = reports.get_mut(&cat)
+                        .expect("`reports` must have an entry for every AttributeCategory");
+
+                    let report_attr = report_attributes.get_mut(&aug.attribute)
+                        .expect("`report_attributes` must have an entry for every Attribute in its category");
+
+                    // Augments get added to base_total, but not base_subtotal
+                    // (that's the entire difference between them)
+                    *report_attr.base_total.as_mut()
+                        .expect("base_total must be set in this code path") += aug.amount;
+                }
+            },
             Err(AddedLater) => {
                 ingest_logs.error("Player in season 11 format must have augment history");
             }
