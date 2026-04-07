@@ -110,18 +110,6 @@ pub async fn stream_versions_at_cursor_until(
     Ok(Either::Right(stream))
 }
 
-#[derive(Queryable, Selectable)]
-#[diesel(table_name = crate::data_schema::data::feed_event_versions)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub(crate) struct FeedEventVersion {
-    pub kind: String,
-    pub entity_id: String,
-    pub feed_event_index: i32,
-    pub valid_from: NaiveDateTime,
-    pub valid_until: Option<NaiveDateTime>,
-    pub data: serde_json::Value,
-}
-
 pub async fn stream_unprocessed_feed_event_versions(
     conn: &mut AsyncPgConnection,
     kind: &str,

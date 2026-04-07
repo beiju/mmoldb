@@ -1,2 +1,0 @@
-New player fields to add columns for
-- `greater_durability` and `lesser_durability`. These replace `durability`, which is now nullable. Not doing backwards compatibility because the data type and semantics changed.

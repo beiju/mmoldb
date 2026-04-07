@@ -2459,7 +2459,7 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
     assert_eq!(full_total, full_inserted, "Feed shouldn't insert duplicates unless there was a duplicate version");
     full_total += new_player_recompositions.iter().map(|v| v.iter()).flatten().count();
     full_inserted += insert_player_recompositions(conn, new_player_recompositions)?;
-    assert_eq!(full_total, full_inserted, "Feed shouldn't insert duplicates unless there was a duplicate version");
+    // Inferred recompositions makes duplicates on purpose, so we can't check it
     insert_nested_ingest_logs(conn, ingest_logs)?;
 
     // This is last so that we don't mark them as processed if there were db errors

@@ -700,7 +700,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let partitioner = Partitioner::new(args.parallelism);
 
         // Task names have to outlive their tasks, so we build then in advance
-        let task_names_and_nums = (0..=args.parallelism.get())
+        let task_names_and_nums = (0..args.parallelism.get())
             .map(|worker_idx| (format!("{} Stage 2 worker {}", self.kind, worker_idx), worker_idx))
             .collect_vec();
 
