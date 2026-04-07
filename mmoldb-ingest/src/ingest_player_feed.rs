@@ -3,7 +3,7 @@ use crate::ingest::{VersionIngestLogs};
 use crate::ingest_players::day_to_db;
 use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
 use chron::ChronEntity;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, NaiveDate, NaiveTime, Utc};
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use log::{error};
@@ -17,11 +17,50 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use futures::Stream;
 use mmolb_parsing::player::Deserialize;
+use lazy_static::lazy_static;
 
+lazy_static! {
+    #[rustfmt::skip]
+    static ref IMPERMANENT_RECOMPOSES: HashMap<(&'static str, i32), DateTime<Utc>> = {
+        HashMap::from_iter(
+            [
+                // entity id, feed event index, datetime the later-reverted recompose happened
+                ("6805db0cac48194de3cd40dd", 6, "2025-07-14T12:32:16.183651+00:00"),
+                ("6840fa75ed58166c1895a7f3", 14, "2025-07-14T12:58:25.172157+00:00"),
+                ("6840fb13e63d9bb8728896d2", 21, "2025-07-14T11:56:08.156319+00:00"),
+                ("6840fe6508b7fc5e21e8a940", 9, "2025-07-14T15:04:09.335705+00:00"),
+                ("6841000988056169e0078792", 11, "2025-07-14T11:58:34.656639+00:00"),
+                ("684102aaf7b5d3bf791d67e8", 6, "2025-07-14T12:54:23.274555+00:00"),
+                ("684102dfec9dc637cfd0cad6", 15, "2025-07-14T12:01:51.299731+00:00"),
+                ("68412d1eed58166c1895ae66", 15, "2025-07-14T12:20:36.597014+00:00"),
+                ("68418c52554d8039701f1c93", 12, "2025-07-14T12:09:42.764129+00:00"),
+                ("6846cc4d4a488309816674ff", 13, "2025-07-14T12:10:19.571083+00:00"),
+                ("684727f5bb00de6f9bb79973", 14, "2025-07-14T12:14:14.710296+00:00"),
+                ("68505bc5341f7f2421020d05", 16, "2025-07-14T12:13:58.129103+00:00"),
+                ("6855b350f1d8f657407b231c", 2, "2025-07-14T15:02:55.607448+00:00"),
+                ("68564374acfab5652c3a6c44", 7, "2025-07-15T01:02:41.992667+00:00"),
+                ("685b740338c6569da104aa48", 5, "2025-07-14T12:47:59.895679+00:00"),
+                ("686355f4b254dfbaab3014b0", 2, "2025-07-14T11:51:34.711389+00:00"),
+                ("68655942f27aa83a88fa64e0", 3, "2025-07-14T10:36:47.308576+00:00"),
+                ("6840fb13e63d9bb8728896d2", 21, "2025-07-14T11:56:08.156319+00:00"),
+                ("6845e3d4ec9dc637cfd0d38f", 11, "2025-07-14T12:01:47.540116+00:00"),
+            ]
+            .into_iter()
+            .map(|(player_id, feed_event_index, applied_date_str)| {
+                let applied_date = DateTime::parse_from_rfc3339(applied_date_str)
+                    .expect("Hard-coded date must parse")
+                    .to_utc();
+                ((player_id, feed_event_index), applied_date)
+            })
+        )
+    };
+}
 #[derive(Deserialize)]
 pub struct PlayerFeedItemContainer {
     feed_event_index: i32,
     data: FeedEvent,
+    prev_valid_from: Option<DateTime<Utc>>,
+    prev_data: Option<FeedEvent>,
 }
 
 pub struct PlayerFeedIngestFromVersions;
@@ -139,40 +178,45 @@ pub fn chron_player_feed_as_new<'a>(
         valid_from: valid_from.naive_utc(),
     };
 
-    // TODO make this static, or at least global
-    // Some feed events were accidentally reverted (by caching issues I think), and we want to
-    // pretend they never happened
-    // TODO No we don't, we want to make them into a recompose-unrecompose pair
-    let impermanent_feed_events = {
-        let mut hashes = HashSet::new();
-        #[rustfmt::skip]
-        hashes.extend(
-            [
-                // format: (player id, timestamp of feed event). Not timestamp of player update.
-                ("6805db0cac48194de3cd40dd", "2025-07-14T12:32:16.183651+00:00"),
-                ("6840fa75ed58166c1895a7f3", "2025-07-14T12:58:25.172157+00:00"),
-                ("6840fb13e63d9bb8728896d2", "2025-07-14T11:56:08.156319+00:00"),
-                ("6840fe6508b7fc5e21e8a940", "2025-07-14T15:04:09.335705+00:00"),
-                ("6841000988056169e0078792", "2025-07-14T11:58:34.656639+00:00"),
-                ("684102aaf7b5d3bf791d67e8", "2025-07-14T12:54:23.274555+00:00"),
-                ("684102dfec9dc637cfd0cad6", "2025-07-14T12:01:51.299731+00:00"),
-                ("68412d1eed58166c1895ae66", "2025-07-14T12:20:36.597014+00:00"),
-                ("68418c52554d8039701f1c93", "2025-07-14T12:09:42.764129+00:00"),
-                ("6846cc4d4a488309816674ff", "2025-07-14T12:10:19.571083+00:00"),
-                ("684727f5bb00de6f9bb79973", "2025-07-14T12:14:14.710296+00:00"),
-                ("68505bc5341f7f2421020d05", "2025-07-14T12:13:58.129103+00:00"),
-                ("6855b350f1d8f657407b231c", "2025-07-14T15:02:55.607448+00:00"),
-                ("68564374acfab5652c3a6c44", "2025-07-15T01:02:41.992667+00:00"),
-                ("685b740338c6569da104aa48", "2025-07-14T12:47:59.895679+00:00"),
-                ("686355f4b254dfbaab3014b0", "2025-07-14T11:51:34.711389+00:00"),
-                ("68655942f27aa83a88fa64e0", "2025-07-14T10:36:47.308576+00:00"),
-                ("6840fb13e63d9bb8728896d2", "2025-07-14T11:56:08.156319+00:00"),
-            ]
-            .into_iter()
-            .map(|(id, dt)| (id, DateTime::parse_from_rfc3339(dt).unwrap().naive_utc()))
-        );
-        hashes
-    };
+    if let Some(prev_event) = &event.prev_data {
+        if event.prev_valid_from.is_none() {
+            ingest_logs.warn(format!(
+                "Player {} feed event index {} had a previous event, but \
+                did not have prev_valid_from",
+                player_id,
+                event.feed_event_index,
+            ));
+        }
+
+        if IMPERMANENT_RECOMPOSES
+            .get(&(player_id, event.feed_event_index))
+            .is_some_and(|dt| dt == &prev_event.timestamp) {
+            ingest_logs.info(format!(
+                "Player {} feed event index {} had a previous event, but it was an \
+                impermanent recompose, so we can proceed with this one",
+                player_id,
+                event.feed_event_index,
+            ));
+        } else {
+            todo!("Check other conditions");
+            ingest_logs.error(format!(
+                "Player {} feed event index {} had a previous version without special \
+                handling. Skipping this version.\n\
+                previous version text: {}\n\
+                previous version valid_from: {}\n\
+                this version text: {}\n\
+                this version valid_from: {}",
+                player_id,
+                event.feed_event_index,
+                prev_event.text,
+                if let Some(dt) = event.prev_valid_from { format!("{dt}") } else { "(missing)".to_string() },
+                event.data.text,
+                valid_from,
+            ));
+
+            return (processed, None, None, Vec::new(), ingest_logs.into_vec());
+        }
+    }
 
     // TODO make this static, or at least global
     // Some apparent recompositions happened without a feed event
@@ -483,20 +527,23 @@ pub fn chron_player_feed_as_new<'a>(
     check_player_name.clear_temporary_name_override();
 
     let mut inferred_event_index = 0;
-    if impermanent_feed_events.contains(&(player_id, time)) {
+    if let Some(recompose_dt) = IMPERMANENT_RECOMPOSES.get(&(player_id, event.feed_event_index)) {
         // TODO Add this as a pair of recompose/unrecompose events, so the attributes
-        //   in between are accurate
-        ingest_logs.info(format!(
-            "Skipping feed event \"{}\" because it was reverted later",
-            event.data.text,
-        ));
-        return (
-            processed,
-            attribute_augment,
-            paradigm_shift,
-            recompositions,
-            ingest_logs.into_vec(),
-        );
+        //   in between are accurate. Note: The date of unrecompose is NOT the date
+        //   of the event that replaces this one.
+        if recompose_dt == &event.data.timestamp {
+            ingest_logs.info(format!(
+                "Skipping feed event \"{}\" because it was reverted later",
+                event.data.text,
+            ));
+            return (
+                processed,
+                attribute_augment,
+                paradigm_shift,
+                recompositions,
+                ingest_logs.into_vec(),
+            );
+        }
     }
 
     // This will *almost* always be equal to feed_items.len(), but not

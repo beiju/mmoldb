@@ -2451,12 +2451,15 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
     let mut full_inserted = 0;
 
     // Insert new records
-    full_total += new_player_attribute_augments.len();
+    full_total += new_player_attribute_augments.iter().map(|o| o.as_ref()).flatten().count();
     full_inserted += insert_player_attribute_augments(conn, new_player_attribute_augments)?;
-    full_total += new_player_paradigm_shifts.len();
+    assert_eq!(full_total, full_inserted, "Feed shouldn't insert duplicates unless there was a duplicate version");
+    full_total += new_player_paradigm_shifts.iter().map(|o| o.as_ref()).flatten().count();
     full_inserted += insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
-    full_total += new_player_recompositions.len();
+    assert_eq!(full_total, full_inserted, "Feed shouldn't insert duplicates unless there was a duplicate version");
+    full_total += new_player_recompositions.iter().map(|v| v.iter()).flatten().count();
     full_inserted += insert_player_recompositions(conn, new_player_recompositions)?;
+    assert_eq!(full_total, full_inserted, "Feed shouldn't insert duplicates unless there was a duplicate version");
     insert_nested_ingest_logs(conn, ingest_logs)?;
 
     // This is last so that we don't mark them as processed if there were db errors

@@ -129,6 +129,8 @@ pub async fn stream_unprocessed_feed_event_versions(
     use crate::schema::data_schema::data::feed_event_versions::dsl as fev_dsl;
     use crate::schema::data_schema::data::feed_events_processed::dsl as fep_dsl;
 
+    let prev_version = diesel::alias!(crate::schema::data_schema::data::feed_event_versions as prev_version1);
+
     let stream = fev_dsl::feed_event_versions
         .filter(fev_dsl::kind.eq(kind))
         .filter(diesel::dsl::not(diesel::dsl::exists(
@@ -139,6 +141,17 @@ pub async fn stream_unprocessed_feed_event_versions(
                 .filter(fep_dsl::feed_event_index.eq(fev_dsl::feed_event_index))
                 .filter(fep_dsl::valid_from.eq(fev_dsl::valid_from))
         )))
+        .left_join(
+            // Select the previous version by using its valid_until
+            prev_version.on(
+                fev_dsl::kind.eq(prev_version.field(fev_dsl::kind))
+                    .and(fev_dsl::entity_id.eq(prev_version.field(fev_dsl::entity_id)))
+                    .and(fev_dsl::feed_event_index.eq(prev_version.field(fev_dsl::feed_event_index)))
+                    // This is the line that makes the association between
+                    // one entry's valid_from and the other's valid_until
+                    .and(fev_dsl::valid_from.nullable().eq(prev_version.field(fev_dsl::valid_until)))
+            )
+        )
         // Callers of this function rely on the results being sorted by
         // (valid_from, entity_id) with the highest id last
         .order_by((
@@ -146,19 +159,59 @@ pub async fn stream_unprocessed_feed_event_versions(
             fev_dsl::entity_id.asc(),
             fev_dsl::feed_event_index.asc(),
         ))
-        .select(FeedEventVersion::as_select())
-        .load_stream(conn)
+        // Unfortunately ::as_select() can't be composed, so all the fields must be listed manually
+        .select((
+            // This is the version to be processed
+            fev_dsl::kind,
+            fev_dsl::entity_id,
+            fev_dsl::feed_event_index,
+            fev_dsl::valid_from,
+            fev_dsl::valid_until,
+            fev_dsl::data,
+            // This are the previous version, nullable because it may not exist
+            prev_version.field(fev_dsl::valid_from).nullable(),
+            prev_version.field(fev_dsl::data).nullable(),
+        ))
+        // .select((FeedEventVersion::as_select(), FeedEventVersion::as_select().nullable()))
+        .load_stream::<(
+            // This is the version to be processed
+            String,
+            String,
+            i32,
+            NaiveDateTime,
+            Option<NaiveDateTime>,
+            serde_json::Value,
+            // This is the previous version, nullable because it may not exist
+            Option<NaiveDateTime>,
+            Option<serde_json::Value>,
+        )>(conn)
         .await?
-        .map_ok(|v| ChronEntity {
-            kind: v.kind,
-            entity_id: v.entity_id,
-            valid_from: v.valid_from.and_utc(),
-            valid_to: v.valid_until.map(|dt| dt.and_utc()),
-            // Kind of a hack to smuggle extra data through the machinery
-            data: serde_json::json!({
-                "feed_event_index": v.feed_event_index,
-                "data": v.data,
-            }),
+        .map_ok(|(
+             kind,
+             entity_id,
+             feed_event_index,
+             valid_from,
+             valid_until,
+             data,
+             prev_valid_from,
+             prev_data,
+         )| {
+            ChronEntity {
+                kind,
+                entity_id,
+                valid_from: valid_from.and_utc(),
+                valid_to: valid_until.map(|dt| dt.and_utc()),
+                // Kind of a hack to smuggle extra data through the machinery
+                data: serde_json::json!({
+                    "feed_event_index": feed_event_index,
+                    "data": data,
+                    // All other prev_* fields are constrained to be equal to the
+                    // corresponding field from the current version, except
+                    // prev_valid_until is the current version's valid_from
+                    "prev_valid_from": prev_valid_from.map(|dt| dt.and_utc()),
+                    "prev_data": prev_data,
+                }),
+            }
         });
 
     Ok(stream)
