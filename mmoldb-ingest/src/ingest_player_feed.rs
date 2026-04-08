@@ -4,7 +4,7 @@ use crate::ingest_players::day_to_db;
 use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, NaiveDate, NaiveTime, Utc};
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{error};
 use mmolb_parsing::enums::{Attribute, Day};
@@ -18,6 +18,16 @@ use std::sync::Arc;
 use futures::Stream;
 use mmolb_parsing::player::Deserialize;
 use lazy_static::lazy_static;
+
+const fn datetime_from_parts(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32, micro: u32) -> DateTime<Utc> {
+    NaiveDateTime::new(
+        NaiveDate::from_ymd_opt(year, month, day).unwrap(),
+        NaiveTime::from_hms_micro_opt(hour, min, sec, micro).unwrap()
+    ).and_utc()
+}
+
+const IGNORE_EVENTS_STARTING: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 06, 53, 14, 327897);
+const IGNORE_EVENTS_ENDING: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 09, 10, 47, 911977);
 
 lazy_static! {
     #[rustfmt::skip]
@@ -235,107 +245,12 @@ lazy_static! {
                 (("68ec5452d834c6992b5c52b7", 0), ("Cal Salinas", "Uncle Carlsen", "2025-10-14T23:28:21.143234+00:00", 6, Day::Day(120))),
                 (("6840fc1e144e874e6deb8207", 47), ("R. Baxter", "Christy Vanterpool", "2025-10-18T04:07:05.558477+00:00", 6, Day::Day(169))),
                 (("6843449d925dd4f9d72ac5f2", 48), ("Randall Brennan", "Finnegan Yamada", "2025-10-18T04:11:07.294553+00:00", 6, Day::Day(169))),
-
-
-
-
-
-                (("687bc4739cdd68529b86be74", 14), ("Lucille Otto", "Irene Bernandez", "2025-09-01T05:12:03.273320+00:00", 5, Day::Election)),
-                (("6845eb4508b7fc5e21e8b36e", 34), ("Velma Wang", "Fauna Bah", "2025-09-01T05:13:12.047024+00:00", 5, Day::Election)),
-                (("6841057c8ba62cf2ce8d8fe0", 20), ("Antony Saelim", "Garnet Hailu", "2025-09-01T05:13:57.279716+00:00", 5, Day::Election)),
-                (("68410a79e63d9bb872889bbb", 18), ("Leila Rosales", "Hank Monroe", "2025-09-01T05:14:08.187522+00:00", 5, Day::Election)),
-                (("684148c8183c892d88a1009b", 22), ("Rina Feller", "James Mikkelsen", "2025-09-01T05:19:01.804252+00:00", 5, Day::Election)),
-                (("684118c4925dd4f9d72ac0da", 38), ("Chorby Campesinos", "Sam Genet", "2025-09-01T05:20:14.689214+00:00", 5, Day::Election)),
-                (("68427df8144e874e6deb8aa8", 19), ("Brick Javier", "Ana Carolina Sharpe", "2025-09-01T05:24:54.237349+00:00", 5, Day::Election)),
-                (("68651c2ff27aa83a88fa64d5", 6), ("Clearly Oya", "Oakley Winter", "2025-09-01T05:29:17.760611+00:00", 5, Day::Election)),
-                (("6886a02c0a4902fcc3c63e84", 12), ("Julia Klymenko", "Gargle Vasquez", "2025-09-01T05:32:47.418461+00:00", 5, Day::Election)),
-                (("6841450b144e874e6deb877d", 17), ("Carlton Atkins", "Kehlani Badilla", "2025-09-01T05:32:52.535888+00:00", 5, Day::Election)),
-                (("6886ff951f79b00a978a66fa", 4), ("Camila Lorenzo", "Gustavo Nuñez", "2025-09-01T05:49:26.841477+00:00", 5, Day::Election)),
-                (("684102a2183c892d88a0fd2d", 37), ("Ozzie Bannister", "Wilma Turnbull", "2025-09-01T05:55:37.602841+00:00", 5, Day::Election)),
-                (("686b24ef77149281c81eaa69", 15), ("Yahoo Barbieri", "Ball Yun", "2025-09-01T06:02:17.738119+00:00", 5, Day::Election)),
-                (("68797de5dad0efab0b8916a2", 22), ("Stella Bois", "Ivan Nakajima", "2025-09-01T06:04:32.069006+00:00", 5, Day::Election)),
-                (("687e45303f76efa467642cee", 15), ("Luciana Tyler", "Patsy Junior", "2025-09-01T06:05:11.137498+00:00", 5, Day::Election)),
-                (("68414305e63d9bb872889e73", 22), ("Evelyn Seki", "Nelson Bender", "2025-09-01T06:30:18.403578+00:00", 5, Day::Election)),
-                (("6840fb18ec9dc637cfd0c7b4", 23), ("Andrea Feller", "Suzanne Ramirez", "2025-09-01T06:41:16.691624+00:00", 5, Day::Election)),
-                (("6841f775144e874e6deb89c8", 34), ("Goose Bond", "Terri Frye", "2025-09-01T06:42:51.607101+00:00", 5, Day::Election)),
-                (("6842c17408b7fc5e21e8b1c3", 32), ("Brenda Claeys", "Della Rain", "2025-09-01T07:03:59.769796+00:00", 5, Day::Election)),
-                (("684170d5295b2368c0ac799b", 19), ("Luciana Kovalchuk", "Tracy Olsson", "2025-09-01T07:04:49.441141+00:00", 5, Day::Election)),
-                (("6840fd8f925dd4f9d72abcdd", 22), ("Ronnie Sherman", "Bee Murray", "2025-09-01T07:10:34.724742+00:00", 5, Day::Election)),
-                (("6850607411cffaffe201c42c", 38), ("Isaiah Bos", "Boots Ashley", "2025-09-01T07:11:31.164174+00:00", 5, Day::Election)),
-                (("6840fb15554d8039701f141e", 37), ("Messiah Wallis", "Marcela Hewitt", "2025-09-01T07:35:43.027425+00:00", 5, Day::Election)),
-                (("68865ae131a33266cc23450b", 15), ("Kay Ellis", "Jamie Anthony", "2025-09-01T07:43:26.850745+00:00", 5, Day::Election)),
-                (("689eeac12892ac158e1f3f20", 2), ("Yoon-Jae Meadows", "Antony Doubles", "2025-09-01T07:59:42.801402+00:00", 5, Day::Election)),
-                (("68757367be6293c111015beb", 31), ("Rita Sello", "Kimmie Clemens", "2025-09-01T08:45:29.708414+00:00", 5, Day::Election)),
-                (("6844a8e0ed58166c1895b326", 30), ("Ariella Campesinos", "Ryder Collins", "2025-09-01T09:35:07.582539+00:00", 5, Day::Election)),
-                (("6888dde542628aac654935fd", 9), ("Yuki Spence", "Matteo Matsuda", "2025-09-01T09:48:24.863241+00:00", 5, Day::Election)),
-                (("6887e0909f55cf65fce7b0e1", 13), ("Valerie Solano", "Christina Petersen", "2025-09-01T10:06:34.971437+00:00", 5, Day::Election)),
-                (("6841489d183c892d88a10096", 27), ("May Ramierz", "Arturo Fortin", "2025-09-01T10:31:09.097150+00:00", 5, Day::Election)),
-                (("6867ae0677149281c81ea9cf", 29), ("Waddle Cain", "Carwyn Galbraith", "2025-09-01T10:36:11.715037+00:00", 5, Day::Election)),
-                (("684ea72a3ee1833536bdcdcf", 23), ("Seung-Ho Szymański", "Carrie Radu", "2025-09-01T10:44:43.612256+00:00", 5, Day::Election)),
-                (("68abc77f1ca373c5301a4fe4", 3), ("Laisa Tamm", "Brandi Byun", "2025-09-01T10:45:14.409852+00:00", 5, Day::Election)),
-                (("68aca39ab3d15cd034b0a292", 0), ("Brick Bonilla", "Ford Wilkins", "2025-09-01T11:58:46.125273+00:00", 5, Day::Election)),
-                (("6841026e183c892d88a0fd18", 41), ("Beulah Olsen", "Ashley Kirk", "2025-09-01T12:09:28.836101+00:00", 5, Day::Election)),
-                (("68aa26f8d38a4941f545e01f", 0), ("Kim Hampton", "Carrie Carrington", "2025-09-01T12:26:27.483842+00:00", 5, Day::Election)),
-                (("688916ab5cb20f9e396ef6ac", 12), ("Adalynn Schmitt", "Herbert König", "2025-09-01T12:29:44.008359+00:00", 5, Day::Election)),
-                (("6840feb954a7fbd413386fc9", 17), ("Blip Spencer", "Jackie Nikolaou", "2025-09-01T12:35:28.102671+00:00", 5, Day::Election)),
-                (("6845947bf7b5d3bf791d6f66", 31), ("Cash Myers", "Linda Kolesnyk", "2025-09-01T12:44:52.300179+00:00", 5, Day::Election)),
-                (("6889008f42628aac65493611", 5), ("Carlton Vasilev", "Jacqueline Tomlinson", "2025-09-01T12:51:32.431292+00:00", 5, Day::Election)),
-                (("68a9eab9455749140e890a25", 10), ("Tyler Kraus", "Denise Patton", "2025-09-01T12:52:05.121688+00:00", 5, Day::Election)),
-                (("689a4e0621e8c4c568fd12e6", 10), ("Yuto Iversen", "Twilight Nkhoma", "2025-09-01T12:54:04.238586+00:00", 5, Day::Election)),
-                (("689547059c43e94f152e7f16", 4), ("Phyllis Charles", "Pluto Trajkovski", "2025-09-01T12:55:02.912008+00:00", 5, Day::Election)),
-                (("686702f24dca64cf777cec8e", 8), ("Carlos Wyldarms", "Cal Sultana", "2025-09-01T14:14:13.003207+00:00", 5, Day::Election)),
-                (("6854a61eded70fd592b811ab", 28), ("Lisbon Kolesnyk", "Mattie Reeves", "2025-09-01T14:15:08.247042+00:00", 5, Day::Election)),
-                (("684763b05fc0f93e7fa38e0b", 17), ("Yasmin Hudson", "Crumble Lund", "2025-09-01T14:50:39.287810+00:00", 5, Day::Election)),
-                (("684103af88056169e00788a5", 40), ("Qingyu Yamauchi", "Ched Vargová", "2025-09-01T15:26:04.984878+00:00", 5, Day::Election)),
-                (("6841189854a7fbd41338736b", 17), ("Nikolai Olson", "Eggo McMahon", "2025-09-01T15:33:34.266718+00:00", 5, Day::Election)),
-                (("689da525760242d10ffddc9d", 7), ("Maëlys Bright", "Judy Nuñez", "2025-09-01T15:53:12.148202+00:00", 5, Day::Election)),
-                (("6861728a60b66eb2d94d4fdc", 22), ("Erica Field", "Satchel Harringtonshire", "2025-09-01T16:14:04.382712+00:00", 5, Day::Election)),
-                (("68545056875d2d473526cf14", 24), ("Rick Brito", "Midnight Phelps", "2025-09-01T16:49:30.221353+00:00", 5, Day::Election)),
-                (("6840fc9fe63d9bb8728897dd", 18), ("Internet Hazell", "Harrietta Wolff", "2025-09-01T16:54:01.356686+00:00", 5, Day::Election)),
-                (("684144ec88056169e0078bba", 20), ("Camila Tyler", "Ganymede Roy", "2025-09-01T16:55:27.299103+00:00", 5, Day::Election)),
-                (("684466ee88056169e0078fc1", 21), ("Edward Cheng", "Bus Wilcox", "2025-09-01T17:29:43.757649+00:00", 5, Day::Election)),
-                (("684335e18ba62cf2ce8d961f", 15), ("Trevor Cranston", "Christie Hori", "2025-09-01T17:39:05.045305+00:00", 5, Day::Election)),
-                (("685e60b11c30cdd288cde4d3", 12), ("Carlton Northrop", "Shawn Aston", "2025-09-01T17:48:57.433121+00:00", 5, Day::Election)),
-                (("68419aa654a7fbd41338762a", 41), ("Nice Leblanc", "Bubblegum Butler", "2025-09-01T17:59:35.229021+00:00", 5, Day::Election)),
-                (("68751e061b5fc01a8ac50a8a", 13), ("Stanley Jiminez", "Mia Zin", "2025-09-01T18:22:38.695331+00:00", 5, Day::Election)),
-                (("684100e2554d8039701f171e", 31), ("Kelly Viña", "Audrey Marino", "2025-09-01T18:24:08.637726+00:00", 5, Day::Election)),
-                (("68410b3e925dd4f9d72abff0", 37), ("Jean Jackson", "Muffin Lacroix", "2025-09-01T19:11:03.130316+00:00", 5, Day::Election)),
-                (("684109f38d67c531e89fe148", 18), ("Aaron Laplace", "Liam Singh", "2025-09-01T19:20:25.720171+00:00", 5, Day::Election)),
-                (("685e26fb3cb1052ee36a9fad", 22), ("Tainá Acuña", "Alma Dunne", "2025-09-01T20:38:17.329036+00:00", 5, Day::Election)),
-                (("68a0d4a22892ac158e1f3f42", 1), ("Wei Nakata", "Tonya Koch", "2025-09-01T21:25:20.219808+00:00", 5, Day::Election)),
-                (("6805db0cac48194de3cd40d2", 15), ("KW Cuffy", "Midnight McCann", "2025-09-01T21:41:43.822626+00:00", 5, Day::Election)),
-                (("6875c99f4d21598a0f77f5b3", 18), ("Omari Hart", "Sara Frye", "2025-09-01T21:53:14.816981+00:00", 5, Day::Election)),
-                (("68472c173a29cec29f263c85", 32), ("Fatima Cherry", "Ana Carolina James", "2025-09-01T22:30:44.541417+00:00", 5, Day::Election)),
-                (("68885f7997f2b5415c1128f3", 7), ("T. Tanner", "N. Lopez", "2025-09-01T23:45:15.196107+00:00", 5, Day::Election)),
-                (("6840fc61925dd4f9d72abc12", 20), ("Selena Fairchild", "Count Anthony", "2025-09-02T00:35:15.187858+00:00", 5, Day::Election)),
-                (("68a9378b1dcebdc270ab59fb", 4), ("Lloyd Langley", "Aurora Carr", "2025-09-02T00:49:16.560645+00:00", 5, Day::Election)),
-                (("6844a91f54a7fbd4133879f4", 31), ("February Genet", "Zack Valenzuela", "2025-09-06T16:56:57.531259+00:00", 5, Day::Offseason)),
-                (("684104d1554d8039701f1821", 37), ("Richard Lozano", "Gina Silva", "2025-09-07T22:11:50.149654+00:00", 5, Day::Offseason)),
-                (("68b513be937f58069c985d87", 4), ("Gnav de Souza", "Kyrie Paredes", "2025-09-08T23:31:18.937509+00:00", 5, Day::Offseason)),
-                (("68417662295b2368c0ac79bd", 13), ("Makena Jansson", "Faux Whosonfirst", "2025-09-11T00:37:00.904859+00:00", 5, Day::Offseason)),
-                (("6843a78b183c892d88a1044b", 44), ("Shawn Mathieu", "Nelson Kaya", "2025-09-11T02:39:28.326449+00:00", 5, Day::Offseason)),
-                (("68b2346770fc4ca5bcb63d8a", 5), ("Brody Every", "Perseverance Moser", "2025-09-12T01:36:48.659153+00:00", 5, Day::Offseason)),
-                (("68c6128e5c5459140c736d70", 0), ("Ty Brady", "S. Bradshaw", "2025-09-15T18:49:12.890385+00:00", 5, Day::Offseason)),
-                (("684172e9925dd4f9d72ac2d4", 21), ("Jocelyn Kelly", "Jack Wang", "2025-09-17T03:48:30.356538+00:00", 5, Day::Offseason)),
-                // TODO: This is an offseason day with day number 996, which we
-                //   know because feed events have both a 'day' and a 'status'.
-                //   This isn't deserializable from just the 'day' field, so
-                //   the Day enum doesn't support it. The task is to figure
-                //   this out somehow.
-                (("68d5e9adfb606a651236fcfa", 3), ("Jennifer Johansen", "Humongous Haruna", "2025-10-05T18:00:56.342042+00:00", 5, Day::Day(996))),
-                (("6840fdc38d67c531e89fde65", 28), ("Carrie Gutierrez", "Enrique Vargas", "2025-10-10T04:36:06.754574+00:00", 6, Day::Day(23))),
-                (("6850dae61b474e53619873ce", 26), ("Etheridge Badilla", "Pearu Carew", "2025-10-11T03:58:40.971098+00:00", 6, Day::Day(40))),
-                (("68658cbd77149281c81ea93c", 18), ("Huan O'Connor", "Carolina Stojanović", "2025-10-14T04:53:26.656523+00:00", 6, Day::Day(113))),
-                (("68472a73fc876482fd5f9b7e", 33), ("Courtney Lake", "Albert Yusupova", "2025-10-14T13:30:50.549424+00:00", 6, Day::Day(120))),
-                (("68ec5452d834c6992b5c52b7", 0), ("Cal Salinas", "Uncle Carlsen", "2025-10-14T23:28:21.143234+00:00", 6, Day::Day(120))),
-                (("6840fc1e144e874e6deb8207", 47), ("R. Baxter", "Christy Vanterpool", "2025-10-18T04:07:05.558477+00:00", 6, Day::Day(169))),
-                (("6843449d925dd4f9d72ac5f2", 48), ("Randall Brennan", "Finnegan Yamada", "2025-10-18T04:11:07.294553+00:00", 6, Day::Day(169))),
-
             ]
             .into_iter()
             .map(|(key, (nb, na, dt, s, d))| (key, (nb, na, DateTime::parse_from_rfc3339(dt).unwrap().naive_utc(), s, d)))
         )
     };
+
     #[rustfmt::skip]
     static ref INFERRED_RECOMPOSITIONS: HashMap<&'static str, Vec<(NaiveDateTime, (i32, Day, &'static str, &'static str))>> = {
         // Some apparent recompositions happened without a feed event
@@ -638,6 +553,54 @@ pub fn chron_player_feed_as_new<'a>(
         valid_from: valid_from.naive_utc(),
     };
 
+    if IGNORE_EVENTS_STARTING <= valid_from && valid_from <= IGNORE_EVENTS_ENDING {
+        // At the beginning of s11, the feed endpoint (a) started paginating
+        // and (b) reversed the order of feed events. This was done in a
+        // backwards-compatible way, so all the infrastructure kept ingesting
+        // events just fine, but since the indices all changed it was
+        // recognized as a new version of every event.
+        //
+        // We fixed this after a few hours, by adding special handling to feeds
+        // to restore the order, but there were still two erroneous versions
+        // generated for many events: one where the indices changed from the
+        // api change, and one when they changed back from the fix. Our
+        // solution for the first group is to ignore them by date, and for the
+        // second group we just ingest them twice and let the database's
+        // duplicate handling deal with it.
+        //
+        // Note that we can't just ignore the second group because some new
+        // feed events were genered during the Inversion, and we can't ingest
+        // them during the Inversion because we don't know what their correct
+        // index is. The only way to handle them correctly is to ingest them
+        // when we see their post-Inversion fix event.
+        //
+        // TODO: Before addressing the below TODO, figure out why so many
+        //   events aren't in the feed_event_versions table and fix it.
+        //
+        // TODO: There may be some new events generated during the Inversion
+        //   that don't have a post-inversion fix event because their index
+        //   didn't change (due to them being directly in the middle of the
+        //   feed). The only way I can think to handle them is to hard-code
+        //   them.
+        // Query:
+        //     select *
+        //     from data.feed_event_versions fev
+        //     -- Find previous versions of events (to be excluded by null check)
+        //     left join data.feed_event_versions pfev
+        //         on fev.kind=pfev.kind
+        //         and fev.entity_id=pfev.entity_id
+        //         and fev.valid_from>pfev.valid_from
+        //         and fev.data->'ts'=pfev.data->'ts'
+        //     where fev.valid_from >= '2026-03-29T06:53:14.327897Z'
+        //         and fev.valid_from <= '2026-03-29T09:10:47.911977Z'
+        //         and fev.valid_until is null
+        //         and pfev.data is null -- Exclude events that have a previous version
+        //     order by fev.valid_from
+        ingest_logs.info("Ignoring event version from the Feed Inversion Event");
+
+        return (processed, None, None, Vec::new(), ingest_logs.into_vec());
+    }
+
     if let Some(prev_event) = &event.prev_data {
         if event.prev_valid_from.is_none() {
             ingest_logs.warn(format!(
@@ -663,6 +626,34 @@ pub fn chron_player_feed_as_new<'a>(
             ingest_logs.info(format!(
                 "Player {} feed event index {} had a previous event, but it was an \
                 overwritten recomposition, so we can proceed with processing this event",
+                player_id,
+                event.feed_event_index,
+            ));
+        } else if event.prev_valid_from.is_none_or(|prev_valid_from| IGNORE_EVENTS_STARTING <= prev_valid_from && prev_valid_from <= IGNORE_EVENTS_ENDING) {
+            if event.prev_valid_from.is_none() {
+                ingest_logs.warn(format!(
+                    "Can't check whether player {} feed event index {}'s previous event \
+                    was from the Feed Inversion Event because it's missing prev_valid_from. \
+                    Assuming it was to avoid losing data.",
+                    player_id,
+                    event.feed_event_index,
+                ));
+            } else {
+                ingest_logs.info(format!(
+                    "Player {} feed event index {} had a previous event, but it was from \
+                    the Feed Inversion Event so we can proceed with processing this event",
+                    player_id,
+                    event.feed_event_index,
+                ));
+            }
+        } else if event.data.timestamp == prev_event.timestamp && event.data.text == prev_event.text {
+            // I'm not early-exiting here because we don't check all the
+            // fields, so this could incorrectly match an actually meaningful
+            // change. If that happens, the database layer checks will find it.
+        ingest_logs.info(format!(
+                "Player {} feed event index {} had a previous event, but it's identical \
+                in text and timestamp to this event. Assuming it's just a data format change\
+                and that the database will deduplicate it.",
                 player_id,
                 event.feed_event_index,
             ));
