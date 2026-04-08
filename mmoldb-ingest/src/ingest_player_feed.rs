@@ -658,7 +658,6 @@ pub fn chron_player_feed_as_new<'a>(
                 event.feed_event_index,
             ));
         } else {
-            todo!("Check other conditions");
             ingest_logs.error(format!(
                 "Player {} feed event index {} had a previous version without special \
                 handling. Skipping this version.\n\
@@ -1072,48 +1071,29 @@ pub fn chron_player_feed_as_new<'a>(
         ParsedPlayerFeedEventText::DoorPrize { .. } => {
             // See comment on Delivery
         }
-        ParsedPlayerFeedEventText::SeasonalDurabilityLoss { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::CorruptedByWither { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::Purified { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::Party { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::PlayerContained { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::PlayerPositionsSwapped { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::PlayerGrow { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::GreaterAugment { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::RetractedGreaterAugment { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::RetroactiveGreaterAugment { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::PlayerRelegated { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::PlayerMoved { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::PlayerGrewInEfflorescence { .. } => {
-            // Nothing to do yet
-        }
-        ParsedPlayerFeedEventText::PlayerEffloresce { .. } => {
-            // Nothing to do yet
-        }
+        // These events have no action
+        ParsedPlayerFeedEventText::SeasonalDurabilityLoss { .. } |
+        ParsedPlayerFeedEventText::CorruptedByWither { .. } |
+        ParsedPlayerFeedEventText::Purified { .. } |
+        ParsedPlayerFeedEventText::Party { .. } |
+        ParsedPlayerFeedEventText::PlayerContained { .. } |
+        ParsedPlayerFeedEventText::PlayerPositionsSwapped { .. } |
+        ParsedPlayerFeedEventText::PlayerGrow { .. } |
+        ParsedPlayerFeedEventText::GreaterAugment { .. } |
+        ParsedPlayerFeedEventText::RetractedGreaterAugment { .. } |
+        ParsedPlayerFeedEventText::RetroactiveGreaterAugment { .. } |
+        ParsedPlayerFeedEventText::PlayerRelegated { .. } |
+        ParsedPlayerFeedEventText::PlayerMoved { .. } |
+        ParsedPlayerFeedEventText::PlayerGrewInEfflorescence { .. } |
+        ParsedPlayerFeedEventText::PlayerEffloresce { .. } |
+        ParsedPlayerFeedEventText::Restyle { .. } |
+        ParsedPlayerFeedEventText::Augment { .. } |
+        ParsedPlayerFeedEventText::BoonRecombobulated { .. } |
+        ParsedPlayerFeedEventText::PlayersSwapped { .. } |
+        ParsedPlayerFeedEventText::ConsumptionContestToPlayer { .. } |
+        ParsedPlayerFeedEventText::ConsumptionContestToTeam { .. } |
+        ParsedPlayerFeedEventText::PlayerReflected { .. } |
+        ParsedPlayerFeedEventText::ElectionAppliedLevelUps { .. } => {}
     }
 
     // Apply any pending inferred whose time is before this event's time

@@ -121,7 +121,9 @@ pub fn chron_team_feed_as_new<'a>(
         ParsedTeamFeedEventText::PhotoContest { .. } |
         ParsedTeamFeedEventText::SpecialDelivery { .. } |
         ParsedTeamFeedEventText::ClaimedLinealBelt { .. } |
-        ParsedTeamFeedEventText::LostLinealBelt { .. } => {
+        ParsedTeamFeedEventText::LostLinealBelt { .. } |
+        ParsedTeamFeedEventText::PlayerReflected { .. } |
+        ParsedTeamFeedEventText::SimulacrumPayout { .. } => {
             let game_link = item.data.links
                 .iter()
                 .filter(|link| link.link_type == Ok(LinkType::Game))
@@ -185,7 +187,10 @@ pub fn chron_team_feed_as_new<'a>(
         ParsedTeamFeedEventText::ConsumptionContestToTeam { .. } |
         ParsedTeamFeedEventText::PlayersSwapped { .. }  |
         ParsedTeamFeedEventText::PlayersPurified { .. } |
-        ParsedTeamFeedEventText::ElectionAppliedLevelUps { .. } => None,
+        ParsedTeamFeedEventText::ElectionAppliedLevelUps { .. } |
+        ParsedTeamFeedEventText::Restyle { .. } |
+        ParsedTeamFeedEventText::Augment { .. } |
+        ParsedTeamFeedEventText::BulkImmunized { .. } => None,
     };
 
     (processed, game_outcome, ingest_logs.into_vec())
