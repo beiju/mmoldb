@@ -1,6 +1,6 @@
 use crate::config::IngestibleConfig;
 use crate::ingest::VersionIngestLogs;
-use crate::ingest_player_feed::ingest_feed_shared::{FeedItemContainer, IGNORE_EVENTS_ENDING, IGNORE_EVENTS_STARTING};
+use crate::ingest_player_feed::ingest_feed_shared::{FeedItemContainer, FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START};
 use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -92,7 +92,7 @@ pub fn chron_team_feed_as_new<'a>(
         valid_from: valid_from.naive_utc(),
     };
 
-    if IGNORE_EVENTS_STARTING <= valid_from && valid_from <= IGNORE_EVENTS_ENDING {
+    if FEED_INVERSION_EVENT_START <= valid_from && valid_from <= FEED_INVERSION_EVENT_END {
         // See the corresponding statement in ingest_player_feed for an explanation
         // TODO Apply the same TODOs from ingest_player_feed
         ingest_logs.info("Ignoring event version from the Feed Inversion Event");
@@ -110,7 +110,7 @@ pub fn chron_team_feed_as_new<'a>(
             ));
         }
 
-        if item.prev_valid_from.is_none_or(|prev_valid_from| IGNORE_EVENTS_STARTING <= prev_valid_from && prev_valid_from <= IGNORE_EVENTS_ENDING) {
+        if item.prev_valid_from.is_none_or(|prev_valid_from| FEED_INVERSION_EVENT_START <= prev_valid_from && prev_valid_from <= FEED_INVERSION_EVENT_END) {
             if item.prev_valid_from.is_none() {
                 ingest_logs.warn(format!(
                     "Can't check whether team {} feed event index {}'s previous event \

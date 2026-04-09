@@ -9,8 +9,8 @@ pub(crate) const fn datetime_from_parts(year: i32, month: u32, day: u32, hour: u
     ).and_utc()
 }
 
-pub(crate) const IGNORE_EVENTS_STARTING: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 06, 53, 14, 327897);
-pub(crate) const IGNORE_EVENTS_ENDING: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 09, 10, 47, 911977);
+pub(crate) const FEED_INVERSION_EVENT_START: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 06, 32, 29, 494640);
+pub(crate) const FEED_INVERSION_EVENT_END: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 09, 15, 58, 247522);
 
 #[derive(Deserialize)]
 pub struct FeedItemContainer {

@@ -19,7 +19,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use futures::Stream;
 use lazy_static::lazy_static;
-use crate::ingest_player_feed::ingest_feed_shared::{FeedItemContainer, IGNORE_EVENTS_ENDING, IGNORE_EVENTS_STARTING};
+use crate::ingest_player_feed::ingest_feed_shared::{FeedItemContainer, FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START};
 
 lazy_static! {
     #[rustfmt::skip]
@@ -537,7 +537,7 @@ pub fn chron_player_feed_as_new<'a>(
         valid_from: valid_from.naive_utc(),
     };
 
-    if IGNORE_EVENTS_STARTING <= valid_from && valid_from <= IGNORE_EVENTS_ENDING {
+    if FEED_INVERSION_EVENT_START <= valid_from && valid_from <= FEED_INVERSION_EVENT_END {
         // At the beginning of s11, the feed endpoint (a) started paginating
         // and (b) reversed the order of feed events. This was done in a
         // backwards-compatible way, so all the infrastructure kept ingesting
@@ -613,7 +613,7 @@ pub fn chron_player_feed_as_new<'a>(
                 player_id,
                 event.feed_event_index,
             ));
-        } else if event.prev_valid_from.is_none_or(|prev_valid_from| IGNORE_EVENTS_STARTING <= prev_valid_from && prev_valid_from <= IGNORE_EVENTS_ENDING) {
+        } else if event.prev_valid_from.is_none_or(|prev_valid_from| FEED_INVERSION_EVENT_START <= prev_valid_from && prev_valid_from <= FEED_INVERSION_EVENT_END) {
             if event.prev_valid_from.is_none() {
                 ingest_logs.warn(format!(
                     "Can't check whether player {} feed event index {}'s previous event \
