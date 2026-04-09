@@ -8,6 +8,29 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+--------
+- Adds support for offseason Simulacrum games.
+- Adds basic support for s11 player format. This has the following 
+  consequences:
+  - Unfortunately, since the API no longer provides modified values, 
+    `modified_*` fields on player reports will be `null` in Season 11 and 
+    forward for the time being. Only `base_total` and `base_subtotal` are 
+    available (`base_stars` was also removed). MMOLDB may add recalculation of
+    modified values in the future, and if so players will be backfilled where 
+    possible.
+  - `durability` will be `null` for S11+ players. Instead, `lesser_durability`
+    and `greater_durability` have been added.
+- Accidentally adds in a bunch of player feed events we unknowingly missed. 
+  This affects `data.player_recompositions` and 
+  `data.player_attribute_augments`. The bug that caused these events to be 
+  missed is not fixed, so more events may go missing in the future. We will
+  address this when we're able.
+- Adds parsing for quite a few new feed type events. Most of this just 
+  eliminates parsing error messages and does nothing else. One or two add to
+  `data.team_games_played`, which makes `data.events_extended`'s 
+  `game_end_time` column more reliable.
+
 2025-04-04
 ----------
 - Fix some parsing bugs in game ingest.

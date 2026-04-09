@@ -2960,11 +2960,50 @@ error.
 name = "durability"
 type = "double precision"
 description = """
-The player's durability. Displayed as a green progress bar on the player page.
+Prior to Season 11, the player's durability. Displayed as a green progress bar
+on the player page.
 
 This is a number that starts at 1 and is reduced by 0.05 at the end of every 
 season, as well as when the player is damaged by a falling star. When it
 reaches 0, the player Retires. 
+"""
+nullable_explanation = """
+`null` for all player versions after the start of Season 11. These players have
+`lesser_durability` and `greater_durability` instead, which have a differnet
+type and interpretation than this `durability` value.
+"""
+
+[[table.column]]
+name = "lesser_durability"
+type = "integer"
+description = """
+In Season 11 and later, the player's Lesser League durability. Displayed as a
+set of pips on the player page.
+
+This is a number that starts at 5 (as of this writing) and decreases by 1 at
+the end of every season in which the player plays in the Lesser League. As of
+this writing it is unknown whether it will be affected by Party weather.
+"""
+nullable_explanation = """
+`null` for all player versions before the start of Season 11. These players have
+`durability` instead, which had a different type and interpretation than this
+value.
+"""
+
+[[table.column]]
+name = "greater_durability"
+type = "integer"
+description = """
+In Season 11 and later, the player's Greater League durability. Displayed as a
+set of pips on the player page.
+
+This is a number that starts 5 (as of this writing) and decreases by 1 at the
+end of every season in which the player plays in the Greater League.
+"""
+nullable_explanation = """
+`null` for all player versions before the start of Season 11. These players have
+`durability` instead, which had a different type and interpretation than this
+value.
 """
 
 [[table.column]]
@@ -4211,7 +4250,8 @@ The number of stars the player has in this attribute after accounting for items
 and modifications (including Boons).
 """
 nullable_explanation = """
-`null` for reports from before modified stars were added.
+`null` for reports from before modified stars were added, or after they were
+removed in Season 11.
 """
 
 [[table.column]]
@@ -4225,7 +4265,8 @@ This uses the 0.0-1.0 range used in the MMOLB back-end. Multiply this value by
 100 to get the number displayed on the Player page.
 """
 nullable_explanation = """
-`null` for reports from before modified totals were added.
+`null` for reports from before modified totals were added, or after they were
+removed in Season 11.
 """
 
 [[table]]
