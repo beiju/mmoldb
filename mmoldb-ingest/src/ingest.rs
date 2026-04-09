@@ -416,6 +416,7 @@ async fn insert_feed_event_versions_from_stream(
     batch_size: usize,
     until: Option<NaiveDateTime>,
     wake_next_stage: Arc<Notify>,
+    debug_db_insert_delay: f64
 ) -> Result<(), IngestFatalError> {
     let start_cursor = db::get_latest_raw_feed_event_version_cursor(conn, insert_as_kind)
         .map_err(|e| { info!("Error {e}"); e })?
@@ -483,6 +484,10 @@ async fn insert_feed_event_versions_from_stream(
             "Inserting {chunk_len} {kind_description} event versions. Currently processing \
             {kind_description}s from {human_time_ago}",
         );
+        if debug_db_insert_delay > 0. {
+            std::thread::sleep(std::time::Duration::from_secs_f64(debug_db_insert_delay));
+        }
+
         let chunk_insert_start = Utc::now();
         let n_inserted = db::insert_feed_event_versions(conn, insert_as_kind, &versions)?;
         let chunk_insert_duration = (Utc::now() - chunk_insert_start).as_seconds_f64();
@@ -538,6 +543,7 @@ impl FeedEventVersionStage1Ingest {
             args.config.insert_raw_entity_batch_size,
             Some(NaiveDateTime::parse_from_str("2025-07-29 00:00:00.000000", "%Y-%m-%d %H:%M:%S%.f").expect("Hard-coded date must not fail to parse")),
             args.wake_next_stage.clone(),
+            args.config.debug_db_insert_delay,
         ).await?;
 
         insert_feed_event_versions_from_stream(
@@ -550,6 +556,7 @@ impl FeedEventVersionStage1Ingest {
             args.config.insert_raw_entity_batch_size,
             None,
             args.wake_next_stage.clone(),
+            args.config.debug_db_insert_delay,
         ).await?;
 
         // Need to re-acquire the cursor after inserting embedded feed events

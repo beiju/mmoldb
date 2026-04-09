@@ -1,9 +1,11 @@
+pub mod ingest_feed_shared;
+
 use crate::config::IngestibleConfig;
 use crate::ingest::{VersionIngestLogs};
 use crate::ingest_players::day_to_db;
 use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
 use chron::ChronEntity;
-use chrono::{DateTime, NaiveDateTime, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{error};
@@ -16,18 +18,8 @@ use mmoldb_db::{async_db, db, AsyncPgConnection, Connection, PgConnection, Query
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use futures::Stream;
-use mmolb_parsing::player::Deserialize;
 use lazy_static::lazy_static;
-
-const fn datetime_from_parts(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32, micro: u32) -> DateTime<Utc> {
-    NaiveDateTime::new(
-        NaiveDate::from_ymd_opt(year, month, day).unwrap(),
-        NaiveTime::from_hms_micro_opt(hour, min, sec, micro).unwrap()
-    ).and_utc()
-}
-
-const IGNORE_EVENTS_STARTING: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 06, 53, 14, 327897);
-const IGNORE_EVENTS_ENDING: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 09, 10, 47, 911977);
+use crate::ingest_player_feed::ingest_feed_shared::{FeedItemContainer, IGNORE_EVENTS_ENDING, IGNORE_EVENTS_STARTING};
 
 lazy_static! {
     #[rustfmt::skip]
@@ -430,18 +422,10 @@ lazy_static! {
     };
 }
 
-#[derive(Deserialize)]
-pub struct PlayerFeedItemContainer {
-    feed_event_index: i32,
-    data: FeedEvent,
-    prev_valid_from: Option<DateTime<Utc>>,
-    prev_data: Option<FeedEvent>,
-}
-
 pub struct PlayerFeedIngestFromVersions;
 
 impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
-    type Entity = PlayerFeedItemContainer;
+    type Entity = FeedItemContainer;
 
     fn get_start_cursor(_: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
         // TODO: This is None because I'm not using a cursor for player feeds any more. Update
@@ -535,7 +519,7 @@ pub fn chron_player_feed_as_new<'a>(
     taxa: &Taxa,
     player_id: &'a str,
     valid_from: DateTime<Utc>,
-    event: &'a PlayerFeedItemContainer,
+    event: &'a FeedItemContainer,
     final_player_name: Option<&str>,
 ) -> (
     NewFeedEventProcessed<'a>,

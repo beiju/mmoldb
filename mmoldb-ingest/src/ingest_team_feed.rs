@@ -1,29 +1,23 @@
 use crate::config::IngestibleConfig;
 use crate::ingest::VersionIngestLogs;
+use crate::ingest_player_feed::ingest_feed_shared::{FeedItemContainer, IGNORE_EVENTS_ENDING, IGNORE_EVENTS_STARTING};
 use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::Stream;
 use itertools::Itertools;
 use mmolb_parsing::enums::LinkType;
-use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::team_feed::ParsedTeamFeedEventText;
 use mmoldb_db::models::{NewFeedEventProcessed, NewTeamGamePlayed, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{async_db, db, AsyncPgConnection, Connection, PgConnection, QueryResult};
-use serde::Deserialize;
 use std::sync::Arc;
 
-#[derive(Deserialize)]
-pub struct TeamFeedItemContainer {
-    feed_event_index: i32,
-    data: FeedEvent,
-}
 
 pub struct TeamFeedIngestFromVersions;
 
 impl IngestibleFromVersions for TeamFeedIngestFromVersions {
-    type Entity = TeamFeedItemContainer;
+    type Entity = FeedItemContainer;
 
     fn get_start_cursor(_: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
         // TODO: This is None because I'm not using a cursor for team feeds any more. Update
@@ -83,7 +77,7 @@ impl Ingestable for TeamFeedIngest {
 pub fn chron_team_feed_as_new<'a>(
     team_id: &'a str,
     valid_from: DateTime<Utc>,
-    item: &'a TeamFeedItemContainer,
+    item: &'a FeedItemContainer,
 ) -> (
     NewFeedEventProcessed<'a>,
     Option<NewTeamGamePlayed<'a>>,
@@ -97,6 +91,72 @@ pub fn chron_team_feed_as_new<'a>(
         feed_event_index: item.feed_event_index,
         valid_from: valid_from.naive_utc(),
     };
+
+    if IGNORE_EVENTS_STARTING <= valid_from && valid_from <= IGNORE_EVENTS_ENDING {
+        // See the corresponding statement in ingest_player_feed for an explanation
+        // TODO Apply the same TODOs from ingest_player_feed
+        ingest_logs.info("Ignoring event version from the Feed Inversion Event");
+
+        return (processed, None, ingest_logs.into_vec());
+    }
+
+    if let Some(prev_event) = &item.prev_data {
+        if item.prev_valid_from.is_none() {
+            ingest_logs.warn(format!(
+                "Team {} feed event index {} had a previous event, but \
+                did not have prev_valid_from",
+                team_id,
+                item.feed_event_index,
+            ));
+        }
+
+        if item.prev_valid_from.is_none_or(|prev_valid_from| IGNORE_EVENTS_STARTING <= prev_valid_from && prev_valid_from <= IGNORE_EVENTS_ENDING) {
+            if item.prev_valid_from.is_none() {
+                ingest_logs.warn(format!(
+                    "Can't check whether team {} feed event index {}'s previous event \
+                    was from the Feed Inversion Event because it's missing prev_valid_from. \
+                    Assuming it was to avoid losing data.",
+                    team_id,
+                    item.feed_event_index,
+                ));
+            } else {
+                ingest_logs.info(format!(
+                    "Team {} feed event index {} had a previous event, but it was from \
+                    the Feed Inversion Event so we can proceed with processing this event",
+                    team_id,
+                    item.feed_event_index,
+                ));
+            }
+        } else if item.data.timestamp == prev_event.timestamp && item.data.text == prev_event.text {
+            // I'm not early-exiting here because we don't check all the
+            // fields, so this could incorrectly match an actually meaningful
+            // change. If that happens, the database layer checks will find it.
+            ingest_logs.info(format!(
+                "Team {} feed event index {} had a previous event, but it's identical \
+                in text and timestamp to this event. Assuming it's just a data format change\
+                and that the database will deduplicate it.",
+                team_id,
+                item.feed_event_index,
+            ));
+        } else {
+            ingest_logs.error(format!(
+                "Team {} feed event index {} had a previous version without special \
+                handling. Skipping this version.\n\
+                previous version text: {}\n\
+                previous version valid_from: {}\n\
+                this version text: {}\n\
+                this version valid_from: {}",
+                team_id,
+                item.feed_event_index,
+                prev_event.text,
+                if let Some(dt) = item.prev_valid_from { format!("{dt}") } else { "(missing)".to_string() },
+                item.data.text,
+                valid_from,
+            ));
+
+            return (processed, None, ingest_logs.into_vec());
+        }
+    }
 
     // There is a bug in mmolb_parsing that causes a panic when an
     // augment's text is empty

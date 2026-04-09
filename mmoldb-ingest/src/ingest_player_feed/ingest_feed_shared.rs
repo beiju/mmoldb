@@ -1,0 +1,21 @@
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use mmolb_parsing::feed_event::FeedEvent;
+use mmolb_parsing::player::Deserialize;
+
+pub(crate) const fn datetime_from_parts(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32, micro: u32) -> DateTime<Utc> {
+    NaiveDateTime::new(
+        NaiveDate::from_ymd_opt(year, month, day).unwrap(),
+        NaiveTime::from_hms_micro_opt(hour, min, sec, micro).unwrap()
+    ).and_utc()
+}
+
+pub(crate) const IGNORE_EVENTS_STARTING: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 06, 53, 14, 327897);
+pub(crate) const IGNORE_EVENTS_ENDING: DateTime<Utc> = datetime_from_parts(2026, 03, 29, 09, 10, 47, 911977);
+
+#[derive(Deserialize)]
+pub struct FeedItemContainer {
+    pub feed_event_index: i32,
+    pub data: FeedEvent,
+    pub prev_valid_from: Option<DateTime<Utc>>,
+    pub prev_data: Option<FeedEvent>,
+}
