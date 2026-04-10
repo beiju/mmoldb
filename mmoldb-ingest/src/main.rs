@@ -7,6 +7,7 @@ mod ingest_teams;
 mod signal;
 mod config;
 mod partitioner;
+pub mod ingest_feed_shared;
 
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;

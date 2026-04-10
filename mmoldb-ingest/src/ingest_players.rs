@@ -45,7 +45,7 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
     fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey {
         entity.entity_id.to_string()
     }
-
+    
     fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
         // Collect all modifications that appear in this batch so we can ensure they're all added
         let unique_modifications = versions

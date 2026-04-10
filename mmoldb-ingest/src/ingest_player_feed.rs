@@ -1,14 +1,12 @@
-pub mod ingest_feed_shared;
-
 use crate::config::IngestibleConfig;
-use crate::ingest::{VersionIngestLogs};
+use crate::ingest::VersionIngestLogs;
 use crate::ingest_players::day_to_db;
 use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
-use log::{error};
+use log::error;
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
@@ -19,7 +17,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use futures::Stream;
 use lazy_static::lazy_static;
-use crate::ingest_player_feed::ingest_feed_shared::{FeedItemContainer, FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START};
+use crate::ingest_feed_shared::{FeedItemContainer, FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START};
 
 lazy_static! {
     #[rustfmt::skip]

@@ -1,6 +1,6 @@
 use crate::config::IngestibleConfig;
 use crate::ingest::VersionIngestLogs;
-use crate::ingest_player_feed::ingest_feed_shared::{FeedItemContainer, FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START};
+use crate::ingest_feed_shared::{FeedItemContainer, FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START};
 use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
