@@ -426,6 +426,7 @@ pub struct PlayerFeedIngestFromVersions;
 
 impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
     type Entity = FeedItemContainer;
+    type BatchSplitKey = (String, i32);
 
     fn get_start_cursor(_: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
         // TODO: This is None because I'm not using a cursor for player feeds any more. Update
@@ -435,6 +436,10 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
 
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
         version.clone()
+    }
+
+    fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey {
+        (entity.entity_id.to_string(), entity.data.feed_event_index)
     }
 
     fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {

@@ -25,6 +25,7 @@ pub struct PlayerIngestFromVersions;
 
 impl IngestibleFromVersions for PlayerIngestFromVersions {
     type Entity = mmolb_parsing::player::Player;
+    type BatchSplitKey = String;
 
     fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
         db::get_player_ingest_start_cursor(conn)
@@ -39,6 +40,10 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
                 .collect(),
             other => other.clone(),
         }
+    }
+
+    fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey {
+        entity.entity_id.to_string()
     }
 
     fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {

@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+use std::hash::Hash;
 use crate::config::IngestibleConfig;
 use chron::{Chron, ChronEntity, ChronStreamError};
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -683,9 +685,11 @@ pub struct Stage2Ingest<VersionIngest> {
 
 pub trait IngestibleFromVersions {
     type Entity: serde::de::DeserializeOwned + Send;
+    type BatchSplitKey: Clone + Debug + Eq + Hash + Send;
 
     fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>;
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value;
+    fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey;
     fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)>;
     fn stream_versions_at_cursor(
         conn: &mut AsyncPgConnection,
@@ -918,20 +922,36 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let time_ago = latest_time.signed_duration_since(Utc::now());
         let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
 
+        // Insert a layer of Option so we can remove entries from the middle without
+        // shifting indices around
+        let mut entities = entities.into_iter().map(Some).collect_vec();
+
+        let entity_ids_indices = entities.iter()
+            .enumerate()
+            .map(|(index, version)| {
+                let version = version.as_ref().expect("Every element should be a Some at this point");
+                (VersionIngest::batch_split_key(version), index)
+            })
+            .collect_vec();
+
         // The handling of valid_until is entirely in the database layer, but its logic
         // requires that a given batch of {kind}s does not have the same team twice. We
         // provide that guarantee here.
         let entities_len = entities.len();
         let mut total_inserted = 0;
-        for batch in batch_by_entity(entities) {
+        for batch_indices in batch_by_entity(entity_ids_indices) {
             if debug_db_insert_delay > 0. {
                 std::thread::sleep(std::time::Duration::from_secs_f64(debug_db_insert_delay));
             }
-            let to_insert = batch.len();
+            let to_insert = batch_indices.len();
             info!(
                 "Sending {} new {} versions out of {} to the database.",
                 to_insert, self.kind, entities_len,
             );
+
+            let batch = batch_indices.iter()
+                .map(|index| std::mem::take(&mut entities[*index]).expect("Batcher must only return each index once"))
+                .collect_vec();
 
             let (total, inserted) = VersionIngest::insert_batch(conn, taxa, &batch)?;
             total_inserted += inserted as i32;
@@ -973,9 +993,9 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> IngestStage 
     }
 }
 
-pub fn batch_by_entity<T>(
-    versions: Vec<ChronEntity<T>>,
-) -> impl Iterator<Item = Vec<ChronEntity<T>>> {
+pub fn batch_by_entity<KeyT: Clone + Eq + Hash, DataT>(
+    versions: Vec<(KeyT, DataT)>,
+) -> impl Iterator<Item = Vec<DataT>> {
     let mut pending_versions = versions;
     iter::from_fn(move || {
         if pending_versions.is_empty() {
@@ -987,11 +1007,11 @@ pub fn batch_by_entity<T>(
         // Pull out all players who don't yet appear
         let mut remaining_versions = std::mem::take(&mut pending_versions)
             .into_iter()
-            .flat_map(|version| {
-                match this_batch.entry(version.entity_id.clone()) {
+            .flat_map(|(key, version)| {
+                match this_batch.entry(key.clone()) {
                     Entry::Occupied(_) => {
                         // Then retain this version for the next batch
-                        Some(version)
+                        Some((key, version))
                     }
                     Entry::Vacant(entry) => {
                         // Then insert this version into the map and don't retain it
