@@ -45,7 +45,7 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
     fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey {
         entity.entity_id.to_string()
     }
-    
+
     fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
         // Collect all modifications that appear in this batch so we can ensure they're all added
         let unique_modifications = versions
@@ -446,6 +446,7 @@ fn chron_player_as_new<'a>(
     // Important, because they can be returned in arbitrary order
     occupied_equipment_slots.sort();
 
+    // Note: Make sure the sort orders in every branch are the same
     let included_report_categories = if entity.data.attribute_stars.is_ok() || entity.data.base_attribute_bonuses.is_ok() {
         // If this field exists, that means all "talk" pages are revealed
         // (aka this is past the time of talk pages)
@@ -709,16 +710,18 @@ fn chron_player_as_new<'a>(
 
         // Collect the attribute_reports and the report objects into the expected format
         report_versions = reports.into_iter()
-            .map(|(_, (report, report_attributes))| {
+            .map(|(_, (mut report, report_attributes))| {
+                report.included_attributes.sort();
                 (report, report_attributes.into_values().collect())
             })
             .collect();
     } else if let Ok(attrs) = &entity.data.attribute_stars {
-        // Then we're in the s9? s10? something around there variant
+        // Then we're in the s10 variant
         for (category, attrs) in attrs {
             let included_attributes = attrs
                 .iter()
                 .map(|(attribute, _)| taxa.attribute_id((*attribute).into()))
+                .sorted()
                 .collect_vec();
 
             let report_version = NewPlayerReportVersion {
@@ -1181,12 +1184,12 @@ fn chron_player_as_new<'a>(
         num_pitch_types: entity.data.pitch_types.as_ref().map_or(0, |pt| pt.len()) as i32,
         occupied_equipment_slots,
         included_report_categories,
-        included_pitch_type_bonuses: pitch_type_bonuses.iter().map(|bonus| bonus.pitch_type).collect(),
+        included_pitch_type_bonuses: pitch_type_bonuses.iter().map(|bonus| bonus.pitch_type).sorted().collect(),
         priority,
         xp: entity.data.xp.as_ref().ok().map(|xp| *xp as i32),
         name_suffix: entity.data.suffix.as_ref().ok().and_then(|x| x.as_deref()),
         level: entity.data.level.as_ref().ok().map(|level| *level as i32),
-        included_pitch_category_bonuses: pitch_category_bonuses.iter().map(|bonus| bonus.pitch_category).collect(),
+        included_pitch_category_bonuses: pitch_category_bonuses.iter().map(|bonus| bonus.pitch_category).sorted().collect(),
     };
 
     (

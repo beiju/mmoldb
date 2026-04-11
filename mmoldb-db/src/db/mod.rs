@@ -2261,6 +2261,11 @@ fn insert_player_report_versions(
         Vec<&Vec<NewPlayerReportAttributeVersion>>,
     ) = itertools::multiunzip(new_player_report_versions);
 
+    assert!(
+        new_player_report_versions.iter()
+            .all(|version| version.included_attributes.is_sorted())
+    );
+
     // Insert new records
     let num_inserted = diesel::copy_from(prv_dsl::player_report_versions)
         .from_insertable(new_player_report_versions)
@@ -2651,6 +2656,26 @@ pub fn insert_player_versions<'container, 'game: 'container>(
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
+    
+    assert!(
+        new_player_versions.iter()
+            .all(|version| version.occupied_equipment_slots.is_sorted())
+    );
+    
+    assert!(
+        new_player_versions.iter()
+            .all(|version| version.included_report_categories.is_sorted())
+    );
+    
+    assert!(
+        new_player_versions.iter()
+            .all(|version| version.included_pitch_type_bonuses.is_sorted())
+    );
+    
+    assert!(
+        new_player_versions.iter()
+            .all(|version| version.included_pitch_category_bonuses.is_sorted())
+    );
 
     let mut total_versions = 0;
     let mut inserted_versions = 0;
