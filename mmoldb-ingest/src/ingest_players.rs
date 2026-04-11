@@ -7,7 +7,7 @@ use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{error, warn};
-use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position};
+use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position, Uncategorized};
 use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
 use mmolb_parsing::player::{ComplexTalkStars, PlayerEquipment, TalkCategory, TalkStars};
 use strum::IntoEnumIterator;
@@ -625,13 +625,26 @@ fn chron_player_as_new<'a>(
             // In this version of the player object, all categorized attributes'
             // values are present at all times. If they're not mentioned in the
             // object, they're zero.
-            let Ok(cat) = AttributeCategory::try_from(attr) else {
-                if attr != Attribute::Priority {
-                    ingest_logs.warn(format!(
-                        "Unexpected uncategorized attribute {attr}.",
-                    ));
+            let cat = match AttributeCategory::try_from(attr) {
+                Ok(cat) => cat,
+                Err(Uncategorized(attr)) => match attr {
+                    Attribute::Priority => {
+                        // Ignore priority, it's on the root object anyway
+                        continue;
+                    }
+                    Attribute::Luck => {
+                        // Override luck to defense, otherwise it won't be stored in the database at all
+                        // TODO: Fix it so I don't have to do this
+                        AttributeCategory::Defense
+                    }
+                    _ => {
+                        ingest_logs.warn(format!(
+                            "Unexpected uncategorized attribute {attr}. This attribute \
+                            will not be stored in MMOLDB.",
+                        ));
+                        continue;
+                    }
                 }
-                continue;
             };
 
             let (report, report_attributes) = reports.get_mut(&cat)

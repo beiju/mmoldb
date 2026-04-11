@@ -1080,7 +1080,8 @@ pub fn chron_player_feed_as_new<'a>(
         ParsedPlayerFeedEventText::ConsumptionContestToPlayer { .. } |
         ParsedPlayerFeedEventText::ConsumptionContestToTeam { .. } |
         ParsedPlayerFeedEventText::PlayerReflected { .. } |
-        ParsedPlayerFeedEventText::ElectionAppliedLevelUps { .. } => {}
+        ParsedPlayerFeedEventText::ElectionAppliedLevelUps { .. } |
+        ParsedPlayerFeedEventText::LesserBoon { .. } => {}
     }
 
     // Apply any pending inferred whose time is before this event's time

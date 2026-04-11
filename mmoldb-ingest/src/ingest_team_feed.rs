@@ -185,8 +185,6 @@ pub fn chron_team_feed_as_new<'a>(
         ParsedTeamFeedEventText::Shipment { .. } |
         ParsedTeamFeedEventText::PhotoContest { .. } |
         ParsedTeamFeedEventText::SpecialDelivery { .. } |
-        ParsedTeamFeedEventText::ClaimedLinealBelt { .. } |
-        ParsedTeamFeedEventText::LostLinealBelt { .. } |
         ParsedTeamFeedEventText::PlayerReflected { .. } |
         ParsedTeamFeedEventText::SimulacrumPayout { .. } => {
             let game_link = item.data.links
@@ -219,6 +217,8 @@ pub fn chron_team_feed_as_new<'a>(
         }
         // Delivery is an end-of-game event but didn't have game links
         ParsedTeamFeedEventText::Delivery { .. } |
+        ParsedTeamFeedEventText::ClaimedLinealBelt { .. } |
+        ParsedTeamFeedEventText::LostLinealBelt { .. } |
         ParsedTeamFeedEventText::Party { .. } |
         ParsedTeamFeedEventText::DoorPrize { .. } |
         ParsedTeamFeedEventText::Prosperous { .. } |
