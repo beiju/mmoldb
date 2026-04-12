@@ -419,7 +419,7 @@ impl TryFrom<mmolb_parsing::enums::Place> for TaxaFielderLocation {
             mmolb_parsing::enums::Place::StartingPitcher(_) => Ok(TaxaFielderLocation::Pitcher),
             mmolb_parsing::enums::Place::ReliefPitcher(_) => Ok(TaxaFielderLocation::Pitcher),
             mmolb_parsing::enums::Place::Closer => Ok(TaxaFielderLocation::Pitcher),
-            mmolb_parsing::enums::Place::DesignatedHitter => Err(())
+            mmolb_parsing::enums::Place::DesignatedHitter => Err(()),
         }
     }
 }
@@ -1539,7 +1539,7 @@ pub struct Taxa {
     attribute_mapping: EnumMap<TaxaAttribute, i64>,
     effect_type_mapping: EnumMap<TaxaEffectType, i64>,
     pitcher_change_source_mapping: EnumMap<TaxaPitcherChangeSource, i64>,
-    modification_type_mapping: EnumMap<TaxaModificationType, i64,>
+    modification_type_mapping: EnumMap<TaxaModificationType, i64>,
 }
 
 impl Taxa {
@@ -1635,7 +1635,7 @@ impl Taxa {
     pub fn pitcher_change_source_id(&self, ty: TaxaPitcherChangeSource) -> i64 {
         self.pitcher_change_source_mapping[ty]
     }
-    
+
     pub fn modification_type_id(&self, ty: TaxaModificationType) -> i64 {
         self.modification_type_mapping[ty]
     }

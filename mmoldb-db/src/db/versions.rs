@@ -2,13 +2,13 @@
 // for the two different tables. They do need to be different tables because there are
 // database-layer functions that treat them differently.
 
+use crate::QueryError;
+use crate::data_schema::data::feed_event_versions::dsl as feed_event_versions_dsl;
+use crate::data_schema::data::versions::dsl as versions_dsl;
 use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
-use crate::QueryError;
-use crate::data_schema::data::versions::dsl as versions_dsl;
-use crate::data_schema::data::feed_event_versions::dsl as feed_event_versions_dsl;
 
 pub fn get_latest_raw_version_cursor(
     conn: &mut PgConnection,

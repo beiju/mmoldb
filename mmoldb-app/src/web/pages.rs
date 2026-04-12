@@ -1,20 +1,20 @@
-use chrono::{DateTime, Utc};
-use diesel::{Connection, PgConnection};
-use num_format::{Locale, ToFormattedString};
-use mmoldb_db::db;
-use mmoldb_db::models::DbEventIngestLog;
-use rocket::{futures, get, uri, State};
-use rocket::http::uri::Origin;
-use rocket_dyn_templates::{Template, context};
-use serde::Serialize;
-use lazy_static::lazy_static;
-use log::warn;
-use mmoldb_db::db::{GamesStats, PlayersStats, TeamsStats};
 use super::docs_pages::*;
 use crate::Db;
 use crate::records_cache::{Record, RecordsCache};
 use crate::web::error::AppError;
 use crate::web::utility_contexts::{DayContext, FormattedDateContext, GameContext};
+use chrono::{DateTime, Utc};
+use diesel::{Connection, PgConnection};
+use lazy_static::lazy_static;
+use log::warn;
+use mmoldb_db::db;
+use mmoldb_db::db::{GamesStats, PlayersStats, TeamsStats};
+use mmoldb_db::models::DbEventIngestLog;
+use num_format::{Locale, ToFormattedString};
+use rocket::http::uri::Origin;
+use rocket::{State, futures, get, uri};
+use rocket_dyn_templates::{Template, context};
+use serde::Serialize;
 
 const PAGE_OF_GAMES_SIZE: usize = 100;
 
@@ -327,27 +327,22 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         message: Option<String>,
     }
 
-    let ingests_query = db
-        .run(move |conn| {
-            conn.transaction(|conn| {
-                let num_ingests = db::ingest_count(conn)?;
-                let latest_ingests = db::latest_ingests(conn)?;
-                Ok::<_, AppError>((num_ingests, latest_ingests))
-            })
-        });
+    let ingests_query = db.run(move |conn| {
+        conn.transaction(|conn| {
+            let num_ingests = db::ingest_count(conn)?;
+            let latest_ingests = db::latest_ingests(conn)?;
+            Ok::<_, AppError>((num_ingests, latest_ingests))
+        })
+    });
 
-    let counts_query = db
-        .run(move |conn| {
-            conn.transaction(|conn| {
-                let counts = db::entity_counts(conn)?;
-                Ok::<_, AppError>(counts)
-            })
-        });
+    let counts_query = db.run(move |conn| {
+        conn.transaction(|conn| {
+            let counts = db::entity_counts(conn)?;
+            Ok::<_, AppError>(counts)
+        })
+    });
 
-    let (
-        (total_num_ingests, displayed_ingests),
-        counts,
-    ) =
+    let ((total_num_ingests, displayed_ingests), counts) =
         futures::try_join!(ingests_query, counts_query)?;
 
     let number_of_ingests_not_shown = total_num_ingests - displayed_ingests.len() as i64;
@@ -374,20 +369,54 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
 
     impl<'url> IngestibleWithErrors<'url> {
         pub fn new(name: &'static str, (count_total, count_with_errors): (i64, i64)) -> Self {
-            Self { name, count_total, count_with_errors, total_url: None, with_errors_url: None }
+            Self {
+                name,
+                count_total,
+                count_with_errors,
+                total_url: None,
+                with_errors_url: None,
+            }
         }
 
-        pub fn new_with_urls(name: &'static str, (count_total, count_with_errors): (i64, i64), total_url: Origin<'url>, with_errors_url: Origin<'url>) -> Self {
-            Self { name, count_total, count_with_errors, total_url: Some(total_url), with_errors_url: Some(with_errors_url) }
+        pub fn new_with_urls(
+            name: &'static str,
+            (count_total, count_with_errors): (i64, i64),
+            total_url: Origin<'url>,
+            with_errors_url: Origin<'url>,
+        ) -> Self {
+            Self {
+                name,
+                count_total,
+                count_with_errors,
+                total_url: Some(total_url),
+                with_errors_url: Some(with_errors_url),
+            }
         }
     }
-    
+
     let ingestible_counts = [
-        IngestibleWithErrors::new_with_urls("games", counts.get("game").cloned().unwrap_or((0, 0)), uri!(games_page()), uri!(games_with_issues_page())),
-        IngestibleWithErrors::new("player versions", counts.get("player").cloned().unwrap_or((0, 0))),
-        IngestibleWithErrors::new("player feed event versions", counts.get("player_feed").cloned().unwrap_or((0, 0))),
-        IngestibleWithErrors::new("team versions", counts.get("team").cloned().unwrap_or((0, 0))),
-        IngestibleWithErrors::new("team feed event versions", counts.get("team_feed").cloned().unwrap_or((0, 0))),
+        IngestibleWithErrors::new_with_urls(
+            "games",
+            counts.get("game").cloned().unwrap_or((0, 0)),
+            uri!(games_page()),
+            uri!(games_with_issues_page()),
+        ),
+        IngestibleWithErrors::new(
+            "player versions",
+            counts.get("player").cloned().unwrap_or((0, 0)),
+        ),
+        IngestibleWithErrors::new(
+            "player feed event versions",
+            counts.get("player_feed").cloned().unwrap_or((0, 0)),
+        ),
+        IngestibleWithErrors::new(
+            "team versions",
+            counts.get("team").cloned().unwrap_or((0, 0)),
+        ),
+        IngestibleWithErrors::new(
+            "team feed event versions",
+            counts.get("team_feed").cloned().unwrap_or((0, 0)),
+        ),
     ];
 
     Ok(Template::render(
@@ -472,9 +501,15 @@ fn players_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
             Stat::new("Player versions", num_player_versions),
             Stat::new("Player mod versions", num_player_modification_versions),
             Stat::new("Player equipment versions", num_player_equipment_versions),
-            Stat::new("Player equipment effect versions", num_player_equipment_effect_versions),
+            Stat::new(
+                "Player equipment effect versions",
+                num_player_equipment_effect_versions,
+            ),
             Stat::new("Player report versions", num_player_report_versions),
-            Stat::new("Player report attribute version", num_player_report_attribute_versions),
+            Stat::new(
+                "Player report attribute version",
+                num_player_report_attribute_versions,
+            ),
             Stat::new("Player attribute augments", num_player_attribute_augments),
             Stat::new("Player paradigm shifts", num_player_paradigm_shifts),
             Stat::new("Player recompositions", num_player_recompositions),
@@ -504,11 +539,15 @@ fn teams_health(conn: &mut PgConnection) -> Result<StatCategory, AppError> {
 
 #[get("/health")]
 pub async fn health_page(db: Db) -> Result<Template, AppError> {
-    let stat_categories = db.run(|mut conn| Ok::<_, AppError>(vec![
-        games_health(&mut conn)?,
-        players_health(&mut conn)?,
-        teams_health(&mut conn)?,
-    ])).await?;
+    let stat_categories = db
+        .run(|mut conn| {
+            Ok::<_, AppError>(vec![
+                games_health(&mut conn)?,
+                players_health(&mut conn)?,
+                teams_health(&mut conn)?,
+            ])
+        })
+        .await?;
 
     Ok(Template::render(
         "health",
@@ -522,7 +561,8 @@ pub async fn health_page(db: Db) -> Result<Template, AppError> {
 
 #[get("/records")]
 pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, AppError> {
-    let update = records.update_date()
+    let update = records
+        .update_date()
         .map(|d| FormattedDateContext::from(&d.naive_utc()));
     let error = records.update_error();
     let records = records.latest();
@@ -553,10 +593,10 @@ pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, App
                 (Some(day), Some(superstar_day)) => {
                     warn!("Latest game had both a day and a superstar day");
                     format!("Day {day} Superstar Day {superstar_day}")
-                },
+                }
             },
         }),
-        records: r.records
+        records: r.records,
     });
 
     Ok(Template::render(

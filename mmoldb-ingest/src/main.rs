@@ -1,37 +1,35 @@
-mod ingest;
-mod ingest_player_feed;
-mod ingest_team_feed;
-mod ingest_games;
-mod ingest_players;
-mod ingest_teams;
-mod signal;
 mod config;
-mod partitioner;
+mod ingest;
 pub mod ingest_feed_shared;
+mod ingest_games;
+mod ingest_player_feed;
+mod ingest_players;
+mod ingest_team_feed;
+mod ingest_teams;
+mod partitioner;
+mod signal;
 
-use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
 use crate::ingest_teams::TeamIngest;
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
+use config::IngestConfig;
 use futures::pin_mut;
 use log::{debug, error, info};
 use miette::{GraphicalReportHandler, IntoDiagnostic};
-use mmoldb_db::{db, ConnectionPool};
+use mmoldb_db::{ConnectionPool, db};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-use config::IngestConfig;
 
-pub use ingest::*;
 use crate::ingest_player_feed::PlayerFeedIngest;
 use crate::ingest_players::PlayerIngest;
 use crate::ingest_team_feed::TeamFeedIngest;
-use std::alloc;
 use cap::Cap;
-use humansize::{format_size, BINARY};
+use humansize::{BINARY, format_size};
+pub use ingest::*;
 use opentelemetry::{
-    global,
+    InstrumentationScope, KeyValue, global,
     trace::{TraceContextExt, Tracer},
-    InstrumentationScope, KeyValue,
 };
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
@@ -40,9 +38,10 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::{
     logs::SdkLoggerProvider, metrics::SdkMeterProvider, trace::SdkTracerProvider,
 };
+use std::alloc;
 use std::sync::OnceLock;
-use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
 
 #[global_allocator]
 static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::MAX);
@@ -50,11 +49,7 @@ static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::MAX);
 fn get_resource() -> Resource {
     static RESOURCE: OnceLock<Resource> = OnceLock::new();
     RESOURCE
-        .get_or_init(|| {
-            Resource::builder()
-                .with_service_name("mmoldb")
-                .build()
-        })
+        .get_or_init(|| Resource::builder().with_service_name("mmoldb").build())
         .clone()
 }
 
@@ -161,8 +156,7 @@ async fn main() -> miette::Result<()> {
     let config = IngestConfig::config().into_diagnostic()?;
     let config = Box::new(config);
     let config = Box::<IngestConfig>::leak(config);
-    let pool = mmoldb_db::get_pool(config.db_pool_size)
-        .into_diagnostic()?;
+    let pool = mmoldb_db::get_pool(config.db_pool_size).into_diagnostic()?;
 
     mmoldb_db::run_migrations().into_diagnostic()?;
 
@@ -231,7 +225,8 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
         Err(err) => {
             error!(
                 "Error getting database connection for ingest. This ingest will be skipped. \
-                Error: {:?}", err
+                Error: {:?}",
+                err
             );
             return;
         }
@@ -241,7 +236,8 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
         Ok(ingest_id) => ingest_id,
         Err(err) => {
             error!(
-                "Error saving ingest to database. This ingest will be skipped. Error: {:?}", err
+                "Error saving ingest to database. This ingest will be skipped. Error: {:?}",
+                err
             );
             return;
         }
@@ -252,18 +248,20 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
             panic!("Negative STATEMENT_TIMEOUT_SEC not allowed ({statement_timeout})");
         } else if statement_timeout > 0 {
             info!(
-            "Setting our account's statement timeout to {statement_timeout} ({})",
-            HumanTime::from(chrono::Duration::seconds(statement_timeout))
-                .to_text_en(Accuracy::Precise, Tense::Present),
-        );
+                "Setting our account's statement timeout to {statement_timeout} ({})",
+                HumanTime::from(chrono::Duration::seconds(statement_timeout))
+                    .to_text_en(Accuracy::Precise, Tense::Present),
+            );
         } else {
             // Postgres interprets 0 as no timeout
             info!("Setting our account's statement timeout to no timeout");
         }
-        let result = db::set_current_user_statement_timeout(&mut conn, statement_timeout)
-            .map_err(|error| IngestStageError {
-                stage_name: "Setting statement timeout".to_string(),
-                error: IngestFatalError::DbError(error),
+        let result =
+            db::set_current_user_statement_timeout(&mut conn, statement_timeout).map_err(|error| {
+                IngestStageError {
+                    stage_name: "Setting statement timeout".to_string(),
+                    error: IngestFatalError::DbError(error),
+                }
             });
         errs.push(result);
     }
@@ -306,7 +304,12 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
     let ingest_end_time = Utc::now();
     let duration = HumanTime::from(ingest_end_time - ingest_start_time);
     if is_aborted {
-        match db::mark_ingest_aborted(&mut conn, ingest_id, ingest_end_time, err_message.as_deref()) {
+        match db::mark_ingest_aborted(
+            &mut conn,
+            ingest_id,
+            ingest_end_time,
+            err_message.as_deref(),
+        ) {
             Ok(()) => {
                 info!(
                     "Aborted ingest in {}",
@@ -324,7 +327,12 @@ async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> 
             }
         }
     } else {
-        match db::mark_ingest_finished(&mut conn, ingest_id, ingest_end_time, err_message.as_deref()) {
+        match db::mark_ingest_finished(
+            &mut conn,
+            ingest_id,
+            ingest_end_time,
+            err_message.as_deref(),
+        ) {
             Ok(()) => {
                 info!(
                     "Finished ingest in {}",
@@ -360,31 +368,33 @@ fn refresh_matviews(pool: ConnectionPool) -> IngestErrorContainer {
             return errs;
         }
     };
-    
+
     for err in db::refresh_matviews(&mut conn) {
         errs.push_err(IngestStageError {
             stage_name: "Refresh matviews".to_string(),
             error: IngestFatalError::DbError(err),
         });
     }
-    
+
     errs
 }
 
 fn block_until_exit(exit: Arc<(Mutex<bool>, Condvar)>, timeout: Duration) -> bool {
     let (exit, exit_cond) = &*exit;
-    let (should_exit, _) = exit_cond.wait_timeout_while(
-        exit.lock().unwrap(),
-        timeout,
-        |&mut should_exit| !should_exit,
-    ).unwrap();
+    let (should_exit, _) = exit_cond
+        .wait_timeout_while(exit.lock().unwrap(), timeout, |&mut should_exit| {
+            !should_exit
+        })
+        .unwrap();
 
     *should_exit
 }
 
-fn refresh_entity_counting_matviews_repeatedly(pool: ConnectionPool, exit: Arc<(Mutex<bool>, Condvar)>) -> Result<(), IngestFatalError> {
-    let mut conn = pool.get()
-        .map_err(IngestFatalError::DbPoolError)?;
+fn refresh_entity_counting_matviews_repeatedly(
+    pool: ConnectionPool,
+    exit: Arc<(Mutex<bool>, Condvar)>,
+) -> Result<(), IngestFatalError> {
+    let mut conn = pool.get().map_err(IngestFatalError::DbPoolError)?;
     loop {
         if block_until_exit(exit.clone(), Duration::from_secs(10)) {
             break;
@@ -442,18 +452,14 @@ async fn ingest_everything(
     info!("Waiting for entity counting task to finish");
     match entity_counting_task.await {
         Ok(Ok(())) => {}
-        Ok(Err(error)) => {
-            errs.errors.push(IngestStageError {
-                stage_name: "Counting task".to_string(),
-                error,
-            })
-        }
-        Err(error) => {
-            errs.errors.push(IngestStageError {
-                stage_name: "Counting task".to_string(),
-                error: IngestFatalError::JoinError(error),
-            })
-        }
+        Ok(Err(error)) => errs.errors.push(IngestStageError {
+            stage_name: "Counting task".to_string(),
+            error,
+        }),
+        Err(error) => errs.errors.push(IngestStageError {
+            stage_name: "Counting task".to_string(),
+            error: IngestFatalError::JoinError(error),
+        }),
     }
 
     info!("Waiting for memory tracking task to finish");
@@ -485,10 +491,38 @@ async fn ingest_while_counting_task_runs(
     let mut errs = IngestErrorContainer::new();
     let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
 
-    errs.extend(ingestor.ingest(TeamIngest::new(&config.team_ingest), config.use_local_cheap_cashews).await);
-    errs.extend(ingestor.ingest(TeamFeedIngest::new(&config.team_feed_ingest), config.use_local_cheap_cashews).await);
-    errs.extend(ingestor.ingest(PlayerIngest::new(&config.player_ingest), config.use_local_cheap_cashews).await);
-    errs.extend(ingestor.ingest(PlayerFeedIngest::new(&config.player_feed_ingest), config.use_local_cheap_cashews).await);
+    errs.extend(
+        ingestor
+            .ingest(
+                TeamIngest::new(&config.team_ingest),
+                config.use_local_cheap_cashews,
+            )
+            .await,
+    );
+    errs.extend(
+        ingestor
+            .ingest(
+                TeamFeedIngest::new(&config.team_feed_ingest),
+                config.use_local_cheap_cashews,
+            )
+            .await,
+    );
+    errs.extend(
+        ingestor
+            .ingest(
+                PlayerIngest::new(&config.player_ingest),
+                config.use_local_cheap_cashews,
+            )
+            .await,
+    );
+    errs.extend(
+        ingestor
+            .ingest(
+                PlayerFeedIngest::new(&config.player_feed_ingest),
+                config.use_local_cheap_cashews,
+            )
+            .await,
+    );
 
     if config.fetch_known_missing_games {
         info!("Fetching any missing games in known-game-ids.txt");
@@ -502,7 +536,15 @@ async fn ingest_while_counting_task_runs(
 
     if config.game_ingest.enable {
         info!("Beginning game ingest");
-        errs.extend(ingest_games::ingest_games(pool.clone(), ingest_id, abort, config.use_local_cheap_cashews).await);
+        errs.extend(
+            ingest_games::ingest_games(
+                pool.clone(),
+                ingest_id,
+                abort,
+                config.use_local_cheap_cashews,
+            )
+            .await,
+        );
     }
 
     errs

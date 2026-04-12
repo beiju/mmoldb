@@ -1,6 +1,6 @@
-use std::num::NonZero;
-use num::Integer;
 use crate::IngestFatalError;
+use num::Integer;
+use std::num::NonZero;
 
 pub struct Partitioner {
     num_partitions: NonZero<usize>,
@@ -16,7 +16,7 @@ impl Partitioner {
             trailing_hexits_for_modulus: num_partitions.get().lcm(&16),
         }
     }
-    
+
     pub fn partition_for(&self, id: &str) -> Result<usize, IngestFatalError> {
         let ascii_id = ascii::AsciiStr::from_ascii(id.as_bytes())
             .map_err(IngestFatalError::NonAsciiEntityId)?;

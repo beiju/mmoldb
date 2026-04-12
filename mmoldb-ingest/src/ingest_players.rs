@@ -1,25 +1,37 @@
-use std::fmt::Display;
-use std::iter;
-use std::sync::Arc;
 use chrono::NaiveDateTime;
 use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::{error, warn};
-use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position, Uncategorized};
-use mmolb_parsing::{AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater, RemovedLaterResult};
+use mmolb_parsing::enums::{
+    Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position, Uncategorized,
+};
 use mmolb_parsing::player::{ComplexTalkStars, PlayerEquipment, TalkCategory, TalkStars};
+use mmolb_parsing::{
+    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater,
+    RemovedLaterResult,
+};
+use std::fmt::Display;
+use std::iter;
+use std::sync::Arc;
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
-use mmoldb_db::{async_db, db, AsyncPgConnection, PgConnection, QueryResult};
+use crate::config::IngestibleConfig;
+use crate::{
+    IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs,
+    VersionStage1Ingest,
+};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog};
+use mmoldb_db::models::{
+    NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion,
+    NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion,
+    NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog,
+};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaModificationType, TaxaSlot};
-use crate::config::IngestibleConfig;
-use crate::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs, VersionStage1Ingest};
+use mmoldb_db::{AsyncPgConnection, PgConnection, QueryResult, async_db, db};
 
 pub struct PlayerIngestFromVersions;
 
@@ -46,7 +58,11 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
         entity.entity_id.to_string()
     }
 
-    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
+    fn insert_batch(
+        conn: &mut PgConnection,
+        taxa: &Taxa,
+        versions: &Vec<ChronEntity<Self::Entity>>,
+    ) -> QueryResult<(usize, usize)> {
         // Collect all modifications that appear in this batch so we can ensure they're all added
         let unique_modifications = versions
             .iter()
@@ -74,14 +90,19 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
             .collect_vec();
 
         let modifications = get_filled_modifications_map(conn, &unique_modifications)?;
-        let new_versions = versions.iter()
+        let new_versions = versions
+            .iter()
             .map(|entity| chron_player_as_new(taxa, &entity, &modifications))
             .collect_vec();
 
         db::insert_player_versions(conn, &new_versions)
     }
 
-    async fn stream_versions_at_cursor(conn: &mut AsyncPgConnection, kind: &str, cursor: Option<(NaiveDateTime, String)>) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<serde_json::Value>>>> {
+    async fn stream_versions_at_cursor(
+        conn: &mut AsyncPgConnection,
+        kind: &str,
+        cursor: Option<(NaiveDateTime, String)>,
+    ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
         async_db::stream_versions_at_cursor(conn, kind, cursor).await
     }
 }
@@ -104,7 +125,7 @@ impl Ingestable for PlayerIngest {
     fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
         vec![
             Arc::new(VersionStage1Ingest::new(Self::KIND)),
-            Arc::new(Stage2Ingest::new(Self::KIND, PlayerIngestFromVersions))
+            Arc::new(Stage2Ingest::new(Self::KIND, PlayerIngestFromVersions)),
         ]
     }
 }
@@ -209,7 +230,7 @@ pub fn day_to_db(
         Some(Ok(Day::Offseason)) => (
             Some(taxa.day_type_id(TaxaDayType::Offseason)),
             None,
-            None,  // In this context, offseason day isn't available
+            None, // In this context, offseason day isn't available
         ),
         Some(Err(err)) => {
             error!("Unrecognized day {err}");
@@ -312,7 +333,8 @@ fn chron_player_as_new<'a>(
     Vec<NewPlayerPitchCategoryBonusVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
-    let mut ingest_logs = VersionIngestLogs::new(PlayerIngest::KIND, &entity.entity_id, entity.valid_from);
+    let mut ingest_logs =
+        VersionIngestLogs::new(PlayerIngest::KIND, &entity.entity_id, entity.valid_from);
     let (birthday_type, birthday_day, birthday_superstar_day) =
         day_to_db(Some(&entity.data.birthday), taxa);
 
@@ -337,15 +359,13 @@ fn chron_player_as_new<'a>(
         }
     };
 
-    let make_modification = |i, m, ty| {
-        NewPlayerModificationVersion {
-            mmolb_player_id: &entity.entity_id,
-            valid_from: entity.valid_from.naive_utc(),
-            valid_until: None,
-            modification_index: i as i32,
-            modification_id: get_modification_id(m),
-            modification_type: taxa.modification_type_id(ty),
-        }
+    let make_modification = |i, m, ty| NewPlayerModificationVersion {
+        mmolb_player_id: &entity.entity_id,
+        valid_from: entity.valid_from.naive_utc(),
+        valid_until: None,
+        modification_index: i as i32,
+        modification_id: get_modification_id(m),
+        modification_type: taxa.modification_type_id(ty),
     };
 
     let num_lesser_boon_singular = entity.data.lesser_boon.iter().count();
@@ -375,23 +395,35 @@ fn chron_player_as_new<'a>(
         .enumerate()
         .map(|(i, m)| make_modification(i, m, TaxaModificationType::Modification))
         .chain(
-            entity.data.lesser_boon.iter()
+            entity
+                .data
+                .lesser_boon
+                .iter()
                 .enumerate()
                 .map(|(i, m)| make_modification(i, m, TaxaModificationType::LesserBoon)),
         )
         .chain(
-            entity.data.greater_boon.iter()
+            entity
+                .data
+                .greater_boon
+                .iter()
                 .enumerate()
                 .map(|(i, m)| make_modification(i, m, TaxaModificationType::GreaterBoon)),
         )
         .chain(
-            entity.data.lesser_boons.iter()
+            entity
+                .data
+                .lesser_boons
+                .iter()
                 .flat_map(|v| v.iter())
                 .enumerate()
                 .map(|(i, m)| make_modification(i, m, TaxaModificationType::LesserBoon)),
         )
         .chain(
-            entity.data.greater_boons.iter()
+            entity
+                .data
+                .greater_boons
+                .iter()
                 .flat_map(|v| v.iter())
                 .enumerate()
                 .map(|(i, m)| make_modification(i, m, TaxaModificationType::GreaterBoon)),
@@ -447,50 +479,59 @@ fn chron_player_as_new<'a>(
     occupied_equipment_slots.sort();
 
     // Note: Make sure the sort orders in every branch are the same
-    let included_report_categories = if entity.data.attribute_stars.is_ok() || entity.data.base_attribute_bonuses.is_ok() {
-        // If this field exists, that means all "talk" pages are revealed
-        // (aka this is past the time of talk pages)
-        [
-            TaxaAttributeCategory::Batting,
-            TaxaAttributeCategory::Pitching,
-            TaxaAttributeCategory::Defense,
-            TaxaAttributeCategory::Baserunning,
-        ]
+    let included_report_categories =
+        if entity.data.attribute_stars.is_ok() || entity.data.base_attribute_bonuses.is_ok() {
+            // If this field exists, that means all "talk" pages are revealed
+            // (aka this is past the time of talk pages)
+            [
+                TaxaAttributeCategory::Batting,
+                TaxaAttributeCategory::Pitching,
+                TaxaAttributeCategory::Defense,
+                TaxaAttributeCategory::Baserunning,
+            ]
             .into_iter()
             .map(|category| taxa.attribute_category_id(category))
             .collect_vec()
-    } else {
-        // No sort necessary because order is hard-coded
-        entity
-            .data
-            .talk
-            .as_ref()
-            .map(|t| {
-                [
-                    t.batting.as_ref().map(|_| TaxaAttributeCategory::Batting),
-                    t.pitching.as_ref().map(|_| TaxaAttributeCategory::Pitching),
-                    t.defense.as_ref().map(|_| TaxaAttributeCategory::Defense),
-                    t.baserunning.as_ref().map(|_| TaxaAttributeCategory::Baserunning),
-                ]
+        } else {
+            // No sort necessary because order is hard-coded
+            entity
+                .data
+                .talk
+                .as_ref()
+                .map(|t| {
+                    [
+                        t.batting.as_ref().map(|_| TaxaAttributeCategory::Batting),
+                        t.pitching.as_ref().map(|_| TaxaAttributeCategory::Pitching),
+                        t.defense.as_ref().map(|_| TaxaAttributeCategory::Defense),
+                        t.baserunning
+                            .as_ref()
+                            .map(|_| TaxaAttributeCategory::Baserunning),
+                    ]
                     .into_iter()
                     .flatten()
                     .map(|category| taxa.attribute_category_id(category))
                     .collect_vec()
-            })
-            .unwrap_or_default()
-    };
+                })
+                .unwrap_or_default()
+        };
 
-    let priority_from_base_attributes = entity.data.base_attributes.as_ref().ok().and_then(|base_attributes| {
-        if let Some(priority) = base_attributes.attributes.get(&Attribute::Priority) {
-            Some(*priority)
-        } else {
-            ingest_logs.warn(
-                "Player version had BaseAttributes, but BaseAttributes did not contain the \
+    let priority_from_base_attributes =
+        entity
+            .data
+            .base_attributes
+            .as_ref()
+            .ok()
+            .and_then(|base_attributes| {
+                if let Some(priority) = base_attributes.attributes.get(&Attribute::Priority) {
+                    Some(*priority)
+                } else {
+                    ingest_logs.warn(
+                        "Player version had BaseAttributes, but BaseAttributes did not contain the \
                 Priority attribute",
-            );
-            None
-        }
-    });
+                    );
+                    None
+                }
+            });
 
     let priority = match (priority_from_base_attributes, entity.data.priority.clone()) {
         (None, Err(AddedLater)) => None,
@@ -505,7 +546,7 @@ fn chron_player_as_new<'a>(
             }
             // Root was added most recently, so I trust it more in the case that they disagree
             Some(from_root)
-        },
+        }
     };
 
     // Emit errors for internal inconsistencies in the talk. This block doesn't add any
@@ -551,14 +592,14 @@ fn chron_player_as_new<'a>(
                                 ingest_logs.warn(
                                     "Expected Complex talk objects in all player versions whose \
                                     talk pages have an attributes section, but this is an \
-                                    Intermediate talk object"
+                                    Intermediate talk object",
                                 );
                             }
                             Some(TalkStars::Simple(_)) => {
                                 ingest_logs.warn(
                                     "Expected Complex talk objects in all player versions whose \
                                     talk pages have an attributes section, but this is a Simple \
-                                    talk object"
+                                    talk object",
                                 );
                             }
                         }
@@ -607,18 +648,26 @@ fn chron_player_as_new<'a>(
 
         // player_report_version is basically obsolete now, so we just stamp out the formulaic template
         let mut reports = AttributeCategory::iter()
-            .map(|cat| (cat, (NewPlayerReportVersion {
-                mmolb_player_id: &entity.entity_id,
-                category: taxa.attribute_category_id(cat.into()),
-                valid_from: entity.valid_from.naive_utc(),
-                valid_until: None,
-                season: None,
-                day_type: None,
-                day: None,
-                superstar_day: None,
-                quote: None,
-                included_attributes: vec![], // To be populated later
-            }, HashMap::<Attribute, _>::new())))
+            .map(|cat| {
+                (
+                    cat,
+                    (
+                        NewPlayerReportVersion {
+                            mmolb_player_id: &entity.entity_id,
+                            category: taxa.attribute_category_id(cat.into()),
+                            valid_from: entity.valid_from.naive_utc(),
+                            valid_until: None,
+                            season: None,
+                            day_type: None,
+                            day: None,
+                            superstar_day: None,
+                            quote: None,
+                            included_attributes: vec![], // To be populated later
+                        },
+                        HashMap::<Attribute, _>::new(),
+                    ),
+                )
+            })
             .collect::<HashMap<_, _>>();
 
         for attr in Attribute::iter() {
@@ -644,30 +693,38 @@ fn chron_player_as_new<'a>(
                         ));
                         continue;
                     }
-                }
+                },
             };
 
-            let (report, report_attributes) = reports.get_mut(&cat)
+            let (report, report_attributes) = reports
+                .get_mut(&cat)
                 .expect("`reports` must have an entry for every AttributeCategory");
 
-            report.included_attributes
+            report
+                .included_attributes
                 .push(taxa.attribute_id(attr.into()));
 
-            let prev = report_attributes.insert(attr, NewPlayerReportAttributeVersion {
-                mmolb_player_id: &entity.entity_id,
-                category: taxa.attribute_category_id(cat.into()),
-                attribute: taxa.attribute_id(attr.into()),
-                valid_from: entity.valid_from.naive_utc(),
-                valid_until: None,
-                base_stars: None,
-                // This one incudes augments
-                base_total: Some(0.0),
-                // This one doesn't
-                base_subtotal: Some(0.0),
-                modified_stars: None,
-                modified_total: None,
-            });
-            assert!(prev.is_none(), "This loop should never overwrite hashmap entries");
+            let prev = report_attributes.insert(
+                attr,
+                NewPlayerReportAttributeVersion {
+                    mmolb_player_id: &entity.entity_id,
+                    category: taxa.attribute_category_id(cat.into()),
+                    attribute: taxa.attribute_id(attr.into()),
+                    valid_from: entity.valid_from.naive_utc(),
+                    valid_until: None,
+                    base_stars: None,
+                    // This one incudes augments
+                    base_total: Some(0.0),
+                    // This one doesn't
+                    base_subtotal: Some(0.0),
+                    modified_stars: None,
+                    modified_total: None,
+                },
+            );
+            assert!(
+                prev.is_none(),
+                "This loop should never overwrite hashmap entries"
+            );
         }
 
         for bonus in bonuses {
@@ -679,16 +736,22 @@ fn chron_player_as_new<'a>(
                 continue;
             };
 
-            let (_, report_attributes) = reports.get_mut(&cat)
+            let (_, report_attributes) = reports
+                .get_mut(&cat)
                 .expect("`reports` must have an entry for every AttributeCategory");
 
-            let report_attr = report_attributes.get_mut(&bonus.attribute)
-                .expect("`report_attributes` must have an entry for every Attribute in its category");
+            let report_attr = report_attributes.get_mut(&bonus.attribute).expect(
+                "`report_attributes` must have an entry for every Attribute in its category",
+            );
 
-            *report_attr.base_total.as_mut()
+            *report_attr
+                .base_total
+                .as_mut()
                 .expect("base_total must be set in this code path") += bonus.amount;
 
-            *report_attr.base_subtotal.as_mut()
+            *report_attr
+                .base_subtotal
+                .as_mut()
                 .expect("base_subtotal must be set in this code path") += bonus.amount;
         }
 
@@ -704,7 +767,8 @@ fn chron_player_as_new<'a>(
                         continue;
                     };
 
-                    let (_, report_attributes) = reports.get_mut(&cat)
+                    let (_, report_attributes) = reports
+                        .get_mut(&cat)
                         .expect("`reports` must have an entry for every AttributeCategory");
 
                     let report_attr = report_attributes.get_mut(&aug.attribute)
@@ -712,17 +776,20 @@ fn chron_player_as_new<'a>(
 
                     // Augments get added to base_total, but not base_subtotal
                     // (that's the entire difference between them)
-                    *report_attr.base_total.as_mut()
+                    *report_attr
+                        .base_total
+                        .as_mut()
                         .expect("base_total must be set in this code path") += aug.amount;
                 }
-            },
+            }
             Err(AddedLater) => {
                 ingest_logs.error("Player in season 11 format must have augment history");
             }
         }
 
         // Collect the attribute_reports and the report objects into the expected format
-        report_versions = reports.into_iter()
+        report_versions = reports
+            .into_iter()
             .map(|(_, (mut report, report_attributes))| {
                 report.included_attributes.sort();
                 (report, report_attributes.into_values().collect())
@@ -755,44 +822,52 @@ fn chron_player_as_new<'a>(
                 .map(|(attribute, stars)| {
                     // Every value in attribute_stars is expected to match with the corresponding
                     // value in base_attributes
-                    let base_subtotal = if let Some(base_attrs) = entity.data.base_attributes.as_ref().ok() {
-                        if let Some(base_attr) = base_attrs.attributes.get(attribute) {
-                            // I'm writing this as a super-strict comparison so I can detect
-                            // how equal the equalities are. It may need to be relaxed in
-                            // the near future.
-                            if float_ne!(&stars.base_total, base_attr, abs <= 1e-12) {
-                                // TODO Apply augments to base_attr and then this should be able
-                                //   to be changed back to a warning
-                                ingest_logs.info(format!(
-                                    "Base {} value in BaseAttributes ({}) did not exactly \
+                    let base_subtotal =
+                        if let Some(base_attrs) = entity.data.base_attributes.as_ref().ok() {
+                            if let Some(base_attr) = base_attrs.attributes.get(attribute) {
+                                // I'm writing this as a super-strict comparison so I can detect
+                                // how equal the equalities are. It may need to be relaxed in
+                                // the near future.
+                                if float_ne!(&stars.base_total, base_attr, abs <= 1e-12) {
+                                    // TODO Apply augments to base_attr and then this should be able
+                                    //   to be changed back to a warning
+                                    ingest_logs.info(format!(
+                                        "Base {} value in BaseAttributes ({}) did not exactly \
                                     match the value in AttributeStars ({}). Assuming for now that \
                                     this is because of augments.",
-                                    <Attribute as Into<&'static str>>::into(*attribute),
-                                    base_attr,
-                                    stars.base_total,
-                                ))
-                            }
-                            Some(*base_attr)
-                        } else {
-                            ingest_logs.warn(format!(
-                                "BaseAttributes field on player entity exists, but does not \
+                                        <Attribute as Into<&'static str>>::into(*attribute),
+                                        base_attr,
+                                        stars.base_total,
+                                    ))
+                                }
+                                Some(*base_attr)
+                            } else {
+                                ingest_logs.warn(format!(
+                                    "BaseAttributes field on player entity exists, but does not \
                                 contain an entry for attribute {}. An entry was expected because \
                                 this attribute appears in the {:?} section of AttributeStars.",
-                                <Attribute as Into<&'static str>>::into(*attribute),
-                                <AttributeCategory as Into<&'static str>>::into(*category),
-                            ));
-                            None
-                        }
-                    } else {
-                        ingest_logs.warn(format!(
+                                    <Attribute as Into<&'static str>>::into(*attribute),
+                                    <AttributeCategory as Into<&'static str>>::into(*category),
+                                ));
+                                None
+                            }
+                        } else {
+                            ingest_logs.warn(format!(
                             "AttributeStars field on player entity exists, but BaseAttributes does \
                             not. base_subtotal will be unexpectededly null for {}.",
                             <Attribute as Into<&'static str>>::into(*attribute),
                         ));
-                        None
-                    };
+                            None
+                        };
 
-                    player_report_attribute_version_as_new_from_new_format((*category).into(), entity, taxa, attribute, stars, base_subtotal)
+                    player_report_attribute_version_as_new_from_new_format(
+                        (*category).into(),
+                        entity,
+                        taxa,
+                        attribute,
+                        stars,
+                        base_subtotal,
+                    )
                 })
                 .collect_vec();
 
@@ -977,7 +1052,10 @@ fn chron_player_as_new<'a>(
         if base_attributes.pitch_types.len() == base_attributes.pitch_selection.len() {
             if let Ok(pitch_types) = &entity.data.pitch_types {
                 if pitch_types.len() == base_attributes.pitch_types.len() {
-                    for (index, (root_ty_result, base_attributes_ty_result)) in iter::zip(pitch_types.iter(), base_attributes.pitch_types.iter()).enumerate() {
+                    for (index, (root_ty_result, base_attributes_ty_result)) in
+                        iter::zip(pitch_types.iter(), base_attributes.pitch_types.iter())
+                            .enumerate()
+                    {
                         let root_ty = match root_ty_result {
                             Ok(root_ty) => root_ty,
                             Err(err) => {
@@ -987,7 +1065,7 @@ fn chron_player_as_new<'a>(
                                 continue;
                             }
                         };
-                        
+
                         let base_attributes_ty = match base_attributes_ty_result {
                             Ok(base_attributes_ty) => base_attributes_ty,
                             Err(err) => {
@@ -997,14 +1075,12 @@ fn chron_player_as_new<'a>(
                                 continue;
                             }
                         };
-                        
+
                         if root_ty != base_attributes_ty {
                             ingest_logs.warn(format!(
                                 "{}th pitch type in BaseAttributes ({}) does not match the \
                                 corresponding pitch type in the root object ({})",
-                                index,
-                                base_attributes_ty,
-                                root_ty,
+                                index, base_attributes_ty, root_ty,
                             ));
                         }
                     }
@@ -1020,7 +1096,12 @@ fn chron_player_as_new<'a>(
 
             if let Ok(pitch_selection) = &entity.data.pitch_selection {
                 if pitch_selection.len() == base_attributes.pitch_selection.len() {
-                    for (index, (root_freq, base_attributes_freq)) in iter::zip(pitch_selection.iter(), base_attributes.pitch_selection.iter()).enumerate() {
+                    for (index, (root_freq, base_attributes_freq)) in iter::zip(
+                        pitch_selection.iter(),
+                        base_attributes.pitch_selection.iter(),
+                    )
+                    .enumerate()
+                    {
                         // Formatting as string is the most straightforward way to check the kind
                         // of correspondence we want
                         // It's 3 decimal digits because that becomes 1 digit after formatting as a
@@ -1029,9 +1110,7 @@ fn chron_player_as_new<'a>(
                             ingest_logs.warn(format!(
                                 "{}th pitch frequency in BaseAttributes ({}) does not match the \
                                 corresponding pitch frequency in the root object ({})",
-                                index,
-                                base_attributes_freq,
-                                root_freq,
+                                index, base_attributes_freq, root_freq,
                             ));
                         }
                     }
@@ -1045,28 +1124,31 @@ fn chron_player_as_new<'a>(
                 }
             }
 
-            iter::zip(&base_attributes.pitch_types, &base_attributes.pitch_selection)
-                .enumerate()
-                .map(|(index, (ty, freq))| NewPlayerPitchTypeVersion {
-                    mmolb_player_id: &entity.entity_id,
-                    pitch_type_index: index as i32,
-                    valid_from: entity.valid_from.naive_utc(),
-                    valid_until: None,
-                    // If this is not ok(), an error should already have been logged while doing
-                    // the consistency check above
-                    pitch_type: ty.as_ref().ok().map(|ty| taxa.pitch_type_id((*ty).into())),
-                    frequency: *freq,
-                    // This source is full precision as of this writing
-                    expect_full_precision: true,
-                })
-                .collect_vec()
+            iter::zip(
+                &base_attributes.pitch_types,
+                &base_attributes.pitch_selection,
+            )
+            .enumerate()
+            .map(|(index, (ty, freq))| NewPlayerPitchTypeVersion {
+                mmolb_player_id: &entity.entity_id,
+                pitch_type_index: index as i32,
+                valid_from: entity.valid_from.naive_utc(),
+                valid_until: None,
+                // If this is not ok(), an error should already have been logged while doing
+                // the consistency check above
+                pitch_type: ty.as_ref().ok().map(|ty| taxa.pitch_type_id((*ty).into())),
+                frequency: *freq,
+                // This source is full precision as of this writing
+                expect_full_precision: true,
+            })
+            .collect_vec()
         } else {
-             ingest_logs.error(format!(
-                 "Can't extract pitch types from BaseAttributes: PitchTypes was length {}, but \
+            ingest_logs.error(format!(
+                "Can't extract pitch types from BaseAttributes: PitchTypes was length {}, but \
                  PitchSelection was length {} (expected equal length)",
-                 base_attributes.pitch_types.len(),
-                 base_attributes.pitch_selection.len()
-             ));
+                base_attributes.pitch_types.len(),
+                base_attributes.pitch_selection.len()
+            ));
             Vec::new()
         }
     } else {
@@ -1127,19 +1209,17 @@ fn chron_player_as_new<'a>(
     let pitch_type_bonuses = if let Ok(bonuses) = &entity.data.pitch_type_bonuses {
         bonuses
             .iter()
-            .flat_map(|(maybe_pitch_type, bonus)| {
-                match maybe_pitch_type {
-                    Ok(pitch_type) => Some(NewPlayerPitchTypeBonusVersion {
-                        mmolb_player_id: &entity.entity_id,
-                        pitch_type: taxa.pitch_type_id((*pitch_type).into()),
-                        valid_from: entity.valid_from.naive_utc(),
-                        valid_until: None,
-                        bonus: *bonus,
-                    }),
-                    Err(err) => {
-                        ingest_logs.error(format!("Unrecognized pitch type {err} in PitchTypeBonuses"));
-                        None
-                    }
+            .flat_map(|(maybe_pitch_type, bonus)| match maybe_pitch_type {
+                Ok(pitch_type) => Some(NewPlayerPitchTypeBonusVersion {
+                    mmolb_player_id: &entity.entity_id,
+                    pitch_type: taxa.pitch_type_id((*pitch_type).into()),
+                    valid_from: entity.valid_from.naive_utc(),
+                    valid_until: None,
+                    bonus: *bonus,
+                }),
+                Err(err) => {
+                    ingest_logs.error(format!("Unrecognized pitch type {err} in PitchTypeBonuses"));
+                    None
                 }
             })
             .collect_vec()
@@ -1150,19 +1230,17 @@ fn chron_player_as_new<'a>(
     let pitch_category_bonuses = if let Ok(bonuses) = &entity.data.pitch_category_bonuses {
         bonuses
             .iter()
-            .flat_map(|(maybe_pitch_category, bonus)| {
-                match maybe_pitch_category {
-                    Ok(pitch_category) => Some(NewPlayerPitchCategoryBonusVersion {
-                        mmolb_player_id: &entity.entity_id,
-                        pitch_category: taxa.pitch_category_id((*pitch_category).into()),
-                        valid_from: entity.valid_from.naive_utc(),
-                        valid_until: None,
-                        bonus: *bonus,
-                    }),
-                    Err(err) => {
-                        ingest_logs.error(format!("Unrecognized pitch type {err} in PitchTypeBonuses"));
-                        None
-                    }
+            .flat_map(|(maybe_pitch_category, bonus)| match maybe_pitch_category {
+                Ok(pitch_category) => Some(NewPlayerPitchCategoryBonusVersion {
+                    mmolb_player_id: &entity.entity_id,
+                    pitch_category: taxa.pitch_category_id((*pitch_category).into()),
+                    valid_from: entity.valid_from.naive_utc(),
+                    valid_until: None,
+                    bonus: *bonus,
+                }),
+                Err(err) => {
+                    ingest_logs.error(format!("Unrecognized pitch type {err} in PitchTypeBonuses"));
+                    None
                 }
             })
             .collect_vec()
@@ -1189,20 +1267,40 @@ fn chron_player_as_new<'a>(
         mmolb_team_id: entity.data.team_id.as_deref(),
         slot,
         durability: entity.data.durability.as_ref().ok().copied(),
-        lesser_durability: entity.data.lesser_durability.as_ref().ok().copied().map(|i| i as _),
-        greater_durability: entity.data.greater_durability.as_ref().ok().copied().map(|i| i as _),
+        lesser_durability: entity
+            .data
+            .lesser_durability
+            .as_ref()
+            .ok()
+            .copied()
+            .map(|i| i as _),
+        greater_durability: entity
+            .data
+            .greater_durability
+            .as_ref()
+            .ok()
+            .copied()
+            .map(|i| i as _),
         num_modifications: entity.data.modifications.len() as i32,
         num_greater_boons: entity.data.greater_boon.len() as i32,
         num_lesser_boons: entity.data.lesser_boon.len() as i32,
         num_pitch_types: entity.data.pitch_types.as_ref().map_or(0, |pt| pt.len()) as i32,
         occupied_equipment_slots,
         included_report_categories,
-        included_pitch_type_bonuses: pitch_type_bonuses.iter().map(|bonus| bonus.pitch_type).sorted().collect(),
+        included_pitch_type_bonuses: pitch_type_bonuses
+            .iter()
+            .map(|bonus| bonus.pitch_type)
+            .sorted()
+            .collect(),
         priority,
         xp: entity.data.xp.as_ref().ok().map(|xp| *xp as i32),
         name_suffix: entity.data.suffix.as_ref().ok().and_then(|x| x.as_deref()),
         level: entity.data.level.as_ref().ok().map(|level| *level as i32),
-        included_pitch_category_bonuses: pitch_category_bonuses.iter().map(|bonus| bonus.pitch_category).sorted().collect(),
+        included_pitch_category_bonuses: pitch_category_bonuses
+            .iter()
+            .map(|bonus| bonus.pitch_category)
+            .sorted()
+            .collect(),
     };
 
     (
@@ -1231,7 +1329,7 @@ fn report_from_talk<'e>(
         Ok(None) => {
             // TODO Publicize the implications of this None
             None
-        },
+        }
         Err(AddedLater) => None,
     };
 
@@ -1265,7 +1363,9 @@ fn report_from_talk<'e>(
     let report_attribute_versions = report
         .stars
         .iter()
-        .map(|(attribute, stars)| player_report_attribute_version_as_new(category, entity, taxa, attribute, stars))
+        .map(|(attribute, stars)| {
+            player_report_attribute_version_as_new(category, entity, taxa, attribute, stars)
+        })
         .collect_vec();
 
     (report_version, report_attribute_versions)
@@ -1300,7 +1400,7 @@ fn player_report_attribute_version_as_new<'a>(
         modified_stars: match stars {
             TalkStars::Simple(_) => None,
             TalkStars::Intermediate { stars, .. } => Some(*stars as i32),
-            TalkStars::Complex(ComplexTalkStars { stars, .. }) => Some(*stars as i32)
+            TalkStars::Complex(ComplexTalkStars { stars, .. }) => Some(*stars as i32),
         },
         modified_total: match stars {
             TalkStars::Simple(_) => None,

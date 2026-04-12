@@ -241,13 +241,13 @@ mod tests {
         let docs: SchemaDocs =
             toml::from_slice(file_contents).expect("Couldn't deserialize schema docs file");
 
-        let pool = mmoldb_db::get_pool(1)
-            .expect("failed to initialize database pool");
-        let mut conn = pool.get()
+        let pool = mmoldb_db::get_pool(1).expect("failed to initialize database pool");
+        let mut conn = pool
+            .get()
             .expect("failed to get a connection from the database pool");
 
-        let tables = db::tables_for_schema(&mut conn, "mmoldb", schema_name)
-            .expect("Database query failed");
+        let tables =
+            db::tables_for_schema(&mut conn, "mmoldb", schema_name).expect("Database query failed");
 
         check_schema_table_docs(schema_name, tables, docs);
     }

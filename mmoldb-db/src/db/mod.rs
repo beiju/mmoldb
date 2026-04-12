@@ -12,6 +12,7 @@ pub use versions::*;
 
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
+use diesel::connection::DefaultLoadingMode;
 use diesel::dsl::{count, count_star, max, min};
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
@@ -22,11 +23,23 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
-use diesel::connection::DefaultLoadingMode;
 use thiserror::Error;
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEjection, DbEvent, DbEventIngestLog, DbFielder, DbGame, DbIngest, DbModification, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerVersion, DbRunner, NewEventIngestLog, NewGame, NewTeamGamePlayed, NewGameIngestTimings, NewIngest, NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable, DbPlayerRecomposition, DbPlayerReportVersion, DbPlayerReportAttributeVersion, DbPlayerAttributeAugment, DbWither, NewFeedEventProcessed, DbEfflorescence, DbEfflorescenceGrowth, DbFailedEjection, NewPlayerPitchTypeVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchCategoryBonusVersion};
+use crate::models::{
+    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth,
+    DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbIngest,
+    DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion,
+    DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition,
+    DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither,
+    NewEventIngestLog, NewFeedEventProcessed, NewGame, NewGameIngestTimings, NewIngest,
+    NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion,
+    NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift,
+    NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion,
+    NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion,
+    NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog,
+    RawDbColumn, RawDbTable,
+};
 use crate::taxa::Taxa;
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -108,18 +121,24 @@ pub fn entity_counts(conn: &mut PgConnection) -> QueryResult<HashMap<String, (i6
         pub count: Option<i64>,
     }
 
-    let results = sql_query("
+    let results = sql_query(
+        "
         select coalesce(ewi.kind, e.kind) as kind, ewi.entities_with_issues, e.count
         from info.entities_with_issues_count ewi
         full outer join info.entities_count e on e.kind=ewi.kind
-    ")
-        .get_results::<IssueCounts>(conn)?;
-
-    Ok(
-        results.into_iter()
-            .map(|r| (r.kind, (r.count.unwrap_or(0), r.entities_with_issues.unwrap_or(0))))
-            .collect()
+    ",
     )
+    .get_results::<IssueCounts>(conn)?;
+
+    Ok(results
+        .into_iter()
+        .map(|r| {
+            (
+                r.kind,
+                (r.count.unwrap_or(0), r.entities_with_issues.unwrap_or(0)),
+            )
+        })
+        .collect())
 }
 
 pub fn latest_ingest_start_time(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
@@ -177,14 +196,14 @@ pub fn mark_ingest_finished(
     conn: &mut PgConnection,
     ingest_id: i64,
     at: DateTime<Utc>,
-    set_message: Option<&str>
+    set_message: Option<&str>,
 ) -> QueryResult<()> {
     use crate::info_schema::info::ingests::dsl;
 
     diesel::update(dsl::ingests.filter(dsl::id.eq(ingest_id)))
         .set((
             dsl::finished_at.eq(at.naive_utc()),
-            dsl::message.eq(set_message)
+            dsl::message.eq(set_message),
         ))
         .execute(conn)
         .map(|_| ())
@@ -219,10 +238,7 @@ pub fn mark_ingest_aborted(
     use crate::info_schema::info::ingests::dsl::*;
 
     diesel::update(ingests.filter(id.eq(ingest_id)))
-        .set((
-            aborted_at.eq(at.naive_utc()),
-            message.eq(set_message),
-        ))
+        .set((aborted_at.eq(at.naive_utc()), message.eq(set_message)))
         .execute(conn)
         .map(|_| ())
 }
@@ -484,11 +500,10 @@ pub fn group_wither_table_results<'a>(
                 .iter()
                 .map(|game_event| {
                     let mut children = Vec::new();
-                    while let Some(child) =
-                        wither_iter.next_if(|f|
-                            f.game_id == game_event.game_id &&
-                                f.attempt_game_event_index == game_event.game_event_index
-                        ) {
+                    while let Some(child) = wither_iter.next_if(|f| {
+                        f.game_id == game_event.game_id
+                            && f.attempt_game_event_index == game_event.game_event_index
+                    }) {
                         children.push(child);
                     }
                     children
@@ -513,15 +528,15 @@ pub fn events_for_games(
     use crate::data_schema::data::aurora_photos::dsl as aurora_photo_dsl;
     use crate::data_schema::data::door_prize_items::dsl as door_prize_item_dsl;
     use crate::data_schema::data::door_prizes::dsl as door_prize_dsl;
+    use crate::data_schema::data::efflorescence::dsl as efflorescence_dsl;
+    use crate::data_schema::data::efflorescence_growth::dsl as efflorescence_growth_dsl;
     use crate::data_schema::data::ejections::dsl as ejection_dsl;
-    use crate::data_schema::data::failed_ejections::dsl as failed_ejection_dsl;
     use crate::data_schema::data::event_baserunners::dsl as runner_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielder_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
+    use crate::data_schema::data::failed_ejections::dsl as failed_ejection_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::data_schema::data::wither::dsl as wither_dsl;
-    use crate::data_schema::data::efflorescence::dsl as efflorescence_dsl;
-    use crate::data_schema::data::efflorescence_growth::dsl as efflorescence_growth_dsl;
 
     let get_game_ids_start = Utc::now();
     let game_ids = games_dsl::games
@@ -619,8 +634,10 @@ pub fn events_for_games(
     let _get_failed_ejections_duration = (Utc::now() - get_failed_ejections_start).as_seconds_f64();
 
     let group_failed_ejections_start = Utc::now();
-    let db_failed_ejections = group_child_table_results(&db_games_events, db_failed_ejections, |r| r.event_id);
-    let _group_failed_ejections_duration = (Utc::now() - group_failed_ejections_start).as_seconds_f64();
+    let db_failed_ejections =
+        group_child_table_results(&db_games_events, db_failed_ejections, |r| r.event_id);
+    let _group_failed_ejections_duration =
+        (Utc::now() - group_failed_ejections_start).as_seconds_f64();
 
     let get_door_prizes_start = Utc::now();
     let db_door_prizes = door_prize_dsl::door_prizes
@@ -656,7 +673,10 @@ pub fn events_for_games(
     let get_efflorescences_start = Utc::now();
     let db_efflorescences = efflorescence_dsl::efflorescence
         .filter(efflorescence_dsl::event_id.eq_any(&all_event_ids))
-        .order_by((efflorescence_dsl::event_id, efflorescence_dsl::efflorescence_index))
+        .order_by((
+            efflorescence_dsl::event_id,
+            efflorescence_dsl::efflorescence_index,
+        ))
         .select(DbEfflorescence::as_select())
         .load(conn)?;
     let _get_efflorescences_duration = (Utc::now() - get_efflorescences_start).as_seconds_f64();
@@ -676,7 +696,8 @@ pub fn events_for_games(
         ))
         .select(DbEfflorescenceGrowth::as_select())
         .load(conn)?;
-    let _get_efflorescence_growths_duration = (Utc::now() - get_efflorescence_growths_start).as_seconds_f64();
+    let _get_efflorescence_growths_duration =
+        (Utc::now() - get_efflorescence_growths_start).as_seconds_f64();
 
     let group_efflorescence_growths_start = Utc::now();
     let db_efflorescence_growths =
@@ -687,10 +708,7 @@ pub fn events_for_games(
     let get_wither_start = Utc::now();
     let db_wither = wither_dsl::wither
         .filter(wither_dsl::game_id.eq_any(&game_ids))
-        .order_by((
-            wither_dsl::game_id,
-            wither_dsl::attempt_game_event_index,
-        ))
+        .order_by((wither_dsl::game_id, wither_dsl::attempt_game_event_index))
         .select(DbWither::as_select())
         .load(conn)?;
     let _get_wither_duration = (Utc::now() - get_wither_start).as_seconds_f64();
@@ -698,8 +716,7 @@ pub fn events_for_games(
     let group_wither_start = Utc::now();
     let db_wither: Vec<Vec<Vec<DbWither>>> =
         group_wither_table_results(&db_games_events, db_wither);
-    let _group_wither_duration =
-        (Utc::now() - group_wither_start).as_seconds_f64();
+    let _group_wither_duration = (Utc::now() - group_wither_start).as_seconds_f64();
 
     let post_process_start = Utc::now();
     let result = itertools::izip!(
@@ -869,9 +886,7 @@ impl<'g> GameForDb<'g> {
                 from_version,
                 ..
             } => (*game_id, *from_version),
-            GameForDb::Completed { game, from_version } => {
-                (&game.id, *from_version)
-            }
+            GameForDb::Completed { game, from_version } => (&game.id, *from_version),
             GameForDb::NotSupported {
                 game_id,
                 from_version,
@@ -947,9 +962,10 @@ fn insert_aurora_photos<'e>(
         .collect_vec();
 
     let n_aurora_photos_to_insert = new_aurora_photos.len();
-    let n_aurora_photos_inserted = diesel::copy_from(crate::schema::data_schema::data::aurora_photos::dsl::aurora_photos)
-        .from_insertable(&new_aurora_photos)
-        .execute(conn)?;
+    let n_aurora_photos_inserted =
+        diesel::copy_from(crate::schema::data_schema::data::aurora_photos::dsl::aurora_photos)
+            .from_insertable(&new_aurora_photos)
+            .execute(conn)?;
 
     log_only_assert!(
         n_aurora_photos_to_insert == n_aurora_photos_inserted,
@@ -979,9 +995,10 @@ fn insert_ejections<'e>(
         .collect_vec();
 
     let n_ejections_to_insert = new_ejections.len();
-    let n_ejections_inserted = diesel::copy_from(crate::schema::data_schema::data::ejections::dsl::ejections)
-        .from_insertable(&new_ejections)
-        .execute(conn)?;
+    let n_ejections_inserted =
+        diesel::copy_from(crate::schema::data_schema::data::ejections::dsl::ejections)
+            .from_insertable(&new_ejections)
+            .execute(conn)?;
 
     log_only_assert!(
         n_ejections_to_insert == n_ejections_inserted,
@@ -1010,9 +1027,11 @@ fn insert_failed_ejections<'e>(
         .collect_vec();
 
     let n_failed_ejections_to_insert = new_failed_ejections.len();
-    let n_failed_ejections_inserted = diesel::copy_from(crate::schema::data_schema::data::failed_ejections::dsl::failed_ejections)
-        .from_insertable(&new_failed_ejections)
-        .execute(conn)?;
+    let n_failed_ejections_inserted = diesel::copy_from(
+        crate::schema::data_schema::data::failed_ejections::dsl::failed_ejections,
+    )
+    .from_insertable(&new_failed_ejections)
+    .execute(conn)?;
 
     log_only_assert!(
         n_failed_ejections_to_insert == n_failed_ejections_inserted,
@@ -1041,9 +1060,10 @@ fn insert_door_prizes<'e>(
         .collect_vec();
 
     let n_door_prizes_to_insert = new_door_prizes.len();
-    let n_door_prizes_inserted = diesel::copy_from(crate::schema::data_schema::data::door_prizes::dsl::door_prizes)
-        .from_insertable(&new_door_prizes)
-        .execute(conn)?;
+    let n_door_prizes_inserted =
+        diesel::copy_from(crate::schema::data_schema::data::door_prizes::dsl::door_prizes)
+            .from_insertable(&new_door_prizes)
+            .execute(conn)?;
 
     log_only_assert!(
         n_door_prizes_to_insert == n_door_prizes_inserted,
@@ -1064,9 +1084,11 @@ fn insert_door_prizes<'e>(
         .collect_vec();
 
     let n_door_prize_items_to_insert = new_door_prize_items.len();
-    let n_door_prize_items_inserted = diesel::copy_from(crate::schema::data_schema::data::door_prize_items::dsl::door_prize_items)
-        .from_insertable(&new_door_prize_items)
-        .execute(conn)?;
+    let n_door_prize_items_inserted = diesel::copy_from(
+        crate::schema::data_schema::data::door_prize_items::dsl::door_prize_items,
+    )
+    .from_insertable(&new_door_prize_items)
+    .execute(conn)?;
 
     log_only_assert!(
         n_door_prize_items_to_insert == n_door_prize_items_inserted,
@@ -1074,7 +1096,7 @@ fn insert_door_prizes<'e>(
         n_door_prize_items_to_insert,
         n_door_prize_items_inserted,
     );
-    
+
     Ok(())
 }
 
@@ -1096,9 +1118,10 @@ fn insert_efflorescences<'e>(
         .collect_vec();
 
     let n_efflorescences_to_insert = new_efflorescences.len();
-    let n_efflorescences_inserted = diesel::copy_from(crate::schema::data_schema::data::efflorescence::dsl::efflorescence)
-        .from_insertable(&new_efflorescences)
-        .execute(conn)?;
+    let n_efflorescences_inserted =
+        diesel::copy_from(crate::schema::data_schema::data::efflorescence::dsl::efflorescence)
+            .from_insertable(&new_efflorescences)
+            .execute(conn)?;
 
     log_only_assert!(
         n_efflorescences_to_insert == n_efflorescences_inserted,
@@ -1117,19 +1140,21 @@ fn insert_efflorescences<'e>(
             })
         })
         .collect_vec();
-    
+
     let n_efflorescence_items_to_insert = new_efflorescence_growths.len();
-    let n_efflorescence_items_inserted = diesel::copy_from(crate::schema::data_schema::data::efflorescence_growth::dsl::efflorescence_growth)
-        .from_insertable(&new_efflorescence_growths)
-        .execute(conn)?;
-    
+    let n_efflorescence_items_inserted = diesel::copy_from(
+        crate::schema::data_schema::data::efflorescence_growth::dsl::efflorescence_growth,
+    )
+    .from_insertable(&new_efflorescence_growths)
+    .execute(conn)?;
+
     log_only_assert!(
         n_efflorescence_items_to_insert == n_efflorescence_items_inserted,
         "Event efflorescence growth insert should have inserted {} rows, but it inserted {}",
         n_efflorescence_items_to_insert,
         n_efflorescence_items_inserted,
     );
-    
+
     Ok(())
 }
 
@@ -1148,9 +1173,10 @@ fn insert_pitcher_changes<'e>(
         .collect();
 
     let n_pitcher_changes_to_insert = new_pitcher_changes.len();
-    let n_pitcher_changes_inserted = diesel::copy_from(crate::schema::data_schema::data::pitcher_changes::dsl::pitcher_changes)
-        .from_insertable(&new_pitcher_changes)
-        .execute(conn)?;
+    let n_pitcher_changes_inserted =
+        diesel::copy_from(crate::schema::data_schema::data::pitcher_changes::dsl::pitcher_changes)
+            .from_insertable(&new_pitcher_changes)
+            .execute(conn)?;
 
     log_only_assert!(
         n_pitcher_changes_to_insert == n_pitcher_changes_inserted,
@@ -1177,9 +1203,10 @@ fn insert_parties<'e>(
         .collect();
 
     let n_parties_to_insert = new_parties.len();
-    let n_parties_inserted = diesel::copy_from(crate::schema::data_schema::data::parties::dsl::parties)
-        .from_insertable(&new_parties)
-        .execute(conn)?;
+    let n_parties_inserted =
+        diesel::copy_from(crate::schema::data_schema::data::parties::dsl::parties)
+            .from_insertable(&new_parties)
+            .execute(conn)?;
 
     log_only_assert!(
         n_parties_to_insert == n_parties_inserted,
@@ -1206,9 +1233,10 @@ fn insert_withers<'e>(
         .collect();
 
     let n_withers_to_insert = new_withers.len();
-    let n_withers_inserted = diesel::copy_from(crate::schema::data_schema::data::wither::dsl::wither)
-        .from_insertable(&new_withers)
-        .execute(conn)?;
+    let n_withers_inserted =
+        diesel::copy_from(crate::schema::data_schema::data::wither::dsl::wither)
+            .from_insertable(&new_withers)
+            .execute(conn)?;
 
     log_only_assert!(
         n_withers_to_insert == n_withers_inserted,
@@ -1227,16 +1255,18 @@ fn insert_consumption_contests<'e>(
     let new_consumption_contests: Vec<_> = completed_games
         .iter()
         .flat_map(|(game_id, game)| {
-            game.consumption_contests
-                .iter()
-                .map(|consumption_contest| to_db_format::consumption_contest_to_rows(*game_id, consumption_contest))
+            game.consumption_contests.iter().map(|consumption_contest| {
+                to_db_format::consumption_contest_to_rows(*game_id, consumption_contest)
+            })
         })
         .collect();
 
     let n_consumption_contests_to_insert = new_consumption_contests.len();
-    let n_consumption_contests_inserted = diesel::copy_from(crate::schema::data_schema::data::consumption_contests::dsl::consumption_contests)
-        .from_insertable(&new_consumption_contests)
-        .execute(conn)?;
+    let n_consumption_contests_inserted = diesel::copy_from(
+        crate::schema::data_schema::data::consumption_contests::dsl::consumption_contests,
+    )
+    .from_insertable(&new_consumption_contests)
+    .execute(conn)?;
 
     log_only_assert!(
         n_consumption_contests_to_insert == n_consumption_contests_inserted,
@@ -1251,9 +1281,13 @@ fn insert_consumption_contests<'e>(
             game.consumption_contests
                 .iter()
                 .flat_map(|consumption_contest| {
-                    consumption_contest.events
-                        .iter()
-                        .map(|event| to_db_format::consumption_contest_event_to_rows(*game_id, consumption_contest.first_game_event_index, event))
+                    consumption_contest.events.iter().map(|event| {
+                        to_db_format::consumption_contest_event_to_rows(
+                            *game_id,
+                            consumption_contest.first_game_event_index,
+                            event,
+                        )
+                    })
                 })
         })
         .collect();
@@ -1312,7 +1346,8 @@ fn insert_games_internal<'e>(
             let Some(raw_game) = game.raw_game() else {
                 // TODO Is there a more elegant solution than a defaulted game?
                 // Get an arbitrary weather. This is a bad solution.
-                let weather = weather_table.values()
+                let weather = weather_table
+                    .values()
                     .next()
                     .cloned()
                     // This unwrap is pretty much guaranteed to lead to a db constraint error.
@@ -1342,7 +1377,7 @@ fn insert_games_internal<'e>(
                     home_team_photo_contest_score: None,
                     away_team_photo_contest_top_scorer: None,
                     away_team_photo_contest_score: None,
-                }
+                };
             };
 
             let Some(weather_id) = weather_table.get(&(
@@ -1627,8 +1662,7 @@ fn insert_games_internal<'e>(
 
     let insert_door_prizes_start = Utc::now();
     insert_door_prizes(conn, &event_ids_by_game, &completed_games)?;
-    let _insert_door_prizes_duration =
-        (Utc::now() - insert_door_prizes_start).as_seconds_f64();
+    let _insert_door_prizes_duration = (Utc::now() - insert_door_prizes_start).as_seconds_f64();
 
     let insert_efflorescences_start = Utc::now();
     insert_efflorescences(conn, taxa, &event_ids_by_game, &completed_games)?;
@@ -1651,7 +1685,8 @@ fn insert_games_internal<'e>(
 
     let insert_consumption_contests_start = Utc::now();
     insert_consumption_contests(conn, &completed_games)?;
-    let _insert_consumption_contests_duration = (Utc::now() - insert_consumption_contests_start).as_seconds_f64();
+    let _insert_consumption_contests_duration =
+        (Utc::now() - insert_consumption_contests_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,
@@ -1748,9 +1783,9 @@ pub fn game_and_raw_events(
     conn: &mut PgConnection,
     mmolb_game_id: &str,
 ) -> Result<DbFullGameWithLogs, QueryDeserializeError> {
+    use crate::data_schema::data::entities::dsl as entities_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::info_schema::info::event_ingest_log::dsl as event_ingest_log_dsl;
-    use crate::data_schema::data::entities::dsl as entities_dsl;
 
     let game = games_dsl::games
         .filter(games_dsl::mmolb_game_id.eq(mmolb_game_id))
@@ -1794,7 +1829,8 @@ pub fn game_and_raw_events(
 
     assert!(raw_logs.next().is_none(), "Failed to map all raw logs");
 
-    let raw_events_with_logs = raw_game.event_log
+    let raw_events_with_logs = raw_game
+        .event_log
         .into_iter()
         .zip(logs_by_event)
         .collect::<Vec<_>>();
@@ -2252,7 +2288,8 @@ fn insert_player_report_versions(
     use crate::data_schema::data::player_report_versions::dsl as prv_dsl;
 
     // Flatten and convert reference to tuple to tuple of references
-    let new_player_report_versions = new_player_report_versions.into_iter()
+    let new_player_report_versions = new_player_report_versions
+        .into_iter()
         .flatten()
         .map(|(a, b)| (a, b));
 
@@ -2262,7 +2299,8 @@ fn insert_player_report_versions(
     ) = itertools::multiunzip(new_player_report_versions);
 
     assert!(
-        new_player_report_versions.iter()
+        new_player_report_versions
+            .iter()
             .all(|version| version.included_attributes.is_sorted())
     );
 
@@ -2305,7 +2343,8 @@ fn insert_player_equipment(
     use crate::data_schema::data::player_equipment_versions::dsl as pev_dsl;
 
     // Flatten and convert reference to tuple to tuple of references
-    let new_player_equipment = new_player_equipment.into_iter()
+    let new_player_equipment = new_player_equipment
+        .into_iter()
         .flatten()
         .map(|(a, b)| (a, b));
 
@@ -2339,10 +2378,7 @@ fn insert_player_pitch_types(
 ) -> QueryResult<usize> {
     use crate::data_schema::data::player_pitch_type_versions::dsl as pptv_dsl;
 
-    let new_player_pitch_types = new_player_pitch_types
-        .into_iter()
-        .flatten()
-        .collect_vec();
+    let new_player_pitch_types = new_player_pitch_types.into_iter().flatten().collect_vec();
 
     // Insert new records
     diesel::copy_from(pptv_dsl::player_pitch_type_versions)
@@ -2396,7 +2432,7 @@ fn insert_to_error_internal<'container, InsertableT: 'container>(
     f: impl Fn(&mut PgConnection, &'container [InsertableT]) -> QueryResult<usize> + Copy,
     conn: &mut PgConnection,
     items: &'container [InsertableT],
-    previously_inserted: usize
+    previously_inserted: usize,
 ) -> Result<usize, (usize, QueryError)> {
     if items.len() <= 1 {
         return match f(conn, items) {
@@ -2407,24 +2443,31 @@ fn insert_to_error_internal<'container, InsertableT: 'container>(
 
     match f(conn, items) {
         Ok(count) => Ok(count),
-        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)) |
-        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::ForeignKeyViolation, _)) |
-        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::NotNullViolation, _)) |
-        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::CheckViolation, _)) => {
+        Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _))
+        | Err(QueryError::DatabaseError(
+            diesel::result::DatabaseErrorKind::ForeignKeyViolation,
+            _,
+        ))
+        | Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::NotNullViolation, _))
+        | Err(QueryError::DatabaseError(diesel::result::DatabaseErrorKind::CheckViolation, _)) => {
             let halfway = items.len() / 2;
             debug!(
                 "Constraint violation error inserting {} items. Trying again with the first {}.",
-                items.len(), halfway,
+                items.len(),
+                halfway,
             );
-            let inserted_first_half = insert_to_error_internal(f, conn, &items[..halfway], previously_inserted)
-                .map_err(|(inserted, err)| (previously_inserted + inserted, err))?;
+            let inserted_first_half =
+                insert_to_error_internal(f, conn, &items[..halfway], previously_inserted)
+                    .map_err(|(inserted, err)| (previously_inserted + inserted, err))?;
 
             debug!(
                 "No error in the first {} items. Trying the next {}.",
-                halfway, items.len() - halfway
+                halfway,
+                items.len() - halfway
             );
-            insert_to_error_internal(f, conn, &items[halfway..], previously_inserted)
-                .map_err(|(inserted, err)| (previously_inserted + inserted_first_half + inserted, err))
+            insert_to_error_internal(f, conn, &items[halfway..], previously_inserted).map_err(
+                |(inserted, err)| (previously_inserted + inserted_first_half + inserted, err),
+            )
         }
         Err(err) => Err((previously_inserted, err)),
     }
@@ -2435,7 +2478,8 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
     new_player_feed_versions: impl IntoIterator<Item = &'container NewPlayerFeedVersionExt<'game>>,
 ) -> QueryResult<(usize, usize)> {
     // Convert reference to tuple into tuple of references
-    let new_player_feed_versions = new_player_feed_versions.into_iter()
+    let new_player_feed_versions = new_player_feed_versions
+        .into_iter()
         .map(|(a, b, c, d, e)| (a, b, c, d, e));
 
     let (
@@ -2456,11 +2500,23 @@ pub fn insert_player_feed_versions<'container, 'game: 'container>(
     let mut full_inserted = 0;
 
     // Insert new records
-    full_total += new_player_attribute_augments.iter().map(|o| o.as_ref()).flatten().count();
+    full_total += new_player_attribute_augments
+        .iter()
+        .map(|o| o.as_ref())
+        .flatten()
+        .count();
     full_inserted += insert_player_attribute_augments(conn, new_player_attribute_augments)?;
-    full_total += new_player_paradigm_shifts.iter().map(|o| o.as_ref()).flatten().count();
+    full_total += new_player_paradigm_shifts
+        .iter()
+        .map(|o| o.as_ref())
+        .flatten()
+        .count();
     full_inserted += insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
-    full_total += new_player_recompositions.iter().map(|v| v.iter()).flatten().count();
+    full_total += new_player_recompositions
+        .iter()
+        .map(|v| v.iter())
+        .flatten()
+        .count();
     full_inserted += insert_player_recompositions(conn, new_player_recompositions)?;
     insert_nested_ingest_logs(conn, ingest_logs)?;
 
@@ -2509,14 +2565,11 @@ pub fn insert_team_feed_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
     new_team_feed_versions: impl IntoIterator<Item = &'container NewTeamFeedVersionExt<'game>>,
 ) -> QueryResult<(usize, usize)> {
-    let new_team_feed_versions = new_team_feed_versions.into_iter()
+    let new_team_feed_versions = new_team_feed_versions
+        .into_iter()
         .map(|(a, b, c)| (a, b, c));
 
-    let (
-        new_team_feed_events_processed,
-        new_team_games_played,
-        ingest_logs,
-    ): (
+    let (new_team_feed_events_processed, new_team_games_played, ingest_logs): (
         Vec<&NewFeedEventProcessed>,
         Vec<&Option<NewTeamGamePlayed>>,
         Vec<&Vec<NewVersionIngestLog>>,
@@ -2627,7 +2680,8 @@ pub fn insert_player_versions<'container, 'game: 'container>(
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
     // Reference to tuple into tuple of references
-    let new_player_versions = new_player_versions.into_iter()
+    let new_player_versions = new_player_versions
+        .into_iter()
         .map(|(a, b, c, d, e, f, g, h)| (a, b, c, d, e, f, g, h));
 
     let preprocess_start = Utc::now();
@@ -2656,24 +2710,28 @@ pub fn insert_player_versions<'container, 'game: 'container>(
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
-    
+
     assert!(
-        new_player_versions.iter()
+        new_player_versions
+            .iter()
             .all(|version| version.occupied_equipment_slots.is_sorted())
     );
-    
+
     assert!(
-        new_player_versions.iter()
+        new_player_versions
+            .iter()
             .all(|version| version.included_report_categories.is_sorted())
     );
-    
+
     assert!(
-        new_player_versions.iter()
+        new_player_versions
+            .iter()
             .all(|version| version.included_pitch_type_bonuses.is_sorted())
     );
-    
+
     assert!(
-        new_player_versions.iter()
+        new_player_versions
+            .iter()
             .all(|version| version.included_pitch_category_bonuses.is_sorted())
     );
 
@@ -2721,7 +2779,8 @@ pub fn insert_player_versions<'container, 'game: 'container>(
 
     let insert_player_pitch_category_bonuses_start = Utc::now();
     total_versions += new_player_pitch_category_bonuses.len();
-    inserted_versions += insert_player_pitch_category_bonuses(conn, new_player_pitch_category_bonuses)?;
+    inserted_versions +=
+        insert_player_pitch_category_bonuses(conn, new_player_pitch_category_bonuses)?;
     let insert_player_pitch_category_bonuses_duration =
         (Utc::now() - insert_player_pitch_category_bonuses_start).as_seconds_f64();
 
@@ -2864,7 +2923,10 @@ pub fn get_player_recompositions(
 
     pr_dsl::player_recompositions
         .filter(pr_dsl::mmolb_player_id.eq(player_id))
-        .order((pr_dsl::feed_event_index.asc(), pr_dsl::inferred_event_index.asc().nulls_last()))
+        .order((
+            pr_dsl::feed_event_index.asc(),
+            pr_dsl::inferred_event_index.asc().nulls_last(),
+        ))
         .select(DbPlayerRecomposition::as_select())
         .get_results(conn)
 }
@@ -2928,9 +2990,7 @@ pub fn get_player_parties(
         order by game_start_time asc
     ");
 
-    q
-        .bind::<Text, _>(player_id)
-        .get_results(conn)
+    q.bind::<Text, _>(player_id).get_results(conn)
 }
 
 // TODO Update this
@@ -2978,45 +3038,51 @@ use diesel::helper_types as d;
 type PlayerFilter<'q, Field> = d::And<
     d::Eq<Field, &'q str>,
     d::Or<
-        d::And<
-            d::Eq<event_dsl::top_of_inning, bool>,
-            d::Eq<game_dsl::home_team_mmolb_id, &'q str>,
-        >,
-        d::And<
-            d::Eq<event_dsl::top_of_inning, bool>,
-            d::Eq<game_dsl::away_team_mmolb_id, &'q str>,
-        >
-    >
+        d::And<d::Eq<event_dsl::top_of_inning, bool>, d::Eq<game_dsl::home_team_mmolb_id, &'q str>>,
+        d::And<d::Eq<event_dsl::top_of_inning, bool>, d::Eq<game_dsl::away_team_mmolb_id, &'q str>>,
+    >,
 >;
 
-fn filter_pitcher<'q>(pitcher_name: &'q str, team_id: &'q str) -> PlayerFilter<'q, event_dsl::pitcher_name> {
-    event_dsl::pitcher_name.eq(pitcher_name)
-        .and(
-            event_dsl::top_of_inning.eq(true)
-                .and(game_dsl::home_team_mmolb_id.eq(team_id))
-                .or(event_dsl::top_of_inning.eq(false)
-                    .and(game_dsl::away_team_mmolb_id.eq(team_id)))
-        )
+fn filter_pitcher<'q>(
+    pitcher_name: &'q str,
+    team_id: &'q str,
+) -> PlayerFilter<'q, event_dsl::pitcher_name> {
+    event_dsl::pitcher_name.eq(pitcher_name).and(
+        event_dsl::top_of_inning
+            .eq(true)
+            .and(game_dsl::home_team_mmolb_id.eq(team_id))
+            .or(event_dsl::top_of_inning
+                .eq(false)
+                .and(game_dsl::away_team_mmolb_id.eq(team_id))),
+    )
 }
 
-fn filter_fielder<'q>(fielder_name: &'q str, team_id: &'q str) -> PlayerFilter<'q, event_dsl::fair_ball_fielder_name> {
-    event_dsl::fair_ball_fielder_name.eq(fielder_name)
-        .and(
-            event_dsl::top_of_inning.eq(true)
-                .and(game_dsl::home_team_mmolb_id.eq(team_id))
-                .or(event_dsl::top_of_inning.eq(false)
-                    .and(game_dsl::away_team_mmolb_id.eq(team_id)))
-        )
+fn filter_fielder<'q>(
+    fielder_name: &'q str,
+    team_id: &'q str,
+) -> PlayerFilter<'q, event_dsl::fair_ball_fielder_name> {
+    event_dsl::fair_ball_fielder_name.eq(fielder_name).and(
+        event_dsl::top_of_inning
+            .eq(true)
+            .and(game_dsl::home_team_mmolb_id.eq(team_id))
+            .or(event_dsl::top_of_inning
+                .eq(false)
+                .and(game_dsl::away_team_mmolb_id.eq(team_id))),
+    )
 }
 
-fn filter_batter<'q>(batter_name: &'q str, team_id: &'q str) -> PlayerFilter<'q, event_dsl::batter_name> {
-    event_dsl::batter_name.eq(batter_name)
-        .and(
-            event_dsl::top_of_inning.eq(false)
-                .and(game_dsl::home_team_mmolb_id.eq(team_id))
-                .or(event_dsl::top_of_inning.eq(true)
-                    .and(game_dsl::away_team_mmolb_id.eq(team_id)))
-        )
+fn filter_batter<'q>(
+    batter_name: &'q str,
+    team_id: &'q str,
+) -> PlayerFilter<'q, event_dsl::batter_name> {
+    event_dsl::batter_name.eq(batter_name).and(
+        event_dsl::top_of_inning
+            .eq(false)
+            .and(game_dsl::home_team_mmolb_id.eq(team_id))
+            .or(event_dsl::top_of_inning
+                .eq(true)
+                .and(game_dsl::away_team_mmolb_id.eq(team_id))),
+    )
 }
 
 // I want this to be a function, but I cannot figure out the Diesel
@@ -3027,15 +3093,15 @@ macro_rules! outcomes {
             .inner_join(game_dsl::games)
             .filter($player_filter)
             // Filter by season if it's provided
-            .filter(game_dsl::season.eq($season.unwrap_or(-1)).or::<bool, Bool>($season.is_none()))
+            .filter(
+                game_dsl::season
+                    .eq($season.unwrap_or(-1))
+                    .or::<bool, Bool>($season.is_none()),
+            )
             .group_by(event_dsl::event_type)
             .order_by(count(event_dsl::id).desc())
-            .select((
-                event_dsl::event_type,
-                count(event_dsl::id),
-            ))
+            .select((event_dsl::event_type, count(event_dsl::id)))
             .get_results::<Outcome>($conn)
-
     };
 }
 
@@ -3064,7 +3130,11 @@ pub fn player_all(
             // This is a workaround to conditionally apply the season filter iff
             // season is set. Diesel makes it really difficult to conditionally add
             // a filter to a query that uses group_by.
-            .filter(game_dsl::season.eq(season.unwrap_or(-1)).or::<bool, Bool>(season.is_none()))
+            .filter(
+                game_dsl::season
+                    .eq(season.unwrap_or(-1))
+                    .or::<bool, Bool>(season.is_none()),
+            )
             .group_by((event_dsl::pitch_type, event_dsl::event_type))
             .order_by((event_dsl::pitch_type.asc(), event_dsl::event_type.asc()))
             .select((
@@ -3081,15 +3151,21 @@ pub fn player_all(
         None
     };
 
-    let batting_outcomes = player.mmolb_team_id.as_ref()
+    let batting_outcomes = player
+        .mmolb_team_id
+        .as_ref()
         .map(|team_id| outcomes!(filter_batter(&full_name, team_id), season, conn))
         .transpose()?;
 
-    let fielding_outcomes = player.mmolb_team_id.as_ref()
+    let fielding_outcomes = player
+        .mmolb_team_id
+        .as_ref()
         .map(|team_id| outcomes!(filter_fielder(&full_name, team_id), season, conn))
         .transpose()?;
 
-    let pitching_outcomes = player.mmolb_team_id.as_ref()
+    let pitching_outcomes = player
+        .mmolb_team_id
+        .as_ref()
         .map(|team_id| outcomes!(filter_pitcher(&full_name, team_id), season, conn))
         .transpose()?;
 
@@ -3129,8 +3205,7 @@ pub fn insert_team_versions<'container, 'game: 'container>(
     use crate::data_schema::data::team_versions::dsl as tv_dsl;
 
     // Convert reference to tuple to tuple of references
-    let new_team_versions = new_team_versions.into_iter()
-        .map(|(a, b, c)| (a, b, c));
+    let new_team_versions = new_team_versions.into_iter().map(|(a, b, c)| (a, b, c));
 
     let (new_team_versions, new_team_player_versions, new_ingest_logs): (
         Vec<&NewTeamVersion>,
@@ -3194,14 +3269,17 @@ pub fn update_num_ingested(
 
 pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> Vec<QueryError> {
     let mut errs = Vec::new();
-    
+
     trace!("Refreshing materialized view info.entities_count");
     if let Err(e) = sql_query("refresh materialized view info.entities_count").execute(conn) {
         errs.push(e);
     }
-    
+
     trace!("Refreshing materialized view info.entities_with_issues_count");
-    if let Err(e) = sql_query("refresh materialized view concurrently info.entities_with_issues_count").execute(conn) {
+    if let Err(e) =
+        sql_query("refresh materialized view concurrently info.entities_with_issues_count")
+            .execute(conn)
+    {
         errs.push(e);
     }
 
@@ -3210,19 +3288,26 @@ pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> Vec<QueryErr
 
 pub fn refresh_matviews(conn: &mut PgConnection) -> Vec<QueryError> {
     let mut errs = refresh_entity_counting_matviews(conn);
-    
+
     info!("Refreshing materialized view data.offense_outcomes");
-    if let Err(e) = sql_query("refresh materialized view concurrently data.offense_outcomes").execute(conn) {
+    if let Err(e) =
+        sql_query("refresh materialized view concurrently data.offense_outcomes").execute(conn)
+    {
         errs.push(e);
     }
-    
+
     info!("Refreshing materialized view data.defense_outcomes");
-    if let Err(e) = sql_query("refresh materialized view concurrently data.defense_outcomes").execute(conn) {
+    if let Err(e) =
+        sql_query("refresh materialized view concurrently data.defense_outcomes").execute(conn)
+    {
         errs.push(e);
     }
-    
+
     info!("Refreshing materialized view data.player_versions_extended");
-    if let Err(e) = sql_query("refresh materialized view concurrently data.player_versions_extended").execute(conn) {
+    if let Err(e) =
+        sql_query("refresh materialized view concurrently data.player_versions_extended")
+            .execute(conn)
+    {
         errs.push(e);
     }
 
@@ -3244,21 +3329,25 @@ pub fn games_stats(conn: &mut PgConnection) -> QueryResult<GamesStats> {
     use crate::data_schema::data::*;
     use crate::info_schema::info::*;
 
-    let num_games = games::dsl::games.select(count_star())
+    let num_games = games::dsl::games.select(count_star()).get_result(conn)?;
+    let num_events = events::dsl::events.select(count_star()).get_result(conn)?;
+    let num_baserunners = event_baserunners::dsl::event_baserunners
+        .select(count_star())
         .get_result(conn)?;
-    let num_events = events::dsl::events.select(count_star())
+    let num_fielders = event_fielders::dsl::event_fielders
+        .select(count_star())
         .get_result(conn)?;
-    let num_baserunners = event_baserunners::dsl::event_baserunners.select(count_star())
+    let num_pitcher_changes = pitcher_changes::dsl::pitcher_changes
+        .select(count_star())
         .get_result(conn)?;
-    let num_fielders = event_fielders::dsl::event_fielders.select(count_star())
+    let num_aurora_photos = aurora_photos::dsl::aurora_photos
+        .select(count_star())
         .get_result(conn)?;
-    let num_pitcher_changes = pitcher_changes::dsl::pitcher_changes.select(count_star())
+    let num_ejections = ejections::dsl::ejections
+        .select(count_star())
         .get_result(conn)?;
-    let num_aurora_photos = aurora_photos::dsl::aurora_photos.select(count_star())
-        .get_result(conn)?;
-    let num_ejections = ejections::dsl::ejections.select(count_star())
-        .get_result(conn)?;
-    let num_parties = parties::dsl::parties.select(count_star())
+    let num_parties = parties::dsl::parties
+        .select(count_star())
         .get_result(conn)?;
 
     let num_games_with_issues = event_ingest_log::dsl::event_ingest_log
@@ -3295,23 +3384,35 @@ pub fn players_stats(conn: &mut PgConnection) -> QueryResult<PlayersStats> {
     use crate::data_schema::data::*;
     use crate::info_schema::info::*;
 
-    let num_player_versions = player_versions::dsl::player_versions.select(count_star())
+    let num_player_versions = player_versions::dsl::player_versions
+        .select(count_star())
         .get_result(conn)?;
-    let num_player_modification_versions = player_modification_versions::dsl::player_modification_versions.select(count_star())
+    let num_player_modification_versions =
+        player_modification_versions::dsl::player_modification_versions
+            .select(count_star())
+            .get_result(conn)?;
+    let num_player_equipment_versions = player_equipment_versions::dsl::player_equipment_versions
+        .select(count_star())
         .get_result(conn)?;
-    let num_player_equipment_versions = player_equipment_versions::dsl::player_equipment_versions.select(count_star())
+    let num_player_equipment_effect_versions =
+        player_equipment_effect_versions::dsl::player_equipment_effect_versions
+            .select(count_star())
+            .get_result(conn)?;
+    let num_player_report_versions = player_report_versions::dsl::player_report_versions
+        .select(count_star())
         .get_result(conn)?;
-    let num_player_equipment_effect_versions = player_equipment_effect_versions::dsl::player_equipment_effect_versions.select(count_star())
+    let num_player_report_attribute_versions =
+        player_report_attribute_versions::dsl::player_report_attribute_versions
+            .select(count_star())
+            .get_result(conn)?;
+    let num_player_attribute_augments = player_attribute_augments::dsl::player_attribute_augments
+        .select(count_star())
         .get_result(conn)?;
-    let num_player_report_versions = player_report_versions::dsl::player_report_versions.select(count_star())
+    let num_player_paradigm_shifts = player_paradigm_shifts::dsl::player_paradigm_shifts
+        .select(count_star())
         .get_result(conn)?;
-    let num_player_report_attribute_versions = player_report_attribute_versions::dsl::player_report_attribute_versions.select(count_star())
-        .get_result(conn)?;
-    let num_player_attribute_augments = player_attribute_augments::dsl::player_attribute_augments.select(count_star())
-        .get_result(conn)?;
-    let num_player_paradigm_shifts = player_paradigm_shifts::dsl::player_paradigm_shifts.select(count_star())
-        .get_result(conn)?;
-    let num_player_recompositions = player_recompositions::dsl::player_recompositions.select(count_star())
+    let num_player_recompositions = player_recompositions::dsl::player_recompositions
+        .select(count_star())
         .get_result(conn)?;
 
     let num_players_with_issues = version_ingest_log::dsl::version_ingest_log
@@ -3344,11 +3445,14 @@ pub fn teams_stats(conn: &mut PgConnection) -> QueryResult<TeamsStats> {
     use crate::data_schema::data::*;
     use crate::info_schema::info::*;
 
-    let num_team_versions = team_versions::dsl::team_versions.select(count_star())
+    let num_team_versions = team_versions::dsl::team_versions
+        .select(count_star())
         .get_result(conn)?;
-    let num_team_player_versions = team_player_versions::dsl::team_player_versions.select(count_star())
+    let num_team_player_versions = team_player_versions::dsl::team_player_versions
+        .select(count_star())
         .get_result(conn)?;
-    let num_team_games_played = team_games_played::dsl::team_games_played.select(count_star())
+    let num_team_games_played = team_games_played::dsl::team_games_played
+        .select(count_star())
         .get_result(conn)?;
 
     let num_teams_with_issues = version_ingest_log::dsl::version_ingest_log
@@ -3380,36 +3484,48 @@ pub fn season_averages(
     season: Option<i32>,
 ) -> QueryResult<Vec<SummaryStat>> {
     if let Some(season) = season {
-        let q = sql_query("\
+        let q = sql_query(
+            "\
             select coalesce(sum(count)::int8, 0) as count, event_type, fair_ball_direction
             from data.offense_outcomes
             where season=$1
             group by event_type, fair_ball_direction
             order by event_type, fair_ball_direction
-        ")
-            .bind::<Integer, _>(season);
+        ",
+        )
+        .bind::<Integer, _>(season);
         println!("{:?}", diesel::debug_query(&q));
-        q
-            .get_results::<SummaryStat>(conn)
+        q.get_results::<SummaryStat>(conn)
     } else {
-        sql_query("\
+        sql_query(
+            "\
             select coalesce(sum(count)::int8, 0) as count, event_type, fair_ball_direction
             from data.offense_outcomes
             group by event_type, fair_ball_direction
             order by event_type, fair_ball_direction
-        ")
-            .get_results::<SummaryStat>(conn)
+        ",
+        )
+        .get_results::<SummaryStat>(conn)
     }
 }
 
-pub fn latest_game(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, i32, Option<i32>, Option<i32>)>> {
+pub fn latest_game(
+    conn: &mut PgConnection,
+) -> QueryResult<Option<(NaiveDateTime, i32, Option<i32>, Option<i32>)>> {
     use crate::data_schema::data::team_games_played::dsl as tgp_dsl;
 
     game_dsl::games
-        .inner_join(tgp_dsl::team_games_played.on(tgp_dsl::mmolb_game_id.eq(game_dsl::mmolb_game_id)))
+        .inner_join(
+            tgp_dsl::team_games_played.on(tgp_dsl::mmolb_game_id.eq(game_dsl::mmolb_game_id)),
+        )
         .filter(game_dsl::is_ongoing.eq(false))
         .order_by(tgp_dsl::time.desc())
-        .select((tgp_dsl::time, game_dsl::season, game_dsl::day, game_dsl::superstar_day))
+        .select((
+            tgp_dsl::time,
+            game_dsl::season,
+            game_dsl::day,
+            game_dsl::superstar_day,
+        ))
         .get_result(conn)
         .optional()
 }
@@ -3484,7 +3600,9 @@ pub struct MostPitchesInGameRecord {
     pub num_pitch_like_events: i64,
 }
 
-pub fn most_pitches_by_player_in_one_game(conn: &mut PgConnection) -> QueryResult<Option<MostPitchesInGameRecord>> {
+pub fn most_pitches_by_player_in_one_game(
+    conn: &mut PgConnection,
+) -> QueryResult<Option<MostPitchesInGameRecord>> {
     sql_query("
         with counts as (
             select
@@ -3522,7 +3640,8 @@ pub fn most_pitches_by_player_in_one_game(conn: &mut PgConnection) -> QueryResul
 }
 
 pub fn highest_scoring_game(conn: &mut PgConnection) -> QueryResult<Option<DbGame>> {
-    sql_query("
+    sql_query(
+        "
         select *
         from data.games g
         where g.away_team_final_score is not null
@@ -3530,11 +3649,15 @@ pub fn highest_scoring_game(conn: &mut PgConnection) -> QueryResult<Option<DbGam
         order by g.away_team_final_score + g.home_team_final_score desc,
             g.mmolb_game_id asc
         limit 1
-    ").get_result(conn).optional()
+    ",
+    )
+    .get_result(conn)
+    .optional()
 }
 
 pub fn highest_score_in_a_game(conn: &mut PgConnection) -> QueryResult<Option<DbGame>> {
-    sql_query("
+    sql_query(
+        "
         select *
         from data.games g
         where g.away_team_final_score is not null
@@ -3542,10 +3665,11 @@ pub fn highest_score_in_a_game(conn: &mut PgConnection) -> QueryResult<Option<Db
         order by greatest(g.away_team_final_score, g.home_team_final_score) desc,
             g.mmolb_game_id asc
         limit 1
-    ").get_result(conn).optional()
+    ",
+    )
+    .get_result(conn)
+    .optional()
 }
-
-
 
 #[derive(QueryableByName)]
 pub struct GameWithCount {
@@ -3568,18 +3692,23 @@ pub struct GameWithCount {
 }
 
 pub fn longest_game_by_events(conn: &mut PgConnection) -> QueryResult<Option<GameWithCount>> {
-    sql_query("
+    sql_query(
+        "
         select
             (select count(1) from data.events e where e.game_id=g.id) as count,
             g.*
         from data.games g
         order by count desc, g.mmolb_game_id asc
         limit 1
-    ").get_result(conn).optional()
+    ",
+    )
+    .get_result(conn)
+    .optional()
 }
 
 pub fn longest_game_by_innings(conn: &mut PgConnection) -> QueryResult<Option<GameWithCount>> {
-    sql_query("
+    sql_query(
+        "
         select
             e.inning::bigint as count,
             g.*
@@ -3587,7 +3716,10 @@ pub fn longest_game_by_innings(conn: &mut PgConnection) -> QueryResult<Option<Ga
         left join data.games g on g.id=e.game_id
         order by count desc, g.mmolb_game_id asc
         limit 1
-    ").get_result(conn).optional()
+    ",
+    )
+    .get_result(conn)
+    .optional()
 }
 
 #[derive(QueryableByName)]
@@ -3610,7 +3742,10 @@ pub struct DbPlayerIdentityWithValue {
 }
 
 // TODO Consider excluding the period during season 6 where values were fluctuating a lot
-pub fn highest_reported_attribute(conn: &mut PgConnection, attr_name: &str) -> QueryResult<Option<DbPlayerIdentityWithValue>> {
+pub fn highest_reported_attribute(
+    conn: &mut PgConnection,
+    attr_name: &str,
+) -> QueryResult<Option<DbPlayerIdentityWithValue>> {
     sql_query("
         select
             tv.mmolb_team_id,

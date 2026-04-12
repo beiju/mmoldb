@@ -1,9 +1,9 @@
-use std::future;
 use chrono::{DateTime, Utc};
-use futures::{Stream, StreamExt, stream, TryStreamExt};
+use futures::{Stream, StreamExt, TryStreamExt, stream};
 use log::{debug, warn};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
+use std::future;
 use thiserror::Error;
 
 const CUTOVER_DATE: &str = "2025-09-13T22:02:43.355548Z";
@@ -121,11 +121,9 @@ impl Chron {
         debug!("Fetching {} {kind} entities", ids.len());
         let client = self.client.clone(); // This is internally reference counted
 
-        let request_builder = client.get("https://freecashe.ws/api/chron/v0/entities").query(&[
-            ("kind", kind),
-            ("id", &ids.join(",")),
-            ("order", "asc"),
-        ]);
+        let request_builder = client
+            .get("https://freecashe.ws/api/chron/v0/entities")
+            .query(&[("kind", kind), ("id", &ids.join(",")), ("order", "asc")]);
 
         let request = request_builder
             .build()
@@ -157,7 +155,6 @@ impl Chron {
         free_cashews_url: &'static str,
         cheap_cashews_url: &'static str,
     ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
-
         let segments = vec![
             // Start with freecashews and stick with it until CUTOVER_DATE
             (free_cashews_url, Some(CUTOVER_DATE)),
@@ -171,8 +168,20 @@ impl Chron {
 
         // The for loop below requires that segment_end not be None except for the last. That's
         // enforced here
-        assert!(segments.iter().rev().skip(1).all(|(_, end_time)| end_time.is_some()));
-        assert!(segments.iter().rev().take(1).all(|(_, end_time)| end_time.is_none()));
+        assert!(
+            segments
+                .iter()
+                .rev()
+                .skip(1)
+                .all(|(_, end_time)| end_time.is_some())
+        );
+        assert!(
+            segments
+                .iter()
+                .rev()
+                .take(1)
+                .all(|(_, end_time)| end_time.is_none())
+        );
 
         // I tried to write this with combinators but it bounced off my brain
         let mut streams = Vec::new();
@@ -185,12 +194,16 @@ impl Chron {
             });
 
             // If this segment starts after it ends, it's gotta be empty
-            if segment_start.is_some_and(|segment_start| segment_end.is_some_and(|segment_end| segment_start > segment_end)) {
+            if segment_start.is_some_and(|segment_start| {
+                segment_end.is_some_and(|segment_end| segment_start > segment_end)
+            }) {
                 continue;
             }
 
             // Otherwise, we should do some API calls about it
-            debug!("Making paginated Chron API call for kind={kind} to {url} from date {segment_start:?} to {segment_end:?}");
+            debug!(
+                "Making paginated Chron API call for kind={kind} to {url} from date {segment_start:?} to {segment_end:?}"
+            );
             streams.push(self.items(url, kind, max_retries, segment_start, segment_end));
 
             // Next segment starts when this one ends. Note that this assignment does not happen if
@@ -250,7 +263,16 @@ impl Chron {
         // Use tokio::spawn to eagerly fetch the next page while the caller is doing other work
         let start_at_for_first_fetch = start_at;
         let next_page = tokio::spawn(async move {
-            get_next_page_with_retries(client, url, kind, max_retries, page_size, start_at_for_first_fetch, end_at, None)
+            get_next_page_with_retries(
+                client,
+                url,
+                kind,
+                max_retries,
+                page_size,
+                start_at_for_first_fetch,
+                end_at,
+                None,
+            )
         });
 
         // I do not understand why a non-async closure with an async block inside works,
@@ -330,11 +352,25 @@ async fn get_next_page_with_retries(
 ) -> Result<(reqwest::Client, ChronEntities<serde_json::Value>), ChronStreamError> {
     let mut retries = 0;
     loop {
-        match get_next_page(&client, url, kind, page_size, start_at, end_at, page.as_deref()).await {
+        match get_next_page(
+            &client,
+            url,
+            kind,
+            page_size,
+            start_at,
+            end_at,
+            page.as_deref(),
+        )
+        .await
+        {
             Ok(next_page) => return Ok((client, next_page)),
             Err(e) => {
                 if retries < max_retries {
-                    warn!("Chron encountered an error, will try again up to {} more times: {:?}", max_retries - retries, e);
+                    warn!(
+                        "Chron encountered an error, will try again up to {} more times: {:?}",
+                        max_retries - retries,
+                        e
+                    );
                     retries += 1;
                 } else {
                     return Err(e);

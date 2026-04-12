@@ -1,31 +1,34 @@
-use std::fmt::Debug;
-use std::hash::Hash;
 use crate::config::IngestibleConfig;
+use crate::partitioner::Partitioner;
 use chron::{Chron, ChronEntity, ChronStreamError};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
-use hashbrown::hash_map::Entry;
+use futures::{Stream, StreamExt, TryStreamExt, pin_mut};
 use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
 use itertools::{Either, Itertools};
 use log::{debug, error, info, warn};
 use miette::Diagnostic;
 use mmoldb_db::models::NewVersionIngestLog;
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{async_db, db, AsyncConnection, AsyncPgConnection, ConnectionPool, PgConnection, QueryError, QueryResult};
+use mmoldb_db::{
+    AsyncConnection, AsyncPgConnection, ConnectionPool, PgConnection, QueryError, QueryResult,
+    async_db, db,
+};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
+use serde::Deserialize;
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::iter;
 use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
-use serde::Deserialize;
 use thiserror::Error;
-use tokio::sync::mpsc::error::SendError;
+use tokio::sync::Notify;
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::{Notify};
+use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinError;
 use tokio_util::sync::CancellationToken;
-use crate::partitioner::Partitioner;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -178,7 +181,7 @@ impl IngestErrorContainer {
         self.errors.push(err);
     }
 
-    pub fn extend(&mut self, other: impl IntoIterator<Item=IngestStageError>) {
+    pub fn extend(&mut self, other: impl IntoIterator<Item = IngestStageError>) {
         self.errors.extend(other);
     }
 }
@@ -187,15 +190,12 @@ pub struct Ingestor {
     pool: ConnectionPool,
     ingest_id: i64,
     // TODO Is this still working?
-    #[allow(dead_code)] abort: CancellationToken,
+    #[allow(dead_code)]
+    abort: CancellationToken,
 }
 
 impl Ingestor {
-    pub fn new(
-        pool: ConnectionPool,
-        ingest_id: i64,
-        abort: CancellationToken,
-    ) -> Ingestor {
+    pub fn new(pool: ConnectionPool, ingest_id: i64, abort: CancellationToken) -> Ingestor {
         Ingestor {
             pool,
             ingest_id,
@@ -203,25 +203,28 @@ impl Ingestor {
         }
     }
 
-    pub async fn ingest<I: Ingestable + 'static>(&self, ingestible: I, use_local_cheap_cashews: bool) -> IngestErrorContainer {
+    pub async fn ingest<I: Ingestable + 'static>(
+        &self,
+        ingestible: I,
+        use_local_cheap_cashews: bool,
+    ) -> IngestErrorContainer {
         let mut errs = IngestErrorContainer::new();
         let config = ingestible.config();
         if !config.enable {
             return errs;
         }
 
-        let parallelism = config.ingest_parallelism
-            .unwrap_or_else(|| {
-                std::thread::available_parallelism()
-                    .unwrap_or_else(|e| {
-                        warn!("Can't get hardware parallelism. Defaulting to 1. {e}");
-                        NonZero::new(1).unwrap()
-                    })
-            });
+        let parallelism = config.ingest_parallelism.unwrap_or_else(|| {
+            std::thread::available_parallelism().unwrap_or_else(|e| {
+                warn!("Can't get hardware parallelism. Defaulting to 1. {e}");
+                NonZero::new(1).unwrap()
+            })
+        });
 
         info!("Beginning {} ingest", I::KIND);
 
-        let stages_with_task_names = ingestible.stages()
+        let stages_with_task_names = ingestible
+            .stages()
             .into_iter()
             .map(|stage| {
                 let name = format!("{} {} ingest coordinator", I::KIND, stage.name());
@@ -230,7 +233,8 @@ impl Ingestor {
             .collect_vec();
 
         let mut waker = None;
-        let running_stages_result = stages_with_task_names.iter()
+        let running_stages_result = stages_with_task_names
+            .iter()
             .map(|(stage, task_name)| {
                 let prev_stage_finished = CancellationToken::new();
                 let task = tokio::task::Builder::new()
@@ -261,19 +265,23 @@ impl Ingestor {
             return errs;
         };
 
-        debug!("Waiting for {} {} ingest stages to finish", running_stages.len(), I::KIND);
+        debug!(
+            "Waiting for {} {} ingest stages to finish",
+            running_stages.len(),
+            I::KIND
+        );
 
         for (task_name, stage, prev_stage_finished) in running_stages {
             prev_stage_finished.cancel();
             match stage.await {
                 Ok(other_errs) => {
                     errs.extend(other_errs);
-                },
+                }
 
                 Err(join_err) => errs.errors.push(IngestStageError {
                     stage_name: task_name.to_string(),
                     error: IngestFatalError::JoinError(join_err),
-                })
+                }),
             }
         }
 
@@ -296,7 +304,10 @@ pub struct StageArgs {
 pub trait IngestStage {
     fn name(&self) -> &'static str;
 
-    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=IngestErrorContainer> + Send>>;
+    fn run(
+        self: Arc<Self>,
+        args: StageArgs,
+    ) -> Pin<Box<dyn Future<Output = IngestErrorContainer> + Send>>;
 }
 
 pub trait Ingestable {
@@ -324,7 +335,7 @@ impl VersionStage1Ingest {
             .map(|(dt, id)| (dt.and_utc(), id));
         let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
 
-        info!("{} fetch will start from date {:?}", self.kind, start_date, );
+        info!("{} fetch will start from date {:?}", self.kind, start_date);
 
         let stream = chron
             .versions(self.kind, start_date, 3, args.use_local_cheap_cashews)
@@ -365,7 +376,12 @@ impl VersionStage1Ingest {
                 Err(err) => (err.0, Some(err.1)),
             };
 
-            info!("{} stage 1 ingest saving {} {}(s)", self.kind, chunk.len(), self.kind);
+            info!(
+                "{} stage 1 ingest saving {} {}(s)",
+                self.kind,
+                chunk.len(),
+                self.kind
+            );
             let inserted = match db::insert_versions(&mut conn, &chunk) {
                 Ok(x) => Ok(x),
                 Err(err) => {
@@ -373,10 +389,13 @@ impl VersionStage1Ingest {
                     Err(err)
                 }
             }?;
-            info!("{} stage 1 ingest saved {} {}(s)", self.kind, inserted, self.kind);
+            info!(
+                "{} stage 1 ingest saved {} {}(s)",
+                self.kind, inserted, self.kind
+            );
 
             args.wake_next_stage.notify_one();
-            
+
             if let Some(err) = maybe_err {
                 Err(err)?;
             }
@@ -393,13 +412,15 @@ impl IngestStage for VersionStage1Ingest {
     }
 
     // Treat this as boilerplate
-    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=IngestErrorContainer> + Send>> {
+    fn run(
+        self: Arc<Self>,
+        args: StageArgs,
+    ) -> Pin<Box<dyn Future<Output = IngestErrorContainer> + Send>> {
         Box::pin(async {
-            let kind = self.kind;  // For move semantics reasons
+            let kind = self.kind; // For move semantics reasons
             let result = VersionStage1Ingest::run(self, args).await;
             IngestErrorContainer::from_result(result, format!("{} Stage 1", kind))
         })
-
     }
 }
 
@@ -418,70 +439,78 @@ async fn insert_feed_event_versions_from_stream(
     batch_size: usize,
     until: Option<NaiveDateTime>,
     wake_next_stage: Arc<Notify>,
-    debug_db_insert_delay: f64
+    debug_db_insert_delay: f64,
 ) -> Result<(), IngestFatalError> {
     let start_cursor = db::get_latest_raw_feed_event_version_cursor(conn, insert_as_kind)
-        .map_err(|e| { info!("Error {e}"); e })?
+        .map_err(|e| {
+            info!("Error {e}");
+            e
+        })?
         .map(|(dt, id, _)| (dt, id))
-        .unwrap_or_else(|| (
-            // This is the date of the first record with a feed, rounded down a bit
-            NaiveDateTime::parse_from_str("2025-06-09 11:50:00.000000", "%Y-%m-%d %H:%M:%S%.f")
-                .expect("Hard-coded date must not fail to parse"),
-            "6805db0cac48194de3cd3ff7".to_string(),
-        ));
+        .unwrap_or_else(|| {
+            (
+                // This is the date of the first record with a feed, rounded down a bit
+                NaiveDateTime::parse_from_str("2025-06-09 11:50:00.000000", "%Y-%m-%d %H:%M:%S%.f")
+                    .expect("Hard-coded date must not fail to parse"),
+                "6805db0cac48194de3cd3ff7".to_string(),
+            )
+        });
 
-    info!("Migrating feed event versions from {kind_description} starting from {:?}", start_cursor);
+    info!(
+        "Migrating feed event versions from {kind_description} starting from {:?}",
+        start_cursor
+    );
 
-    let version_chunks_stream = async_db::stream_versions_at_cursor_until(
-        async_conn,
-        kind,
-        Some(start_cursor),
-        until,
-    ).await?
-        .flat_map(|result| futures::stream::iter(match result {
-            Ok(version) => {
-                #[derive(Deserialize)]
-                struct SomethingWithFeed {
-                    // It has a capital F when it's embedded in an entity (team or player)
-                    // and lowercase f when it's alone
-                    #[serde(alias = "Feed")]
-                    feed: Option<Vec<serde_json::Value>>,
-                }
-
-                match serde_json::from_value::<SomethingWithFeed>(version.data) {
-                    Ok(des) => {
-                        if let Some(feed) = des.feed {
-                            let dt = version.valid_from.naive_utc();
-                            Either::Left(Either::Right(
-                                feed.into_iter()
-                                    .enumerate()
-                                    .map(move |(idx, item)| Ok((version.entity_id.clone(), idx as i32, dt, item)))
-                            ))
-                        } else {
-                            Either::Right(Either::Left(iter::empty()))
+    let version_chunks_stream =
+        async_db::stream_versions_at_cursor_until(async_conn, kind, Some(start_cursor), until)
+            .await?
+            .flat_map(|result| {
+                futures::stream::iter(match result {
+                    Ok(version) => {
+                        #[derive(Deserialize)]
+                        struct SomethingWithFeed {
+                            // It has a capital F when it's embedded in an entity (team or player)
+                            // and lowercase f when it's alone
+                            #[serde(alias = "Feed")]
+                            feed: Option<Vec<serde_json::Value>>,
                         }
-                    },
-                    Err(err) => {
-                        Either::Left(Either::Left(iter::once(Err(IngestFatalError::DeserializeError(err)))))
+
+                        match serde_json::from_value::<SomethingWithFeed>(version.data) {
+                            Ok(des) => {
+                                if let Some(feed) = des.feed {
+                                    let dt = version.valid_from.naive_utc();
+                                    Either::Left(Either::Right(feed.into_iter().enumerate().map(
+                                        move |(idx, item)| {
+                                            Ok((version.entity_id.clone(), idx as i32, dt, item))
+                                        },
+                                    )))
+                                } else {
+                                    Either::Right(Either::Left(iter::empty()))
+                                }
+                            }
+                            Err(err) => Either::Left(Either::Left(iter::once(Err(
+                                IngestFatalError::DeserializeError(err),
+                            )))),
+                        }
                     }
-                }
-            }
-            Err(err) => {
-                Either::Right(Either::Right(iter::once(Err(IngestFatalError::DbError(err)))))
-            }
-        }
-        ))
-        .filter(|result| futures::future::ready(filter_cached(event_cache, result)))
-        .chunks(batch_size);
+                    Err(err) => Either::Right(Either::Right(iter::once(Err(
+                        IngestFatalError::DbError(err),
+                    )))),
+                })
+            })
+            .filter(|result| futures::future::ready(filter_cached(event_cache, result)))
+            .chunks(batch_size);
     pin_mut!(version_chunks_stream);
 
     while let Some(version_chunk) = version_chunks_stream.next().await {
         let chunk_len = version_chunk.len();
         let versions = version_chunk.into_iter().collect::<Result<Vec<_>, _>>()?;
-        let (_, _, date, _): &(String, i32, NaiveDateTime, serde_json::Value) = versions.last()
-            .expect("This vec cannot be empty");
-        let human_time_ago = chrono_humanize::HumanTime::from(date.and_utc())
-            .to_text_en(chrono_humanize::Accuracy::Precise, chrono_humanize::Tense::Past);
+        let (_, _, date, _): &(String, i32, NaiveDateTime, serde_json::Value) =
+            versions.last().expect("This vec cannot be empty");
+        let human_time_ago = chrono_humanize::HumanTime::from(date.and_utc()).to_text_en(
+            chrono_humanize::Accuracy::Precise,
+            chrono_humanize::Tense::Past,
+        );
         debug!(
             "Inserting {chunk_len} {kind_description} event versions. Currently processing \
             {kind_description}s from {human_time_ago}",
@@ -493,7 +522,9 @@ async fn insert_feed_event_versions_from_stream(
         let chunk_insert_start = Utc::now();
         let n_inserted = db::insert_feed_event_versions(conn, insert_as_kind, &versions)?;
         let chunk_insert_duration = (Utc::now() - chunk_insert_start).as_seconds_f64();
-        debug!("Inserted {n_inserted} of {chunk_len} {kind_description} event versions in {chunk_insert_duration:.2}s");
+        debug!(
+            "Inserted {n_inserted} of {chunk_len} {kind_description} event versions in {chunk_insert_duration:.2}s"
+        );
         wake_next_stage.notify_one();
     }
 
@@ -501,7 +532,10 @@ async fn insert_feed_event_versions_from_stream(
     Ok(())
 }
 
-fn filter_cached(event_cache: &mut HashMap<(String, i32), serde_json::Value>, result: &Result<(String, i32, NaiveDateTime, serde_json::Value), IngestFatalError>) -> bool {
+fn filter_cached(
+    event_cache: &mut HashMap<(String, i32), serde_json::Value>,
+    result: &Result<(String, i32, NaiveDateTime, serde_json::Value), IngestFatalError>,
+) -> bool {
     match result {
         Ok((id, idx, _, item)) => {
             match event_cache.entry((id.clone(), *idx)) {
@@ -512,20 +546,23 @@ fn filter_cached(event_cache: &mut HashMap<(String, i32), serde_json::Value>, re
                         entry.insert(item.clone());
                         true // doesn't match the cached version, must process
                     }
-                },
+                }
                 Entry::Vacant(entry) => {
                     entry.insert(item.clone());
                     true // there was no cached version, must process
                 }
             }
-        },
+        }
         Err(_) => true, // always process errors
     }
 }
 
 impl FeedEventVersionStage1Ingest {
     pub fn new(kind: &'static str, embedded_kind: &'static str) -> FeedEventVersionStage1Ingest {
-        FeedEventVersionStage1Ingest { kind, embedded_kind }
+        FeedEventVersionStage1Ingest {
+            kind,
+            embedded_kind,
+        }
     }
 
     async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
@@ -543,10 +580,14 @@ impl FeedEventVersionStage1Ingest {
             self.embedded_kind,
             &format!("embedded {} feed", self.embedded_kind),
             args.config.insert_raw_entity_batch_size,
-            Some(NaiveDateTime::parse_from_str("2025-07-29 00:00:00.000000", "%Y-%m-%d %H:%M:%S%.f").expect("Hard-coded date must not fail to parse")),
+            Some(
+                NaiveDateTime::parse_from_str("2025-07-29 00:00:00.000000", "%Y-%m-%d %H:%M:%S%.f")
+                    .expect("Hard-coded date must not fail to parse"),
+            ),
             args.wake_next_stage.clone(),
             args.config.debug_db_insert_delay,
-        ).await?;
+        )
+        .await?;
 
         insert_feed_event_versions_from_stream(
             &mut async_conn,
@@ -559,7 +600,8 @@ impl FeedEventVersionStage1Ingest {
             None,
             args.wake_next_stage.clone(),
             args.config.debug_db_insert_delay,
-        ).await?;
+        )
+        .await?;
 
         // Need to re-acquire the cursor after inserting embedded feed events
         // (this could be skipped if we know we didn't insert any feed events)
@@ -568,7 +610,7 @@ impl FeedEventVersionStage1Ingest {
         let start_cursor_utc = start_cursor.as_ref().map(|(dt, id)| (dt.and_utc(), id));
 
         let start_date = start_cursor.as_ref().map(|(dt, _)| dt.and_utc());
-        info!("{} fetch will start from date {:?}", self.kind, start_date, );
+        info!("{} fetch will start from date {:?}", self.kind, start_date,);
         let chron = Chron::new(args.config.chron_fetch_batch_size);
 
         let stream = chron
@@ -597,35 +639,40 @@ impl FeedEventVersionStage1Ingest {
 
                 futures::future::ready(skip_this)
             })
-            .flat_map(|result| futures::stream::iter(match result {
-                Ok(version) => {
-                    #[derive(Deserialize)]
-                    struct SomethingWithFeed {
-                        // It has a capital F when it's embedded in an entity (team or player)
-                        // and lowercase f when it's alone
-                        #[serde(alias = "Feed")]
-                        feed: Option<Vec<serde_json::Value>>,
-                    }
+            .flat_map(|result| {
+                futures::stream::iter(match result {
+                    Ok(version) => {
+                        #[derive(Deserialize)]
+                        struct SomethingWithFeed {
+                            // It has a capital F when it's embedded in an entity (team or player)
+                            // and lowercase f when it's alone
+                            #[serde(alias = "Feed")]
+                            feed: Option<Vec<serde_json::Value>>,
+                        }
 
-                    match serde_json::from_value::<SomethingWithFeed>(version.data) {
-                        Ok(des) => {
-                            if let Some(feed) = des.feed {
-                                let dt = version.valid_from.naive_utc();
-                                Either::Left(Either::Right(feed.into_iter().enumerate().map(move |(idx, item)| Ok((version.entity_id.clone(), idx as i32, dt, item)))))
-                            } else {
-                                Either::Right(Either::Left(iter::empty()))
+                        match serde_json::from_value::<SomethingWithFeed>(version.data) {
+                            Ok(des) => {
+                                if let Some(feed) = des.feed {
+                                    let dt = version.valid_from.naive_utc();
+                                    Either::Left(Either::Right(feed.into_iter().enumerate().map(
+                                        move |(idx, item)| {
+                                            Ok((version.entity_id.clone(), idx as i32, dt, item))
+                                        },
+                                    )))
+                                } else {
+                                    Either::Right(Either::Left(iter::empty()))
+                                }
                             }
-                        },
-                        Err(err) => {
-                            Either::Left(Either::Left(iter::once(Err(IngestFatalError::DeserializeError(err)))))
+                            Err(err) => Either::Left(Either::Left(iter::once(Err(
+                                IngestFatalError::DeserializeError(err),
+                            )))),
                         }
                     }
-                }
-                Err(err) => {
-                    Either::Right(Either::Right(iter::once(Err(IngestFatalError::ChronStreamError(err)))))
-                }
-            }
-            ))
+                    Err(err) => Either::Right(Either::Right(iter::once(Err(
+                        IngestFatalError::ChronStreamError(err),
+                    )))),
+                })
+            })
             .filter(|result| futures::future::ready(filter_cached(&mut event_cache, result)))
             .try_chunks(args.config.insert_raw_entity_batch_size);
         pin_mut!(stream);
@@ -635,12 +682,18 @@ impl FeedEventVersionStage1Ingest {
             // of the chunk that was collected before the error and the error
             // itself. We want to insert the successful portion of the chunk,
             // _then_ propagate any error.
-            let (chunk, maybe_err): (Vec<(String, i32, NaiveDateTime, serde_json::Value)>, _) = match chunk {
-                Ok(chunk) => (chunk, None),
-                Err(err) => (err.0, Some(err.1)),
-            };
+            let (chunk, maybe_err): (Vec<(String, i32, NaiveDateTime, serde_json::Value)>, _) =
+                match chunk {
+                    Ok(chunk) => (chunk, None),
+                    Err(err) => (err.0, Some(err.1)),
+                };
 
-            info!("{} stage 1 ingest saving {} {}(s)", self.kind, chunk.len(), self.kind);
+            info!(
+                "{} stage 1 ingest saving {} {}(s)",
+                self.kind,
+                chunk.len(),
+                self.kind
+            );
             let inserted = match db::insert_feed_event_versions(&mut conn, self.kind, &chunk) {
                 Ok(x) => Ok(x),
                 Err(err) => {
@@ -648,7 +701,10 @@ impl FeedEventVersionStage1Ingest {
                     Err(err)
                 }
             }?;
-            info!("{} stage 1 ingest saved {} {}(s)", self.kind, inserted, self.kind);
+            info!(
+                "{} stage 1 ingest saved {} {}(s)",
+                self.kind, inserted, self.kind
+            );
 
             args.wake_next_stage.notify_one();
 
@@ -668,9 +724,12 @@ impl IngestStage for FeedEventVersionStage1Ingest {
     }
 
     // Treat this as boilerplate
-    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=IngestErrorContainer> + Send>> {
+    fn run(
+        self: Arc<Self>,
+        args: StageArgs,
+    ) -> Pin<Box<dyn Future<Output = IngestErrorContainer> + Send>> {
         Box::pin(async {
-            let kind = self.kind;  // For move semantics reasons
+            let kind = self.kind; // For move semantics reasons
             let result = FeedEventVersionStage1Ingest::run(self, args).await;
             IngestErrorContainer::from_result(result, format!("{} Stage 1", kind))
         })
@@ -680,7 +739,8 @@ impl IngestStage for FeedEventVersionStage1Ingest {
 pub struct Stage2Ingest<VersionIngest> {
     kind: &'static str,
     // Kind of using this like a PhantomData
-    #[allow(unused)] version_ingest: VersionIngest,
+    #[allow(unused)]
+    version_ingest: VersionIngest,
 }
 
 pub trait IngestibleFromVersions {
@@ -690,17 +750,28 @@ pub trait IngestibleFromVersions {
     fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>;
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value;
     fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey;
-    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)>;
+    fn insert_batch(
+        conn: &mut PgConnection,
+        taxa: &Taxa,
+        versions: &Vec<ChronEntity<Self::Entity>>,
+    ) -> QueryResult<(usize, usize)>;
     fn stream_versions_at_cursor(
         conn: &mut AsyncPgConnection,
         kind: &str,
         cursor: Option<(NaiveDateTime, String)>,
-    ) -> impl Future<Output = QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>> + Send>> + Send;
+    ) -> impl Future<
+        Output = QueryResult<
+            impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>> + Send,
+        >,
+    > + Send;
 }
 
-impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest<VersionIngest>  {
+impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest<VersionIngest> {
     pub fn new(kind: &'static str, version_ingest: VersionIngest) -> Self {
-        Stage2Ingest { kind, version_ingest }
+        Stage2Ingest {
+            kind,
+            version_ingest,
+        }
     }
 
     pub fn full_name(&self) -> String {
@@ -712,10 +783,16 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
         // Task names have to outlive their tasks, so we build then in advance
         let task_names_and_nums = (0..args.parallelism.get())
-            .map(|worker_idx| (format!("{} Stage 2 worker {}", self.kind, worker_idx), worker_idx))
+            .map(|worker_idx| {
+                (
+                    format!("{} Stage 2 worker {}", self.kind, worker_idx),
+                    worker_idx,
+                )
+            })
             .collect_vec();
 
-        let tasks = task_names_and_nums.iter()
+        let tasks = task_names_and_nums
+            .iter()
             .map(|(name, worker_idx)| {
                 // There's not a principled reason `parallelism` is used as the buffer size,
                 // it's just that the more parallelism you want the more buffer you probably
@@ -737,14 +814,14 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let url = mmoldb_db::postgres_url_from_environment();
         let mut async_conn = AsyncPgConnection::establish(&url).await?;
 
-
         // Probably not all of this needs to be in the loop but I'm tired, boss
         loop {
             let versions_stream = VersionIngest::stream_versions_at_cursor(
                 &mut async_conn,
                 self.kind,
                 start_cursor.clone(),
-            ).await?;
+            )
+            .await?;
             pin_mut!(versions_stream);
 
             while let Some(version_result) = versions_stream.next().await {
@@ -757,7 +834,9 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 // If the send fails it's probably because a child errored. Propagate child
                 // errors first
                 if let Err(pipe_err) = pipe.send(version).await {
-                    warn!("Got a pipe error, which probably means there's an error in a child task. Joining child tasks...");
+                    warn!(
+                        "Got a pipe error, which probably means there's an error in a child task. Joining child tasks..."
+                    );
                     for (pipe, task) in tasks.into_iter() {
                         drop(pipe); // Signals child to exit
                         task.await.map_err(IngestFatalError::JoinError)??;
@@ -768,7 +847,10 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 start_cursor = Some(new_cursor);
             }
 
-            info!("{} stage 2 ingest coordinator has processed all available versions. Waiting to be waken up or exited...", self.kind);
+            info!(
+                "{} stage 2 ingest coordinator has processed all available versions. Waiting to be waken up or exited...",
+                self.kind
+            );
             if let Some(notify) = &args.waker_from_prev_stage {
                 tokio::select! {
                     biased; // We want to always
@@ -781,99 +863,142 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                     }
                 }
             } else {
-                info!("{} stage 2 ingest coordinator exiting because there is no waker from the previous stage", self.kind);
+                info!(
+                    "{} stage 2 ingest coordinator exiting because there is no waker from the previous stage",
+                    self.kind
+                );
                 break;
             }
         }
 
         // Drop all the senders. This causes the receivers to output None, which is the
         // signal the workers use to know when to exit.
-        let tasks = tasks.into_iter()
-            .map(|(_, task)| task)
-            .collect_vec();
+        let tasks = tasks.into_iter().map(|(_, task)| task).collect_vec();
 
-        debug!("All versions for {} Stage 2 are dispatched to workers. Waiting for workers to exit.", self.kind);
+        debug!(
+            "All versions for {} Stage 2 are dispatched to workers. Waiting for workers to exit.",
+            self.kind
+        );
 
         for task in tasks {
             task.await.map_err(IngestFatalError::JoinError)??;
         }
 
-        debug!("All workers for {} finished. Exiting coordinator and notifying next stage.", self.kind);
+        debug!(
+            "All workers for {} finished. Exiting coordinator and notifying next stage.",
+            self.kind
+        );
         args.wake_next_stage.notify_one();
 
         Ok(())
     }
 
     // Worker could probably take a conn instead of the whole pool, but the cost is negligible
-    async fn worker(self: Arc<Self>, args: StageArgs, version_recv: Receiver<ChronEntity<serde_json::Value>>, worker_idx: usize) -> Result<(), IngestFatalError> {
+    async fn worker(
+        self: Arc<Self>,
+        args: StageArgs,
+        version_recv: Receiver<ChronEntity<serde_json::Value>>,
+        worker_idx: usize,
+    ) -> Result<(), IngestFatalError> {
         let val = self.worker_internal(args, version_recv, worker_idx).await;
         if let Err(err) = &val {
             error!("Error in stage 2 ingest worker: {err}");
         }
         val
     }
-    
-    async fn worker_internal(self: Arc<Self>, args: StageArgs, version_recv: Receiver<ChronEntity<serde_json::Value>>, worker_idx: usize) -> Result<(), IngestFatalError> {
-        info!("{} stage 2 ingest worker {} launched", self.kind, worker_idx);
+
+    async fn worker_internal(
+        self: Arc<Self>,
+        args: StageArgs,
+        version_recv: Receiver<ChronEntity<serde_json::Value>>,
+        worker_idx: usize,
+    ) -> Result<(), IngestFatalError> {
+        info!(
+            "{} stage 2 ingest worker {} launched",
+            self.kind, worker_idx
+        );
         let mut conn = args.pool.get()?;
         let taxa = Taxa::new(&mut conn)?;
 
         let mut last_print = Utc::now();
         let mut cache = HashMap::new();
         let chunk_stream = tokio_stream::wrappers::ReceiverStream::new(version_recv)
-            .filter_map(|version| std::future::ready({
-                let trimmed_version = VersionIngest::trim_unused(&version.data);
+            .filter_map(|version| {
+                std::future::ready({
+                    let trimmed_version = VersionIngest::trim_unused(&version.data);
 
-                let now = Utc::now();
-                if last_print + chrono::Duration::seconds(5) < now {
-                    info!("{} cache has {} items and occupies {} bytes", self.kind, cache.len(), cache.allocation_size());
-                    last_print = now;
-                }
+                    let now = Utc::now();
+                    if last_print + chrono::Duration::seconds(5) < now {
+                        info!(
+                            "{} cache has {} items and occupies {} bytes",
+                            self.kind,
+                            cache.len(),
+                            cache.allocation_size()
+                        );
+                        last_print = now;
+                    }
 
-                match cache.entry(version.entity_id.clone()) {
-                    Entry::Vacant(vacant) => {
-                        // We store the trimmed version for future comparisons
-                        vacant.insert(trimmed_version);
-                        // We need to return the untrimmed version, or else deserialize will fail
-                        Some(version)
-                    },
-                    Entry::Occupied(mut occupied) => {
-                        if occupied.get() == &trimmed_version {
-                            // This is a duplicate -- no need to return it
-                            None
-                        } else {
-                            occupied.insert(trimmed_version);
+                    match cache.entry(version.entity_id.clone()) {
+                        Entry::Vacant(vacant) => {
+                            // We store the trimmed version for future comparisons
+                            vacant.insert(trimmed_version);
+                            // We need to return the untrimmed version, or else deserialize will fail
                             Some(version)
                         }
+                        Entry::Occupied(mut occupied) => {
+                            if occupied.get() == &trimmed_version {
+                                // This is a duplicate -- no need to return it
+                                None
+                            } else {
+                                occupied.insert(trimmed_version);
+                                Some(version)
+                            }
+                        }
                     }
-                }
-            }))
+                })
+            })
             .chunks(args.config.process_batch_size);
         pin_mut!(chunk_stream);
 
         let mut num_ingested = 0;
         while let Some(raw_versions) = chunk_stream.next().await {
-            num_ingested += self.ingest_page(&taxa, raw_versions, &mut conn, worker_idx, args.config.debug_db_insert_delay)?;
+            num_ingested += self.ingest_page(
+                &taxa,
+                raw_versions,
+                &mut conn,
+                worker_idx,
+                args.config.debug_db_insert_delay,
+            )?;
 
             db::update_num_ingested(&mut conn, args.ingest_id, self.kind, num_ingested)?;
         }
 
-        debug!("{} stage 2 ingest worker {} is exiting", self.kind, worker_idx);
+        debug!(
+            "{} stage 2 ingest worker {} is exiting",
+            self.kind, worker_idx
+        );
 
         Ok(())
     }
 
-    fn ingest_page(&self, taxa: &Taxa, raw_versions: Vec<ChronEntity<serde_json::Value>>, conn: &mut PgConnection, worker_id: usize, debug_db_insert_delay: f64) -> Result<i32, IngestFatalError> {
+    fn ingest_page(
+        &self,
+        taxa: &Taxa,
+        raw_versions: Vec<ChronEntity<serde_json::Value>>,
+        conn: &mut PgConnection,
+        worker_id: usize,
+        debug_db_insert_delay: f64,
+    ) -> Result<i32, IngestFatalError> {
         debug!(
             "Starting ingest of {} {}(s) on worker {worker_id}",
-            raw_versions.len(), self.kind
+            raw_versions.len(),
+            self.kind
         );
         let save_start = Utc::now();
 
         let deserialize_start = Utc::now();
-        let (entities, deserialize_errors): (Vec<_>, Vec<_>) = raw_versions
-            .into_par_iter()
-            .partition_map(|entity| {
+        let (entities, deserialize_errors): (Vec<_>, Vec<_>) =
+            raw_versions.into_par_iter().partition_map(|entity| {
                 if entity.kind != self.kind {
                     warn!("{} ingest task got a {} entity!", self.kind, entity.kind);
                 }
@@ -886,9 +1011,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                         valid_to: entity.valid_to,
                         data,
                     }),
-                    Err(err) => {
-                        Either::Right((err, entity.entity_id, entity.valid_from))
-                    },
+                    Err(err) => Either::Right((err, entity.entity_id, entity.valid_from)),
                 }
             });
         let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
@@ -901,7 +1024,8 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
             deserialize_errors.len(),
         );
 
-        let new_ingest_logs = deserialize_errors.iter()
+        let new_ingest_logs = deserialize_errors
+            .iter()
             .map(|(err, entity_id, valid_from)| NewVersionIngestLog {
                 kind: self.kind,
                 entity_id,
@@ -926,10 +1050,13 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         // shifting indices around
         let mut entities = entities.into_iter().map(Some).collect_vec();
 
-        let entity_ids_indices = entities.iter()
+        let entity_ids_indices = entities
+            .iter()
             .enumerate()
             .map(|(index, version)| {
-                let version = version.as_ref().expect("Every element should be a Some at this point");
+                let version = version
+                    .as_ref()
+                    .expect("Every element should be a Some at this point");
                 (VersionIngest::batch_split_key(version), index)
             })
             .collect_vec();
@@ -949,8 +1076,12 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 to_insert, self.kind, entities_len,
             );
 
-            let batch = batch_indices.iter()
-                .map(|index| std::mem::take(&mut entities[*index]).expect("Batcher must only return each index once"))
+            let batch = batch_indices
+                .iter()
+                .map(|index| {
+                    std::mem::take(&mut entities[*index])
+                        .expect("Batcher must only return each index once")
+                })
                 .collect_vec();
 
             let (total, inserted) = VersionIngest::insert_batch(conn, taxa, &batch)?;
@@ -960,9 +1091,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 "Sent rows for {} new {} versions out of {} to the database. \
                 {inserted}/{total} rows were actually inserted, the rest were \
                 duplicates. Currently processing versions from {human_time_ago}.",
-                to_insert,
-                self.kind,
-                entities_len,
+                to_insert, self.kind, entities_len,
             );
         }
 
@@ -970,23 +1099,26 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
         info!(
             "Ingested page of {} {} versions in {save_duration:.3} seconds.",
-            entities_len,
-            self.kind,
+            entities_len, self.kind,
         );
 
         Ok(total_inserted)
     }
-
 }
 
-impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> IngestStage for Stage2Ingest<VersionIngest> {
+impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> IngestStage
+    for Stage2Ingest<VersionIngest>
+{
     fn name(&self) -> &'static str {
         "Stage 2"
     }
 
-    fn run(self: Arc<Self>, args: StageArgs) -> Pin<Box<dyn Future<Output=IngestErrorContainer> + Send>> {
+    fn run(
+        self: Arc<Self>,
+        args: StageArgs,
+    ) -> Pin<Box<dyn Future<Output = IngestErrorContainer> + Send>> {
         Box::pin(async {
-            let kind = self.kind;  // For move semantics reasons
+            let kind = self.kind; // For move semantics reasons
             let result = Stage2Ingest::run(self, args).await;
             IngestErrorContainer::from_result(result, format!("{} Stage 2", kind))
         })

@@ -1,11 +1,11 @@
-use crate::taxa::Taxa;
 use crate::QueryError;
-use diesel::{Connection, ConnectionError, PgConnection, RunQueryDsl};
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use std::error::Error;
+use crate::taxa::Taxa;
 use diesel::sql_types::BigInt;
+use diesel::{Connection, ConnectionError, PgConnection, RunQueryDsl};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use log::{info, warn};
 use miette::Diagnostic;
+use std::error::Error;
 use thiserror::Error;
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
@@ -29,8 +29,8 @@ pub enum MigrationError {
 pub fn run_migrations() -> Result<Taxa, MigrationError> {
     let url = crate::postgres_url_from_environment();
 
-    let mut conn = PgConnection::establish(&url)
-        .map_err(MigrationError::FailedToConnectToDatabase)?;
+    let mut conn =
+        PgConnection::establish(&url).map_err(MigrationError::FailedToConnectToDatabase)?;
 
     info!("Acquiring migrations lock");
     diesel::sql_query("select pg_advisory_lock($1);")
@@ -43,8 +43,7 @@ pub fn run_migrations() -> Result<Taxa, MigrationError> {
         .map_err(MigrationError::FailedToRunMigrations)?;
 
     info!("Ensuring taxa is up to date");
-    let taxa = Taxa::new(&mut conn)
-        .map_err(MigrationError::FailedToCreateTaxa)?;
+    let taxa = Taxa::new(&mut conn).map_err(MigrationError::FailedToCreateTaxa)?;
 
     let unlock_result = diesel::sql_query("select pg_advisory_unlock($1);")
         .bind::<BigInt, _>(MIGRATION_LOCK_ID)

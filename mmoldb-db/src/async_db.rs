@@ -1,10 +1,10 @@
+use crate::schema::data_schema::data::versions::dsl as versions_dsl;
 use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
-use futures::{Stream, TryStreamExt};
 use futures::future::Either;
-use crate::schema::data_schema::data::versions::dsl as versions_dsl;
+use futures::{Stream, TryStreamExt};
 
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::data_schema::data::versions)]
@@ -72,9 +72,7 @@ pub async fn stream_versions_at_cursor(
     kind: &str,
     cursor: Option<(NaiveDateTime, String)>,
 ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
-    let cursor = cursor
-        .as_ref()
-        .map(|(dt, id)| (*dt, id.as_str()));
+    let cursor = cursor.as_ref().map(|(dt, id)| (*dt, id.as_str()));
 
     let stream = version_cursor_query(kind, cursor)
         .select(Version::as_select())
@@ -92,13 +90,12 @@ pub async fn stream_versions_at_cursor_until(
     until: Option<NaiveDateTime>,
 ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
     let Some(until) = until else {
-        return stream_versions_at_cursor(conn, kind, cursor).await
+        return stream_versions_at_cursor(conn, kind, cursor)
+            .await
             .map(Either::Left);
     };
 
-    let cursor = cursor
-        .as_ref()
-        .map(|(dt, id)| (*dt, id.as_str()));
+    let cursor = cursor.as_ref().map(|(dt, id)| (*dt, id.as_str()));
 
     let stream = version_cursor_query(kind, cursor)
         .filter(versions_dsl::valid_from.lt(until))
@@ -117,7 +114,8 @@ pub async fn stream_unprocessed_feed_event_versions(
     use crate::schema::data_schema::data::feed_event_versions::dsl as fev_dsl;
     use crate::schema::data_schema::data::feed_events_processed::dsl as fep_dsl;
 
-    let prev_version = diesel::alias!(crate::schema::data_schema::data::feed_event_versions as prev_version1);
+    let prev_version =
+        diesel::alias!(crate::schema::data_schema::data::feed_event_versions as prev_version1);
 
     let stream = fev_dsl::feed_event_versions
         .filter(fev_dsl::kind.eq(kind))
@@ -205,7 +203,6 @@ pub async fn stream_unprocessed_feed_event_versions(
     Ok(stream)
 }
 
-
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::data_schema::data::entities)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -230,7 +227,7 @@ pub async fn stream_unprocessed_game_versions(
                 .filter(games_dsl::mmolb_game_id.eq(entities_dsl::entity_id))
                 // We want to consider this entity processed if there exists a game
                 // from its valid_from *or any later valid_from*
-                .filter(games_dsl::from_version.ge(entities_dsl::valid_from))
+                .filter(games_dsl::from_version.ge(entities_dsl::valid_from)),
         )))
         // I don't actually know if return order matters for this one
         .order_by((

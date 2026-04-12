@@ -1022,7 +1022,7 @@ pub struct NewParty<'a> {
 pub struct DbParty {
     pub id: i64,
     pub game_id: i64,
-    pub game_event_index: i32, 
+    pub game_event_index: i32,
     pub is_pitcher: bool,
     pub top_of_inning: bool,
     pub player_name: String,
@@ -1083,7 +1083,7 @@ pub struct NewConsumptionContest<'a> {
     pub last_game_event_index: i32,
     pub food_emoji: &'a str,
     pub food: &'a str,
-    
+
     pub batting_team_player_name: &'a str,
     pub batting_team_total_consumed: i32,
     pub batting_team_tokens: i32,
@@ -1092,7 +1092,7 @@ pub struct NewConsumptionContest<'a> {
     pub batting_team_prize_rare_name: Option<&'a str>,
     pub batting_team_prize_prefixes: Vec<&'a str>,
     pub batting_team_prize_suffixes: Vec<&'a str>,
-    
+
     pub defending_team_player_name: &'a str,
     pub defending_team_total_consumed: i32,
     pub defending_team_tokens: i32,

@@ -1,23 +1,30 @@
 use crate::config::IngestibleConfig;
 use crate::ingest::VersionIngestLogs;
+use crate::ingest_feed_shared::{
+    FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START, FeedItemContainer,
+};
 use crate::ingest_players::day_to_db;
-use crate::{FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest};
+use crate::{
+    FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest,
+};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use log::error;
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
-use mmoldb_db::models::{NewFeedEventProcessed, NewPlayerAttributeAugment, NewPlayerParadigmShift, NewPlayerRecomposition, NewVersionIngestLog};
+use mmoldb_db::models::{
+    NewFeedEventProcessed, NewPlayerAttributeAugment, NewPlayerParadigmShift,
+    NewPlayerRecomposition, NewVersionIngestLog,
+};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{async_db, db, AsyncPgConnection, Connection, PgConnection, QueryResult};
+use mmoldb_db::{AsyncPgConnection, Connection, PgConnection, QueryResult, async_db, db};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
-use futures::Stream;
-use lazy_static::lazy_static;
-use crate::ingest_feed_shared::{FeedItemContainer, FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START};
 
 lazy_static! {
     #[rustfmt::skip]
@@ -90,23 +97,23 @@ lazy_static! {
                 // (("68abe24b2cd8a532516a0336", 1), ("Koala Kono", "Kate Sherwood", "2025-09-01T05:09:32.514563+00:00", 5, Day::Election)),
                 // Actually I went back to doing it by a query:
                 // select
-                //     '(("' 
-                //         || fe1.entity_id 
-                //         || '", ' 
-                //         || fe1.feed_event_index 
-                //         || '), ("' 
-                //         || split_part(fe1.data->>'text', ' was Recomposed into ', 1) 
-                //         || '", "' 
-                //         || left(split_part(fe1.data->>'text', ' was Recomposed into ', 2), -1) 
-                //         || '", "' 
-                //         || (fe1.data->>'ts') 
-                //         || '", ' 
-                //         || (fe1.data->>'season')  
-                //         || ', ' 
-                //         || (case when (fe1.data->>'status') = 'Regular Season' then ('Day::Day(' 
-                //         || (fe1.data->>'day') 
-                //         || ')') else ('Day::' 
-                //         || (fe1.data->>'day')) end) 
+                //     '(("'
+                //         || fe1.entity_id
+                //         || '", '
+                //         || fe1.feed_event_index
+                //         || '), ("'
+                //         || split_part(fe1.data->>'text', ' was Recomposed into ', 1)
+                //         || '", "'
+                //         || left(split_part(fe1.data->>'text', ' was Recomposed into ', 2), -1)
+                //         || '", "'
+                //         || (fe1.data->>'ts')
+                //         || '", '
+                //         || (fe1.data->>'season')
+                //         || ', '
+                //         || (case when (fe1.data->>'status') = 'Regular Season' then ('Day::Day('
+                //         || (fe1.data->>'day')
+                //         || ')') else ('Day::'
+                //         || (fe1.data->>'day')) end)
                 //         || ')),'
                 // from data.feed_event_versions fe1
                 // inner join data.feed_event_versions fe2
@@ -119,7 +126,7 @@ lazy_static! {
                 //     and fe1.data->>'ts' >= '2025-08-12T01:40:41.803615+00:00'
                 //     and fe2.data->>'ts' > fe1.data->>'ts'
                 //     and fe2.valid_from < '2026-03-15T09:20:20.143021Z'
-                //     and fe2.data->>'text' like split_part(fe1.data->>'text', ' was Recomposed into ', 1) 
+                //     and fe2.data->>'text' like split_part(fe1.data->>'text', ' was Recomposed into ', 1)
                 // || '%'
                 // order by fe1.data->>'ts';
                 (("686313bb58c82f639e536fd6", 13), ("Jaime Bytyqi", "Willow Jorts", "2025-08-20T04:16:42.606867+00:00", 5, Day::Day(29))),
@@ -440,21 +447,32 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
         (entity.entity_id.to_string(), entity.data.feed_event_index)
     }
 
-    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
-        let new_versions = versions.iter()
-            .map(|player| chron_player_feed_as_new(taxa, &player.entity_id, player.valid_from, &player.data, None))
+    fn insert_batch(
+        conn: &mut PgConnection,
+        taxa: &Taxa,
+        versions: &Vec<ChronEntity<Self::Entity>>,
+    ) -> QueryResult<(usize, usize)> {
+        let new_versions = versions
+            .iter()
+            .map(|player| {
+                chron_player_feed_as_new(
+                    taxa,
+                    &player.entity_id,
+                    player.valid_from,
+                    &player.data,
+                    None,
+                )
+            })
             .collect_vec();
 
-        conn.transaction(|c| {
-            db::insert_player_feed_versions(c, &new_versions)
-        })
+        conn.transaction(|c| db::insert_player_feed_versions(c, &new_versions))
     }
 
     async fn stream_versions_at_cursor(
         conn: &mut AsyncPgConnection,
         kind: &str,
         _: Option<(NaiveDateTime, String)>,
-    ) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<serde_json::Value>>>> {
+    ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
         // This ingestible doesn't use a cursor. I used to have an assert that cursor
         // was None, but that's incorrect because the machinery opportunistically updates
         // the cursor based on values that are passing through
@@ -480,7 +498,7 @@ impl Ingestable for PlayerFeedIngest {
     fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
         vec![
             Arc::new(FeedEventVersionStage1Ingest::new(Self::KIND, "player")),
-            Arc::new(Stage2Ingest::new(Self::KIND, PlayerFeedIngestFromVersions))
+            Arc::new(Stage2Ingest::new(Self::KIND, PlayerFeedIngestFromVersions)),
         ]
     }
 }
@@ -593,56 +611,56 @@ pub fn chron_player_feed_as_new<'a>(
             ingest_logs.warn(format!(
                 "Player {} feed event index {} had a previous event, but \
                 did not have prev_valid_from",
-                player_id,
-                event.feed_event_index,
+                player_id, event.feed_event_index,
             ));
         }
 
         if IGNORED_FEED_EVENTS
             .get(&(player_id, event.feed_event_index))
-            .is_some_and(|dt| dt == &prev_event.timestamp) {
+            .is_some_and(|dt| dt == &prev_event.timestamp)
+        {
             ingest_logs.info(format!(
                 "Player {} feed event index {} had a previous event, but it was an \
                 ignored event so we can proceed as if it doesn't exist",
-                player_id,
-                event.feed_event_index,
+                player_id, event.feed_event_index,
             ));
         } else if OVERWRITTEN_RECOMPOSITIONS
             .get(&(player_id, event.feed_event_index))
-            .is_some_and(|(_, _, dt, _, _)| dt == &prev_event.timestamp.naive_utc()) {
+            .is_some_and(|(_, _, dt, _, _)| dt == &prev_event.timestamp.naive_utc())
+        {
             ingest_logs.info(format!(
                 "Player {} feed event index {} had a previous event, but it was an \
                 overwritten recomposition, so we can proceed with processing this event",
-                player_id,
-                event.feed_event_index,
+                player_id, event.feed_event_index,
             ));
-        } else if event.prev_valid_from.is_none_or(|prev_valid_from| FEED_INVERSION_EVENT_START <= prev_valid_from && prev_valid_from <= FEED_INVERSION_EVENT_END) {
+        } else if event.prev_valid_from.is_none_or(|prev_valid_from| {
+            FEED_INVERSION_EVENT_START <= prev_valid_from
+                && prev_valid_from <= FEED_INVERSION_EVENT_END
+        }) {
             if event.prev_valid_from.is_none() {
                 ingest_logs.warn(format!(
                     "Can't check whether player {} feed event index {}'s previous event \
                     was from the Feed Inversion Event because it's missing prev_valid_from. \
                     Assuming it was to avoid losing data.",
-                    player_id,
-                    event.feed_event_index,
+                    player_id, event.feed_event_index,
                 ));
             } else {
                 ingest_logs.info(format!(
                     "Player {} feed event index {} had a previous event, but it was from \
                     the Feed Inversion Event so we can proceed with processing this event",
-                    player_id,
-                    event.feed_event_index,
+                    player_id, event.feed_event_index,
                 ));
             }
-        } else if event.data.timestamp == prev_event.timestamp && event.data.text == prev_event.text {
+        } else if event.data.timestamp == prev_event.timestamp && event.data.text == prev_event.text
+        {
             // I'm not early-exiting here because we don't check all the
             // fields, so this could incorrectly match an actually meaningful
             // change. If that happens, the database layer checks will find it.
-        ingest_logs.info(format!(
+            ingest_logs.info(format!(
                 "Player {} feed event index {} had a previous event, but it's identical \
                 in text and timestamp to this event. Assuming it's just a data format change\
                 and that the database will deduplicate it.",
-                player_id,
-                event.feed_event_index,
+                player_id, event.feed_event_index,
             ));
         } else {
             ingest_logs.error(format!(
@@ -655,7 +673,11 @@ pub fn chron_player_feed_as_new<'a>(
                 player_id,
                 event.feed_event_index,
                 prev_event.text,
-                if let Some(dt) = event.prev_valid_from { format!("{dt}") } else { "(missing)".to_string() },
+                if let Some(dt) = event.prev_valid_from {
+                    format!("{dt}")
+                } else {
+                    "(missing)".to_string()
+                },
                 event.data.text,
                 valid_from,
             ));
@@ -1059,29 +1081,29 @@ pub fn chron_player_feed_as_new<'a>(
             // See comment on Delivery
         }
         // These events have no action
-        ParsedPlayerFeedEventText::SeasonalDurabilityLoss { .. } |
-        ParsedPlayerFeedEventText::CorruptedByWither { .. } |
-        ParsedPlayerFeedEventText::Purified { .. } |
-        ParsedPlayerFeedEventText::Party { .. } |
-        ParsedPlayerFeedEventText::PlayerContained { .. } |
-        ParsedPlayerFeedEventText::PlayerPositionsSwapped { .. } |
-        ParsedPlayerFeedEventText::PlayerGrow { .. } |
-        ParsedPlayerFeedEventText::GreaterAugment { .. } |
-        ParsedPlayerFeedEventText::RetractedGreaterAugment { .. } |
-        ParsedPlayerFeedEventText::RetroactiveGreaterAugment { .. } |
-        ParsedPlayerFeedEventText::PlayerRelegated { .. } |
-        ParsedPlayerFeedEventText::PlayerMoved { .. } |
-        ParsedPlayerFeedEventText::PlayerGrewInEfflorescence { .. } |
-        ParsedPlayerFeedEventText::PlayerEffloresce { .. } |
-        ParsedPlayerFeedEventText::Restyle { .. } |
-        ParsedPlayerFeedEventText::Augment { .. } |
-        ParsedPlayerFeedEventText::BoonRecombobulated { .. } |
-        ParsedPlayerFeedEventText::PlayersSwapped { .. } |
-        ParsedPlayerFeedEventText::ConsumptionContestToPlayer { .. } |
-        ParsedPlayerFeedEventText::ConsumptionContestToTeam { .. } |
-        ParsedPlayerFeedEventText::PlayerReflected { .. } |
-        ParsedPlayerFeedEventText::ElectionAppliedLevelUps { .. } |
-        ParsedPlayerFeedEventText::LesserBoon { .. } => {}
+        ParsedPlayerFeedEventText::SeasonalDurabilityLoss { .. }
+        | ParsedPlayerFeedEventText::CorruptedByWither { .. }
+        | ParsedPlayerFeedEventText::Purified { .. }
+        | ParsedPlayerFeedEventText::Party { .. }
+        | ParsedPlayerFeedEventText::PlayerContained { .. }
+        | ParsedPlayerFeedEventText::PlayerPositionsSwapped { .. }
+        | ParsedPlayerFeedEventText::PlayerGrow { .. }
+        | ParsedPlayerFeedEventText::GreaterAugment { .. }
+        | ParsedPlayerFeedEventText::RetractedGreaterAugment { .. }
+        | ParsedPlayerFeedEventText::RetroactiveGreaterAugment { .. }
+        | ParsedPlayerFeedEventText::PlayerRelegated { .. }
+        | ParsedPlayerFeedEventText::PlayerMoved { .. }
+        | ParsedPlayerFeedEventText::PlayerGrewInEfflorescence { .. }
+        | ParsedPlayerFeedEventText::PlayerEffloresce { .. }
+        | ParsedPlayerFeedEventText::Restyle { .. }
+        | ParsedPlayerFeedEventText::Augment { .. }
+        | ParsedPlayerFeedEventText::BoonRecombobulated { .. }
+        | ParsedPlayerFeedEventText::PlayersSwapped { .. }
+        | ParsedPlayerFeedEventText::ConsumptionContestToPlayer { .. }
+        | ParsedPlayerFeedEventText::ConsumptionContestToTeam { .. }
+        | ParsedPlayerFeedEventText::PlayerReflected { .. }
+        | ParsedPlayerFeedEventText::ElectionAppliedLevelUps { .. }
+        | ParsedPlayerFeedEventText::LesserBoon { .. } => {}
     }
 
     // Apply any pending inferred whose time is before this event's time

@@ -1,8 +1,8 @@
-use std::num::NonZero;
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use mmolb_parsing::player::Deserialize;
 use serde::Serialize;
+use std::num::NonZero;
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct IngestibleConfig {

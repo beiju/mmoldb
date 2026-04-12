@@ -1,11 +1,11 @@
 mod api;
-mod web;
 mod records_cache;
+mod web;
 
 use num_format::{Locale, ToFormattedString};
 use rocket::fairing::AdHoc;
 use rocket::figment::map;
-use rocket::{figment, launch, Build, Rocket};
+use rocket::{Build, Rocket, figment, launch};
 use rocket_dyn_templates::Template;
 use rocket_dyn_templates::tera::Value;
 use rocket_sync_db_pools::database as sync_database;
@@ -34,9 +34,7 @@ impl rocket_dyn_templates::tera::Filter for NumFormat {
 }
 
 async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
-    let taxa = tokio::task::spawn_blocking(move || {
-        mmoldb_db::run_migrations()
-    })
+    let taxa = tokio::task::spawn_blocking(move || mmoldb_db::run_migrations())
         .await
         .expect("Error joining migrations task")
         .expect("Error running migrations");
@@ -46,8 +44,7 @@ async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
 
 async fn init_records(rocket: Rocket<Build>) -> Rocket<Build> {
     // TODO Make this pool size a config param
-    let db = mmoldb_db::get_pool(20)
-        .expect("failed to initialize database pool for records task");
+    let db = mmoldb_db::get_pool(20).expect("failed to initialize database pool for records task");
 
     let cache = records_cache::RecordsCache::new(db);
 

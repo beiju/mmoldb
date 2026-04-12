@@ -1,16 +1,29 @@
-use std::cmp::Ordering;
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
 use log::warn;
 use miette::Diagnostic;
-use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
-use mmolb_parsing::enums::{Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType, GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType, TopBottom};
+use mmolb_parsing::enums::{
+    Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType,
+    GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType,
+    TopBottom,
+};
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle};
+use mmolb_parsing::parsed_event::{
+    BaseSteal, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement,
+    EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug,
+    ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut,
+    SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle,
+};
+use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
 };
-use mmoldb_db::{BestEffortSlot, BestEffortSlottedPlayer, ConsumptionContestEventForDb, ConsumptionContestForDb, EventDetail, EventDetailFielder, EventDetailRunner, IngestLog, PartyEvent, PerTeamConsumptionContestForDb, PitcherChange, WitherOutcome};
+use mmoldb_db::{
+    BestEffortSlot, BestEffortSlottedPlayer, ConsumptionContestEventForDb, ConsumptionContestForDb,
+    EventDetail, EventDetailFielder, EventDetailRunner, IngestLog, PartyEvent,
+    PerTeamConsumptionContestForDb, PitcherChange, WitherOutcome,
+};
+use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::fmt::Write;
@@ -222,24 +235,16 @@ enum ContextAfterWitherOutcome<'g> {
     // There has in fact been a walkoff steal of home corruption attempt:
     // https://mmolb.com/watch/6903b5f9b6db8e5cf5bd1d8e?event=469
     ExpectGameEnd,
-    ExpectPitch {
-        batter_name: &'g str,
-    },
+    ExpectPitch { batter_name: &'g str },
 }
 
 impl<'g> ContextAfterWitherOutcome<'g> {
     pub fn to_event_context(self) -> EventContext<'g> {
         match self {
-            ContextAfterWitherOutcome::ExpectNowBatting => {
-                EventContext::ExpectNowBatting
-            }
-            ContextAfterWitherOutcome::ExpectInningEnd => {
-                EventContext::ExpectInningEnd
-            }
-            ContextAfterWitherOutcome::ExpectGameEnd => {
-                EventContext::ExpectGameEnd
-            }
-            ContextAfterWitherOutcome::ExpectPitch { batter_name} => EventContext::ExpectPitch {
+            ContextAfterWitherOutcome::ExpectNowBatting => EventContext::ExpectNowBatting,
+            ContextAfterWitherOutcome::ExpectInningEnd => EventContext::ExpectInningEnd,
+            ContextAfterWitherOutcome::ExpectGameEnd => EventContext::ExpectGameEnd,
+            ContextAfterWitherOutcome::ExpectPitch { batter_name } => EventContext::ExpectPitch {
                 batter_name,
                 // Wither can never happen between a NowBatting and the first pitch
                 first_pitch_of_plate_appearance: false,
@@ -257,12 +262,8 @@ enum ContextAfterConsumptionContest {
 impl ContextAfterConsumptionContest {
     pub fn to_event_context(self) -> EventContext<'static> {
         match self {
-            ContextAfterConsumptionContest::ExpectNowBatting => {
-                EventContext::ExpectNowBatting
-            }
-            ContextAfterConsumptionContest::ExpectGameEnd => {
-                EventContext::ExpectGameEnd
-            }
+            ContextAfterConsumptionContest::ExpectNowBatting => EventContext::ExpectNowBatting,
+            ContextAfterConsumptionContest::ExpectGameEnd => EventContext::ExpectGameEnd,
         }
     }
 }
@@ -304,20 +305,23 @@ enum EventContext<'g> {
         emoji_food: EmojiFood<&'g str>,
         updates: Vec<ConsumptionContestEventForDb>,
         context_after: ContextAfterConsumptionContest,
-    }
+    },
 }
 
 impl<'g> EventContext<'g> {
     pub fn after_wither_outcome(&self) -> Result<ContextAfterWitherOutcome<'g>, SimEventError> {
         Ok(match self {
-            EventContext::ExpectPitch { batter_name, first_pitch_of_plate_appearance: _ } => {
-                ContextAfterWitherOutcome::ExpectPitch { batter_name }
-            }
+            EventContext::ExpectPitch {
+                batter_name,
+                first_pitch_of_plate_appearance: _,
+            } => ContextAfterWitherOutcome::ExpectPitch { batter_name },
             EventContext::ExpectNowBatting => ContextAfterWitherOutcome::ExpectNowBatting,
             EventContext::ExpectInningEnd => ContextAfterWitherOutcome::ExpectInningEnd,
             EventContext::ExpectGameEnd => ContextAfterWitherOutcome::ExpectGameEnd,
             other => {
-                return Err(SimEventError::UnexpectedContextForWither(format!("{other:?}")))
+                return Err(SimEventError::UnexpectedContextForWither(format!(
+                    "{other:?}"
+                )));
             }
         })
     }
@@ -368,7 +372,7 @@ impl<'g> TeamInGame<'g> {
     pub fn fielder_at(&self, loc: TaxaFielderLocation) -> Option<&'g str> {
         match loc {
             TaxaFielderLocation::Pitcher => Some(self.active_pitcher.name),
-            other => self.fielder_locations.get(&other).map(|v| *v)
+            other => self.fielder_locations.get(&other).map(|v| *v),
         }
     }
 }
@@ -1088,7 +1092,12 @@ impl<'g> EventDetailBuilder<'g> {
         // When the active pitcher is ejected, MMOLB updates the name
         // in the event data on that event, even though the previous
         // pitcher is responsible for what happened in that event.
-        let pitcher_name = if let Some(Ejection::Ejection { replacement, ejected_player, .. }) = &self.ejection {
+        let pitcher_name = if let Some(Ejection::Ejection {
+            replacement,
+            ejected_player,
+            ..
+        }) = &self.ejection
+        {
             let replacement_name = match replacement {
                 EjectionReplacement::BenchPlayer { player_name } => player_name,
                 EjectionReplacement::RosterPlayer { player } => player.name,
@@ -1178,22 +1187,21 @@ pub enum EventForTable<StrT: Clone> {
 
 fn map_fielder_location(place: Place) -> Option<TaxaFielderLocation> {
     match place {
-        Place::Pitcher => { None }
-        Place::Catcher => { Some(TaxaFielderLocation::Catcher) }
-        Place::FirstBaseman => { Some(TaxaFielderLocation::FirstBase) }
-        Place::SecondBaseman => { Some(TaxaFielderLocation::SecondBase) }
-        Place::ThirdBaseman => { Some(TaxaFielderLocation::ThirdBase) }
-        Place::ShortStop => { Some(TaxaFielderLocation::Shortstop) }
-        Place::LeftField => { Some(TaxaFielderLocation::LeftField) }
-        Place::CenterField => { Some(TaxaFielderLocation::CenterField) }
-        Place::RightField => { Some(TaxaFielderLocation::RightField) }
-        Place::StartingPitcher(_) => { None }
-        Place::ReliefPitcher(_) => { None }
-        Place::Closer => { None }
-        Place::DesignatedHitter => { None }
+        Place::Pitcher => None,
+        Place::Catcher => Some(TaxaFielderLocation::Catcher),
+        Place::FirstBaseman => Some(TaxaFielderLocation::FirstBase),
+        Place::SecondBaseman => Some(TaxaFielderLocation::SecondBase),
+        Place::ThirdBaseman => Some(TaxaFielderLocation::ThirdBase),
+        Place::ShortStop => Some(TaxaFielderLocation::Shortstop),
+        Place::LeftField => Some(TaxaFielderLocation::LeftField),
+        Place::CenterField => Some(TaxaFielderLocation::CenterField),
+        Place::RightField => Some(TaxaFielderLocation::RightField),
+        Place::StartingPitcher(_) => None,
+        Place::ReliefPitcher(_) => None,
+        Place::Closer => None,
+        Place::DesignatedHitter => None,
     }
 }
-
 
 // Returns true if the second Place is a possibly-more-general version than the first.
 // Note this will _not_ return true if the first is more general than the second.
@@ -1204,24 +1212,22 @@ fn place_is_compatible(canonical_place: Place, test_place: Place) -> bool {
 
     match test_place {
         Place::Pitcher => match canonical_place {
-            Place::StartingPitcher(_) |
-            Place::ReliefPitcher(_) |
-            Place::Closer => true,
+            Place::StartingPitcher(_) | Place::ReliefPitcher(_) | Place::Closer => true,
             _ => false,
-        }
+        },
         Place::StartingPitcher(_) => match canonical_place {
             Place::StartingPitcher(_) => true,
             _ => false,
-        }
+        },
         Place::ReliefPitcher(_) => match canonical_place {
             Place::ReliefPitcher(_) => true,
             _ => false,
-        }
+        },
 
         Place::Closer => match canonical_place {
             Place::Closer => true,
             _ => false,
-        }
+        },
         // Any other match should be covered by the equality check, so if we
         // got this far it's false
         _ => false,
@@ -1494,7 +1500,6 @@ impl<'g> Game<'g> {
         Ok((game, ingest_logs))
     }
 
-
     pub fn automatic_runner_rule_is_active(&self) -> bool {
         match self.season_status {
             Ok(SeasonStatus::Offseason) => return true,
@@ -1693,8 +1698,7 @@ impl<'g> Game<'g> {
                 // This error is technically separate from the name one, but if the names
                 // mismatch it's not useful to know that this mismatches too
                 let pitcher_slot = self.defending_team().active_pitcher.slot;
-                if !(
-                    place_is_compatible(pitcher_slot.into(), fielder.place) ||
+                if !(place_is_compatible(pitcher_slot.into(), fielder.place) ||
                     // Some ways of getting a pitcher (I think just pre-s3 ones) just
                     // identify the pitcher as P, so we have to allow that too
                     // TODO Remove this, and instead update the stored pitcher slot
@@ -1705,8 +1709,8 @@ impl<'g> Game<'g> {
                     // identified as "P" when acting as a fielder. Most of the time this
                     // is accepted by the place_is_compatible call, but not when a
                     // position player is pitching.
-                    fielder.place == Place::Pitcher
-                ) {
+                    fielder.place == Place::Pitcher)
+                {
                     warn(format!(
                         "Expected ball hit to {} to be fielded by {} (the current pitcher), \
                         but it was fielded by {}.",
@@ -1719,9 +1723,7 @@ impl<'g> Game<'g> {
                 // This error also is technically separate from the name one, etc. etc.
                 warn(format!(
                     "Expected ball hit to {} to be fielded by {}, but it was fielded by {}",
-                    fair_ball_from_previous_event.fair_ball_destination,
-                    loc,
-                    fielder.place,
+                    fair_ball_from_previous_event.fair_ball_destination, loc, fielder.place,
                 ));
             }
         } else {
@@ -1974,14 +1976,24 @@ impl<'g> Game<'g> {
         // Same applies to outs
         let mut outs_to_add = 0;
 
-        if !updates.steals.iter().rev().is_sorted_by_key(|s| HomeLast(s.base.into())) {
+        if !updates
+            .steals
+            .iter()
+            .rev()
+            .is_sorted_by_key(|s| HomeLast(s.base.into()))
+        {
             let mut msg = "Steals is not ordered descending by base".to_string();
             for s in updates.steals {
                 msg = format!("{msg}, {} attempted steal of {}", s.runner, s.base);
             }
             ingest_logs.error(msg);
         }
-        if !updates.advances.iter().rev().is_sorted_by_key(|a| HomeLast(a.base)) {
+        if !updates
+            .advances
+            .iter()
+            .rev()
+            .is_sorted_by_key(|a| HomeLast(a.base))
+        {
             let mut msg = "Runner advances is not ordered descending by base".to_string();
             for a in updates.advances {
                 msg = format!("{msg}, {} advanced to {}", a.runner, a.base);
@@ -1989,7 +2001,12 @@ impl<'g> Game<'g> {
             ingest_logs.error(msg);
         }
         ingest_logs.debug(format!("Runners out: {:?}", updates.runners_out));
-        if !updates.runners_out.iter().rev().is_sorted_by_key(|o| HomeLast(o.base.into())) {
+        if !updates
+            .runners_out
+            .iter()
+            .rev()
+            .is_sorted_by_key(|o| HomeLast(o.base.into()))
+        {
             let mut msg = "Runners out is not ordered descending by base".to_string();
             for o in updates.runners_out {
                 msg = format!("{msg}, {} out at {}", o.runner, o.base);
@@ -2340,12 +2357,17 @@ impl<'g> Game<'g> {
         ejection: &Ejection<&'g str>,
         ingest_logs: &mut IngestLogs,
     ) {
-        let Ejection::Ejection { team: team_emoji_name, ejected_player, replacement, .. } = ejection else {
+        let Ejection::Ejection {
+            team: team_emoji_name,
+            ejected_player,
+            replacement,
+            ..
+        } = ejection
+        else {
             return;
         };
 
-        if team.team_emoji == team_emoji_name.emoji &&
-                team.team_name == team_emoji_name.name {
+        if team.team_emoji == team_emoji_name.emoji && team.team_name == team_emoji_name.name {
             if team.active_pitcher.name == ejected_player.name &&
                 // I checked that the slots do match for all true ejections, even
                 // down to e.g. SP vs SP5
@@ -2432,7 +2454,8 @@ impl<'g> Game<'g> {
         self.handle_season_3_missing_now_batting_after_mound_visit(raw_event, ingest_logs)?;
         self.handle_season_3_duplicate_now_batting(event, ingest_logs)?;
 
-        let detail_builder = self.detail_builder(self.state.clone(), game_event_index, raw_event)
+        let detail_builder = self
+            .detail_builder(self.state.clone(), game_event_index, raw_event)
             .home_run_distance(raw_event.home_run_distance);
 
         let result = match self.state.context.clone() {
@@ -3463,7 +3486,11 @@ impl<'g> Game<'g> {
                     None
                 },
             ),
-            EventContext::ExpectWitherOutcome { struggle, attempt_game_event_index, mut context_after } => game_event!(
+            EventContext::ExpectWitherOutcome {
+                struggle,
+                attempt_game_event_index,
+                mut context_after,
+            } => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::WeatherWither]
                 ParsedEventMessage::WeatherWither { team_emoji, player, corrupted, contained } => {
@@ -4035,14 +4062,14 @@ impl<'g> Game<'g> {
                             food,
                         ))
                     }
-                    
+
                     let batting_team_score_before: u32 = updates.iter()
                         .map(|updates| updates.batting_consumed)
                         .sum();
                     let pitching_team_score_before: u32 = updates.iter()
                         .map(|updates| updates.defending_consumed)
                         .sum();
-                    
+
                     if batting_team_score_before + batting_team_progress != *batting_team_score {
                         ingest_logs.warn(format!(
                             "Batting team score before ({batting_team_score_before}) plus batting \
@@ -4132,7 +4159,7 @@ impl<'g> Game<'g> {
                         None
                     } else if batting_team_matches_winner {
                         ingest_logs.info("Batting team won the contest");
-                    
+
                         if self.batting_team().team_emoji != winning_team.emoji {
                             ingest_logs.error(format!(
                                 "We deduced that the batting team won, but the winning team's \
@@ -4142,7 +4169,7 @@ impl<'g> Game<'g> {
                                 self.batting_team().team_emoji,
                             ));
                         }
-                    
+
                         if self.batting_team().team_name != winning_team.name {
                             ingest_logs.error(format!(
                                 "We deduced that the batting team won, but the winning team's \
@@ -4152,7 +4179,7 @@ impl<'g> Game<'g> {
                                 self.batting_team().team_name,
                             ));
                         }
-                    
+
                         if self.defending_team().team_emoji != losing_team.emoji {
                             ingest_logs.error(format!(
                                 "We deduced that the defending team lost, but the losing team's \
@@ -4162,7 +4189,7 @@ impl<'g> Game<'g> {
                                 self.defending_team().team_emoji,
                             ));
                         }
-                    
+
                         if self.defending_team().team_name != losing_team.name {
                             ingest_logs.error(format!(
                                 "We deduced that the defending team lost, but the losing team's \
@@ -4226,7 +4253,7 @@ impl<'g> Game<'g> {
                         ));
                         None
                     };
-                    
+
                     if self.batting_team().team_emoji != contest_batting_team_player.emoji {
                         ingest_logs.error(format!(
                             "Batting team player's emoji ({}) did not match expected batting team \

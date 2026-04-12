@@ -1,16 +1,21 @@
 use crate::config::IngestibleConfig;
-use crate::ingest::{IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs, VersionStage1Ingest};
+use crate::ingest::{
+    IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs,
+    VersionStage1Ingest,
+};
+use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use futures::Stream;
 use itertools::Itertools;
 use mmolb_parsing::enums::Slot;
-use mmolb_parsing::{team::TeamPlayerCollection, AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized};
+use mmolb_parsing::{
+    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, team::TeamPlayerCollection,
+};
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{async_db, db, AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult};
+use mmoldb_db::{AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult, async_db, db};
 use std::str::FromStr;
 use std::sync::Arc;
-use futures::Stream;
-use chron::ChronEntity;
 
 pub struct TeamIngestFromVersions;
 
@@ -79,8 +84,13 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
         entity.entity_id.to_string()
     }
 
-    fn insert_batch(conn: &mut PgConnection, taxa: &Taxa, versions: &Vec<ChronEntity<Self::Entity>>) -> QueryResult<(usize, usize)> {
-        let new_team_versions = versions.iter()
+    fn insert_batch(
+        conn: &mut PgConnection,
+        taxa: &Taxa,
+        versions: &Vec<ChronEntity<Self::Entity>>,
+    ) -> QueryResult<(usize, usize)> {
+        let new_team_versions = versions
+            .iter()
             .map(|team| chron_team_as_new(taxa, &team.entity_id, team.valid_from, &team.data))
             .collect_vec();
 
@@ -91,7 +101,7 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
         conn: &mut AsyncPgConnection,
         kind: &str,
         cursor: Option<(NaiveDateTime, String)>,
-    ) -> QueryResult<impl Stream<Item=QueryResult<ChronEntity<serde_json::Value>>>> {
+    ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
         async_db::stream_versions_at_cursor(conn, kind, cursor).await
     }
 }
@@ -114,7 +124,7 @@ impl Ingestable for TeamIngest {
     fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
         vec![
             Arc::new(VersionStage1Ingest::new(Self::KIND)),
-            Arc::new(Stage2Ingest::new(Self::KIND, TeamIngestFromVersions))
+            Arc::new(Stage2Ingest::new(Self::KIND, TeamIngestFromVersions)),
         ]
     }
 }
@@ -132,23 +142,37 @@ fn chron_team_as_new<'a>(
     let mut ingest_logs = VersionIngestLogs::new(TeamIngest::KIND, team_id, valid_from);
 
     let new_team_players = match &team.players {
-        TeamPlayerCollection::Vec(v) => {
-            v.iter()
-                .enumerate()
-                .map(|(idx, pl)| {
-                    chron_team_player_as_new(taxa, team_id, valid_from, idx, pl, &pl.slot, &mut ingest_logs)
-                })
-                .collect_vec()
-        }
-        TeamPlayerCollection::Map(m) => {
-            m.iter()
-                .enumerate()
-                .map(|(idx, (slot_str, pl))| {
-                    let slot = Ok(maybe_recognized_from_str(&slot_str));
-                    chron_team_player_as_new(taxa, team_id, valid_from, idx, pl, &slot, &mut ingest_logs)
-                })
-                .collect_vec()
-        }
+        TeamPlayerCollection::Vec(v) => v
+            .iter()
+            .enumerate()
+            .map(|(idx, pl)| {
+                chron_team_player_as_new(
+                    taxa,
+                    team_id,
+                    valid_from,
+                    idx,
+                    pl,
+                    &pl.slot,
+                    &mut ingest_logs,
+                )
+            })
+            .collect_vec(),
+        TeamPlayerCollection::Map(m) => m
+            .iter()
+            .enumerate()
+            .map(|(idx, (slot_str, pl))| {
+                let slot = Ok(maybe_recognized_from_str(&slot_str));
+                chron_team_player_as_new(
+                    taxa,
+                    team_id,
+                    valid_from,
+                    idx,
+                    pl,
+                    &slot,
+                    &mut ingest_logs,
+                )
+            })
+            .collect_vec(),
     };
 
     let new_team = NewTeamVersion {
@@ -179,7 +203,6 @@ fn chron_team_as_new<'a>(
     (new_team, new_team_players, ingest_logs.into_vec())
 }
 
-
 pub fn chron_team_player_as_new<'a>(
     taxa: &Taxa,
     team_id: &'a str,
@@ -187,7 +210,7 @@ pub fn chron_team_player_as_new<'a>(
     idx: usize,
     pl: &'a mmolb_parsing::team::TeamPlayer,
     slot: &AddedLaterResult<MaybeRecognizedResult<Slot>>, // note this is NOT 'a
-    ingest_logs: &mut VersionIngestLogs
+    ingest_logs: &mut VersionIngestLogs,
 ) -> NewTeamPlayerVersion<'a> {
     // Note: I have to include undrafted players because the closeout
     // logic otherwise doesn't handle full team redraft properly
@@ -210,19 +233,19 @@ pub fn chron_team_player_as_new<'a>(
             }
             Err(AddedLater) => None,
         }
-            .or_else(|| match &pl.position {
-                Some(Ok(position)) => {
-                    Some(taxa.slot_id(BestEffortSlot::from_position(*position).into()))
-                }
-                Some(Err(NotRecognized(other))) => {
-                    ingest_logs.error(format!(
-                        "Failed to parse {} {}'s position ({other:?}",
-                        pl.first_name, pl.last_name
-                    ));
-                    None
-                }
-                None => None,
-            }),
+        .or_else(|| match &pl.position {
+            Some(Ok(position)) => {
+                Some(taxa.slot_id(BestEffortSlot::from_position(*position).into()))
+            }
+            Some(Err(NotRecognized(other))) => {
+                ingest_logs.error(format!(
+                    "Failed to parse {} {}'s position ({other:?}",
+                    pl.first_name, pl.last_name
+                ));
+                None
+            }
+            None => None,
+        }),
         // MMOLB uses "#" for undrafted players
         mmolb_player_id: if pl.player_id == "#" {
             None
@@ -234,8 +257,5 @@ pub fn chron_team_player_as_new<'a>(
 
 // copied out of mmolb_parsing
 pub(crate) fn maybe_recognized_from_str<T: FromStr>(value: &str) -> MaybeRecognizedResult<T> {
-    T::from_str(value).map_err(|_| {
-        NotRecognized(serde_json::Value::String(value.to_string()))
-    })
+    T::from_str(value).map_err(|_| NotRecognized(serde_json::Value::String(value.to_string())))
 }
-

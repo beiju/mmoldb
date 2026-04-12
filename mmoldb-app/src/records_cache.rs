@@ -1,14 +1,14 @@
-use strum::IntoEnumIterator;
-use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use diesel::Connection;
 use itertools::Itertools;
 use log::error;
-use serde::Serialize;
-use thiserror::Error;
-use tokio::task::JoinHandle;
 use mmoldb_db::ConnectionPool;
 use mmoldb_db::taxa::TaxaAttribute;
+use serde::Serialize;
+use std::sync::{Arc, Mutex};
+use strum::IntoEnumIterator;
+use thiserror::Error;
+use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GameTime {
@@ -93,7 +93,8 @@ enum RecordsCacheUpdate {
     InProgress {
         started: DateTime<Utc>,
         // TODO Why is this unused?
-        #[allow(unused)] task: JoinHandle<()>,
+        #[allow(unused)]
+        task: JoinHandle<()>,
     },
     Error(ComputeRecordsError),
 }
@@ -101,15 +102,17 @@ enum RecordsCacheUpdate {
 fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsError> {
     let mut conn = pool.get()?;
 
-    let latest_game = (*conn).transaction(mmoldb_db::db::latest_game)?
-        .map(|(time, season, day, superstar_day)| GameTime {
+    let latest_game = (*conn).transaction(mmoldb_db::db::latest_game)?.map(
+        |(time, season, day, superstar_day)| GameTime {
             time: time.and_utc(),
             season,
             day,
-            superstar_day
-        });
+            superstar_day,
+        },
+    );
 
-    let fastest_pitch = (*conn).transaction(mmoldb_db::db::fastest_pitch)?
+    let fastest_pitch = (*conn)
+        .transaction(mmoldb_db::db::fastest_pitch)?
         .map(|r| Record {
             title: "Fastest Pitch".to_string(),
             description: None,
@@ -126,7 +129,8 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
             record: format!("{:.1} MPH", r.pitch_speed),
         });
 
-    let most_pitches_by_player_in_one_game = (*conn).transaction(mmoldb_db::db::most_pitches_by_player_in_one_game)?
+    let most_pitches_by_player_in_one_game = (*conn)
+        .transaction(mmoldb_db::db::most_pitches_by_player_in_one_game)?
         .map(|r| Record {
             title: "Most pitches by a pitcher in one game".to_string(),
             description: Some("Including balks as pitches"),
@@ -142,54 +146,51 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
             record: format!("{} pitch-like events", r.num_pitch_like_events),
         });
 
-    let highest_scoring_game = (*conn).transaction(mmoldb_db::db::highest_scoring_game)?
-        .map(|g| {
-            Record {
-                title: "Highest scoring game".to_string(),
-                description: Some("Both teams combined"),
-                holder: RecordHolder::Game {
-                    mmolb_game_id: g.mmolb_game_id,
-                    away_team_mmolb_id: g.away_team_mmolb_id,
-                    away_team_emoji: g.away_team_emoji,
-                    away_team_full_name: g.away_team_name,
-                    home_team_mmolb_id: g.home_team_mmolb_id,
-                    home_team_emoji: g.home_team_emoji,
-                    home_team_full_name: g.home_team_name,
-                }
-                ,
-                record: match (g.away_team_final_score, g.home_team_final_score) {
-                    (Some(away), Some(home)) => format!("{away}-{home}"),
-                    (Some(away), None) => format!("{away}-?"),
-                    (None, Some(home)) => format!("?-{home}"),
-                    (None, None) => "?-?".to_string(),
-                },
-            }
+    let highest_scoring_game = (*conn)
+        .transaction(mmoldb_db::db::highest_scoring_game)?
+        .map(|g| Record {
+            title: "Highest scoring game".to_string(),
+            description: Some("Both teams combined"),
+            holder: RecordHolder::Game {
+                mmolb_game_id: g.mmolb_game_id,
+                away_team_mmolb_id: g.away_team_mmolb_id,
+                away_team_emoji: g.away_team_emoji,
+                away_team_full_name: g.away_team_name,
+                home_team_mmolb_id: g.home_team_mmolb_id,
+                home_team_emoji: g.home_team_emoji,
+                home_team_full_name: g.home_team_name,
+            },
+            record: match (g.away_team_final_score, g.home_team_final_score) {
+                (Some(away), Some(home)) => format!("{away}-{home}"),
+                (Some(away), None) => format!("{away}-?"),
+                (None, Some(home)) => format!("?-{home}"),
+                (None, None) => "?-?".to_string(),
+            },
         });
 
-    let highest_score_in_a_game = (*conn).transaction(mmoldb_db::db::highest_score_in_a_game)?
+    let highest_score_in_a_game = (*conn)
+        .transaction(mmoldb_db::db::highest_score_in_a_game)?
         .and_then(|g| g.away_team_final_score.map(|away_score| (g, away_score)))
         .and_then(|(g, away_score)| g.home_team_final_score.map(|s| (g, away_score, s)))
-        .map(|(g, away_score, home_score)| {
-            Record {
-                title: "Highest score in a game".to_string(),
-                description: Some("Single team"),
-                holder: if away_score > home_score {
-                    RecordHolder::TeamInGame {
-                        mmolb_game_id: g.mmolb_game_id,
-                        team_mmolb_id: g.away_team_mmolb_id,
-                        team_emoji: g.away_team_emoji,
-                        team_full_name: g.away_team_name,
-                    }
-                } else {
-                    RecordHolder::TeamInGame {
-                        mmolb_game_id: g.mmolb_game_id,
-                        team_mmolb_id: g.home_team_mmolb_id,
-                        team_emoji: g.home_team_emoji,
-                        team_full_name: g.home_team_name,
-                    }
-                },
-                record: format!("{} runs", std::cmp::max(away_score, home_score)),
-            }
+        .map(|(g, away_score, home_score)| Record {
+            title: "Highest score in a game".to_string(),
+            description: Some("Single team"),
+            holder: if away_score > home_score {
+                RecordHolder::TeamInGame {
+                    mmolb_game_id: g.mmolb_game_id,
+                    team_mmolb_id: g.away_team_mmolb_id,
+                    team_emoji: g.away_team_emoji,
+                    team_full_name: g.away_team_name,
+                }
+            } else {
+                RecordHolder::TeamInGame {
+                    mmolb_game_id: g.mmolb_game_id,
+                    team_mmolb_id: g.home_team_mmolb_id,
+                    team_emoji: g.home_team_emoji,
+                    team_full_name: g.home_team_name,
+                }
+            },
+            record: format!("{} runs", std::cmp::max(away_score, home_score)),
         });
 
     let longest_game_by_events = (*conn).transaction(mmoldb_db::db::longest_game_by_events)?
@@ -210,31 +211,33 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
             }
         });
 
-    let longest_game_by_innings = (*conn).transaction(mmoldb_db::db::longest_game_by_innings)?
-        .map(|g| {
-            Record {
-                title: "Longest game by innings".to_string(),
-                description: None,
-                holder: RecordHolder::Game {
-                    mmolb_game_id: g.mmolb_game_id,
-                    away_team_mmolb_id: g.away_team_mmolb_id,
-                    away_team_emoji: g.away_team_emoji,
-                    away_team_full_name: g.away_team_name,
-                    home_team_mmolb_id: g.home_team_mmolb_id,
-                    home_team_emoji: g.home_team_emoji,
-                    home_team_full_name: g.home_team_name,
-                },
-                record: format!("{} innings", g.count),
-            }
+    let longest_game_by_innings = (*conn)
+        .transaction(mmoldb_db::db::longest_game_by_innings)?
+        .map(|g| Record {
+            title: "Longest game by innings".to_string(),
+            description: None,
+            holder: RecordHolder::Game {
+                mmolb_game_id: g.mmolb_game_id,
+                away_team_mmolb_id: g.away_team_mmolb_id,
+                away_team_emoji: g.away_team_emoji,
+                away_team_full_name: g.away_team_name,
+                home_team_mmolb_id: g.home_team_mmolb_id,
+                home_team_emoji: g.home_team_emoji,
+                home_team_full_name: g.home_team_name,
+            },
+            record: format!("{} innings", g.count),
         });
 
     let attribute_records = TaxaAttribute::iter()
         .map(|attr| {
-            (*conn).transaction(|c| mmoldb_db::db::highest_reported_attribute(c, attr.into()))
-                .map(|r| r.map(|r| {
-                    Record {
+            (*conn)
+                .transaction(|c| mmoldb_db::db::highest_reported_attribute(c, attr.into()))
+                .map(|r| {
+                    r.map(|r| Record {
                         title: format!("Highest reported {attr} stars"),
-                        description: Some("As shown in the player report section with items and boons enabled"),
+                        description: Some(
+                            "As shown in the player report section with items and boons enabled",
+                        ),
                         holder: RecordHolder::Player {
                             mmolb_team_id: r.mmolb_team_id,
                             team_emoji: r.team_emoji,
@@ -244,8 +247,8 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
                             player_name: r.player_name,
                         },
                         record: format!("{}", r.value * 100.0),
-                    }
-                }))
+                    })
+                })
         })
         .filter_map_ok(|record| record)
         .collect::<Result<Vec<_>, _>>()?;
@@ -261,7 +264,8 @@ fn update_all_records(pool: ConnectionPool) -> Result<Records, ComputeRecordsErr
 
     Ok(Records {
         latest_game,
-        records: records.into_iter()
+        records: records
+            .into_iter()
             .filter_map(|record| record)
             .chain(attribute_records)
             .collect(),
@@ -278,22 +282,24 @@ impl RecordsCacheUpdate {
                 match update_all_records(pool.clone()) {
                     Ok(new_records) => {
                         {
-                            let mut records = records.lock()
-                                .expect("Error locking records for task");
+                            let mut records =
+                                records.lock().expect("Error locking records for task");
                             *records = Some(new_records);
                         }
                         {
-                            let mut update = update_for_task.lock()
+                            let mut update = update_for_task
+                                .lock()
                                 .expect("Error locking update for task");
                             *update = RecordsCacheUpdate::None;
                         }
-                    },
+                    }
                     Err(e) => {
                         error!("{e:?}");
-                        let mut update = update_for_task.lock()
+                        let mut update = update_for_task
+                            .lock()
                             .expect("Error locking update for task");
                         *update = RecordsCacheUpdate::Error(e);
-                    },
+                    }
                 }
 
                 let next_run_start = last_run_start + chrono::Duration::minutes(30);
@@ -307,8 +313,7 @@ impl RecordsCacheUpdate {
             }
         });
         {
-            let mut update = update.lock()
-                .expect("Error locking update for holder");
+            let mut update = update.lock().expect("Error locking update for holder");
             *update = Self::InProgress {
                 started: Utc::now(),
                 task,
@@ -327,18 +332,19 @@ impl RecordsCache {
     pub fn new(db: ConnectionPool) -> Self {
         let latest_records = Arc::new(Mutex::new(None));
         let active_update = RecordsCacheUpdate::new(db, latest_records.clone());
-        Self { active_update, latest_records }
+        Self {
+            active_update,
+            latest_records,
+        }
     }
 
     pub fn latest(&self) -> Option<Records> {
-        let records = self.latest_records.lock()
-            .expect("Error locking records");
+        let records = self.latest_records.lock().expect("Error locking records");
         records.clone()
     }
 
     pub fn update_date(&self) -> Option<DateTime<Utc>> {
-        let update = self.active_update.lock()
-            .expect("Error locking update");
+        let update = self.active_update.lock().expect("Error locking update");
         if let RecordsCacheUpdate::InProgress { started, .. } = *update {
             Some(started)
         } else {
@@ -347,8 +353,7 @@ impl RecordsCache {
     }
 
     pub fn update_error(&self) -> Option<String> {
-        let update = self.active_update.lock()
-            .expect("Error locking update");
+        let update = self.active_update.lock().expect("Error locking update");
         if let RecordsCacheUpdate::Error(err) = &*update {
             Some(format!("{}", err))
         } else {

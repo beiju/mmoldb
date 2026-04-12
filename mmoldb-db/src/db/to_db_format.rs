@@ -1,13 +1,25 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
+use crate::models::{
+    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth,
+    DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto,
+    NewBaserunner, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize,
+    NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent,
+    NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither,
+};
 use crate::taxa::Taxa;
-use crate::{ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome};
+use crate::{
+    ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome,
+};
 use itertools::Itertools;
+use log::warn;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
-use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Efflorescence, EfflorescenceOutcome, GrowAttributeChange, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, Item, ItemAffixes, ItemEquip, ItemPrize, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
+use mmolb_parsing::parsed_event::{
+    Cheer, DoorPrize, Efflorescence, EfflorescenceOutcome, Ejection, EjectionReason,
+    EjectionReplacement, EmojiTeam, GrowAttributeChange, Item, ItemAffixes, ItemEquip, ItemPrize,
+    PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle,
+};
 use std::str::FromStr;
-use log::warn;
 use strum::ParseError;
 use thiserror::Error;
 
@@ -132,7 +144,13 @@ pub fn event_to_ejection<'e>(
 ) -> Vec<NewEjection<'e>> {
     match &event.ejection {
         None => Vec::new(),
-        Some(Ejection::Ejection { team, ejected_player, violation_type, reason, replacement }) => vec![match replacement {
+        Some(Ejection::Ejection {
+            team,
+            ejected_player,
+            violation_type,
+            reason,
+            replacement,
+        }) => vec![match replacement {
             EjectionReplacement::BenchPlayer { player_name } => NewEjection {
                 event_id,
                 team_emoji: team.emoji,
@@ -167,7 +185,9 @@ pub fn event_to_failed_ejection<'e>(
     match &event.ejection {
         None => Vec::new(),
         Some(Ejection::Ejection { .. }) => Vec::new(),
-        Some(Ejection::FailedEjection { player_names: [player_name_1, player_name_2] }) => vec![NewFailedEjection {
+        Some(Ejection::FailedEjection {
+            player_names: [player_name_1, player_name_2],
+        }) => vec![NewFailedEjection {
             event_id,
             player_name_1,
             player_name_2,
@@ -196,7 +216,9 @@ pub fn event_to_door_prize<'e>(
         .collect()
 }
 
-pub fn split_affixes<'e>(item: &Item<&'e str>) -> (Vec<&'static str>, Vec<&'static str>, Option<&'e str>) {
+pub fn split_affixes<'e>(
+    item: &Item<&'e str>,
+) -> (Vec<&'static str>, Vec<&'static str>, Option<&'e str>) {
     match &item.affixes {
         ItemAffixes::None => (Vec::new(), Vec::new(), None),
         ItemAffixes::PrefixSuffix(prefixes, suffixes) => (
@@ -224,28 +246,39 @@ pub fn event_to_door_prize_items<'e>(
                 .map(|(item_index, prize)| {
                     let (prefixes, suffixes, rare_name) = split_affixes(&prize.item);
 
-                    let (equipped_by, (
-                        discarded_item_emoji,
-                        discarded_item_name,
-                        discarded_item_rare_name,
-                        discarded_item_prefixes,
-                        discarded_item_suffixes,
-                    ), prize_discarded) = match &prize.equip {
-                        ItemEquip::Equipped { player_name, discarded_item } => {
+                    let (
+                        equipped_by,
+                        (
+                            discarded_item_emoji,
+                            discarded_item_name,
+                            discarded_item_rare_name,
+                            discarded_item_prefixes,
+                            discarded_item_suffixes,
+                        ),
+                        prize_discarded,
+                    ) = match &prize.equip {
+                        ItemEquip::Equipped {
+                            player_name,
+                            discarded_item,
+                        } => {
                             let discarded_item = if let Some(discarded_item) = discarded_item {
                                 let (prefix, suffix, rare_name) = split_affixes(discarded_item);
-                                (Some(discarded_item.item_emoji), Some(discarded_item.item), rare_name, prefix, suffix)
+                                (
+                                    Some(discarded_item.item_emoji),
+                                    Some(discarded_item.item),
+                                    rare_name,
+                                    prefix,
+                                    suffix,
+                                )
                             } else {
                                 (None, None, None, Vec::new(), Vec::new())
                             };
                             (Some(*player_name), discarded_item, Some(false))
-                        },
+                        }
                         ItemEquip::Discarded => {
                             (None, (None, None, None, Vec::new(), Vec::new()), Some(true))
-                        },
-                        ItemEquip::None => {
-                            (None, (None, None, None, Vec::new(), Vec::new()), None)
                         }
+                        ItemEquip::None => (None, (None, None, None, Vec::new(), Vec::new()), None),
                     };
 
                     NewDoorPrizeItem {
@@ -309,14 +342,12 @@ pub fn event_to_efflorescence_growths<'e>(
             EfflorescenceOutcome::Grow(growths) => growths
                 .iter()
                 .enumerate()
-                .map(|(growth_index, growth)| {
-                    NewEfflorescenceGrowth {
-                        event_id,
-                        efflorescence_index: efflorescence_index as i32,
-                        growth_index: growth_index as i32,
-                        value: growth.amount,
-                        attribute: taxa.attribute_id(growth.attribute.into()),
-                    }
+                .map(|(growth_index, growth)| NewEfflorescenceGrowth {
+                    event_id,
+                    efflorescence_index: efflorescence_index as i32,
+                    growth_index: growth_index as i32,
+                    value: growth.amount,
+                    attribute: taxa.attribute_id(growth.attribute.into()),
                 })
                 .collect(),
         })
@@ -426,7 +457,13 @@ pub fn consumption_contest_to_rows<'e>(
         batting_team_tokens: contest.batting.tokens as i32,
         batting_team_prize_emoji: contest.batting.prize.as_ref().map(|p| p.item_emoji),
         batting_team_prize_name: contest.batting.prize.as_ref().map(|p| p.item.into()),
-        batting_team_prize_rare_name: contest.batting.prize.as_ref().and_then(|p| if let ItemAffixes::RareName(n) = p.affixes { Some(n) } else { None }),
+        batting_team_prize_rare_name: contest.batting.prize.as_ref().and_then(|p| {
+            if let ItemAffixes::RareName(n) = p.affixes {
+                Some(n)
+            } else {
+                None
+            }
+        }),
         batting_team_prize_prefixes: item_prefixes(contest.batting.prize.as_ref()),
         batting_team_prize_suffixes: item_suffixes(contest.batting.prize.as_ref()),
         defending_team_player_name: contest.defending.player_name,
@@ -434,7 +471,13 @@ pub fn consumption_contest_to_rows<'e>(
         defending_team_tokens: contest.defending.tokens as i32,
         defending_team_prize_emoji: contest.defending.prize.as_ref().map(|p| p.item_emoji),
         defending_team_prize_name: contest.defending.prize.as_ref().map(|p| p.item.into()),
-        defending_team_prize_rare_name: contest.defending.prize.as_ref().and_then(|p| if let ItemAffixes::RareName(n) = p.affixes { Some(n) } else { None }),
+        defending_team_prize_rare_name: contest.defending.prize.as_ref().and_then(|p| {
+            if let ItemAffixes::RareName(n) = p.affixes {
+                Some(n)
+            } else {
+                None
+            }
+        }),
         defending_team_prize_prefixes: item_prefixes(contest.defending.prize.as_ref()),
         defending_team_prize_suffixes: item_suffixes(contest.defending.prize.as_ref()),
     }
@@ -583,49 +626,51 @@ pub fn build_item<'e>(
         } else if prefixes.is_empty() && suffixes.is_empty() {
             ItemAffixes::None
         } else {
-            let prefixes = prefixes.iter()
+            let prefixes = prefixes
+                .iter()
                 .map(|maybe_prefix| {
-                    let prefix = maybe_prefix.as_ref()
-                        .ok_or_else(|| RowToEventError::NullPrizeItemPrefix {
+                    let prefix = maybe_prefix.as_ref().ok_or_else(|| {
+                        RowToEventError::NullPrizeItemPrefix {
                             door_prize_index,
                             item_index,
                             discarded,
                             player_name: player_name.to_string(),
-                        })?;
-                    
-                    ItemPrefix::from_str(&prefix)
-                        .map_err(|parse_error| {
-                            RowToEventError::InvalidPrizeItemPrefix {
-                                door_prize_index,
-                                item_index,
-                                discarded,
-                                player_name: player_name.to_string(),
-                                parse_error,
-                            }
-                        })
+                        }
+                    })?;
+
+                    ItemPrefix::from_str(&prefix).map_err(|parse_error| {
+                        RowToEventError::InvalidPrizeItemPrefix {
+                            door_prize_index,
+                            item_index,
+                            discarded,
+                            player_name: player_name.to_string(),
+                            parse_error,
+                        }
+                    })
                 })
                 .collect::<Result<Vec<ItemPrefix>, _>>()?;
 
-            let suffixes = suffixes.iter()
+            let suffixes = suffixes
+                .iter()
                 .map(|maybe_suffix| {
-                    let suffix = maybe_suffix.as_ref()
-                        .ok_or_else(|| RowToEventError::NullPrizeItemSuffix {
+                    let suffix = maybe_suffix.as_ref().ok_or_else(|| {
+                        RowToEventError::NullPrizeItemSuffix {
                             door_prize_index,
                             item_index,
                             discarded,
                             player_name: player_name.to_string(),
-                        })?;
-                    
-                    ItemSuffix::from_str(&suffix)
-                        .map_err(|parse_error| {
-                            RowToEventError::InvalidPrizeItemSuffix {
-                                door_prize_index,
-                                item_index,
-                                discarded,
-                                player_name: player_name.to_string(),
-                                parse_error,
-                            }
-                        })
+                        }
+                    })?;
+
+                    ItemSuffix::from_str(&suffix).map_err(|parse_error| {
+                        RowToEventError::InvalidPrizeItemSuffix {
+                            door_prize_index,
+                            item_index,
+                            discarded,
+                            player_name: player_name.to_string(),
+                            parse_error,
+                        }
+                    })
                 })
                 .collect::<Result<Vec<ItemSuffix>, _>>()?;
 
@@ -745,7 +790,7 @@ pub fn row_to_event<'e>(
             return Err(RowToEventError::InvalidNumberOfEjections(other));
         }
     };
-    
+
     let ejection = match (ejection, failed_ejection) {
         (None, None) => None,
         (Some(e), None) => Some(e),
@@ -894,8 +939,8 @@ pub fn row_to_event<'e>(
         .into_iter()
         .map(|efflorescence| {
             let mut growths = Vec::new();
-            while let Some(growth) =
-                efflorescence_growths_iter.next_if(|i| i.efflorescence_index == efflorescence.efflorescence_index)
+            while let Some(growth) = efflorescence_growths_iter
+                .next_if(|i| i.efflorescence_index == efflorescence.efflorescence_index)
             {
                 growths.push(GrowAttributeChange {
                     attribute: taxa.attribute_from_id(growth.attribute).into(),
@@ -905,7 +950,10 @@ pub fn row_to_event<'e>(
 
             if efflorescence.effloresced {
                 if !growths.is_empty() {
-                    warn!("Efflorescence had effloresced=true and growth items {:?}", growths);
+                    warn!(
+                        "Efflorescence had effloresced=true and growth items {:?}",
+                        growths
+                    );
                 }
 
                 Ok(Efflorescence {
@@ -950,7 +998,7 @@ pub fn row_to_event<'e>(
                 },
                 source_name: wither.source_player_name,
             })
-        },
+        }
         other => {
             return Err(RowToEventError::InvalidNumberOfWitherStruggles(other));
         }

@@ -1,16 +1,16 @@
+use crate::IngestFatalError;
 use crate::ingest_games::sim::{EventForTable, Game, SimStartupError};
 use crate::ingest_games::{check_round_trip, sim};
 use chron::ChronEntity;
 use chrono::Utc;
-use itertools::{Itertools, izip, Either};
+use itertools::{Either, Itertools, izip};
 use log::{debug, error, info};
 use miette::Context;
 use mmolb_parsing::enums::EventType;
-use serde::de::IntoDeserializer;
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{IngestLog, PgConnection, db};
-use crate::IngestFatalError;
+use serde::de::IntoDeserializer;
 
 pub trait GameExt {
     /// Returns true for any game which will never be updated. This includes all
@@ -69,9 +69,7 @@ pub fn ingest_page_of_games(
                     valid_to: game_json.valid_to,
                     data,
                 }),
-                Err(err) => {
-                    Either::Right((err, game_json.entity_id, game_json.valid_from))
-                },
+                Err(err) => Either::Right((err, game_json.entity_id, game_json.valid_from)),
             }
         })
         .collect::<Vec<_>>();
@@ -94,7 +92,7 @@ pub fn ingest_page_of_games(
                 game_id: entity_id,
                 from_version: *valid_from,
                 error_message: err.to_string(),
-            })
+            }),
         })
         .collect::<Result<Vec<_>, _>>()?;
     debug!(
@@ -420,7 +418,9 @@ fn prepare_completed_game_for_db(
                 }
                 EventForTable::Party(party) => parties.push(party),
                 EventForTable::WitherOutcome(wither) => withers.push(wither),
-                EventForTable::ConsumptionContest(consumption_contest) => consumption_contests.push(consumption_contest),
+                EventForTable::ConsumptionContest(consumption_contest) => {
+                    consumption_contests.push(consumption_contest)
+                }
             }
         }
     }

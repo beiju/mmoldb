@@ -4,7 +4,10 @@ use chrono::{DateTime, Utc};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use log::warn;
-use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaAttribute, TaxaAttributeCategory, TaxaDayType, TaxaEffectType, TaxaHandedness, TaxaSlot};
+use mmoldb_db::taxa::{
+    AsInsertable, Taxa, TaxaAttribute, TaxaAttributeCategory, TaxaDayType, TaxaEffectType,
+    TaxaHandedness, TaxaSlot,
+};
 use rocket::serde::Serialize;
 use rocket::serde::json::Json;
 use rocket::{State, get};
@@ -99,7 +102,7 @@ pub enum ApiPlayerEvent {
         category: TaxaAttributeCategory,
         attribute: TaxaAttribute,
         value: i32,
-    }
+    },
 }
 
 #[derive(Serialize)]
@@ -163,8 +166,7 @@ pub async fn player_versions<'a>(
                 mmoldb_db::db::get_player_equipment_versions(conn, &mmolb_player_id)?;
             let player_equipment_effects =
                 mmoldb_db::db::get_player_equipment_effect_versions(conn, &mmolb_player_id)?;
-            let player_reports =
-                mmoldb_db::db::get_player_report_versions(conn, &mmolb_player_id)?;
+            let player_reports = mmoldb_db::db::get_player_report_versions(conn, &mmolb_player_id)?;
             let player_report_attributes =
                 mmoldb_db::db::get_player_report_attribute_versions(conn, &mmolb_player_id)?;
 
@@ -174,8 +176,10 @@ pub async fn player_versions<'a>(
                 .collect_vec();
             let modifications = mmoldb_db::db::get_modifications(conn, &mod_ids)?;
 
-            let player_recompositions = mmoldb_db::db::get_player_recompositions(conn, &mmolb_player_id)?;
-            let player_attribute_augments = mmoldb_db::db::get_player_attribute_augments(conn, &mmolb_player_id)?;
+            let player_recompositions =
+                mmoldb_db::db::get_player_recompositions(conn, &mmolb_player_id)?;
+            let player_attribute_augments =
+                mmoldb_db::db::get_player_attribute_augments(conn, &mmolb_player_id)?;
             let player_parties = mmoldb_db::db::get_player_parties(conn, &mmolb_player_id)?;
 
             Ok::<_, ApiError>((
@@ -210,9 +214,11 @@ pub async fn player_versions<'a>(
     let mut next_player_version = player_versions.into_iter().peekable();
     let mut next_player_modification_version = player_modification_versions.into_iter().peekable();
     let mut next_player_equipment_version = player_equipment_versions.into_iter().peekable();
-    let mut next_player_equipment_effect_version = player_equipment_effect_versions.into_iter().peekable();
+    let mut next_player_equipment_effect_version =
+        player_equipment_effect_versions.into_iter().peekable();
     let mut next_player_report_version = player_report_versions.into_iter().peekable();
-    let mut next_player_report_attribute_version = player_report_attribute_versions.into_iter().peekable();
+    let mut next_player_report_attribute_version =
+        player_report_attribute_versions.into_iter().peekable();
     let mut next_attribute_augment = attribute_augments.into_iter().peekable();
     let mut next_player_party = player_parties.into_iter().peekable();
 
@@ -413,7 +419,8 @@ pub async fn player_versions<'a>(
             if let Some(elem) = reports.get_mut(&category) {
                 // Updated and new attributes will be filled in by the next step
                 let attributes = if let Some(mut elem) = elem.take() {
-                    report.included_attributes
+                    report
+                        .included_attributes
                         .iter()
                         .map(|attr| {
                             let Some(attr) = attr else {
@@ -439,7 +446,8 @@ pub async fn player_versions<'a>(
                         })
                         .collect()
                 } else {
-                    report.included_attributes
+                    report
+                        .included_attributes
                         .iter()
                         .map(|attr| {
                             let Some(attr) = attr else {
@@ -510,14 +518,17 @@ pub async fn player_versions<'a>(
         let player_name = format!("{} {}", player.first_name, player.last_name);
         // Scan forward to find a recomposition into this player name
         // I don't yet do anything to ensure the time is appropriate given the versions times
-        let recomposition_split = player_recompositions.iter()
+        let recomposition_split = player_recompositions
+            .iter()
             .position(|r| r.player_name_after == player_name);
         if let Some(split) = recomposition_split {
             for recomposition in player_recompositions.splice(0..=split, None) {
                 events.push(ApiPlayerEvent::Recomposition {
                     time: recomposition.time.and_utc(),
                     new_name: recomposition.player_name_after.clone(),
-                    reverts_recomposition: recomposition.reverts_recomposition.map(|dt| dt.and_utc()),
+                    reverts_recomposition: recomposition
+                        .reverts_recomposition
+                        .map(|dt| dt.and_utc()),
                 });
             }
         }

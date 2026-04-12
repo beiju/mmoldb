@@ -3,13 +3,13 @@ use crate::Db;
 use crate::web::error::AppError;
 use itertools::Itertools;
 use mmoldb_db::db;
+use mmoldb_db::db::Outcome;
 use mmoldb_db::models::DbPlayerVersion;
 use mmoldb_db::taxa::{AsInsertable, Taxa, TaxaDayType, TaxaEventType, TaxaSlot};
 use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 use std::collections::HashMap;
-use mmoldb_db::db::{Outcome};
 
 #[derive(Serialize)]
 pub struct PlayerContext<'r, 't> {
@@ -67,7 +67,9 @@ impl<'r, 't> PlayerContext<'r, 't> {
             likes: &raw.likes,
             dislikes: &raw.dislikes,
             durability: raw.durability,
-            slot: raw.slot.map(|id| taxa.slot_from_id(id).as_insertable().display_name),
+            slot: raw
+                .slot
+                .map(|id| taxa.slot_from_id(id).as_insertable().display_name),
         }
     }
 }
@@ -86,14 +88,19 @@ struct OutcomesSummary {
     everyone_total: i64,
 }
 
-fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa, summary: &HashMap<i64, HashMap<Option<i64>, i64>>, filter_to_fielder: Option<TaxaSlot>) -> OutcomesSummary {
+fn outcomes(
+    outcomes: Option<Vec<Outcome>>,
+    taxa: &Taxa,
+    summary: &HashMap<i64, HashMap<Option<i64>, i64>>,
+    filter_to_fielder: Option<TaxaSlot>,
+) -> OutcomesSummary {
     let outcomes = outcomes
         .unwrap_or(Vec::new())
         .into_iter()
         .filter_map(|outcome| {
             let et = taxa.event_type_from_id(outcome.event_type);
-            let everyone_count = summary.get(&outcome.event_type)
-                .and_then(|event_summary| if let Some(filter_slot) = filter_to_fielder {
+            let everyone_count = summary.get(&outcome.event_type).and_then(|event_summary| {
+                if let Some(filter_slot) = filter_to_fielder {
                     let filter_location = filter_slot.as_insertable().location;
                     if let Some(location) = filter_location {
                         event_summary.get(&Some(location)).cloned()
@@ -108,7 +115,8 @@ fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa, summary: &HashMap<i64, 
                     None
                 } else {
                     Some(event_summary.iter().map(|(_, count)| *count).sum())
-                });
+                }
+            });
             if let Some(et) = et {
                 let et_info = et.as_insertable();
                 if !et_info.ends_plate_appearance {
@@ -128,10 +136,7 @@ fn outcomes(outcomes: Option<Vec<Outcome>>, taxa: &Taxa, summary: &HashMap<i64, 
             }
         })
         .collect_vec();
-    let player_total = outcomes
-        .iter()
-        .map(|stats| stats.player_count)
-        .sum();
+    let player_total = outcomes.iter().map(|stats| stats.player_count).sum();
     let everyone_total = outcomes
         .iter()
         .filter_map(|stats| stats.everyone_count)
@@ -151,17 +156,21 @@ pub async fn player(
     db: Db,
     taxa: &State<Taxa>,
 ) -> Result<Template, AppError> {
-    let (player_all, averages) = db.run(move |conn| {
-        let player_all = db::player_all(conn, &player_id, season)?;
-        let averages = db::season_averages(conn, season)?;
-        Ok::<_, AppError>((player_all, averages))
-    }).await?;
+    let (player_all, averages) = db
+        .run(move |conn| {
+            let player_all = db::player_all(conn, &player_id, season)?;
+            let averages = db::season_averages(conn, season)?;
+            Ok::<_, AppError>((player_all, averages))
+        })
+        .await?;
 
-    let averages: HashMap<_, HashMap<_, _>> = averages.into_iter()
+    let averages: HashMap<_, HashMap<_, _>> = averages
+        .into_iter()
         .chunk_by(|stat| stat.event_type)
         .into_iter()
         .map(|(event_type, stat_group)| {
-            let inner_map = stat_group.into_iter()
+            let inner_map = stat_group
+                .into_iter()
                 .map(|stat| (stat.fair_ball_direction, stat.count))
                 .collect();
 
@@ -172,7 +181,8 @@ pub async fn player(
     let raw_clone = player_all.player.clone();
     let player = PlayerContext::from_db(&raw_clone, &taxa);
 
-    let total_events = player_all.pitch_types
+    let total_events = player_all
+        .pitch_types
         .as_ref()
         .map(|pitches| pitches.iter().map(|info| info.count).sum::<i64>());
 
@@ -244,8 +254,12 @@ pub async fn player(
     });
 
     let pitching_outcomes = outcomes(player_all.pitching_outcomes, taxa, &averages, None);
-    let fielding_outcomes = outcomes(player_all.fielding_outcomes, taxa, &averages,
-                                     player_all.player.slot.map(|id| taxa.slot_from_id(id)));
+    let fielding_outcomes = outcomes(
+        player_all.fielding_outcomes,
+        taxa,
+        &averages,
+        player_all.player.slot.map(|id| taxa.slot_from_id(id)),
+    );
     let batting_outcomes = outcomes(player_all.batting_outcomes, taxa, &averages, None);
 
     Ok(Template::render(
