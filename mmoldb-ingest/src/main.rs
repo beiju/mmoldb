@@ -52,7 +52,7 @@ fn get_resource() -> Resource {
     RESOURCE
         .get_or_init(|| {
             Resource::builder()
-                .with_service_name("basic-otlp-example-http")
+                .with_service_name("mmoldb")
                 .build()
         })
         .clone()
@@ -412,6 +412,11 @@ async fn ingest_everything(
     });
 
     let memory_tracking_task = tokio::task::spawn_blocking({
+        let mem_meter = global::meter("memory-meter");
+        let mem_gauge = mem_meter
+            .u64_gauge("memory-gauge")
+            .with_unit("bytes")
+            .build();
         let stop_entity_counting = stop_entity_counting.clone();
         move || {
             loop {
@@ -419,7 +424,9 @@ async fn ingest_everything(
                     break;
                 }
 
-                println!("Total memory allocated: {}", format_size(ALLOCATOR.allocated(), BINARY));
+                let allocated = ALLOCATOR.allocated();
+                println!("Total memory allocated: {}", format_size(allocated, BINARY));
+                mem_gauge.record(allocated as u64, &[]);
             }
         }
     });
