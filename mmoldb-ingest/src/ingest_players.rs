@@ -728,12 +728,26 @@ fn chron_player_as_new<'a>(
         }
 
         for bonus in bonuses {
-            let Ok(cat) = AttributeCategory::try_from(bonus.attribute) else {
-                ingest_logs.warn(format!(
-                    "Unexpected uncategorized attribute in BaseAttributeBonuses: {}.",
-                    bonus.attribute
-                ));
-                continue;
+            let cat = match AttributeCategory::try_from(bonus.attribute) {
+                Ok(cat) => cat,
+                Err(Uncategorized(attr)) => match attr {
+                    Attribute::Priority => {
+                        // Ignore priority, it's on the root object anyway
+                        continue;
+                    }
+                    Attribute::Luck => {
+                        // Override luck to defense, otherwise it won't be stored in the database at all
+                        // TODO: Fix it so I don't have to do this
+                        AttributeCategory::Defense
+                    }
+                    _ => {
+                        ingest_logs.warn(format!(
+                            "Unexpected uncategorized attribute {attr} for s10+ augment. \
+                            This agument will not be stored in MMOLDB.",
+                        ));
+                        continue;
+                    }
+                },
             };
 
             let (_, report_attributes) = reports

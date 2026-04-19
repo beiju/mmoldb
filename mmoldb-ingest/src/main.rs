@@ -6,17 +6,22 @@ mod ingest_player_feed;
 mod ingest_players;
 mod ingest_team_feed;
 mod ingest_teams;
+mod logging_setup;
 mod partitioner;
 mod signal;
 
+use std::pin::Pin;
+use tokio::task::JoinHandle;
+use tokio::signal::unix as tokio_signal;
+use opentelemetry::global;
 use crate::ingest_teams::TeamIngest;
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use config::IngestConfig;
-use futures::pin_mut;
+use futures::{pin_mut, FutureExt, StreamExt};
 use log::{debug, error, info};
-use miette::{GraphicalReportHandler, IntoDiagnostic};
-use mmoldb_db::{ConnectionPool, db};
+use miette::{Context, GraphicalReportHandler, IntoDiagnostic};
+use mmoldb_db::{ConnectionPool, db, QueryResult, PgConnection};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -25,192 +30,145 @@ use crate::ingest_player_feed::PlayerFeedIngest;
 use crate::ingest_players::PlayerIngest;
 use crate::ingest_team_feed::TeamFeedIngest;
 use cap::Cap;
-use humansize::{BINARY, format_size};
 pub use ingest::*;
-use opentelemetry::{
-    InstrumentationScope, KeyValue, global,
-    trace::{TraceContextExt, Tracer},
-};
-use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_otlp::{LogExporter, MetricExporter, Protocol, SpanExporter};
-use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::{
-    logs::SdkLoggerProvider, metrics::SdkMeterProvider, trace::SdkTracerProvider,
-};
 use std::alloc;
-use std::sync::OnceLock;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::prelude::*;
+use futures::stream::FuturesUnordered;
+
+static MEMORY_TRACKING_PERIOD_MS: u64 = 10_000;
 
 #[global_allocator]
 static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::MAX);
 
-fn get_resource() -> Resource {
-    static RESOURCE: OnceLock<Resource> = OnceLock::new();
-    RESOURCE
-        .get_or_init(|| Resource::builder().with_service_name("mmoldb").build())
-        .clone()
-}
+async fn memory_tracking_task(shutdown_requested: CancellationToken) {
+    let gauge = global::meter("memory-meter")
+        .u64_gauge("memory-gauge")
+        .with_unit("bytes")
+        .build();
+    let mut interval = tokio::time::interval(Duration::from_millis(MEMORY_TRACKING_PERIOD_MS));
 
-fn init_logs() -> SdkLoggerProvider {
-    let exporter = LogExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary)
-        .build()
-        .expect("Failed to create log exporter");
+    loop {
+        let allocated = ALLOCATOR.allocated();
+        gauge.record(allocated as u64, &[]);
 
-    SdkLoggerProvider::builder()
-        .with_batch_exporter(exporter)
-        .with_resource(get_resource())
-        .build()
-}
-
-fn init_traces() -> SdkTracerProvider {
-    let exporter = SpanExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary) //can be changed to `Protocol::HttpJson` to export in JSON format
-        .build()
-        .expect("Failed to create trace exporter");
-
-    SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
-        .with_resource(get_resource())
-        .build()
-}
-
-fn init_metrics() -> SdkMeterProvider {
-    let exporter = MetricExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary) //can be changed to `Protocol::HttpJson` to export in JSON format
-        .build()
-        .expect("Failed to create metric exporter");
-
-    SdkMeterProvider::builder()
-        .with_periodic_exporter(exporter)
-        .with_resource(get_resource())
-        .build()
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = shutdown_requested.cancelled() => { break; }
+        }
+    }
 }
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
-    let logger_provider = init_logs();
+    // Logging first so it can capture as much as possible
+    logging_setup::set_up_opentelemetry_logging();
 
-    // Create a new OpenTelemetryTracingBridge using the above LoggerProvider.
-    let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
+    // Then all other setup tasks in approximate order of how quickly
+    // they'll fail if they're going to fail
+    let (sigterm, sigint) = get_signal_listeners()?;
+    let config = get_config()?;
+    let pool = mmoldb_db::get_pool(config.db_pool_size).into_diagnostic()?;
+    {
+        let mut conn = pool.get().into_diagnostic()?;
+        set_statement_timeout(&mut conn, config.set_postgres_statement_timeout).into_diagnostic()?;
+    }
+    mmoldb_db::run_migrations().into_diagnostic()?;
 
-    // To prevent a telemetry-induced-telemetry loop, OpenTelemetry's own internal
-    // logging is properly suppressed. However, logs emitted by external components
-    // (such as reqwest, tonic, etc.) are not suppressed as they do not propagate
-    // OpenTelemetry context. Until this issue is addressed
-    // (https://github.com/open-telemetry/opentelemetry-rust/issues/2877),
-    // filtering like this is the best way to suppress such logs.
-    //
-    // The filter levels are set as follows:
-    // - Allow `info` level and above by default.
-    // - Completely restrict logs from `hyper`, `tonic`, `h2`, and `reqwest`.
-    //
-    // Note: This filtering will also drop logs from these components even when
-    // they are used outside of the OTLP Exporter.
-    let filter_otel = EnvFilter::new("info")
-        .add_directive("hyper=off".parse().unwrap())
-        .add_directive("tonic=off".parse().unwrap())
-        .add_directive("h2=off".parse().unwrap())
-        .add_directive("reqwest=off".parse().unwrap());
-    let otel_layer = otel_layer.with_filter(filter_otel);
+    // Task coordination variables
+    let shutdown_requested = tokio_util::sync::CancellationToken::new();
+    // Writing out the full type for better error messages
+    // TODO Get rid of errors. Handle all exceptional conditions without exiting.
+    let tasks = FuturesUnordered::<JoinHandle<Result<(), IngestFatalError>>>::new();
 
-    // Create a new tracing::Fmt layer to print the logs to stdout.
-    let filter_fmt = EnvFilter::new("info");
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_thread_names(true)
-        .with_filter(filter_fmt);
+    // Launch background, non-ingest tasks
+    tasks.push(tokio::task::spawn(memory_tracking_task(shutdown_requested.clone()).map(Ok)));
 
-    // Initialize the tracing subscriber with the OpenTelemetry layer and the
-    // Fmt layer.
-    tracing_subscriber::registry()
-        .with(otel_layer)
-        .with(fmt_layer)
-        .init();
+    // Launch ingest tasks
+    let ingest_kinds = ingest::ingest_kinds(&shutdown_requested, &pool, config);
+    for ingest_kind in &ingest_kinds {
+        let ingest_kind = ingest_kind.clone();
+        let task = tokio::task::spawn(async move { ingest_kind.fetch_task().await });
+        tasks.push(task);
+    }
 
-    // At this point Logs (OTel Logs and Fmt Logs) are initialized, which will
-    // allow internal-logs from Tracing/Metrics initializer to be captured.
+    wait_until_shutdown(tasks, sigterm, sigint, shutdown_requested).await
+}
 
-    let tracer_provider = init_traces();
-    // Set the global tracer provider using a clone of the tracer_provider.
-    // Setting global tracer provider is required if other parts of the application
-    // uses global::tracer() or global::tracer_with_version() to get a tracer.
-    // Cloning simply creates a new reference to the same tracer provider. It is
-    // important to hold on to the tracer_provider here, so as to invoke
-    // shutdown on it when application ends.
-    global::set_tracer_provider(tracer_provider.clone());
+fn get_signal_listeners() -> miette::Result<(tokio_signal::Signal, tokio_signal::Signal)> {
+    let sigterm = tokio_signal::signal(tokio_signal::SignalKind::terminate())
+        .into_diagnostic()
+        .wrap_err("trying to set up SIGTERM listener")?;
+    let sigint = tokio_signal::signal(tokio_signal::SignalKind::interrupt())
+        .into_diagnostic()
+        .wrap_err("trying to set up SIGINT listener")?;
+    Ok((sigterm, sigint))
+}
 
-    let meter_provider = init_metrics();
-    // Set the global meter provider using a clone of the meter_provider.
-    // Setting global meter provider is required if other parts of the application
-    // uses global::meter() or global::meter_with_version() to get a meter.
-    // Cloning simply creates a new reference to the same meter provider. It is
-    // important to hold on to the meter_provider here, so as to invoke
-    // shutdown on it when application ends.
-    global::set_meter_provider(meter_provider.clone());
-
+fn get_config() -> miette::Result<&'static IngestConfig> {
     let config = IngestConfig::config().into_diagnostic()?;
     let config = Box::new(config);
     let config = Box::<IngestConfig>::leak(config);
-    let pool = mmoldb_db::get_pool(config.db_pool_size).into_diagnostic()?;
+    Ok(config)
+}
 
-    mmoldb_db::run_migrations().into_diagnostic()?;
+fn set_statement_timeout(conn: &mut PgConnection, statement_timeout: Option<i64>) -> QueryResult<()> {
+    if let Some(statement_timeout) = statement_timeout {
+        if statement_timeout < 0 {
+            panic!("Negative STATEMENT_TIMEOUT_SEC not allowed ({statement_timeout})");
+        } else if statement_timeout > 0 {
+            info!(
+                "Setting our account's statement timeout to {statement_timeout} ({})",
+                HumanTime::from(chrono::Duration::seconds(statement_timeout))
+                    .to_text_en(Accuracy::Precise, Tense::Present),
+            );
+        } else {
+            // Postgres interprets 0 as no timeout
+            info!("Setting our account's statement timeout to no timeout");
+        }
+        db::set_current_user_statement_timeout(conn, statement_timeout)?;;
+    }
 
-    let mut previous_ingest_start_time = if config.start_ingest_every_launch {
-        None
-    } else {
-        let mut conn = pool.get().into_diagnostic()?;
-        db::latest_ingest_start_time(&mut conn)
-            .into_diagnostic()?
-            .map(|dt| dt.and_utc())
+    Ok(())
+}
+
+async fn wait_until_shutdown(
+    mut tasks: FuturesUnordered<JoinHandle<Result<(), IngestFatalError>>>,
+    mut sigterm: tokio_signal::Signal,
+    mut sigint: tokio_signal::Signal,
+    shutdown_requested: CancellationToken,
+) -> miette::Result<()> {
+
+    // Wait for tasks
+    tokio::select! {
+        // Wait for sigint and sigterm to respond to them appropriately
+        _ = sigterm.recv() => {
+            info!("Got SIGTERM. Setting shutdown_requested and waiting for tasks to exit...");
+        },
+        _ = sigint.recv() => {
+            info!("Got SIGINT. This may be changed to wait for ingest consistency in future. But for now, setting shutdown_requested and waiting for tasks to exit...");
+        },
+        // Wait for tasks to catch any that error, which is the only way any of these tasks should exit without being requested to.
+        res = tasks.select_next_some() => {
+            match &res {
+                Ok(_) => panic!("Tasks shouldn't exit Ok(_) before a cancellation token is set"),
+                Err(e) => error!("Setting shutdown_requested because a task failed: {}", e),
+            }
+        }
     };
 
-    loop {
-        let (why, ingest_start) = if let Some(prev_start) = previous_ingest_start_time {
-            let next_start = prev_start + chrono::Duration::seconds(config.ingest_period);
-            let wait_duration_chrono = next_start - Utc::now();
-
-            // std::time::Duration can't represent negative durations.
-            // Conveniently, the conversion from chrono to std also
-            // performs the negativity check we would be doing anyway.
-            match wait_duration_chrono.to_std() {
-                Ok(wait_duration) => {
-                    info!("Next ingest {}", HumanTime::from(wait_duration_chrono));
-                    tokio::select! {
-                        _ = tokio::time::sleep(wait_duration) => {},
-                        _ = signal::wait_for_signal() => { break; }
-                    }
-
-                    let why = format!("after waiting {}", HumanTime::from(wait_duration_chrono));
-                    (why, next_start)
-                }
-                Err(_) => {
-                    // Indicates the wait duration was negative
-                    let why = format!(
-                        "immediately (next scheduled ingest was {})",
-                        HumanTime::from(next_start)
-                    );
-                    (why, Utc::now())
-                }
+    shutdown_requested.cancel();
+    info!("Trying to shut down. Waiting for all tasks...");
+    for task in tasks {
+        match task.await {
+            Ok(Ok(())) => {
+                info!("Successfully shut down the task")
+            },
+            Ok(Err(internal_error)) => {
+                error!("Ingest fatal error: {}", internal_error);
+            },
+            Err(join_error) => {
+                error!("Error joining task: {}", join_error);
             }
-        } else if config.start_ingest_every_launch {
-            let why = "immediately (start_ingest_every_launch is true)".to_string();
-            (why, Utc::now())
-        } else {
-            let why = "immediately (this is the first ingest)".to_string();
-            (why, Utc::now())
-        };
-
-        // I put this outside the `if` cluster intentionally, so the
-        // compiler will error if I miss a code path
-        info!("Starting ingest {why}");
-        previous_ingest_start_time = Some(ingest_start);
-
-        run_one_ingest(pool.clone(), config).await;
+        }
     }
 
     Ok(())
@@ -421,25 +379,7 @@ async fn ingest_everything(
         || refresh_entity_counting_matviews_repeatedly(pool, stop_entity_counting)
     });
 
-    let memory_tracking_task = tokio::task::spawn_blocking({
-        let mem_meter = global::meter("memory-meter");
-        let mem_gauge = mem_meter
-            .u64_gauge("memory-gauge")
-            .with_unit("bytes")
-            .build();
-        let stop_entity_counting = stop_entity_counting.clone();
-        move || {
-            loop {
-                if block_until_exit(stop_entity_counting.clone(), Duration::from_secs(10)) {
-                    break;
-                }
 
-                let allocated = ALLOCATOR.allocated();
-                println!("Total memory allocated: {}", format_size(allocated, BINARY));
-                mem_gauge.record(allocated as u64, &[]);
-            }
-        }
-    });
 
     let mut errs = ingest_while_counting_task_runs(pool.clone(), ingest_id, abort, config).await;
 
@@ -460,14 +400,6 @@ async fn ingest_everything(
             stage_name: "Counting task".to_string(),
             error: IngestFatalError::JoinError(error),
         }),
-    }
-
-    info!("Waiting for memory tracking task to finish");
-    match memory_tracking_task.await {
-        Ok(()) => {}
-        Err(error) => {
-            error!("Error joining memory counting task: {}", error)
-        }
     }
 
     info!("Refreshing materialized views");

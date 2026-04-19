@@ -1,8 +1,11 @@
-use crate::config::IngestibleConfig;
+mod fetch;
+
+use tracing::{info_span, span, Instrument, Level};
+use crate::config::{IngestConfig, IngestibleConfig};
 use crate::partitioner::Partitioner;
 use chron::{Chron, ChronEntity, ChronStreamError};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use futures::{Stream, StreamExt, TryStreamExt, pin_mut};
+use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
 use itertools::{Either, Itertools};
@@ -11,8 +14,8 @@ use miette::Diagnostic;
 use mmoldb_db::models::NewVersionIngestLog;
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{
-    AsyncConnection, AsyncPgConnection, ConnectionPool, PgConnection, QueryError, QueryResult,
-    async_db, db,
+    async_db, db, AsyncConnection, AsyncPgConnection, ConnectionPool, PgConnection,
+    QueryError, QueryResult,
 };
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -23,12 +26,16 @@ use std::iter;
 use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinError;
+use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
+pub use fetch::ChronFetchArgs;
+
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -328,6 +335,7 @@ impl VersionStage1Ingest {
     }
 
     async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
+        todo!("Delete and replace all calls with fetch::fetch_version_kind");
         let mut conn = args.pool.get()?;
         let chron = Chron::new(args.config.chron_fetch_batch_size);
 
@@ -441,6 +449,7 @@ async fn insert_feed_event_versions_from_stream(
     wake_next_stage: Arc<Notify>,
     debug_db_insert_delay: f64,
 ) -> Result<(), IngestFatalError> {
+    todo!("Delete and replace with equivalent from ingest/fetch.rs");
     let start_cursor = db::get_latest_raw_feed_event_version_cursor(conn, insert_as_kind)
         .map_err(|e| {
             info!("Error {e}");
@@ -536,6 +545,7 @@ fn filter_cached(
     event_cache: &mut HashMap<(String, i32), serde_json::Value>,
     result: &Result<(String, i32, NaiveDateTime, serde_json::Value), IngestFatalError>,
 ) -> bool {
+    todo!("This is now a duplicate");
     match result {
         Ok((id, idx, _, item)) => {
             match event_cache.entry((id.clone(), *idx)) {
@@ -566,6 +576,7 @@ impl FeedEventVersionStage1Ingest {
     }
 
     async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
+        todo!("Replace all calls with the equivalent in ingest/fetch.rs");
         let mut conn = args.pool.get()?;
 
         let url = mmoldb_db::postgres_url_from_environment();
@@ -1163,4 +1174,127 @@ pub fn batch_by_entity<KeyT: Clone + Eq + Hash, DataT>(
 
         Some(batch)
     })
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum VersionedIngestKind {
+    Team,
+    Player,
+}
+
+impl VersionedIngestKind {
+    fn as_kind(self) -> &'static str {
+        match self {
+            VersionedIngestKind::Team => "team",
+            VersionedIngestKind::Player => "player",
+        }
+    }
+
+    fn as_feed_event_kind(self) -> &'static str {
+        match self {
+            VersionedIngestKind::Team => "team_feed",
+            VersionedIngestKind::Player => "player_feed",
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum EntityIngestKind {
+    Game,
+}
+
+impl EntityIngestKind {
+    fn as_kind(self) -> &'static str {
+        match self {
+            EntityIngestKind::Game => "game",
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum IngestKind {
+    Versioned(VersionedIngestKind),
+    Feed(VersionedIngestKind),
+    Entity(EntityIngestKind),
+}
+
+#[derive(Debug)]
+pub struct IngestForKind {
+    kind: IngestKind,
+    fetch_args: ChronFetchArgs,
+}
+
+impl IngestForKind {
+    pub fn new(kind: IngestKind, fetch_args: ChronFetchArgs) -> Self {
+        Self { kind, fetch_args }
+    }
+
+    /// The indefinite fetch task. Repeats until canceled.
+    pub async fn fetch_task(&self) -> Result<(), IngestFatalError> {
+        let mut interval = tokio::time::interval(Duration::from_secs(self.fetch_args.chron_fetch_interval_seconds));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+        while !self.fetch_args.shutdown_requested.is_cancelled() {
+            debug!("Sleeping until it's time for the next {:?} fetch", self.kind);
+            tokio::select! {
+                biased;
+                _ = self.fetch_args.shutdown_requested.cancelled() => {
+                    break; // Shutdown requested, break and return immediately
+                }
+                _ = interval.tick() => {}, // Tick finishes, just proceed with the loop
+            }
+
+            info!("Beginning next {:?} fetch", self.kind);
+            self.fetch_all_available().await?;
+        }
+
+        Ok(())
+    }
+
+    /// One single instance of fetch. Exits once Chron says we're caught up,
+    /// or when canceled.
+    async fn fetch_all_available(&self) -> Result<(), IngestFatalError> {
+        match self.kind {
+            IngestKind::Versioned(kind) => {
+                fetch::fetch_version_kind(kind.as_kind(), self.fetch_args.clone())
+                    .instrument(info_span!("fetch_task", kind = kind.as_kind()))
+                    .await
+            },
+            IngestKind::Feed(kind) => {
+                fetch::fetch_feed_event_version_kind(kind.as_feed_event_kind(), self.fetch_args.clone())
+                    .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind()))
+                    .await
+            },
+            IngestKind::Entity(kind) => {
+                fetch::fetch_entity_kind(kind.as_kind(), self.fetch_args.clone())
+                    .instrument(info_span!("fetch_task", kind = kind.as_kind()))
+                    .await
+            },
+        }
+    }
+}
+
+pub fn ingest_kinds(shutdown_requested: &CancellationToken, pool: &ConnectionPool, config: &'static IngestConfig) -> Vec<Arc<IngestForKind>> {
+    let kinds_configs = [
+        (IngestKind::Versioned(VersionedIngestKind::Team), &config.team_ingest),
+        (IngestKind::Feed(VersionedIngestKind::Team), &config.team_feed_ingest),
+        (IngestKind::Versioned(VersionedIngestKind::Player), &config.player_ingest),
+        (IngestKind::Feed(VersionedIngestKind::Player), &config.player_feed_ingest),
+        (IngestKind::Entity(EntityIngestKind::Game), &config.game_ingest),
+    ];
+
+    kinds_configs
+        .into_iter()
+        .map(|(kind, kind_config)| {
+            let fetch_args = ChronFetchArgs {
+                shutdown_requested: shutdown_requested.clone(),
+                pool: pool.clone(),
+                use_local_cheap_cashews: config.use_local_cheap_cashews,
+                chron_fetch_interval_seconds: kind_config.chron_fetch_interval_seconds,
+                chron_fetch_batch_size: kind_config.chron_fetch_batch_size,
+                insert_raw_entity_batch_size: kind_config.insert_raw_entity_batch_size,
+            };
+            Arc::new(IngestForKind::new(kind, fetch_args))
+        })
+        .collect()
 }

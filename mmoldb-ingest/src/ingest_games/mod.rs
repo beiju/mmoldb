@@ -326,6 +326,7 @@ async fn ingest_raw_games(
     notify: Arc<Notify>,
     use_local_cheap_cashews: bool,
 ) -> Result<(), IngestFatalError> {
+    todo!("This has been replaced in fetch.rs");
     let start_date = db::get_latest_entity_valid_from(conn, GAME_KIND)?
         .as_ref()
         .map(NaiveDateTime::and_utc);

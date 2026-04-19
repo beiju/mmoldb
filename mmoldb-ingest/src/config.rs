@@ -8,6 +8,7 @@ use std::num::NonZero;
 pub struct IngestibleConfig {
     pub enable: bool,
     pub chron_fetch_batch_size: usize,
+    pub chron_fetch_interval_seconds: u64,
     pub insert_raw_entity_batch_size: usize,
     pub process_batch_size: usize,
     pub ingest_parallelism: Option<NonZero<usize>>,
@@ -18,6 +19,7 @@ impl Default for IngestibleConfig {
     fn default() -> Self {
         Self {
             enable: true,
+            chron_fetch_interval_seconds: 10 * 60,
             chron_fetch_batch_size: 1000,
             insert_raw_entity_batch_size: 1000,
             process_batch_size: 1000,
@@ -29,8 +31,6 @@ impl Default for IngestibleConfig {
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct IngestConfig {
-    pub start_ingest_every_launch: bool,
-    pub ingest_period: i64,
     pub db_pool_size: u32,
     pub set_postgres_statement_timeout: Option<i64>,
     pub use_local_cheap_cashews: bool,
@@ -45,8 +45,6 @@ pub struct IngestConfig {
 impl Default for IngestConfig {
     fn default() -> Self {
         Self {
-            start_ingest_every_launch: true,
-            ingest_period: 30 * 60, // 30 minutes in seconds
             db_pool_size: 20,
             set_postgres_statement_timeout: Some(0), // 0 means no timeout
             use_local_cheap_cashews: false,
