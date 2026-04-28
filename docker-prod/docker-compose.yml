@@ -66,9 +66,3 @@ services:
     cpus: 4
     mem_limit: 4g
     memswap_limit: 8g
-  uptrace:
-    image: uptrace/uptrace:latest
-    ports:
-      - '4317:4317' # OTLP gRPC
-      - '443:443' # OTLP HTTP
-      - '14318:14318' # Uptrace web
