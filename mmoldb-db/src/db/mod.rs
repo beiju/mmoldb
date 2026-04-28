@@ -135,36 +135,6 @@ pub fn entity_counts(conn: &mut PgConnection) -> QueryResult<HashMap<String, (i6
         .collect())
 }
 
-#[derive(QueryableByName)]
-pub struct IngestWithGameCount {
-    #[diesel(sql_type = Int8)]
-    pub id: i64,
-    #[diesel(sql_type = Timestamp)]
-    pub started_at: NaiveDateTime,
-    #[diesel(sql_type = Nullable<Timestamp>)]
-    pub finished_at: Option<NaiveDateTime>,
-    #[diesel(sql_type = Nullable<Timestamp>)]
-    pub aborted_at: Option<NaiveDateTime>,
-    #[diesel(sql_type = Nullable<Text>)]
-    pub message: Option<String>,
-    #[diesel(sql_type = Int8)]
-    pub num_games: i64,
-}
-
-pub fn latest_ingests(conn: &mut PgConnection) -> QueryResult<Vec<IngestWithGameCount>> {
-    sql_query(
-        "
-        select i.id, i.started_at, i.finished_at, i.aborted_at, i.message, count(g.mmolb_game_id) as num_games
-        from info.ingests i
-             left join data.games g on g.ingest = i.id
-        group by i.id, i.started_at
-        order by i.started_at desc
-        limit 25
-    ",
-    )
-    .load::<IngestWithGameCount>(conn)
-}
-
 pub fn get_game_ingest_start_cursor(
     conn: &mut PgConnection,
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {

@@ -12,7 +12,7 @@ use mmoldb_db::db::{GamesStats, PlayersStats, TeamsStats};
 use mmoldb_db::models::DbEventIngestLog;
 use num_format::{Locale, ToFormattedString};
 use rocket::http::uri::Origin;
-use rocket::{State, futures, get, uri};
+use rocket::{State, get, uri};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 
@@ -135,82 +135,6 @@ pub async fn game_page(mmolb_game_id: String, db: Db) -> Result<Template, AppErr
     ))
 }
 
-#[get("/ingest/<ingest_id>")]
-pub async fn ingest_page(ingest_id: i64, db: Db) -> Result<Template, AppError> {
-    paginated_ingest(ingest_id, None, db).await
-}
-
-#[get("/ingest/<ingest_id>/page/<after_game_id>")]
-pub async fn paginated_ingest_page(
-    ingest_id: i64,
-    after_game_id: String,
-    db: Db,
-) -> Result<Template, AppError> {
-    paginated_ingest(ingest_id, Some(after_game_id), db).await
-}
-
-async fn paginated_ingest(
-    ingest_id: i64,
-    after_game_id: Option<String>,
-    db: Db,
-) -> Result<Template, AppError> {
-    #[derive(Serialize)]
-    struct IngestContext {
-        id: i64,
-        started_at: FormattedDateContext,
-        finished_at: Option<FormattedDateContext>,
-        aborted_at: Option<FormattedDateContext>,
-        games: Vec<GameContext>,
-    }
-
-    let (ingest, games) = db
-        .run(move |conn| {
-            db::ingest_with_games(
-                conn,
-                ingest_id,
-                PAGE_OF_GAMES_SIZE,
-                after_game_id.as_deref(),
-            )
-        })
-        .await?;
-
-    let games_context = paginated_games_context(
-        games,
-        |game_id| uri!(paginated_ingest_page(ingest_id, game_id)).to_string(),
-        || uri!(ingest_page(ingest_id)).to_string(),
-    );
-
-    let ingest = IngestContext {
-        id: ingest.id,
-        started_at: (&ingest.started_at).into(),
-        finished_at: ingest.finished_at.as_ref().map(Into::into),
-        aborted_at: ingest.aborted_at.as_ref().map(Into::into),
-        games: games_context.games,
-    };
-
-    Ok(Template::render(
-        "ingest",
-        context! {
-            index_url: uri!(index_page()),
-            timings_url: uri!(ingest_timings_page(ingest_id)),
-            ingest: ingest,
-            next_page_url: games_context.next_page_url,
-            previous_page_url: games_context.previous_page_url,
-        },
-    ))
-}
-
-#[get("/ingest-timings/<ingest_id>")]
-pub async fn ingest_timings_page(ingest_id: i64, _db: Db) -> Result<Template, AppError> {
-    Ok(Template::render(
-        "ingest-timings",
-        context! {
-            index_url: uri!(index_page()),
-            ingest_id: ingest_id,
-        },
-    ))
-}
-
 #[get("/games/page/<after_game_id>")]
 pub async fn paginated_games_page(after_game_id: String, db: Db) -> Result<Template, AppError> {
     paginated_games(Some(after_game_id), db).await
@@ -317,46 +241,12 @@ pub async fn debug_no_games_page() -> Result<Template, AppError> {
 
 #[get("/status")]
 pub async fn status_page(db: Db) -> Result<Template, AppError> {
-    #[derive(Serialize)]
-    struct IngestContext {
-        uri: String,
-        num_games: i64,
-        started_at: FormattedDateContext,
-        finished_at: Option<FormattedDateContext>,
-        aborted_at: Option<FormattedDateContext>,
-        message: Option<String>,
-    }
-
-    let ingests_query = db.run(move |conn| {
-        conn.transaction(|conn| {
-            let num_ingests = db::ingest_count(conn)?;
-            let latest_ingests = db::latest_ingests(conn)?;
-            Ok::<_, AppError>((num_ingests, latest_ingests))
-        })
-    });
-
-    let counts_query = db.run(move |conn| {
+    let counts = db.run(move |conn| {
         conn.transaction(|conn| {
             let counts = db::entity_counts(conn)?;
             Ok::<_, AppError>(counts)
         })
-    });
-
-    let ((total_num_ingests, displayed_ingests), counts) =
-        futures::try_join!(ingests_query, counts_query)?;
-
-    let number_of_ingests_not_shown = total_num_ingests - displayed_ingests.len() as i64;
-    let ingests: Vec<_> = displayed_ingests
-        .into_iter()
-        .map(|ingest| IngestContext {
-            uri: uri!(ingest_page(ingest.id)).to_string(),
-            num_games: ingest.num_games,
-            started_at: (&ingest.started_at).into(),
-            finished_at: ingest.finished_at.as_ref().map(Into::into),
-            aborted_at: ingest.aborted_at.as_ref().map(Into::into),
-            message: ingest.message,
-        })
-        .collect();
+    }).await?;
 
     #[derive(Serialize)]
     struct IngestibleWithErrors<'a> {
@@ -424,8 +314,6 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         context! {
             index_url: uri!(index_page()),
             pages: &*PAGES,
-            ingests: ingests,
-            number_of_ingests_not_shown: number_of_ingests_not_shown,
             ingestibles: ingestible_counts,
         },
     ))

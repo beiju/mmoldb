@@ -28,7 +28,7 @@
                     {% if ingestible.with_errors_url %}
                     <a class="with-issues" href="{{ ingestible.with_errors_url }}">{{ ingestible.count_with_errors | num_format }} with issues</a>
                     {% else %}
-                    <a class="with-issues">{{ ingestible.count_with_errors | num_format }} with issues</a>
+                    <a class="with-issues" title="A viewer for these issues is coming as soon as I have time for it">{{ ingestible.count_with_errors | num_format }} with issues</a>
                     {% endif %}
                 {% endif %}
             </li>
@@ -41,26 +41,7 @@
     </section>
 
     <section class="card">
-        <h2 class="ingests-heading">Latest ingests:</h2>
-
-        {% if ingests %}
-        <ul class="ingests">
-            {% for ingest in ingests %}
-                <li class="ingest">
-                    {# All one line to avoid newlines being turned into spaces by HTML whitespace collapse. #}
-                    <a href="{{ ingest.uri }}">Ingest of {{ ingest.num_games }} games</a> started {{ self::date_format(date=ingest.started_at) }}{% if ingest.finished_at %} and finished {{ self::date_format(date=ingest.finished_at) }}{% endif %}{% if ingest.aborted_at %} and aborted {{ self::date_format(date=ingest.aborted_at) }}{% endif %}{% if ingest.message %} with message:{% else %}.{% endif %}
-                    {% if ingest.message %}
-                    <pre>{{ ingest.message }}</pre>
-                    {% endif %}
-                </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p class="no-ingests">No ingests so far</p>
-        {% endif %}
-        {% if number_of_ingests_not_shown > 0 %}
-        <p class="more-ingests">...and {{ number_of_ingests_not_shown }} more.</p>
-        {% endif %}
+        <p class="no-ingests">MMOLDB no longer has distinct ingests. This section will hopefully be updated to be more useful soon.</p>
     </section>
 </body>
 </html>

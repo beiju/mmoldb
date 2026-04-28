@@ -26,3 +26,8 @@
 .more-ingests {
     color: #8c8c8c;
 }
+
+.no-ingests {
+    font-style: italic;
+    color: #8c8c8c;
+}
