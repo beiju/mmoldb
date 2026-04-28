@@ -803,10 +803,12 @@ pub fn ingest_kinds(shutdown_requested: &CancellationToken, pool: &ConnectionPoo
             };
 
             let parallelism = kind_config.ingest_parallelism.unwrap_or_else(|| {
-                std::thread::available_parallelism().unwrap_or_else(|e| {
-                    warn!("Can't get hardware parallelism. Defaulting to 1. {e}");
-                    NonZero::new(1).unwrap()
-                })
+                NonZero::new(1).unwrap()
+                // TODO Either restore parallelism or delete this
+                // std::thread::available_parallelism().unwrap_or_else(|e| {
+                //     warn!("Can't get hardware parallelism. Defaulting to 1. {e}");
+                //     NonZero::new(1).unwrap()
+                // })
             });
 
             let processing_args = ProcessingArgs {

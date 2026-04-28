@@ -11,16 +11,18 @@ fn default_page_size() -> usize {
 }
 
 fn default_ingest_parallelism() -> usize {
-    match std::thread::available_parallelism() {
-        Ok(parallelism) => parallelism.into(),
-        Err(err) => {
-            warn!(
-                "Unable to detect available parallelism (falling back to 1): {}",
-                err
-            );
-            1
-        }
-    }
+    // TODO This was set to 1 because of concurrent ingest
+    // match std::thread::available_parallelism() {
+    //     Ok(parallelism) => parallelism.into(),
+    //     Err(err) => {
+    //         warn!(
+    //             "Unable to detect available parallelism (falling back to 1): {}",
+    //             err
+    //         );
+    //         1
+    //     }
+    // }
+    1
 }
 
 // TODO Use this again, probably with tweaked fields

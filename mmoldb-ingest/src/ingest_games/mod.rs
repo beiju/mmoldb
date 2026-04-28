@@ -86,10 +86,12 @@ pub async fn ingest_stage_2(
     finish: CancellationToken,
 ) -> Result<(), IngestFatalError> {
     // TODO Use parallelism parameter from config, or remove parallelism
-    let num_workers = std::thread::available_parallelism().unwrap_or_else(|err| {
-        warn!("Couldn't get available cores: {}. Falling back to 1.", err);
-        NonZero::new(1).expect("Literal 1 should be nonzero")
-    });
+    // Setting workers to 1 after implementing concurrent ingest
+    // let num_workers = std::thread::available_parallelism().unwrap_or_else(|err| {
+    //     warn!("Couldn't get available cores: {}. Falling back to 1.", err);
+    //     NonZero::new(1).expect("Literal 1 should be nonzero")
+    // });
+    let num_workers = NonZero::new(1).unwrap();
     debug!("Ingesting with {} workers", num_workers);
 
     let partitioner = Partitioner::new(num_workers);
