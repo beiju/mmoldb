@@ -47,5 +47,6 @@ truncate table
     info.ingest_counts,
     info.ingests;
 
+refresh materialized view data.player_versions_extended;
 refresh materialized view info.entities_count;
 refresh materialized view info.entities_with_issues_count;
