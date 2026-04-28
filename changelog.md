@@ -8,8 +8,18 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
---------
+2026-04-29
+----------
+- Retroactively fixed all changelog dates from 2026 --- previously they were 
+  labeled as 2025
+- Implement continuous ingest. There are no longer discrete ingests --- 
+  instead, each ingest task (each of fetch/processing for each of 
+  teams/team_feeds/players/player_feeds/games) independently runs every 10 
+  minutes. This will result in the status page being less informative than
+  before until it is updated to show new information.
+
+2026-04-20
+----------
 - Adds support for offseason Simulacrum games.
 - Adds basic support for s11 player format. This has the following 
   consequences:
@@ -31,19 +41,19 @@ Upcoming
   `data.team_games_played`, which makes `data.events_extended`'s 
   `game_end_time` column more reliable.
 
-2025-04-04
+2026-04-04
 ----------
 - Fix some parsing bugs in game ingest.
 - S11 player support is still forthcoming, thanks for your patience.
 
-2025-03-28
+2026-03-28
 ----------
 - Adds support for Simulacrum weather (this just means adding the coins to the
   `(home|away)team_coins_earned` column of `data.games`).
 - Fixes some parse errors due to "21th" and farther innings and due to players 
   whose name ends with "V". Thanks WoofyJack!
 
-2025-01-25
+2026-01-25
 ----------
 - Reinstates `data.player_versions_extended` with the following changes:
   - Adds `priority`, `xp`, `level`, and `name_suffix` columns. **In particular,
@@ -68,7 +78,7 @@ Upcoming
 - If you don't keep up with the staging server, also take a look at the next
   two sections of changelogs, since those changes will be new to you as well.
 
-2025-01-23 (staging only)
+2026-01-23 (staging only)
 ----------
 - Fixes issues with closing out versions of boons and pitch types. These issues
   only ever existed on the staging server, so if you only use the connection 
@@ -81,7 +91,7 @@ Upcoming
 - Adds `taxa.pitch_category`.
 - Adds `category` column to `taxa.pitch_type`.
 
-2025-01-19 (staging only)
+2026-01-19 (staging only)
 ----------
 
 - Season 10 support! Season 10 is a major change to MMOLB and incited the 
