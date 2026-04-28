@@ -1,10 +1,9 @@
-use crate::config::IngestibleConfig;
 use crate::ingest::VersionIngestLogs;
 use crate::ingest_feed_shared::{
     FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START, FeedItemContainer,
 };
 use crate::{
-    FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest,
+    IngestibleFromVersions,
 };
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -15,7 +14,6 @@ use mmolb_parsing::team_feed::ParsedTeamFeedEventText;
 use mmoldb_db::models::{NewFeedEventProcessed, NewTeamGamePlayed, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncPgConnection, Connection, PgConnection, QueryResult, async_db, db};
-use std::sync::Arc;
 
 pub struct TeamFeedIngestFromVersions;
 
@@ -62,29 +60,6 @@ impl IngestibleFromVersions for TeamFeedIngestFromVersions {
     }
 }
 
-pub struct TeamFeedIngest(&'static IngestibleConfig);
-
-impl TeamFeedIngest {
-    pub fn new(config: &'static IngestibleConfig) -> TeamFeedIngest {
-        TeamFeedIngest(config)
-    }
-}
-
-impl Ingestable for TeamFeedIngest {
-    const KIND: &'static str = "team_feed";
-
-    fn config(&self) -> &'static IngestibleConfig {
-        &self.0
-    }
-
-    fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
-        vec![
-            Arc::new(FeedEventVersionStage1Ingest::new(Self::KIND, "team")),
-            Arc::new(Stage2Ingest::new(Self::KIND, TeamFeedIngestFromVersions)),
-        ]
-    }
-}
-
 pub fn chron_team_feed_as_new<'a>(
     team_id: &'a str,
     valid_from: DateTime<Utc>,
@@ -94,7 +69,8 @@ pub fn chron_team_feed_as_new<'a>(
     Option<NewTeamGamePlayed<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
-    let mut ingest_logs = VersionIngestLogs::new(TeamFeedIngest::KIND, team_id, valid_from);
+    // TODO Can I avoid repeating this string constant?
+    let mut ingest_logs = VersionIngestLogs::new("team_feed", team_id, valid_from);
 
     let processed = NewFeedEventProcessed {
         kind: "team_feed",

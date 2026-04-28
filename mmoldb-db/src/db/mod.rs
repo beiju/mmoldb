@@ -3282,8 +3282,22 @@ pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> Vec<QueryErr
     errs
 }
 
-pub fn refresh_matviews(conn: &mut PgConnection) -> Vec<QueryError> {
-    let mut errs = refresh_entity_counting_matviews(conn);
+pub fn refresh_player_matviews(conn: &mut PgConnection) -> Vec<QueryError> {
+    let mut errs = Vec::new();
+
+    info!("Refreshing materialized view data.player_versions_extended");
+    if let Err(e) =
+        sql_query("refresh materialized view concurrently data.player_versions_extended")
+            .execute(conn)
+    {
+        errs.push(e);
+    }
+
+    errs
+}
+
+pub fn refresh_game_matviews(conn: &mut PgConnection) -> Vec<QueryError> {
+    let mut errs = Vec::new();
 
     info!("Refreshing materialized view data.offense_outcomes");
     if let Err(e) =
@@ -3295,14 +3309,6 @@ pub fn refresh_matviews(conn: &mut PgConnection) -> Vec<QueryError> {
     info!("Refreshing materialized view data.defense_outcomes");
     if let Err(e) =
         sql_query("refresh materialized view concurrently data.defense_outcomes").execute(conn)
-    {
-        errs.push(e);
-    }
-
-    info!("Refreshing materialized view data.player_versions_extended");
-    if let Err(e) =
-        sql_query("refresh materialized view concurrently data.player_versions_extended")
-            .execute(conn)
     {
         errs.push(e);
     }

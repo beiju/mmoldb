@@ -14,14 +14,11 @@ use mmolb_parsing::{
 };
 use std::fmt::Display;
 use std::iter;
-use std::sync::Arc;
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
-use crate::config::IngestibleConfig;
 use crate::{
-    IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs,
-    VersionStage1Ingest,
+    IngestibleFromVersions, VersionIngestLogs,
 };
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
@@ -104,29 +101,6 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
         cursor: Option<(NaiveDateTime, String)>,
     ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
         async_db::stream_versions_at_cursor(conn, kind, cursor).await
-    }
-}
-
-pub struct PlayerIngest(&'static IngestibleConfig);
-
-impl PlayerIngest {
-    pub fn new(config: &'static IngestibleConfig) -> PlayerIngest {
-        PlayerIngest(config)
-    }
-}
-
-impl Ingestable for PlayerIngest {
-    const KIND: &'static str = "player";
-
-    fn config(&self) -> &'static IngestibleConfig {
-        &self.0
-    }
-
-    fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
-        vec![
-            Arc::new(VersionStage1Ingest::new(Self::KIND)),
-            Arc::new(Stage2Ingest::new(Self::KIND, PlayerIngestFromVersions)),
-        ]
     }
 }
 
@@ -333,8 +307,9 @@ fn chron_player_as_new<'a>(
     Vec<NewPlayerPitchCategoryBonusVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
+    // TODO Can I avoid repeating this string constant?
     let mut ingest_logs =
-        VersionIngestLogs::new(PlayerIngest::KIND, &entity.entity_id, entity.valid_from);
+        VersionIngestLogs::new("player", &entity.entity_id, entity.valid_from);
     let (birthday_type, birthday_day, birthday_superstar_day) =
         day_to_db(Some(&entity.data.birthday), taxa);
 

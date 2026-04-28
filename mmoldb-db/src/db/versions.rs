@@ -108,6 +108,7 @@ pub fn insert_versions_one_error<'v>(
     match insert_versions(conn, versions) {
         Ok(result) => Ok(result),
         Err(e) => {
+            error!("Narrowing down version insert error: {:?}", e);
             let split_at = versions.len() / 2;
             let first_half = &versions[..split_at];
             let second_half = &versions[split_at..];
@@ -122,7 +123,7 @@ pub fn insert_versions_one_error<'v>(
                 let size1 = insert_versions_one_error(conn, first_half)?;
                 info!("First half succeeded. Trying to insert the last {}...", second_half.len());
                 let size2 = insert_versions_one_error(conn, second_half)?;
-                error!("Both half succeeded, but we're already in the error branch. One of them should have failed.");
+                error!("Both halves succeeded, but we're already in the error branch. One of the halves should have failed!");
                 Ok(size1 + size2)
             }
         },

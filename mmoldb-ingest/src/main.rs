@@ -7,31 +7,25 @@ mod ingest_players;
 mod ingest_team_feed;
 mod ingest_teams;
 mod partitioner;
-mod signal;
 
 use tokio::task::JoinHandle;
 use tokio::signal::unix as tokio_signal;
-use crate::ingest_teams::TeamIngest;
-use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use config::IngestConfig;
-use futures::{pin_mut, FutureExt, StreamExt};
-use tracing::{debug, error, info, span, Level};
-use miette::{Context, GraphicalReportHandler, IntoDiagnostic};
+use futures::{FutureExt, StreamExt};
+use tracing::{error, info, span, warn, Level};
+use miette::{Context, IntoDiagnostic};
 use mmoldb_db::{ConnectionPool, db, QueryResult, PgConnection};
-use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-use crate::ingest_player_feed::PlayerFeedIngest;
-use crate::ingest_players::PlayerIngest;
-use crate::ingest_team_feed::TeamFeedIngest;
 use cap::Cap;
 pub use ingest::*;
 use std::alloc;
 use futures::stream::FuturesUnordered;
 
 static MEMORY_TRACKING_PERIOD_MS: u64 = 10_000;
+static ITEM_COUNTING_PERIOD_MS: u64 = 10_000;
 
 #[global_allocator]
 static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::MAX);
@@ -47,6 +41,28 @@ async fn memory_tracking_task(shutdown_requested: CancellationToken) {
         let allocated = ALLOCATOR.allocated();
         // gauge.record(allocated as u64, &[]);
         info!("Current memory usage: {allocated} bytes ({})", humansize::format_size(allocated, humansize::DECIMAL));
+
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = shutdown_requested.cancelled() => { break; }
+        }
+    }
+}
+
+async fn counting_task(shutdown_requested: CancellationToken, pool: ConnectionPool) {
+    let mut interval = tokio::time::interval(Duration::from_millis(ITEM_COUNTING_PERIOD_MS));
+
+    loop {
+        match pool.get() {
+            Ok(mut conn) => {
+                for err in db::refresh_entity_counting_matviews(&mut conn) {
+                    warn!("Couldn't update entity counting matview: {err}");
+                }
+            }
+            Err(e) => {
+                warn!("Couldn't get connection to update entity counting matviews: {e}");
+            }
+        }
 
         tokio::select! {
             _ = interval.tick() => {}
@@ -84,6 +100,12 @@ async fn main() -> miette::Result<()> {
     // Launch background, non-ingest tasks
     info!("Launching background memory tracking task");
     tasks.push(tokio::task::spawn(memory_tracking_task(shutdown_requested.clone()).map(Ok)));
+    info!("Launching background item counting task");
+    tasks.push(tokio::task::spawn(counting_task(shutdown_requested.clone(), pool.clone()).map(Ok)));
+
+    if config.fetch_known_missing_games {
+        warn!("Fetching known missing games is not currently implemented");
+    }
 
     // Launch ingest tasks
     let ingest_kinds = ingest::ingest_kinds(&shutdown_requested, &pool, config);
@@ -143,7 +165,7 @@ fn set_statement_timeout(conn: &mut PgConnection, statement_timeout: Option<i64>
             // Postgres interprets 0 as no timeout
             info!("Setting our account's statement timeout to no timeout");
         }
-        db::set_current_user_statement_timeout(conn, statement_timeout)?;;
+        db::set_current_user_statement_timeout(conn, statement_timeout)?;
     }
 
     Ok(())
@@ -195,312 +217,4 @@ async fn wait_until_shutdown(
     }
 
     Ok(())
-}
-
-async fn run_one_ingest(pool: ConnectionPool, config: &'static IngestConfig) -> () {
-    let mut errs = IngestErrorContainer::new();
-    let ingest_start_time = Utc::now();
-
-    let mut conn = match pool.get() {
-        Ok(conn) => conn,
-        Err(err) => {
-            error!(
-                "Error getting database connection for ingest. This ingest will be skipped. \
-                Error: {:?}",
-                err
-            );
-            return;
-        }
-    };
-
-    let ingest_id = match db::start_ingest(&mut conn, ingest_start_time) {
-        Ok(ingest_id) => ingest_id,
-        Err(err) => {
-            error!(
-                "Error saving ingest to database. This ingest will be skipped. Error: {:?}",
-                err
-            );
-            return;
-        }
-    };
-
-    if let Some(statement_timeout) = config.set_postgres_statement_timeout {
-        if statement_timeout < 0 {
-            panic!("Negative STATEMENT_TIMEOUT_SEC not allowed ({statement_timeout})");
-        } else if statement_timeout > 0 {
-            info!(
-                "Setting our account's statement timeout to {statement_timeout} ({})",
-                HumanTime::from(chrono::Duration::seconds(statement_timeout))
-                    .to_text_en(Accuracy::Precise, Tense::Present),
-            );
-        } else {
-            // Postgres interprets 0 as no timeout
-            info!("Setting our account's statement timeout to no timeout");
-        }
-        let result =
-            db::set_current_user_statement_timeout(&mut conn, statement_timeout).map_err(|error| {
-                IngestStageError {
-                    stage_name: "Setting statement timeout".to_string(),
-                    error: IngestFatalError::DbError(error),
-                }
-            });
-        errs.push(result);
-    }
-
-    let abort = CancellationToken::new();
-    let ingest_task = ingest_everything(pool.clone(), ingest_id, abort.clone(), config);
-    pin_mut!(ingest_task);
-
-    let is_aborted = tokio::select! {
-        ingest_result = &mut ingest_task => {
-            errs.extend(ingest_result);
-            false
-        }
-        _ = signal::wait_for_signal() => {
-            debug!("Signaling abort token");
-            abort.cancel();
-            true
-        }
-    };
-
-    // Note: use abort.is_cancelled() instead of is_aborted because is_aborted
-    // is also True if the task finished with a Result::Err(). We don't want to
-    // await it in this case.
-    if abort.is_cancelled() {
-        debug!("Waiting for ingest task to shut down after abort signal");
-        errs.extend(ingest_task.await);
-    }
-
-    let err_message = if errs.errors.is_empty() {
-        None
-    } else {
-        let grh = GraphicalReportHandler::new()
-            .with_cause_chain()
-            .with_show_related_as_nested(true);
-        let mut str = String::new();
-        grh.render_report(&mut str, &errs).unwrap();
-        Some(str)
-    };
-
-    let ingest_end_time = Utc::now();
-    let duration = HumanTime::from(ingest_end_time - ingest_start_time);
-    if is_aborted {
-        match db::mark_ingest_aborted(
-            &mut conn,
-            ingest_id,
-            ingest_end_time,
-            err_message.as_deref(),
-        ) {
-            Ok(()) => {
-                info!(
-                    "Aborted ingest in {}",
-                    duration.to_text_en(Accuracy::Precise, Tense::Present)
-                );
-            }
-            Err(error) => {
-                error!(
-                    "Error marking ingest as aborted. The ingest is actually aborted, but the \
-                    outcome won't be recorded in the database. Error: {error:?}"
-                );
-                if let Some(msg) = err_message {
-                    error!("The error message we failed to save to the database is: {msg}")
-                }
-            }
-        }
-    } else {
-        match db::mark_ingest_finished(
-            &mut conn,
-            ingest_id,
-            ingest_end_time,
-            err_message.as_deref(),
-        ) {
-            Ok(()) => {
-                info!(
-                    "Finished ingest in {}",
-                    duration.to_text_en(Accuracy::Precise, Tense::Present)
-                );
-            }
-            Err(error) => {
-                error!(
-                    "Error marking ingest as finished. The ingest is actually finished, but the \
-                    outcome won't be recorded in the database. Error: {error:?}"
-                );
-                if let Some(msg) = err_message {
-                    error!("The error message we failed to save to the database is: {msg}")
-                }
-            }
-        }
-    }
-
-    // Don't return `errs` -- we already handled it, and returning it will
-    // make the process exit
-}
-
-fn refresh_matviews(pool: ConnectionPool) -> IngestErrorContainer {
-    let mut errs = IngestErrorContainer::new();
-
-    let mut conn = match pool.get() {
-        Ok(conn) => conn,
-        Err(e) => {
-            errs.push_err(IngestStageError {
-                stage_name: "Refresh matviews".to_string(),
-                error: IngestFatalError::DbPoolError(e),
-            });
-            return errs;
-        }
-    };
-
-    for err in db::refresh_matviews(&mut conn) {
-        errs.push_err(IngestStageError {
-            stage_name: "Refresh matviews".to_string(),
-            error: IngestFatalError::DbError(err),
-        });
-    }
-
-    errs
-}
-
-fn block_until_exit(exit: Arc<(Mutex<bool>, Condvar)>, timeout: Duration) -> bool {
-    let (exit, exit_cond) = &*exit;
-    let (should_exit, _) = exit_cond
-        .wait_timeout_while(exit.lock().unwrap(), timeout, |&mut should_exit| {
-            !should_exit
-        })
-        .unwrap();
-
-    *should_exit
-}
-
-fn refresh_entity_counting_matviews_repeatedly(
-    pool: ConnectionPool,
-    exit: Arc<(Mutex<bool>, Condvar)>,
-) -> Result<(), IngestFatalError> {
-    let mut conn = pool.get().map_err(IngestFatalError::DbPoolError)?;
-    loop {
-        if block_until_exit(exit.clone(), Duration::from_secs(10)) {
-            break;
-        }
-
-        for err in db::refresh_entity_counting_matviews(&mut conn) {
-            error!("Error in entity counting task: {err:?}");
-        }
-    }
-
-    Ok(())
-}
-
-async fn ingest_everything(
-    pool: ConnectionPool,
-    ingest_id: i64,
-    abort: CancellationToken,
-    config: &'static IngestConfig,
-) -> IngestErrorContainer {
-    let stop_entity_counting = Arc::new((Mutex::new(false), Condvar::new()));
-    let entity_counting_task = tokio::task::spawn_blocking({
-        let pool = pool.clone();
-        let stop_entity_counting = stop_entity_counting.clone();
-        || refresh_entity_counting_matviews_repeatedly(pool, stop_entity_counting)
-    });
-
-
-
-    let mut errs = ingest_while_counting_task_runs(pool.clone(), ingest_id, abort, config).await;
-
-    let (exit, exit_cond) = &*stop_entity_counting;
-    {
-        let mut should_exit = exit.lock().unwrap();
-        *should_exit = true;
-    }
-    exit_cond.notify_all();
-    info!("Waiting for entity counting task to finish");
-    match entity_counting_task.await {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => errs.errors.push(IngestStageError {
-            stage_name: "Counting task".to_string(),
-            error,
-        }),
-        Err(error) => errs.errors.push(IngestStageError {
-            stage_name: "Counting task".to_string(),
-            error: IngestFatalError::JoinError(error),
-        }),
-    }
-
-    info!("Refreshing materialized views");
-    errs.extend(refresh_matviews(pool));
-
-    if errs.errors.is_empty() {
-        info!("Ingest complete");
-    } else {
-        error!("Ingest complete with errors: {errs:?}");
-    }
-
-    errs
-}
-
-async fn ingest_while_counting_task_runs(
-    pool: ConnectionPool,
-    ingest_id: i64,
-    abort: CancellationToken,
-    config: &'static IngestConfig,
-) -> IngestErrorContainer {
-    let mut errs = IngestErrorContainer::new();
-    let ingestor = Ingestor::new(pool.clone(), ingest_id, abort.clone());
-
-    errs.extend(
-        ingestor
-            .ingest(
-                TeamIngest::new(&config.team_ingest),
-                config.use_local_cheap_cashews,
-            )
-            .await,
-    );
-    errs.extend(
-        ingestor
-            .ingest(
-                TeamFeedIngest::new(&config.team_feed_ingest),
-                config.use_local_cheap_cashews,
-            )
-            .await,
-    );
-    errs.extend(
-        ingestor
-            .ingest(
-                PlayerIngest::new(&config.player_ingest),
-                config.use_local_cheap_cashews,
-            )
-            .await,
-    );
-    errs.extend(
-        ingestor
-            .ingest(
-                PlayerFeedIngest::new(&config.player_feed_ingest),
-                config.use_local_cheap_cashews,
-            )
-            .await,
-    );
-
-    if config.fetch_known_missing_games {
-        info!("Fetching any missing games in known-game-ids.txt");
-        if let Err(error) = ingest_games::fetch_missed_games(pool.clone()).await {
-            errs.errors.push(IngestStageError {
-                stage_name: "Fetch known missing games".to_string(),
-                error,
-            });
-        }
-    }
-
-    // if config.game_ingest.enable {
-    //     info!("Beginning game ingest");
-    //     errs.extend(
-    //         ingest_games::ingest_games(
-    //             pool.clone(),
-    //             ingest_id,
-    //             abort,
-    //             config.use_local_cheap_cashews,
-    //         )
-    //         .await,
-    //     );
-    // }
-
-    errs
 }

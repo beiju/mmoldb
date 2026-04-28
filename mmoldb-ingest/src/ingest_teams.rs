@@ -1,7 +1,5 @@
-use crate::config::IngestibleConfig;
 use crate::ingest::{
-    IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest, VersionIngestLogs,
-    VersionStage1Ingest,
+    IngestibleFromVersions, VersionIngestLogs
 };
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -9,13 +7,12 @@ use futures::Stream;
 use itertools::Itertools;
 use mmolb_parsing::enums::Slot;
 use mmolb_parsing::{
-    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, team::TeamPlayerCollection,
+    team::TeamPlayerCollection, AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized,
 };
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult, async_db, db};
+use mmoldb_db::{async_db, db, AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult};
 use std::str::FromStr;
-use std::sync::Arc;
 
 pub struct TeamIngestFromVersions;
 
@@ -106,29 +103,6 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
     }
 }
 
-pub struct TeamIngest(&'static IngestibleConfig);
-
-impl TeamIngest {
-    pub fn new(config: &'static IngestibleConfig) -> TeamIngest {
-        TeamIngest(config)
-    }
-}
-
-impl Ingestable for TeamIngest {
-    const KIND: &'static str = "team";
-
-    fn config(&self) -> &'static IngestibleConfig {
-        &self.0
-    }
-
-    fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
-        vec![
-            Arc::new(VersionStage1Ingest::new(Self::KIND)),
-            Arc::new(Stage2Ingest::new(Self::KIND, TeamIngestFromVersions)),
-        ]
-    }
-}
-
 fn chron_team_as_new<'a>(
     taxa: &Taxa,
     team_id: &'a str,
@@ -139,7 +113,8 @@ fn chron_team_as_new<'a>(
     Vec<NewTeamPlayerVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
-    let mut ingest_logs = VersionIngestLogs::new(TeamIngest::KIND, team_id, valid_from);
+    // TODO Can I avoid repeating this string constant?
+    let mut ingest_logs = VersionIngestLogs::new("team", team_id, valid_from);
 
     let new_team_players = match &team.players {
         TeamPlayerCollection::Vec(v) => v

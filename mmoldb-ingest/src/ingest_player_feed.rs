@@ -1,11 +1,10 @@
-use crate::config::IngestibleConfig;
 use crate::ingest::VersionIngestLogs;
 use crate::ingest_feed_shared::{
     FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START, FeedItemContainer,
 };
 use crate::ingest_players::day_to_db;
 use crate::{
-    FeedEventVersionStage1Ingest, IngestStage, Ingestable, IngestibleFromVersions, Stage2Ingest,
+    IngestibleFromVersions,
 };
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -24,7 +23,6 @@ use mmoldb_db::models::{
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncPgConnection, Connection, PgConnection, QueryResult, async_db, db};
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 
 lazy_static! {
     #[rustfmt::skip]
@@ -480,29 +478,6 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
     }
 }
 
-pub struct PlayerFeedIngest(&'static IngestibleConfig);
-
-impl PlayerFeedIngest {
-    pub fn new(config: &'static IngestibleConfig) -> PlayerFeedIngest {
-        PlayerFeedIngest(config)
-    }
-}
-
-impl Ingestable for PlayerFeedIngest {
-    const KIND: &'static str = "player_feed";
-
-    fn config(&self) -> &'static IngestibleConfig {
-        &self.0
-    }
-
-    fn stages(&self) -> Vec<Arc<dyn IngestStage>> {
-        vec![
-            Arc::new(FeedEventVersionStage1Ingest::new(Self::KIND, "player")),
-            Arc::new(Stage2Ingest::new(Self::KIND, PlayerFeedIngestFromVersions)),
-        ]
-    }
-}
-
 fn process_paradigm_shift<'e>(
     changing_attribute: Attribute,
     value_attribute: Attribute,
@@ -549,7 +524,8 @@ pub fn chron_player_feed_as_new<'a>(
     Vec<NewPlayerRecomposition<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
-    let mut ingest_logs = VersionIngestLogs::new(PlayerFeedIngest::KIND, player_id, valid_from);
+    // TODO Can I avoid repeating this string constant?
+    let mut ingest_logs = VersionIngestLogs::new("player_feed", player_id, valid_from);
 
     let processed = NewFeedEventProcessed {
         kind: "player_feed",

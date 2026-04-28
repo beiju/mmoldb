@@ -6,36 +6,31 @@ mod worker;
 use worker::*;
 
 use crate::partitioner::Partitioner;
-use crate::{IngestErrorContainer, IngestFatalError, IngestStageError};
+use crate::IngestFatalError;
 use chron::{Chron, ChronEntity};
-use chrono::{NaiveDateTime, Utc};
 use futures::{Stream, StreamExt, TryStreamExt, pin_mut};
 use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{
-    AsyncConnection, AsyncPgConnection, ConnectionPool, PgConnection, QueryResult, async_db, db,
+    AsyncConnection, AsyncPgConnection, ConnectionPool, QueryResult, async_db, db,
 };
 use std::collections::HashSet;
 use std::hash::RandomState;
 use std::num::NonZero;
-use std::sync::Arc;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::Notify;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::LinesStream;
 use tokio_util::sync::CancellationToken;
+use futures::FutureExt;
 
-// I made this a constant because I'm constant-ly terrified of typoing
-// it and introducing a difficult-to-find bug
-const GAME_KIND: &'static str = "game";
 const CHRON_MAX_IDS_PER_CALL: usize = 50;
-const CHRON_FETCH_PAGE_SIZE: usize = 100;
-const RAW_GAME_INSERT_BATCH_SIZE: usize = 100;
 const PROCESS_GAME_BATCH_SIZE: usize = 100;
 
+// TODO Use this again
+#[allow(unused)]
 pub async fn fetch_missed_games(pool: ConnectionPool) -> Result<(), IngestFatalError> {
     let known_game_ids_file = match fs::File::open("known-game-ids.txt").await {
         Ok(file) => file,
@@ -125,7 +120,19 @@ pub async fn ingest_stage_2(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let stream = async_db::stream_unprocessed_game_versions(&mut async_conn).await?;
+    let stream = async_db::stream_unprocessed_game_versions(&mut async_conn)
+        .await?
+        .take_until(
+            finish.cancelled()
+                .then(|()| {
+                    // Some detail of the Rust compiler makes it forget that this is 'static
+                    // during some important checking phase. The only way I've found to make
+                    // that not cause issues is to make it an owned value.
+                    Box::pin(async move {
+                        info!("Closing game processing stream because shutdown was requested");
+                    })
+                })
+        );
 
     let tasks = dispatch_to_stage_2_workers(&partitioner, tasks, stream).await?;
 
@@ -141,6 +148,7 @@ pub async fn ingest_stage_2(
     );
 
     for (name, task) in tasks {
+        debug!("Waiting for {name} to exit...");
         task.await.map_err(IngestFatalError::JoinError)??;
     }
 
@@ -261,48 +269,6 @@ async fn dispatch_to_stage_2_workers<'name>(
 //     errs
 // }
 
-async fn ingest_raw_games(
-    conn: &mut PgConnection,
-    notify: Arc<Notify>,
-    use_local_cheap_cashews: bool,
-) -> Result<(), IngestFatalError> {
-    todo!("This has been replaced in fetch.rs");
-    let start_date = db::get_latest_entity_valid_from(conn, GAME_KIND)?
-        .as_ref()
-        .map(NaiveDateTime::and_utc);
-
-    info!("Fetch will start from {:?}", start_date);
-
-    let chron = Chron::new(NonZero::new(CHRON_FETCH_PAGE_SIZE).unwrap());
-
-    let stream = chron
-        .entities(GAME_KIND, start_date, 3, use_local_cheap_cashews)
-        .try_chunks(RAW_GAME_INSERT_BATCH_SIZE);
-    pin_mut!(stream);
-
-    while let Some(chunk) = stream.next().await {
-        // When a chunked stream encounters an error, it returns the portion
-        // of the chunk that was collected before the error and the error
-        // itself. We want to insert the successful portion of the chunk,
-        // _then_ propagate any error.
-        let (chunk, maybe_err): (Vec<ChronEntity<serde_json::Value>>, _) = match chunk {
-            Ok(chunk) => (chunk, None),
-            Err(err) => (err.0, Some(err.1)),
-        };
-        info!("Saving {} games", chunk.len());
-        let inserted = db::insert_entities(conn, chunk)?;
-        info!("Saved {} games", inserted);
-
-        notify.notify_one();
-
-        if let Some(err) = maybe_err {
-            Err(err)?;
-        }
-    }
-
-    Ok(())
-}
-
 async fn process_games(
     pool: ConnectionPool,
     game_recv: Receiver<ChronEntity<serde_json::Value>>,
@@ -329,19 +295,13 @@ async fn process_games_internal(
 
     // TODO This is going to be duplicated across workers now. It's only used for
     //   timings, so it's not terrible, but it should be fixed.
-    let mut page_index = 0;
-    let mut get_batch_to_process_start = Utc::now();
     while let Some(raw_games) = chunk_stream.next().await {
-        let get_batch_to_process_duration =
-            (Utc::now() - get_batch_to_process_start).as_seconds_f64();
         info!(
             "Processing batch of {} raw games on worker {worker_idx}",
             raw_games.len()
         );
         let stats = ingest_page_of_games(
             &taxa,
-            page_index,
-            get_batch_to_process_duration,
             raw_games,
             &mut conn,
             worker_idx,
@@ -356,11 +316,6 @@ async fn process_games_internal(
             stats.num_bugged_games_skipped,
             worker_idx,
         );
-
-        page_index += 1;
-
-        // Must be the last thing in the loop
-        get_batch_to_process_start = Utc::now();
     }
 
     debug!("game stage 2 ingest worker {} is exiting", worker_idx);

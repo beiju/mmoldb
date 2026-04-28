@@ -1,7 +1,9 @@
 use std::num::NonZero;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
 use mmoldb_db::ConnectionPool;
+use mmoldb_db::db::{refresh_game_matviews, refresh_player_matviews};
 use crate::{IngestFatalError, Stage2Ingest};
 use crate::ingest_player_feed::PlayerFeedIngestFromVersions;
 use crate::ingest_players::PlayerIngestFromVersions;
@@ -25,9 +27,22 @@ pub async fn process_entity_kind(kind: &'static str, args: ProcessingArgs) -> Re
 
     // TODO Refactor this code to get rid of remnants of the old staged system
     crate::ingest_games::ingest_stage_2(
-        args.pool,
+        args.pool.clone(),
         args.shutdown_requested,
-    ).await
+    ).await?;
+    info!("game process iteration finished. Refreshing game matviews.");
+    // TODO Don't hard-code this
+    match args.pool.get() {
+        Ok(mut conn) => {
+            for err in refresh_game_matviews(&mut conn) {
+                warn!("Error updating game matview: {}", err);
+            }
+        }
+        Err(err) => {
+            warn!("Couldn't get database connection to update game matviews: {}", err);
+        }
+    }
+    Ok(())
 }
 
 // It may be possible to remove 'static
@@ -35,9 +50,23 @@ pub async fn process_version_kind(kind: &'static str, args: ProcessingArgs) -> R
     // TODO Refactor this to not match on kind
     match kind {
         "player" => {
+            let pool_for_matviews = args.pool.clone();
             // TODO Refactor this code to get rid of remnants of the old staged system
             let stage = Arc::new(Stage2Ingest::new(kind, PlayerIngestFromVersions));
-            stage.run(args).await
+            stage.run(args).await?;
+            info!("Player process iteration finished. Refreshing player matviews.");
+            // TODO Don't hard-code this
+            match pool_for_matviews.get() {
+                Ok(mut conn) => {
+                    for err in refresh_player_matviews(&mut conn) {
+                        warn!("Error updating player matview: {}", err);
+                    }
+                }
+                Err(err) => {
+                    warn!("Couldn't get database connection to update player matviews: {}", err);
+                }
+            }
+            Ok(())
         }
         "team" => {
             // TODO Refactor this code to get rid of remnants of the old staged system

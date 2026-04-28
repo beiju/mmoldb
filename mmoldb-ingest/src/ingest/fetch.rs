@@ -6,7 +6,7 @@ use futures::{pin_mut, TryStreamExt};
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 use itertools::Either;
-use tracing::{error, info, span, Level};
+use tracing::{error, info};
 use mmolb_parsing::player::Deserialize;
 use tokio_util::sync::CancellationToken;
 use chron::{Chron, ChronEntity};
