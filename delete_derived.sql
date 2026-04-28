@@ -42,10 +42,7 @@ truncate table
 
     -- generic
     data.feed_events_processed,
-    info.version_ingest_log,
-    info.ingest_timings,
-    info.ingest_counts,
-    info.ingests;
+    info.version_ingest_log;
 
 refresh materialized view data.player_versions_extended;
 refresh materialized view info.entities_count;
