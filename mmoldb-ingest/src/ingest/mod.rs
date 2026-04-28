@@ -1282,17 +1282,17 @@ impl IngestForKind {
         match self.kind {
             IngestKind::Versioned(kind) => {
                 fetch::fetch_version_kind(kind.as_kind(), self.fetch_args.clone())
-                    .instrument(info_span!("fetch_task", kind = kind.as_kind(), debug = "blah"))
+                    .instrument(info_span!("fetch_task", kind = kind.as_kind()))
                     .await
             },
             IngestKind::Feed(kind) => {
                 fetch::fetch_feed_event_version_kind(kind.as_feed_event_kind(), self.fetch_args.clone())
-                    .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind(), debug = "blah2"))
+                    .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind()))
                     .await
             },
             IngestKind::Entity(kind) => {
                 fetch::fetch_entity_kind(kind.as_kind(), self.fetch_args.clone())
-                    .instrument(info_span!("fetch_task", kind = kind.as_kind(), debug = "blah3"))
+                    .instrument(info_span!("fetch_task", kind = kind.as_kind()))
                     .await
             },
         }

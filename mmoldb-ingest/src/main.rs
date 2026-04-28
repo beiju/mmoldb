@@ -6,19 +6,17 @@ mod ingest_player_feed;
 mod ingest_players;
 mod ingest_team_feed;
 mod ingest_teams;
-mod logging_setup;
 mod partitioner;
 mod signal;
 
 use tokio::task::JoinHandle;
 use tokio::signal::unix as tokio_signal;
-use opentelemetry::global;
 use crate::ingest_teams::TeamIngest;
 use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use config::IngestConfig;
 use futures::{pin_mut, FutureExt, StreamExt};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, span, Level};
 use miette::{Context, GraphicalReportHandler, IntoDiagnostic};
 use mmoldb_db::{ConnectionPool, db, QueryResult, PgConnection};
 use std::sync::{Arc, Condvar, Mutex};
@@ -39,15 +37,16 @@ static MEMORY_TRACKING_PERIOD_MS: u64 = 10_000;
 static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::MAX);
 
 async fn memory_tracking_task(shutdown_requested: CancellationToken) {
-    let gauge = global::meter("memory-meter")
-        .u64_gauge("memory-gauge")
-        .with_unit("bytes")
-        .build();
+    // let gauge = global::meter("memory-meter")
+    //     .u64_gauge("memory-gauge")
+    //     .with_unit("bytes")
+    //     .build();
     let mut interval = tokio::time::interval(Duration::from_millis(MEMORY_TRACKING_PERIOD_MS));
 
     loop {
         let allocated = ALLOCATOR.allocated();
-        gauge.record(allocated as u64, &[]);
+        // gauge.record(allocated as u64, &[]);
+        info!("Current memory usage: {allocated} bytes ({})", humansize::format_size(allocated, humansize::DECIMAL));
 
         tokio::select! {
             _ = interval.tick() => {}
@@ -58,9 +57,12 @@ async fn memory_tracking_task(shutdown_requested: CancellationToken) {
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
-    // Logging first so it can capture as much as possible
-    // This guard must be alive in order for otel logs to be processed
-    let _otel_guard = logging_setup::init_tracing_subscriber();
+    // construct a subscriber that prints formatted traces to stdout
+    let subscriber = tracing_subscriber::FmtSubscriber::new();
+    // use that subscriber to process traces emitted after this point
+    tracing::subscriber::set_global_default(subscriber).into_diagnostic()?;
+
+    let _span = span!(Level::INFO, "root").entered();
 
     // Then all other setup tasks in approximate order of how quickly
     // they'll fail if they're going to fail
@@ -161,13 +163,17 @@ async fn wait_until_shutdown(
             info!("Got SIGTERM. Setting shutdown_requested and waiting for tasks to exit...");
         },
         _ = sigint.recv() => {
-            info!("Got SIGINT. This may be changed to wait for ingest consistency in future. But for now, setting shutdown_requested and waiting for tasks to exit...");
+            info!(
+                "Got SIGINT. This may be changed to wait for ingest consistency in future. \
+                But for now, setting shutdown_requested and waiting for tasks to exit...",
+            );
         },
         // Wait for tasks to catch any that error, which is the only way any of these tasks should exit without being requested to.
         res = tasks.select_next_some() => {
             match &res {
-                Ok(_) => panic!("Tasks shouldn't exit Ok(_) before a cancellation token is set"),
-                Err(e) => error!("Setting shutdown_requested because a task failed: {}", e),
+                Ok(Ok(())) => panic!("Tasks shouldn't exit Ok(_) before a cancellation token is set"),
+                Ok(Err(task_err)) => error!("Setting shutdown_requested because a task failed: {}", task_err),
+                Err(join_err) => error!("Setting shutdown_requested because a join failed: {}", join_err),
             }
         }
     };

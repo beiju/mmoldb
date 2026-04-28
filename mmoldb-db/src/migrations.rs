@@ -3,7 +3,7 @@ use crate::taxa::Taxa;
 use diesel::sql_types::BigInt;
 use diesel::{Connection, ConnectionError, PgConnection, RunQueryDsl};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use log::{info, warn};
+use tracing::{info, warn};
 use miette::Diagnostic;
 use std::error::Error;
 use thiserror::Error;

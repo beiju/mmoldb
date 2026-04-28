@@ -11,7 +11,7 @@ use crate::{
     ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome,
 };
 use itertools::Itertools;
-use log::warn;
+use tracing::warn;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
 use mmolb_parsing::parsed_event::{

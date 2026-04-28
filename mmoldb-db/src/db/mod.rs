@@ -18,7 +18,7 @@ use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use log::{debug, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
@@ -257,7 +257,7 @@ pub fn get_all_game_entity_ids_set(conn: &mut PgConnection) -> QueryResult<HashS
 macro_rules! log_only_assert {
     ($e: expr, $($msg:tt)*) => {
         if !$e {
-            log::error!($($msg)*)
+            tracing::error!($($msg)*)
         }
     };
 }

@@ -137,17 +137,16 @@ pub async fn fetch_version_kind(kind: &'static str, args: ChronFetchArgs) -> Res
             Ok(chunk) => (chunk, None),
             Err(err) => (err.0, Some(err.1)),
         };
-        let _span = span!(Level::INFO, "shaving_yaks").entered();
         info!(
             "{} stage 1 ingest saving {} {}(s)",
             kind,
             chunk.len(),
             kind
         );
-        let inserted = match db::insert_versions(&mut conn, &chunk) {
+        let inserted = match db::insert_versions_one_error(&mut conn, &chunk) {
             Ok(x) => Ok(x),
-            Err(err) => {
-                error!("Error in stage 1 ingest write: {err}");
+            Err((entity, err)) => {
+                error!("Error in stage 1 ingest write: {err} while inserting: {entity:#?}");
                 Err(err)
             }
         }?;

@@ -6,7 +6,7 @@ use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
-use log::warn;
+use tracing::warn;
 
 use crate::data_schema::data::entities::dsl as entities_dsl;
 

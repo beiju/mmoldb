@@ -9,7 +9,7 @@ use diesel::QueryResult;
 use diesel::prelude::*;
 use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
-use log::{error, warn};
+use tracing::{error, warn};
 use serde::Serialize;
 use std::collections::HashSet;
 use taxa_macro::*;

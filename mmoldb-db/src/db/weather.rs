@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use diesel::{QueryResult, RunQueryDsl};
 use hashbrown::{Equivalent, HashMap};
 use itertools::Itertools;
-use log::warn;
+use tracing::warn;
 
 // Uses hashbrown::HashMap because the std HashMap has a limitation on
 // tuples of references
