@@ -1,6 +1,7 @@
 mod fetch;
+mod processing;
 
-use tracing::{info_span, span, Instrument, Level};
+use tracing::{info_span, debug, error, info, warn, Instrument, Level};
 use crate::config::{IngestConfig, IngestibleConfig};
 use crate::partitioner::Partitioner;
 use chron::{Chron, ChronEntity, ChronStreamError};
@@ -9,7 +10,6 @@ use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
 use itertools::{Either, Itertools};
-use log::{debug, error, info, warn};
 use miette::Diagnostic;
 use mmoldb_db::models::NewVersionIngestLog;
 use mmoldb_db::taxa::Taxa;
@@ -20,7 +20,7 @@ use mmoldb_db::{
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use serde::Deserialize;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
 use std::iter;
 use std::num::NonZero;
@@ -35,6 +35,7 @@ use tokio::task::JoinError;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
 pub use fetch::ChronFetchArgs;
+pub use processing::ProcessingArgs;
 
 
 #[derive(Debug, Error, Diagnostic)]
@@ -215,84 +216,86 @@ impl Ingestor {
         ingestible: I,
         use_local_cheap_cashews: bool,
     ) -> IngestErrorContainer {
-        let mut errs = IngestErrorContainer::new();
-        let config = ingestible.config();
-        if !config.enable {
-            return errs;
-        }
-
-        let parallelism = config.ingest_parallelism.unwrap_or_else(|| {
-            std::thread::available_parallelism().unwrap_or_else(|e| {
-                warn!("Can't get hardware parallelism. Defaulting to 1. {e}");
-                NonZero::new(1).unwrap()
-            })
-        });
-
-        info!("Beginning {} ingest", I::KIND);
-
-        let stages_with_task_names = ingestible
-            .stages()
-            .into_iter()
-            .map(|stage| {
-                let name = format!("{} {} ingest coordinator", I::KIND, stage.name());
-                (stage, name)
-            })
-            .collect_vec();
-
-        let mut waker = None;
-        let running_stages_result = stages_with_task_names
-            .iter()
-            .map(|(stage, task_name)| {
-                let prev_stage_finished = CancellationToken::new();
-                let task = tokio::task::Builder::new()
-                    .name(task_name)
-                    .spawn(stage.clone().run({
-                        let wake_next_stage = Arc::new(Notify::new());
-                        let waker_from_prev_stage = waker.replace(wake_next_stage.clone());
-                        StageArgs {
-                            use_local_cheap_cashews,
-                            config,
-                            parallelism,
-                            pool: self.pool.clone(),
-                            ingest_id: self.ingest_id,
-                            wake_next_stage,
-                            waker_from_prev_stage,
-                            prev_stage_finished: prev_stage_finished.clone(),
-                        }
-                    }))?;
-                Ok((task_name, task, prev_stage_finished))
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|err| IngestStageError {
-                stage_name: "Spawning stages".to_string(),
-                error: IngestFatalError::TaskSpawnError(err),
-            });
-
-        let Some(running_stages) = errs.push(running_stages_result) else {
-            return errs;
-        };
-
-        debug!(
-            "Waiting for {} {} ingest stages to finish",
-            running_stages.len(),
-            I::KIND
-        );
-
-        for (task_name, stage, prev_stage_finished) in running_stages {
-            prev_stage_finished.cancel();
-            match stage.await {
-                Ok(other_errs) => {
-                    errs.extend(other_errs);
-                }
-
-                Err(join_err) => errs.errors.push(IngestStageError {
-                    stage_name: task_name.to_string(),
-                    error: IngestFatalError::JoinError(join_err),
-                }),
-            }
-        }
-
-        errs
+        todo!("Delete this, I think")
+        // let mut errs = IngestErrorContainer::new();
+        // let config = ingestible.config();
+        // if !config.enable {
+        //     return errs;
+        // }
+        //
+        // let parallelism = config.ingest_parallelism.unwrap_or_else(|| {
+        //     std::thread::available_parallelism().unwrap_or_else(|e| {
+        //         warn!("Can't get hardware parallelism. Defaulting to 1. {e}");
+        //         NonZero::new(1).unwrap()
+        //     })
+        // });
+        //
+        // info!("Beginning {} ingest", I::KIND);
+        //
+        // let stages_with_task_names = ingestible
+        //     .stages()
+        //     .into_iter()
+        //     .map(|stage| {
+        //         let name = format!("{} {} ingest coordinator", I::KIND, stage.name());
+        //         (stage, name)
+        //     })
+        //     .collect_vec();
+        //
+        // let mut waker = None;
+        // let running_stages_result = stages_with_task_names
+        //     .iter()
+        //     .map(|(stage, task_name)| {
+        //         let prev_stage_finished = CancellationToken::new();
+        //         let task = tokio::task::Builder::new()
+        //             .name(task_name)
+        //             .spawn(stage.clone().run({
+        //                 let wake_next_stage = Arc::new(Notify::new());
+        //                 let waker_from_prev_stage = waker.replace(wake_next_stage.clone());
+        //                 // StageArgs {
+        //                 //     use_local_cheap_cashews,
+        //                 //     config,
+        //                 //     parallelism,
+        //                 //     pool: self.pool.clone(),
+        //                 //     ingest_id: self.ingest_id,
+        //                 //     wake_next_stage,
+        //                 //     waker_from_prev_stage,
+        //                 //     prev_stage_finished: prev_stage_finished.clone(),
+        //                 // }
+        //                 todo!()
+        //             }))?;
+        //         Ok((task_name, task, prev_stage_finished))
+        //     })
+        //     .collect::<Result<Vec<_>, _>>()
+        //     .map_err(|err| IngestStageError {
+        //         stage_name: "Spawning stages".to_string(),
+        //         error: IngestFatalError::TaskSpawnError(err),
+        //     });
+        //
+        // let Some(running_stages) = errs.push(running_stages_result) else {
+        //     return errs;
+        // };
+        //
+        // debug!(
+        //     "Waiting for {} {} ingest stages to finish",
+        //     running_stages.len(),
+        //     I::KIND
+        // );
+        //
+        // for (task_name, stage, prev_stage_finished) in running_stages {
+        //     prev_stage_finished.cancel();
+        //     match stage.await {
+        //         Ok(other_errs) => {
+        //             errs.extend(other_errs);
+        //         }
+        //
+        //         Err(join_err) => errs.errors.push(IngestStageError {
+        //             stage_name: task_name.to_string(),
+        //             error: IngestFatalError::JoinError(join_err),
+        //         }),
+        //     }
+        // }
+        //
+        // errs
     }
 }
 
@@ -313,7 +316,7 @@ pub trait IngestStage {
 
     fn run(
         self: Arc<Self>,
-        args: StageArgs,
+        args: ProcessingArgs,
     ) -> Pin<Box<dyn Future<Output = IngestErrorContainer> + Send>>;
 }
 
@@ -334,83 +337,83 @@ impl VersionStage1Ingest {
         VersionStage1Ingest { kind }
     }
 
-    async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
+    async fn run(self: Arc<Self>, args: ProcessingArgs) -> Result<(), IngestFatalError> {
         todo!("Delete and replace all calls with fetch::fetch_version_kind");
-        let mut conn = args.pool.get()?;
-        let chron = Chron::new(args.config.chron_fetch_batch_size);
-
-        let start_cursor = db::get_latest_raw_version_cursor(&mut conn, self.kind)?
-            .map(|(dt, id)| (dt.and_utc(), id));
-        let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
-
-        info!("{} fetch will start from date {:?}", self.kind, start_date);
-
-        let stream = chron
-            .versions(self.kind, start_date, 3, args.use_local_cheap_cashews)
-            // We ask Chron to start at a given valid_from. It will give us
-            // all versions whose valid_from is greater than _or equal to_
-            // that value. That's good, because it means that if we left
-            // off halfway through processing a batch of entities with
-            // identical valid_from, we won't miss the rest of the batch.
-            // However, we will receive the first half of the batch again.
-            // Later steps in the ingest code will error if we attempt to
-            // ingest a value that's already in the database, so we have to
-            // filter them out. That's what this skip_while is doing.
-            // It returns a future just because that's what's dictated by
-            // the stream api.
-            .skip_while(|result| {
-                let skip_this =
-                    start_cursor
-                        .as_ref()
-                        .is_some_and(|(start_valid_from, start_entity_id)| {
-                            result.as_ref().is_ok_and(|entity| {
-                                (entity.valid_from, &entity.entity_id)
-                                    <= (*start_valid_from, start_entity_id)
-                            })
-                        });
-
-                futures::future::ready(skip_this)
-            })
-            .try_chunks(args.config.insert_raw_entity_batch_size);
-        pin_mut!(stream);
-
-        while let Some(chunk) = stream.next().await {
-            // When a chunked stream encounters an error, it returns the portion
-            // of the chunk that was collected before the error and the error
-            // itself. We want to insert the successful portion of the chunk,
-            // _then_ propagate any error.
-            let (chunk, maybe_err): (Vec<ChronEntity<serde_json::Value>>, _) = match chunk {
-                Ok(chunk) => (chunk, None),
-                Err(err) => (err.0, Some(err.1)),
-            };
-
-            info!(
-                "{} stage 1 ingest saving {} {}(s)",
-                self.kind,
-                chunk.len(),
-                self.kind
-            );
-            let inserted = match db::insert_versions(&mut conn, &chunk) {
-                Ok(x) => Ok(x),
-                Err(err) => {
-                    error!("Error in stage 1 ingest write: {err}");
-                    Err(err)
-                }
-            }?;
-            info!(
-                "{} stage 1 ingest saved {} {}(s)",
-                self.kind, inserted, self.kind
-            );
-
-            args.wake_next_stage.notify_one();
-
-            if let Some(err) = maybe_err {
-                Err(err)?;
-            }
-        }
-
-        info!("{} stage 1 ingest finished", self.kind);
-        Ok(())
+        // let mut conn = args.pool.get()?;
+        // let chron = Chron::new(args.config.chron_fetch_batch_size);
+        //
+        // let start_cursor = db::get_latest_raw_version_cursor(&mut conn, self.kind)?
+        //     .map(|(dt, id)| (dt.and_utc(), id));
+        // let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
+        //
+        // info!("{} fetch will start from date {:?}", self.kind, start_date);
+        //
+        // let stream = chron
+        //     .versions(self.kind, start_date, 3, args.use_local_cheap_cashews)
+        //     // We ask Chron to start at a given valid_from. It will give us
+        //     // all versions whose valid_from is greater than _or equal to_
+        //     // that value. That's good, because it means that if we left
+        //     // off halfway through processing a batch of entities with
+        //     // identical valid_from, we won't miss the rest of the batch.
+        //     // However, we will receive the first half of the batch again.
+        //     // Later steps in the ingest code will error if we attempt to
+        //     // ingest a value that's already in the database, so we have to
+        //     // filter them out. That's what this skip_while is doing.
+        //     // It returns a future just because that's what's dictated by
+        //     // the stream api.
+        //     .skip_while(|result| {
+        //         let skip_this =
+        //             start_cursor
+        //                 .as_ref()
+        //                 .is_some_and(|(start_valid_from, start_entity_id)| {
+        //                     result.as_ref().is_ok_and(|entity| {
+        //                         (entity.valid_from, &entity.entity_id)
+        //                             <= (*start_valid_from, start_entity_id)
+        //                     })
+        //                 });
+        //
+        //         futures::future::ready(skip_this)
+        //     })
+        //     .try_chunks(args.config.insert_raw_entity_batch_size);
+        // pin_mut!(stream);
+        //
+        // while let Some(chunk) = stream.next().await {
+        //     // When a chunked stream encounters an error, it returns the portion
+        //     // of the chunk that was collected before the error and the error
+        //     // itself. We want to insert the successful portion of the chunk,
+        //     // _then_ propagate any error.
+        //     let (chunk, maybe_err): (Vec<ChronEntity<serde_json::Value>>, _) = match chunk {
+        //         Ok(chunk) => (chunk, None),
+        //         Err(err) => (err.0, Some(err.1)),
+        //     };
+        //
+        //     info!(
+        //         "{} stage 1 ingest saving {} {}(s)",
+        //         self.kind,
+        //         chunk.len(),
+        //         self.kind
+        //     );
+        //     let inserted = match db::insert_versions(&mut conn, &chunk) {
+        //         Ok(x) => Ok(x),
+        //         Err(err) => {
+        //             error!("Error in stage 1 ingest write: {err}");
+        //             Err(err)
+        //         }
+        //     }?;
+        //     info!(
+        //         "{} stage 1 ingest saved {} {}(s)",
+        //         self.kind, inserted, self.kind
+        //     );
+        //
+        //     args.wake_next_stage.notify_one();
+        //
+        //     if let Some(err) = maybe_err {
+        //         Err(err)?;
+        //     }
+        // }
+        //
+        // info!("{} stage 1 ingest finished", self.kind);
+        // Ok(())
     }
 }
 
@@ -422,7 +425,7 @@ impl IngestStage for VersionStage1Ingest {
     // Treat this as boilerplate
     fn run(
         self: Arc<Self>,
-        args: StageArgs,
+        args: ProcessingArgs,
     ) -> Pin<Box<dyn Future<Output = IngestErrorContainer> + Send>> {
         Box::pin(async {
             let kind = self.kind; // For move semantics reasons
@@ -575,157 +578,157 @@ impl FeedEventVersionStage1Ingest {
         }
     }
 
-    async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
+    async fn run(self: Arc<Self>, args: ProcessingArgs) -> Result<(), IngestFatalError> {
         todo!("Replace all calls with the equivalent in ingest/fetch.rs");
-        let mut conn = args.pool.get()?;
-
-        let url = mmoldb_db::postgres_url_from_environment();
-        let mut async_conn = AsyncPgConnection::establish(&url).await?;
-        let mut event_cache = HashMap::new();
-
-        insert_feed_event_versions_from_stream(
-            &mut async_conn,
-            &mut conn,
-            &mut event_cache,
-            self.kind,
-            self.embedded_kind,
-            &format!("embedded {} feed", self.embedded_kind),
-            args.config.insert_raw_entity_batch_size,
-            Some(
-                NaiveDateTime::parse_from_str("2025-07-29 00:00:00.000000", "%Y-%m-%d %H:%M:%S%.f")
-                    .expect("Hard-coded date must not fail to parse"),
-            ),
-            args.wake_next_stage.clone(),
-            args.config.debug_db_insert_delay,
-        )
-        .await?;
-
-        insert_feed_event_versions_from_stream(
-            &mut async_conn,
-            &mut conn,
-            &mut event_cache,
-            self.kind,
-            self.kind,
-            self.kind,
-            args.config.insert_raw_entity_batch_size,
-            None,
-            args.wake_next_stage.clone(),
-            args.config.debug_db_insert_delay,
-        )
-        .await?;
-
-        // Need to re-acquire the cursor after inserting embedded feed events
-        // (this could be skipped if we know we didn't insert any feed events)
-        let start_cursor = db::get_latest_raw_feed_event_version_cursor(&mut conn, self.kind)?
-            .map(|(dt, id, _)| (dt, id));
-        let start_cursor_utc = start_cursor.as_ref().map(|(dt, id)| (dt.and_utc(), id));
-
-        let start_date = start_cursor.as_ref().map(|(dt, _)| dt.and_utc());
-        info!("{} fetch will start from date {:?}", self.kind, start_date,);
-        let chron = Chron::new(args.config.chron_fetch_batch_size);
-
-        let stream = chron
-            .versions(self.kind, start_date, 3, args.use_local_cheap_cashews)
-            // We ask Chron to start at a given valid_from. It will give us
-            // all versions whose valid_from is greater than _or equal to_
-            // that value. That's good, because it means that if we left
-            // off halfway through processing a batch of entities with
-            // identical valid_from, we won't miss the rest of the batch.
-            // However, we will receive the first half of the batch again.
-            // Later steps in the ingest code will error if we attempt to
-            // ingest a value that's already in the database, so we have to
-            // filter them out. That's what this skip_while is doing.
-            // It returns a future just because that's what's dictated by
-            // the stream api.
-            .skip_while(|result| {
-                let skip_this =
-                    start_cursor_utc
-                        .as_ref()
-                        .is_some_and(|(start_valid_from, start_entity_id)| {
-                            result.as_ref().is_ok_and(|entity| {
-                                (entity.valid_from, &entity.entity_id)
-                                    <= (*start_valid_from, start_entity_id)
-                            })
-                        });
-
-                futures::future::ready(skip_this)
-            })
-            .flat_map(|result| {
-                futures::stream::iter(match result {
-                    Ok(version) => {
-                        #[derive(Deserialize)]
-                        struct SomethingWithFeed {
-                            // It has a capital F when it's embedded in an entity (team or player)
-                            // and lowercase f when it's alone
-                            #[serde(alias = "Feed")]
-                            feed: Option<Vec<serde_json::Value>>,
-                        }
-
-                        match serde_json::from_value::<SomethingWithFeed>(version.data) {
-                            Ok(des) => {
-                                if let Some(feed) = des.feed {
-                                    let dt = version.valid_from.naive_utc();
-                                    Either::Left(Either::Right(feed.into_iter().enumerate().map(
-                                        move |(idx, item)| {
-                                            Ok((version.entity_id.clone(), idx as i32, dt, item))
-                                        },
-                                    )))
-                                } else {
-                                    Either::Right(Either::Left(iter::empty()))
-                                }
-                            }
-                            Err(err) => Either::Left(Either::Left(iter::once(Err(
-                                IngestFatalError::DeserializeError(err),
-                            )))),
-                        }
-                    }
-                    Err(err) => Either::Right(Either::Right(iter::once(Err(
-                        IngestFatalError::ChronStreamError(err),
-                    )))),
-                })
-            })
-            .filter(|result| futures::future::ready(filter_cached(&mut event_cache, result)))
-            .try_chunks(args.config.insert_raw_entity_batch_size);
-        pin_mut!(stream);
-
-        while let Some(chunk) = stream.next().await {
-            // When a chunked stream encounters an error, it returns the portion
-            // of the chunk that was collected before the error and the error
-            // itself. We want to insert the successful portion of the chunk,
-            // _then_ propagate any error.
-            let (chunk, maybe_err): (Vec<(String, i32, NaiveDateTime, serde_json::Value)>, _) =
-                match chunk {
-                    Ok(chunk) => (chunk, None),
-                    Err(err) => (err.0, Some(err.1)),
-                };
-
-            info!(
-                "{} stage 1 ingest saving {} {}(s)",
-                self.kind,
-                chunk.len(),
-                self.kind
-            );
-            let inserted = match db::insert_feed_event_versions(&mut conn, self.kind, &chunk) {
-                Ok(x) => Ok(x),
-                Err(err) => {
-                    error!("Error in stage 1 ingest write: {err}");
-                    Err(err)
-                }
-            }?;
-            info!(
-                "{} stage 1 ingest saved {} {}(s)",
-                self.kind, inserted, self.kind
-            );
-
-            args.wake_next_stage.notify_one();
-
-            if let Some(err) = maybe_err {
-                Err(err)?;
-            }
-        }
-
-        info!("{} stage 1 ingest finished", self.kind);
-        Ok(())
+        // let mut conn = args.pool.get()?;
+        //
+        // let url = mmoldb_db::postgres_url_from_environment();
+        // let mut async_conn = AsyncPgConnection::establish(&url).await?;
+        // let mut event_cache = HashMap::new();
+        //
+        // insert_feed_event_versions_from_stream(
+        //     &mut async_conn,
+        //     &mut conn,
+        //     &mut event_cache,
+        //     self.kind,
+        //     self.embedded_kind,
+        //     &format!("embedded {} feed", self.embedded_kind),
+        //     args.config.insert_raw_entity_batch_size,
+        //     Some(
+        //         NaiveDateTime::parse_from_str("2025-07-29 00:00:00.000000", "%Y-%m-%d %H:%M:%S%.f")
+        //             .expect("Hard-coded date must not fail to parse"),
+        //     ),
+        //     args.wake_next_stage.clone(),
+        //     args.config.debug_db_insert_delay,
+        // )
+        // .await?;
+        //
+        // insert_feed_event_versions_from_stream(
+        //     &mut async_conn,
+        //     &mut conn,
+        //     &mut event_cache,
+        //     self.kind,
+        //     self.kind,
+        //     self.kind,
+        //     args.config.insert_raw_entity_batch_size,
+        //     None,
+        //     args.wake_next_stage.clone(),
+        //     args.config.debug_db_insert_delay,
+        // )
+        // .await?;
+        //
+        // // Need to re-acquire the cursor after inserting embedded feed events
+        // // (this could be skipped if we know we didn't insert any feed events)
+        // let start_cursor = db::get_latest_raw_feed_event_version_cursor(&mut conn, self.kind)?
+        //     .map(|(dt, id, _)| (dt, id));
+        // let start_cursor_utc = start_cursor.as_ref().map(|(dt, id)| (dt.and_utc(), id));
+        //
+        // let start_date = start_cursor.as_ref().map(|(dt, _)| dt.and_utc());
+        // info!("{} fetch will start from date {:?}", self.kind, start_date,);
+        // let chron = Chron::new(args.config.chron_fetch_batch_size);
+        //
+        // let stream = chron
+        //     .versions(self.kind, start_date, 3, args.use_local_cheap_cashews)
+        //     // We ask Chron to start at a given valid_from. It will give us
+        //     // all versions whose valid_from is greater than _or equal to_
+        //     // that value. That's good, because it means that if we left
+        //     // off halfway through processing a batch of entities with
+        //     // identical valid_from, we won't miss the rest of the batch.
+        //     // However, we will receive the first half of the batch again.
+        //     // Later steps in the ingest code will error if we attempt to
+        //     // ingest a value that's already in the database, so we have to
+        //     // filter them out. That's what this skip_while is doing.
+        //     // It returns a future just because that's what's dictated by
+        //     // the stream api.
+        //     .skip_while(|result| {
+        //         let skip_this =
+        //             start_cursor_utc
+        //                 .as_ref()
+        //                 .is_some_and(|(start_valid_from, start_entity_id)| {
+        //                     result.as_ref().is_ok_and(|entity| {
+        //                         (entity.valid_from, &entity.entity_id)
+        //                             <= (*start_valid_from, start_entity_id)
+        //                     })
+        //                 });
+        //
+        //         futures::future::ready(skip_this)
+        //     })
+        //     .flat_map(|result| {
+        //         futures::stream::iter(match result {
+        //             Ok(version) => {
+        //                 #[derive(Deserialize)]
+        //                 struct SomethingWithFeed {
+        //                     // It has a capital F when it's embedded in an entity (team or player)
+        //                     // and lowercase f when it's alone
+        //                     #[serde(alias = "Feed")]
+        //                     feed: Option<Vec<serde_json::Value>>,
+        //                 }
+        //
+        //                 match serde_json::from_value::<SomethingWithFeed>(version.data) {
+        //                     Ok(des) => {
+        //                         if let Some(feed) = des.feed {
+        //                             let dt = version.valid_from.naive_utc();
+        //                             Either::Left(Either::Right(feed.into_iter().enumerate().map(
+        //                                 move |(idx, item)| {
+        //                                     Ok((version.entity_id.clone(), idx as i32, dt, item))
+        //                                 },
+        //                             )))
+        //                         } else {
+        //                             Either::Right(Either::Left(iter::empty()))
+        //                         }
+        //                     }
+        //                     Err(err) => Either::Left(Either::Left(iter::once(Err(
+        //                         IngestFatalError::DeserializeError(err),
+        //                     )))),
+        //                 }
+        //             }
+        //             Err(err) => Either::Right(Either::Right(iter::once(Err(
+        //                 IngestFatalError::ChronStreamError(err),
+        //             )))),
+        //         })
+        //     })
+        //     .filter(|result| futures::future::ready(filter_cached(&mut event_cache, result)))
+        //     .try_chunks(args.config.insert_raw_entity_batch_size);
+        // pin_mut!(stream);
+        //
+        // while let Some(chunk) = stream.next().await {
+        //     // When a chunked stream encounters an error, it returns the portion
+        //     // of the chunk that was collected before the error and the error
+        //     // itself. We want to insert the successful portion of the chunk,
+        //     // _then_ propagate any error.
+        //     let (chunk, maybe_err): (Vec<(String, i32, NaiveDateTime, serde_json::Value)>, _) =
+        //         match chunk {
+        //             Ok(chunk) => (chunk, None),
+        //             Err(err) => (err.0, Some(err.1)),
+        //         };
+        //
+        //     info!(
+        //         "{} stage 1 ingest saving {} {}(s)",
+        //         self.kind,
+        //         chunk.len(),
+        //         self.kind
+        //     );
+        //     let inserted = match db::insert_feed_event_versions(&mut conn, self.kind, &chunk) {
+        //         Ok(x) => Ok(x),
+        //         Err(err) => {
+        //             error!("Error in stage 1 ingest write: {err}");
+        //             Err(err)
+        //         }
+        //     }?;
+        //     info!(
+        //         "{} stage 1 ingest saved {} {}(s)",
+        //         self.kind, inserted, self.kind
+        //     );
+        //
+        //     args.wake_next_stage.notify_one();
+        //
+        //     if let Some(err) = maybe_err {
+        //         Err(err)?;
+        //     }
+        // }
+        //
+        // info!("{} stage 1 ingest finished", self.kind);
+        // Ok(())
     }
 }
 
@@ -737,7 +740,7 @@ impl IngestStage for FeedEventVersionStage1Ingest {
     // Treat this as boilerplate
     fn run(
         self: Arc<Self>,
-        args: StageArgs,
+        args: ProcessingArgs,
     ) -> Pin<Box<dyn Future<Output = IngestErrorContainer> + Send>> {
         Box::pin(async {
             let kind = self.kind; // For move semantics reasons
@@ -789,7 +792,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         format!("{} Stage 2", self.kind)
     }
 
-    async fn run(self: Arc<Self>, args: StageArgs) -> Result<(), IngestFatalError> {
+    async fn run(self: Arc<Self>, args: ProcessingArgs) -> Result<(), IngestFatalError> {
         let partitioner = Partitioner::new(args.parallelism);
 
         // Task names have to outlive their tasks, so we build then in advance
@@ -862,24 +865,24 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 "{} stage 2 ingest coordinator has processed all available versions. Waiting to be waken up or exited...",
                 self.kind
             );
-            if let Some(notify) = &args.waker_from_prev_stage {
-                tokio::select! {
-                    biased; // We want to always
-                    _ = notify.notified() => {
-                        info!("{} stage 2 ingest coordinator was woken up", self.kind);
-                    }
-                    _ = args.prev_stage_finished.cancelled() => {
-                        info!("{} stage 2 ingest coordinator exiting because prev_stage_finished was set at the end of the loop", self.kind);
-                        break;
-                    }
-                }
-            } else {
+            // if let Some(notify) = &args.waker_from_prev_stage {
+            //     tokio::select! {
+            //         biased; // We want to always
+            //         _ = notify.notified() => {
+            //             info!("{} stage 2 ingest coordinator was woken up", self.kind);
+            //         }
+            //         _ = args.prev_stage_finished.cancelled() => {
+            //             info!("{} stage 2 ingest coordinator exiting because prev_stage_finished was set at the end of the loop", self.kind);
+            //             break;
+            //         }
+            //     }
+            // } else {
                 info!(
                     "{} stage 2 ingest coordinator exiting because there is no waker from the previous stage",
                     self.kind
                 );
                 break;
-            }
+            // }
         }
 
         // Drop all the senders. This causes the receivers to output None, which is the
@@ -896,10 +899,10 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         }
 
         debug!(
-            "All workers for {} finished. Exiting coordinator and notifying next stage.",
+            "All workers for {} finished. Exiting coordinator.",
             self.kind
         );
-        args.wake_next_stage.notify_one();
+        // args.wake_next_stage.notify_one();
 
         Ok(())
     }
@@ -907,7 +910,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
     // Worker could probably take a conn instead of the whole pool, but the cost is negligible
     async fn worker(
         self: Arc<Self>,
-        args: StageArgs,
+        args: ProcessingArgs,
         version_recv: Receiver<ChronEntity<serde_json::Value>>,
         worker_idx: usize,
     ) -> Result<(), IngestFatalError> {
@@ -920,7 +923,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
     async fn worker_internal(
         self: Arc<Self>,
-        args: StageArgs,
+        args: ProcessingArgs,
         version_recv: Receiver<ChronEntity<serde_json::Value>>,
         worker_idx: usize,
     ) -> Result<(), IngestFatalError> {
@@ -968,7 +971,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                     }
                 })
             })
-            .chunks(args.config.process_batch_size);
+            .chunks(args.process_batch_size.into());
         pin_mut!(chunk_stream);
 
         let mut num_ingested = 0;
@@ -978,10 +981,10 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 raw_versions,
                 &mut conn,
                 worker_idx,
-                args.config.debug_db_insert_delay,
+                args.debug_db_insert_delay,
             )?;
 
-            db::update_num_ingested(&mut conn, args.ingest_id, self.kind, num_ingested)?;
+            // db::update_num_ingested(&mut conn, args.ingest_id, self.kind, num_ingested)?;
         }
 
         debug!(
@@ -1126,7 +1129,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> IngestStage
 
     fn run(
         self: Arc<Self>,
-        args: StageArgs,
+        args: ProcessingArgs,
     ) -> Pin<Box<dyn Future<Output = IngestErrorContainer> + Send>> {
         Box::pin(async {
             let kind = self.kind; // For move semantics reasons
@@ -1218,15 +1221,37 @@ pub enum IngestKind {
     Entity(EntityIngestKind),
 }
 
+impl Display for IngestKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IngestKind::Versioned(k) => write!(f, "{}", k.as_kind()),
+            IngestKind::Feed(k) => write!(f, "{}", k.as_feed_event_kind()),
+            IngestKind::Entity(k) => write!(f, "{}", k.as_kind()),
+        }
+    }
+}
+
+
 #[derive(Debug)]
 pub struct IngestForKind {
     kind: IngestKind,
     fetch_args: ChronFetchArgs,
+    processing_args: ProcessingArgs,
 }
 
 impl IngestForKind {
-    pub fn new(kind: IngestKind, fetch_args: ChronFetchArgs) -> Self {
-        Self { kind, fetch_args }
+    pub fn new(kind: IngestKind, fetch_args: ChronFetchArgs, processing_args: ProcessingArgs) -> Self {
+        Self { kind, fetch_args, processing_args }
+    }
+
+    pub fn kind(&self) -> IngestKind { self.kind }
+
+    pub fn fetch_is_enabled(&self) -> bool {
+        self.fetch_args.enabled
+    }
+
+    pub fn processing_is_enabled(&self) -> bool {
+        self.processing_args.enabled
     }
 
     /// The indefinite fetch task. Repeats until canceled.
@@ -1235,7 +1260,7 @@ impl IngestForKind {
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         while !self.fetch_args.shutdown_requested.is_cancelled() {
-            debug!("Sleeping until it's time for the next {:?} fetch", self.kind);
+            debug!("Sleeping until it's time for the next {} fetch", self.kind);
             tokio::select! {
                 biased;
                 _ = self.fetch_args.shutdown_requested.cancelled() => {
@@ -1244,7 +1269,7 @@ impl IngestForKind {
                 _ = interval.tick() => {}, // Tick finishes, just proceed with the loop
             }
 
-            info!("Beginning next {:?} fetch", self.kind);
+            info!("Beginning next {} fetch", self.kind);
             self.fetch_all_available().await?;
         }
 
@@ -1257,17 +1282,61 @@ impl IngestForKind {
         match self.kind {
             IngestKind::Versioned(kind) => {
                 fetch::fetch_version_kind(kind.as_kind(), self.fetch_args.clone())
-                    .instrument(info_span!("fetch_task", kind = kind.as_kind()))
+                    .instrument(info_span!("fetch_task", kind = kind.as_kind(), debug = "blah"))
                     .await
             },
             IngestKind::Feed(kind) => {
                 fetch::fetch_feed_event_version_kind(kind.as_feed_event_kind(), self.fetch_args.clone())
-                    .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind()))
+                    .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind(), debug = "blah2"))
                     .await
             },
             IngestKind::Entity(kind) => {
                 fetch::fetch_entity_kind(kind.as_kind(), self.fetch_args.clone())
-                    .instrument(info_span!("fetch_task", kind = kind.as_kind()))
+                    .instrument(info_span!("fetch_task", kind = kind.as_kind(), debug = "blah3"))
+                    .await
+            },
+        }
+    }
+
+    /// The indefinite processing task. Repeats until canceled.
+    pub async fn processing_task(&self) -> Result<(), IngestFatalError> {
+        let mut interval = tokio::time::interval(Duration::from_secs(self.processing_args.processing_interval_seconds));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+        while !self.processing_args.shutdown_requested.is_cancelled() {
+            debug!("Sleeping until it's time for the next {:?} processing", self.kind);
+            tokio::select! {
+                biased;
+                _ = self.processing_args.shutdown_requested.cancelled() => {
+                    break; // Shutdown requested, break and return immediately
+                }
+                _ = interval.tick() => {}, // Tick finishes, just proceed with the loop
+            }
+
+            info!("Beginning next {:?} processing", self.kind);
+            self.processing_all_available().await?;
+        }
+
+        Ok(())
+    }
+
+    /// One single instance of processing. Exits once Chron says we're caught up,
+    /// or when canceled.
+    async fn processing_all_available(&self) -> Result<(), IngestFatalError> {
+        match self.kind {
+            IngestKind::Versioned(kind) => {
+                processing::process_version_kind(kind.as_kind(), self.processing_args.clone())
+                    .instrument(info_span!("processing_task", kind = kind.as_kind()))
+                    .await
+            },
+            IngestKind::Feed(kind) => {
+                processing::process_feed_event_version_kind(kind.as_feed_event_kind(), self.processing_args.clone())
+                    .instrument(info_span!("processing_task", kind = kind.as_feed_event_kind()))
+                    .await
+            },
+            IngestKind::Entity(kind) => {
+                processing::process_entity_kind(kind.as_kind(), self.processing_args.clone())
+                    .instrument(info_span!("processing_task", kind = kind.as_kind()))
                     .await
             },
         }
@@ -1290,11 +1359,29 @@ pub fn ingest_kinds(shutdown_requested: &CancellationToken, pool: &ConnectionPoo
                 shutdown_requested: shutdown_requested.clone(),
                 pool: pool.clone(),
                 use_local_cheap_cashews: config.use_local_cheap_cashews,
+                enabled: kind_config.enable_fetch,
                 chron_fetch_interval_seconds: kind_config.chron_fetch_interval_seconds,
                 chron_fetch_batch_size: kind_config.chron_fetch_batch_size,
                 insert_raw_entity_batch_size: kind_config.insert_raw_entity_batch_size,
             };
-            Arc::new(IngestForKind::new(kind, fetch_args))
+
+            let parallelism = kind_config.ingest_parallelism.unwrap_or_else(|| {
+                std::thread::available_parallelism().unwrap_or_else(|e| {
+                    warn!("Can't get hardware parallelism. Defaulting to 1. {e}");
+                    NonZero::new(1).unwrap()
+                })
+            });
+
+            let processing_args = ProcessingArgs {
+                shutdown_requested: shutdown_requested.clone(),
+                pool: pool.clone(),
+                enabled: kind_config.enable_processing,
+                processing_interval_seconds: kind_config.processing_interval_seconds,
+                parallelism,
+                process_batch_size: kind_config.process_batch_size,
+                debug_db_insert_delay: kind_config.debug_db_insert_delay,
+            };
+            Arc::new(IngestForKind::new(kind, fetch_args, processing_args))
         })
         .collect()
 }

@@ -13,7 +13,7 @@ use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use log::error;
+use tracing::error;
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;

@@ -1,4 +1,4 @@
-use log::debug;
+use tracing::debug;
 
 /// Waits for a signal that requests a graceful shutdown, like SIGTERM or SIGINT.
 #[cfg(unix)]

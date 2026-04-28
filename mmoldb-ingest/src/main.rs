@@ -10,7 +10,6 @@ mod logging_setup;
 mod partitioner;
 mod signal;
 
-use std::pin::Pin;
 use tokio::task::JoinHandle;
 use tokio::signal::unix as tokio_signal;
 use opentelemetry::global;
@@ -19,7 +18,7 @@ use chrono::Utc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use config::IngestConfig;
 use futures::{pin_mut, FutureExt, StreamExt};
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 use miette::{Context, GraphicalReportHandler, IntoDiagnostic};
 use mmoldb_db::{ConnectionPool, db, QueryResult, PgConnection};
 use std::sync::{Arc, Condvar, Mutex};
@@ -60,7 +59,8 @@ async fn memory_tracking_task(shutdown_requested: CancellationToken) {
 #[tokio::main]
 async fn main() -> miette::Result<()> {
     // Logging first so it can capture as much as possible
-    logging_setup::set_up_opentelemetry_logging();
+    // This guard must be alive in order for otel logs to be processed
+    let _otel_guard = logging_setup::init_tracing_subscriber();
 
     // Then all other setup tasks in approximate order of how quickly
     // they'll fail if they're going to fail
@@ -80,16 +80,33 @@ async fn main() -> miette::Result<()> {
     let tasks = FuturesUnordered::<JoinHandle<Result<(), IngestFatalError>>>::new();
 
     // Launch background, non-ingest tasks
+    info!("Launching background memory tracking task");
     tasks.push(tokio::task::spawn(memory_tracking_task(shutdown_requested.clone()).map(Ok)));
 
     // Launch ingest tasks
     let ingest_kinds = ingest::ingest_kinds(&shutdown_requested, &pool, config);
     for ingest_kind in &ingest_kinds {
-        let ingest_kind = ingest_kind.clone();
-        let task = tokio::task::spawn(async move { ingest_kind.fetch_task().await });
-        tasks.push(task);
+        if ingest_kind.fetch_is_enabled() {
+            info!("Launching fetch task for {}", ingest_kind.kind());
+            let ingest_kind = ingest_kind.clone();
+            let task = tokio::task::spawn(async move { ingest_kind.fetch_task().await });
+            tasks.push(task);
+        } else {
+            info!("Fetch task for {} is disabled", ingest_kind.kind());
+        }
+    }
+    for ingest_kind in &ingest_kinds {
+        if ingest_kind.processing_is_enabled() {
+            info!("Launching processing task for {}", ingest_kind.kind());
+            let ingest_kind = ingest_kind.clone();
+            let task = tokio::task::spawn(async move { ingest_kind.processing_task().await });
+            tasks.push(task);
+        } else {
+            info!("Processing task for {} is disabled", ingest_kind.kind());
+        }
     }
 
+    info!("Running {} task(s)", tasks.len());
     wait_until_shutdown(tasks, sigterm, sigint, shutdown_requested).await
 }
 
@@ -466,18 +483,18 @@ async fn ingest_while_counting_task_runs(
         }
     }
 
-    if config.game_ingest.enable {
-        info!("Beginning game ingest");
-        errs.extend(
-            ingest_games::ingest_games(
-                pool.clone(),
-                ingest_id,
-                abort,
-                config.use_local_cheap_cashews,
-            )
-            .await,
-        );
-    }
+    // if config.game_ingest.enable {
+    //     info!("Beginning game ingest");
+    //     errs.extend(
+    //         ingest_games::ingest_games(
+    //             pool.clone(),
+    //             ingest_id,
+    //             abort,
+    //             config.use_local_cheap_cashews,
+    //         )
+    //         .await,
+    //     );
+    // }
 
     errs
 }

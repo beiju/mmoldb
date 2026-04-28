@@ -6,11 +6,13 @@ use std::num::NonZero;
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct IngestibleConfig {
-    pub enable: bool,
-    pub chron_fetch_batch_size: usize,
+    pub enable_fetch: bool,
+    pub enable_processing: bool,
+    pub chron_fetch_batch_size: NonZero<usize>,
     pub chron_fetch_interval_seconds: u64,
-    pub insert_raw_entity_batch_size: usize,
-    pub process_batch_size: usize,
+    pub insert_raw_entity_batch_size: NonZero<usize>,
+    pub processing_interval_seconds: u64,
+    pub process_batch_size: NonZero<usize>,
     pub ingest_parallelism: Option<NonZero<usize>>,
     pub debug_db_insert_delay: f64,
 }
@@ -18,11 +20,13 @@ pub struct IngestibleConfig {
 impl Default for IngestibleConfig {
     fn default() -> Self {
         Self {
-            enable: true,
+            enable_fetch: true,
+            enable_processing: true,
             chron_fetch_interval_seconds: 10 * 60,
-            chron_fetch_batch_size: 1000,
-            insert_raw_entity_batch_size: 1000,
-            process_batch_size: 1000,
+            chron_fetch_batch_size: 1000.try_into().unwrap(),
+            insert_raw_entity_batch_size: 1000.try_into().unwrap(),
+            processing_interval_seconds: 10 * 60,
+            process_batch_size: 1000.try_into().unwrap(),
             ingest_parallelism: None,
             debug_db_insert_delay: 0.0,
         }

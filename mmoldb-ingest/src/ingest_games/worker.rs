@@ -4,7 +4,7 @@ use crate::ingest_games::{check_round_trip, sim};
 use chron::ChronEntity;
 use chrono::Utc;
 use itertools::{Either, Itertools, izip};
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 use miette::Context;
 use mmolb_parsing::enums::EventType;
 use mmoldb_db::db::{CompletedGameForDb, GameForDb, Timings};
@@ -44,7 +44,6 @@ pub struct IngestStats {
 
 pub fn ingest_page_of_games(
     taxa: &Taxa,
-    ingest_id: i64,
     page_index: usize,
     get_batch_to_process_duration: f64,
     all_games_json: Vec<ChronEntity<serde_json::Value>>,
@@ -153,7 +152,7 @@ pub fn ingest_page_of_games(
     let parse_and_sim_duration = (Utc::now() - parse_and_sim_start).as_seconds_f64();
 
     let db_insert_start = Utc::now();
-    let db_insert_timings = db::insert_games(conn, taxa, ingest_id, &games_for_db)?;
+    let db_insert_timings = db::insert_games(conn, taxa, &games_for_db)?;
     debug!(
         "Inserted {} games on worker {worker_id}",
         games_for_db.len()
@@ -255,26 +254,6 @@ pub fn ingest_page_of_games(
     }
     let insert_extra_logs_duration = (Utc::now() - insert_extra_logs_start).as_seconds_f64();
     let save_duration = (Utc::now() - save_start).as_seconds_f64();
-
-    db::insert_timings(
-        conn,
-        ingest_id,
-        page_index,
-        Timings {
-            get_batch_to_process_duration,
-            deserialize_games_duration,
-            filter_finished_games_duration,
-            parse_and_sim_duration,
-            db_insert_duration,
-            db_insert_timings,
-            db_fetch_for_check_duration,
-            events_for_game_timings,
-            check_round_trip_duration,
-            insert_extra_logs_duration,
-            save_duration,
-        },
-    )?;
-    debug!("Saved ingest timings on worker {worker_id}");
 
     Ok::<_, IngestFatalError>(IngestStats {
         num_ongoing_games_skipped,

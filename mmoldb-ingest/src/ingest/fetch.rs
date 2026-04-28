@@ -1,12 +1,12 @@
 use std::iter;
-use std::pin::Pin;
+use std::num::NonZero;
 use chrono::NaiveDateTime;
 use futures::{FutureExt, StreamExt};
 use futures::{pin_mut, TryStreamExt};
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 use itertools::Either;
-use log::{error, info};
+use tracing::{error, info, span, Level};
 use mmolb_parsing::player::Deserialize;
 use tokio_util::sync::CancellationToken;
 use chron::{Chron, ChronEntity};
@@ -18,9 +18,10 @@ pub struct ChronFetchArgs {
     pub shutdown_requested: CancellationToken,
     pub pool: ConnectionPool,
     pub use_local_cheap_cashews: bool,
+    pub enabled: bool,
     pub chron_fetch_interval_seconds: u64,
-    pub chron_fetch_batch_size: usize,
-    pub insert_raw_entity_batch_size: usize,
+    pub chron_fetch_batch_size: NonZero<usize>,
+    pub insert_raw_entity_batch_size: NonZero<usize>,
 }
 
 // It may be possible to remove 'static
@@ -51,7 +52,7 @@ pub async fn fetch_entity_kind(kind: &'static str, args: ChronFetchArgs) -> Resu
                     })
                 })
         )
-        .try_chunks(args.insert_raw_entity_batch_size);
+        .try_chunks(args.insert_raw_entity_batch_size.into());
     pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
@@ -124,7 +125,7 @@ pub async fn fetch_version_kind(kind: &'static str, args: ChronFetchArgs) -> Res
 
             futures::future::ready(skip_this)
         })
-        .try_chunks(args.insert_raw_entity_batch_size);
+        .try_chunks(args.insert_raw_entity_batch_size.into());
     pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {
@@ -136,7 +137,7 @@ pub async fn fetch_version_kind(kind: &'static str, args: ChronFetchArgs) -> Res
             Ok(chunk) => (chunk, None),
             Err(err) => (err.0, Some(err.1)),
         };
-
+        let _span = span!(Level::INFO, "shaving_yaks").entered();
         info!(
             "{} stage 1 ingest saving {} {}(s)",
             kind,
@@ -254,7 +255,7 @@ pub async fn fetch_feed_event_version_kind(kind: &'static str, args: ChronFetchA
             })
         })
         .filter(|result| futures::future::ready(filter_cached(&mut event_cache, result)))
-        .try_chunks(args.insert_raw_entity_batch_size);
+        .try_chunks(args.insert_raw_entity_batch_size.into());
     pin_mut!(stream);
 
     while let Some(chunk) = stream.next().await {

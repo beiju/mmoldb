@@ -40,7 +40,6 @@ pub struct DbWeather {
 #[derive(Debug, Insertable)]
 #[diesel(table_name = crate::data_schema::data::games)]
 pub struct NewGame<'a> {
-    pub ingest: i64,
     pub mmolb_game_id: &'a str,
     pub weather: i64,
     pub season: i32,

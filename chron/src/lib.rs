@@ -4,6 +4,7 @@ use log::{debug, warn};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use std::future;
+use std::num::NonZero;
 use thiserror::Error;
 
 // TODO use const datetime_from_parts function defined... somewhere
@@ -57,11 +58,11 @@ pub struct ChronEntity<EntityT> {
 
 pub struct Chron {
     client: reqwest::Client,
-    page_size: usize,
+    page_size: NonZero<usize>,
 }
 
 impl Chron {
-    pub fn new(page_size: usize) -> Self {
+    pub fn new(page_size: NonZero<usize>) -> Self {
         Self {
             client: reqwest::Client::new(),
             page_size,
@@ -308,7 +309,7 @@ impl Chron {
                 };
 
                 if let Some(next_page_token) = page.next_page {
-                    if page.items.len() >= page_size {
+                    if page.items.len() >= page_size.into() {
                         // Then there are more pages
                         let next_page_fut = tokio::spawn(async move {
                             get_next_page_with_retries(
@@ -346,7 +347,7 @@ async fn get_next_page_with_retries(
     url: &str,
     kind: &str,
     max_retries: usize,
-    page_size: usize,
+    page_size: NonZero<usize>,
     start_at: Option<DateTime<Utc>>,
     end_at: Option<DateTime<Utc>>,
     page: Option<String>,
@@ -385,7 +386,7 @@ async fn get_next_page(
     client: &reqwest::Client,
     url: &str,
     kind: &str,
-    page_size: usize,
+    page_size: NonZero<usize>,
     start_at: Option<DateTime<Utc>>,
     end_at: Option<DateTime<Utc>>,
     page: Option<&str>,

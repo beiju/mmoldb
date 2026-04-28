@@ -1,5 +1,5 @@
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
-use log::warn;
+use tracing::warn;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType,

@@ -3,7 +3,7 @@ use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
-use log::{error, warn};
+use tracing::{error, warn};
 use mmolb_parsing::enums::{
     Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position, Uncategorized,
 };

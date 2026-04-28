@@ -1,118 +1,118 @@
-use opentelemetry::global;
-use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
-use opentelemetry_otlp::{LogExporter, MetricExporter, Protocol, SpanExporter, WithExportConfig};
-use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::logs::SdkLoggerProvider;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
-use opentelemetry_sdk::trace::SdkTracerProvider;
-use std::sync::OnceLock;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Layer};
+use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+use opentelemetry_sdk::{
+    metrics::{MeterProviderBuilder, PeriodicReader, SdkMeterProvider},
+    trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
+    Resource,
+};
+use opentelemetry_semantic_conventions::{
+    attribute::{DEPLOYMENT_ENVIRONMENT_NAME, SERVICE_VERSION},
+    SCHEMA_URL,
+};
+use tracing::Level;
+use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-fn get_resource() -> Resource {
-    static RESOURCE: OnceLock<Resource> = OnceLock::new();
-    RESOURCE
-        .get_or_init(|| Resource::builder().with_service_name("mmoldb").build())
-        .clone()
-}
-
-fn init_logs() -> SdkLoggerProvider {
-    let exporter = LogExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary)
-        .build()
-        .expect("Failed to create log exporter");
-
-    SdkLoggerProvider::builder()
-        .with_batch_exporter(exporter)
-        .with_resource(get_resource())
+// Create a Resource that captures information about the entity for which telemetry is recorded.
+fn resource() -> Resource {
+    Resource::builder()
+        .with_service_name(env!("CARGO_PKG_NAME"))
+        .with_schema_url(
+            [
+                KeyValue::new(SERVICE_VERSION, env!("CARGO_PKG_VERSION")),
+                KeyValue::new(DEPLOYMENT_ENVIRONMENT_NAME, "develop"),
+            ],
+            SCHEMA_URL,
+        )
         .build()
 }
 
-fn init_traces() -> SdkTracerProvider {
-    let exporter = SpanExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary) //can be changed to `Protocol::HttpJson` to export in JSON format
+// Construct MeterProvider for MetricsLayer
+fn init_meter_provider() -> SdkMeterProvider {
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_temporality(opentelemetry_sdk::metrics::Temporality::default())
         .build()
-        .expect("Failed to create trace exporter");
+        .unwrap();
+
+    let reader = PeriodicReader::builder(exporter)
+        .with_interval(std::time::Duration::from_secs(30))
+        .build();
+
+    // For debugging in development
+    let stdout_reader =
+        PeriodicReader::builder(opentelemetry_stdout::MetricExporter::default()).build();
+
+    let meter_provider = MeterProviderBuilder::default()
+        .with_resource(resource())
+        .with_reader(reader)
+        .with_reader(stdout_reader)
+        .build();
+
+    global::set_meter_provider(meter_provider.clone());
+
+    meter_provider
+}
+
+// Construct TracerProvider for OpenTelemetryLayer
+fn init_tracer_provider() -> SdkTracerProvider {
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()
+        .unwrap();
 
     SdkTracerProvider::builder()
+        // Customize sampling strategy
+        .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
+            1.0,
+        ))))
+        // If export trace to AWS X-Ray, you can use XrayIdGenerator
+        .with_id_generator(RandomIdGenerator::default())
+        .with_resource(resource())
         .with_batch_exporter(exporter)
-        .with_resource(get_resource())
         .build()
 }
 
-fn init_metrics() -> SdkMeterProvider {
-    let exporter = MetricExporter::builder()
-        .with_http()
-        .with_protocol(Protocol::HttpBinary) //can be changed to `Protocol::HttpJson` to export in JSON format
-        .build()
-        .expect("Failed to create metric exporter");
+// Initialize tracing-subscriber and return OtelGuard for opentelemetry-related termination processing
+pub fn init_tracing_subscriber() -> OtelGuard {
+    let tracer_provider = init_tracer_provider();
+    let meter_provider = init_meter_provider();
 
-    SdkMeterProvider::builder()
-        .with_periodic_exporter(exporter)
-        .with_resource(get_resource())
-        .build()
-}
+    let tracer = tracer_provider.tracer("tracing-otel-subscriber");
 
-pub fn set_up_opentelemetry_logging() {
-    let logger_provider = init_logs();
-
-    // Create a new OpenTelemetryTracingBridge using the above LoggerProvider.
-    let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
-
-    // To prevent a telemetry-induced-telemetry loop, OpenTelemetry's own internal
-    // logging is properly suppressed. However, logs emitted by external components
-    // (such as reqwest, tonic, etc.) are not suppressed as they do not propagate
-    // OpenTelemetry context. Until this issue is addressed
-    // (https://github.com/open-telemetry/opentelemetry-rust/issues/2877),
-    // filtering like this is the best way to suppress such logs.
-    //
-    // The filter levels are set as follows:
-    // - Allow `info` level and above by default.
-    // - Completely restrict logs from `hyper`, `tonic`, `h2`, and `reqwest`.
-    //
-    // Note: This filtering will also drop logs from these components even when
-    // they are used outside of the OTLP Exporter.
-    let filter_otel = EnvFilter::new("info")
-        .add_directive("hyper=off".parse().unwrap())
-        .add_directive("tonic=off".parse().unwrap())
-        .add_directive("h2=off".parse().unwrap())
-        .add_directive("reqwest=off".parse().unwrap());
-    let otel_layer = otel_layer.with_filter(filter_otel);
-
-    // Create a new tracing::Fmt layer to print the logs to stdout.
-    let filter_fmt = EnvFilter::new("info");
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_thread_names(true)
-        .with_filter(filter_fmt);
-
-    // Initialize the tracing subscriber with the OpenTelemetry layer and the
-    // Fmt layer.
     tracing_subscriber::registry()
-        .with(otel_layer)
-        .with(fmt_layer)
+        // The global level filter prevents the exporter network stack
+        // from reentering the globally installed OpenTelemetryLayer with
+        // its own spans while exporting, as the libraries should not use
+        // tracing levels below DEBUG. If the OpenTelemetry layer needs to
+        // trace spans and events with higher verbosity levels, consider using
+        // per-layer filtering to target the telemetry layer specifically,
+        // e.g. by target matching.
+        .with(tracing_subscriber::filter::LevelFilter::from_level(
+            Level::INFO,
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .with(MetricsLayer::new(meter_provider.clone()))
+        .with(OpenTelemetryLayer::new(tracer))
         .init();
 
-    // At this point Logs (OTel Logs and Fmt Logs) are initialized, which will
-    // allow internal-logs from Tracing/Metrics initializer to be captured.
+    OtelGuard {
+        tracer_provider,
+        meter_provider,
+    }
+}
 
-    let tracer_provider = init_traces();
-    // Set the global tracer provider using a clone of the tracer_provider.
-    // Setting global tracer provider is required if other parts of the application
-    // uses global::tracer() or global::tracer_with_version() to get a tracer.
-    // Cloning simply creates a new reference to the same tracer provider. It is
-    // important to hold on to the tracer_provider here, so as to invoke
-    // shutdown on it when application ends.
-    global::set_tracer_provider(tracer_provider.clone());
+pub struct OtelGuard {
+    tracer_provider: SdkTracerProvider,
+    meter_provider: SdkMeterProvider,
+}
 
-    let meter_provider = init_metrics();
-    // Set the global meter provider using a clone of the meter_provider.
-    // Setting global meter provider is required if other parts of the application
-    // uses global::meter() or global::meter_with_version() to get a meter.
-    // Cloning simply creates a new reference to the same meter provider. It is
-    // important to hold on to the meter_provider here, so as to invoke
-    // shutdown on it when application ends.
-    global::set_meter_provider(meter_provider.clone());
+impl Drop for OtelGuard {
+    fn drop(&mut self) {
+        if let Err(err) = self.tracer_provider.shutdown() {
+            eprintln!("{err:?}");
+        }
+        if let Err(err) = self.meter_provider.shutdown() {
+            eprintln!("{err:?}");
+        }
+    }
 }

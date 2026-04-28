@@ -938,10 +938,9 @@ pub struct InsertGamesTimings {
 pub fn insert_games(
     conn: &mut PgConnection,
     taxa: &Taxa,
-    ingest_id: i64,
     games: &[GameForDb],
 ) -> QueryResult<InsertGamesTimings> {
-    conn.transaction(|conn| insert_games_internal(conn, taxa, ingest_id, games))
+    conn.transaction(|conn| insert_games_internal(conn, taxa, games))
 }
 
 fn insert_aurora_photos<'e>(
@@ -1310,7 +1309,6 @@ fn insert_consumption_contests<'e>(
 fn insert_games_internal<'e>(
     conn: &mut PgConnection,
     taxa: &Taxa,
-    ingest_id: i64,
     games: &[GameForDb],
 ) -> QueryResult<InsertGamesTimings> {
     use crate::data_schema::data::event_baserunners::dsl as baserunners_dsl;
@@ -1354,7 +1352,6 @@ fn insert_games_internal<'e>(
                     // It's here to make the code compile while I hope it's never hit.
                     .unwrap_or(0);
                 return NewGame {
-                    ingest: ingest_id,
                     mmolb_game_id: game_id,
                     weather,
                     season: 0,
@@ -1411,7 +1408,6 @@ fn insert_games_internal<'e>(
                     game: completed_game,
                     ..
                 } => NewGame {
-                    ingest: ingest_id,
                     mmolb_game_id: game_id,
                     season: raw_game.season as i32,
                     day: day.map(Into::into),
@@ -1438,7 +1434,6 @@ fn insert_games_internal<'e>(
                     away_team_photo_contest_score: completed_game.away_team_photo_contest_score,
                 },
                 _ => NewGame {
-                    ingest: ingest_id,
                     mmolb_game_id: game_id,
                     season: raw_game.season as i32,
                     day: day.map(Into::into),
@@ -1856,6 +1851,7 @@ pub struct Timings {
     pub save_duration: f64,
 }
 
+// TODO delete
 pub fn insert_timings(
     conn: &mut PgConnection,
     ingest_id: i64,
