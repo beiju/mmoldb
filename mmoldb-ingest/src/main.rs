@@ -13,7 +13,7 @@ use tokio::signal::unix as tokio_signal;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use config::IngestConfig;
 use futures::{FutureExt, StreamExt};
-use tracing::{error, info, span, warn, Level};
+use tracing::{error, info, info_span, span, warn, Instrument, Level};
 use miette::{Context, IntoDiagnostic};
 use mmoldb_db::{ConnectionPool, db, QueryResult, PgConnection};
 use std::time::Duration;
@@ -25,22 +25,20 @@ use std::alloc;
 use futures::stream::FuturesUnordered;
 
 static MEMORY_TRACKING_PERIOD_MS: u64 = 10_000;
-static ITEM_COUNTING_PERIOD_MS: u64 = 10_000;
+static ITEM_COUNTING_PERIOD_MS: u64 = 30_000;
 
 #[global_allocator]
 static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::MAX);
 
 async fn memory_tracking_task(shutdown_requested: CancellationToken) {
-    // let gauge = global::meter("memory-meter")
-    //     .u64_gauge("memory-gauge")
-    //     .with_unit("bytes")
-    //     .build();
     let mut interval = tokio::time::interval(Duration::from_millis(MEMORY_TRACKING_PERIOD_MS));
 
     loop {
         let allocated = ALLOCATOR.allocated();
-        // gauge.record(allocated as u64, &[]);
-        info!("Current memory usage: {allocated} bytes ({})", humansize::format_size(allocated, humansize::DECIMAL));
+        info!(
+            "Current process memory usage: {allocated} bytes ({})",
+            humansize::format_size(allocated, humansize::DECIMAL),
+        );
 
         tokio::select! {
             _ = interval.tick() => {}
@@ -55,6 +53,7 @@ async fn counting_task(shutdown_requested: CancellationToken, pool: ConnectionPo
     loop {
         match pool.get() {
             Ok(mut conn) => {
+                info!("Refreshing entity counting matviews");
                 for err in db::refresh_entity_counting_matviews(&mut conn) {
                     warn!("Couldn't update entity counting matview: {err}");
                 }
@@ -99,9 +98,15 @@ async fn main() -> miette::Result<()> {
 
     // Launch background, non-ingest tasks
     info!("Launching background memory tracking task");
-    tasks.push(tokio::task::spawn(memory_tracking_task(shutdown_requested.clone()).map(Ok)));
+    tasks.push(tokio::task::spawn(
+        memory_tracking_task(shutdown_requested.clone()).map(Ok)
+            .instrument(info_span!("memory_tracking"))
+    ));
     info!("Launching background item counting task");
-    tasks.push(tokio::task::spawn(counting_task(shutdown_requested.clone(), pool.clone()).map(Ok)));
+    tasks.push(tokio::task::spawn(
+        counting_task(shutdown_requested.clone(), pool.clone()).map(Ok)
+            .instrument(info_span!("counting"))
+    ));
 
     if config.fetch_known_missing_games {
         warn!("Fetching known missing games is not currently implemented");
