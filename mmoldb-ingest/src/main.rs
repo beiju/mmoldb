@@ -73,9 +73,16 @@ async fn counting_task(shutdown_requested: CancellationToken, pool: ConnectionPo
 #[tokio::main]
 async fn main() -> miette::Result<()> {
     // construct a subscriber that prints formatted traces to stdout
-    let subscriber = tracing_subscriber::FmtSubscriber::new();
-    // use that subscriber to process traces emitted after this point
-    tracing::subscriber::set_global_default(subscriber).into_diagnostic()?;
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive("mmoldb_ingest=debug".parse().into_diagnostic()?)
+        .from_env().into_diagnostic()?
+        .add_directive("chron=info".parse().into_diagnostic()?)
+        .add_directive("mmolb_parsing=off".parse().into_diagnostic()?);
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .compact()
+        .init();
 
     let _span = span!(Level::INFO, "root").entered();
 
