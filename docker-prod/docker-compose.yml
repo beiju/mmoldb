@@ -23,6 +23,7 @@ services:
       context: ..
       # This path is relative to the root
       dockerfile: docker-prod/Dockerfile-app
+    restart: unless-stopped
     secrets:
       - db_admin_password
     env_file:
@@ -36,6 +37,7 @@ services:
       context: ..
       # This path is relative to the root
       dockerfile: docker-prod/Dockerfile-ingest
+    restart: unless-stopped
     secrets:
       - db_admin_password
     env_file:
