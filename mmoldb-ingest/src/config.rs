@@ -49,7 +49,7 @@ pub struct IngestConfig {
 impl Default for IngestConfig {
     fn default() -> Self {
         Self {
-            db_pool_size: 20,
+            db_pool_size: 50,
             set_postgres_statement_timeout: Some(0), // 0 means no timeout
             use_local_cheap_cashews: false,
             fetch_known_missing_games: false,

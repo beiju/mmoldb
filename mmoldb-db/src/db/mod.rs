@@ -28,12 +28,12 @@ use thiserror::Error;
 use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{
     DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth,
-    DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbIngest,
+    DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame,
     DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion,
     DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition,
     DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither,
-    NewEventIngestLog, NewFeedEventProcessed, NewGame, NewGameIngestTimings, NewIngest,
-    NewIngestCount, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion,
+    NewEventIngestLog, NewFeedEventProcessed, NewGame,
+    NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion,
     NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift,
     NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion,
     NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion,
@@ -56,12 +56,6 @@ pub fn set_current_user_statement_timeout(
         timeout_seconds
     ))
     .execute(conn)
-}
-
-pub fn ingest_count(conn: &mut PgConnection) -> QueryResult<i64> {
-    use crate::info_schema::info::ingests::dsl;
-
-    dsl::ingests.count().get_result(conn)
 }
 
 pub fn is_ongoing(conn: &mut PgConnection, ids: &[&str]) -> QueryResult<Vec<(String, bool)>> {
@@ -141,16 +135,6 @@ pub fn entity_counts(conn: &mut PgConnection) -> QueryResult<HashMap<String, (i6
         .collect())
 }
 
-pub fn latest_ingest_start_time(conn: &mut PgConnection) -> QueryResult<Option<NaiveDateTime>> {
-    use crate::info_schema::info::ingests::dsl::*;
-
-    ingests
-        .select(started_at)
-        .order_by(started_at.desc())
-        .first(conn)
-        .optional()
-}
-
 #[derive(QueryableByName)]
 pub struct IngestWithGameCount {
     #[diesel(sql_type = Int8)]
@@ -181,34 +165,6 @@ pub fn latest_ingests(conn: &mut PgConnection) -> QueryResult<Vec<IngestWithGame
     .load::<IngestWithGameCount>(conn)
 }
 
-pub fn start_ingest(conn: &mut PgConnection, at: DateTime<Utc>) -> QueryResult<i64> {
-    use crate::info_schema::info::ingests::dsl::*;
-
-    NewIngest {
-        started_at: at.naive_utc(),
-    }
-    .insert_into(ingests)
-    .returning(id)
-    .get_result(conn)
-}
-
-pub fn mark_ingest_finished(
-    conn: &mut PgConnection,
-    ingest_id: i64,
-    at: DateTime<Utc>,
-    set_message: Option<&str>,
-) -> QueryResult<()> {
-    use crate::info_schema::info::ingests::dsl;
-
-    diesel::update(dsl::ingests.filter(dsl::id.eq(ingest_id)))
-        .set((
-            dsl::finished_at.eq(at.naive_utc()),
-            dsl::message.eq(set_message),
-        ))
-        .execute(conn)
-        .map(|_| ())
-}
-
 pub fn get_game_ingest_start_cursor(
     conn: &mut PgConnection,
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {
@@ -223,24 +179,6 @@ pub fn get_game_ingest_start_cursor(
         .limit(1)
         .get_result(conn)
         .optional()
-}
-
-// It is assumed that an aborted ingest won't have a later
-// latest_completed_season than the previous ingest. That is not
-// necessarily true, but it's inconvenient to refactor the code to
-// support it.
-pub fn mark_ingest_aborted(
-    conn: &mut PgConnection,
-    ingest_id: i64,
-    at: DateTime<Utc>,
-    set_message: Option<&str>,
-) -> QueryResult<()> {
-    use crate::info_schema::info::ingests::dsl::*;
-
-    diesel::update(ingests.filter(id.eq(ingest_id)))
-        .set((aborted_at.eq(at.naive_utc()), message.eq(set_message)))
-        .execute(conn)
-        .map(|_| ())
 }
 
 pub fn get_all_game_entity_ids_set(conn: &mut PgConnection) -> QueryResult<HashSet<String>> {
@@ -316,28 +254,6 @@ pub fn games_from_ingest_list(ingest_id: i64) -> SqlQuery {
     //   more sql. The TODO here is to figure out how to get rid of
     //   this format! without making the code way more complicated.
     games_list_base().sql(format!("where g.ingest = {ingest_id}"))
-}
-
-pub fn ingest_with_games(
-    conn: &mut PgConnection,
-    for_ingest_id: i64,
-    page_size: usize,
-    after_game_id: Option<&str>,
-) -> QueryResult<(DbIngest, PageOfGames)> {
-    use crate::info_schema::info::ingests::dsl as ingest_dsl;
-
-    let ingest = ingest_dsl::ingests
-        .filter(ingest_dsl::id.eq(for_ingest_id))
-        .get_result::<DbIngest>(conn)?;
-
-    let games = page_of_games_generic(
-        conn,
-        page_size,
-        after_game_id,
-        games_from_ingest_list(for_ingest_id),
-    )?;
-
-    Ok((ingest, games))
 }
 
 pub struct PageOfGames {
@@ -1837,79 +1753,6 @@ pub fn game_and_raw_events(
     })
 }
 
-pub struct Timings {
-    pub get_batch_to_process_duration: f64,
-    pub deserialize_games_duration: f64,
-    pub filter_finished_games_duration: f64,
-    pub parse_and_sim_duration: f64,
-    pub db_insert_duration: f64,
-    pub db_insert_timings: InsertGamesTimings,
-    pub db_fetch_for_check_duration: f64,
-    pub events_for_game_timings: EventsForGameTimings,
-    pub check_round_trip_duration: f64,
-    pub insert_extra_logs_duration: f64,
-    pub save_duration: f64,
-}
-
-// TODO delete
-pub fn insert_timings(
-    conn: &mut PgConnection,
-    ingest_id: i64,
-    index: usize,
-    timings: Timings,
-) -> QueryResult<()> {
-    NewGameIngestTimings {
-        ingest_id,
-        index: index as i32,
-        get_batch_to_process_duration: timings.get_batch_to_process_duration,
-        deserialize_games_duration: timings.deserialize_games_duration,
-        filter_finished_games_duration: timings.filter_finished_games_duration,
-        parse_and_sim_duration: timings.parse_and_sim_duration,
-        db_fetch_for_check_get_game_id_duration: timings
-            .events_for_game_timings
-            .get_game_ids_duration,
-        db_fetch_for_check_get_events_duration: timings.events_for_game_timings.get_events_duration,
-        db_fetch_for_check_group_events_duration: timings
-            .events_for_game_timings
-            .group_events_duration,
-        db_fetch_for_check_get_runners_duration: timings
-            .events_for_game_timings
-            .get_runners_duration,
-        db_fetch_for_check_group_runners_duration: timings
-            .events_for_game_timings
-            .group_runners_duration,
-        db_fetch_for_check_get_fielders_duration: timings
-            .events_for_game_timings
-            .get_fielders_duration,
-        db_fetch_for_check_group_fielders_duration: timings
-            .events_for_game_timings
-            .group_fielders_duration,
-        db_fetch_for_check_post_process_duration: timings
-            .events_for_game_timings
-            .post_process_duration,
-        db_insert_duration: timings.db_insert_duration,
-        db_insert_delete_old_games_duration: timings.db_insert_timings.delete_old_games_duration,
-        db_insert_update_weather_table_duration: timings
-            .db_insert_timings
-            .update_weather_table_duration,
-        db_insert_insert_games_duration: timings.db_insert_timings.insert_games_duration,
-        db_insert_insert_logs_duration: timings.db_insert_timings.insert_logs_duration,
-        db_insert_insert_events_duration: timings.db_insert_timings.insert_events_duration,
-        db_insert_get_event_ids_duration: timings.db_insert_timings.get_event_ids_duration,
-        db_insert_insert_baserunners_duration: timings
-            .db_insert_timings
-            .insert_baserunners_duration,
-        db_insert_insert_fielders_duration: timings.db_insert_timings.insert_fielders_duration,
-        db_fetch_for_check_duration: timings.db_fetch_for_check_duration,
-        check_round_trip_duration: timings.check_round_trip_duration,
-        insert_extra_logs_duration: timings.insert_extra_logs_duration,
-        save_duration: timings.save_duration,
-    }
-    .insert_into(crate::info_schema::info::ingest_timings::dsl::ingest_timings)
-    .execute(conn)
-    .map(|_| ())
-}
-
 #[derive(Debug, Error)]
 pub enum DbMetaQueryError {
     #[error(transparent)]
@@ -3237,30 +3080,6 @@ pub fn insert_team_versions<'container, 'game: 'container>(
     );
 
     Ok((total, inserted))
-}
-
-pub fn update_num_ingested(
-    conn: &mut PgConnection,
-    ingest_id: i64,
-    name: &str,
-    count: i32,
-) -> QueryResult<()> {
-    use crate::info_schema::info::ingest_counts::dsl as ic_dsl;
-
-    let new = NewIngestCount {
-        ingest_id,
-        name,
-        count,
-    };
-
-    diesel::insert_into(ic_dsl::ingest_counts)
-        .values(&new)
-        .on_conflict((ic_dsl::ingest_id, ic_dsl::name))
-        .do_update()
-        .set(&new)
-        .execute(conn)?;
-
-    Ok(())
 }
 
 pub fn refresh_entity_counting_matviews(conn: &mut PgConnection) -> Vec<QueryError> {

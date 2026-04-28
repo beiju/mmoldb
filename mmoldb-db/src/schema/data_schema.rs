@@ -222,7 +222,6 @@ pub mod data {
     diesel::table! {
         data.games (id) {
             id -> Int8,
-            ingest -> Int8,
             mmolb_game_id -> Text,
             weather -> Int8,
             season -> Int4,

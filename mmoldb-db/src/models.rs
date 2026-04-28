@@ -2,22 +2,6 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::Serialize;
 
-#[derive(Insertable)]
-#[diesel(table_name = crate::info_schema::info::ingests)]
-pub struct NewIngest {
-    pub started_at: NaiveDateTime,
-}
-
-#[derive(Identifiable, Queryable, Selectable)]
-#[diesel(table_name = crate::info_schema::info::ingests)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbIngest {
-    pub id: i64,
-    pub started_at: NaiveDateTime,
-    pub finished_at: Option<NaiveDateTime>,
-    pub aborted_at: Option<NaiveDateTime>,
-    pub message: Option<String>,
-}
 
 #[derive(Debug, Insertable)]
 #[diesel(table_name = crate::data_schema::data::weather)]
@@ -64,13 +48,11 @@ pub struct NewGame<'a> {
     pub away_team_photo_contest_score: Option<i32>,
 }
 
-#[derive(Identifiable, Queryable, Selectable, Associations, QueryableByName)]
-#[diesel(belongs_to(DbIngest, foreign_key = ingest))]
+#[derive(Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::games)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbGame {
     pub id: i64,
-    pub ingest: i64,
     pub mmolb_game_id: String,
     pub season: i32,
     pub day: Option<i32>,
@@ -198,66 +180,6 @@ pub struct DbEventIngestLog {
     pub log_index: i32,
     pub log_level: i32,
     pub log_text: String,
-}
-
-#[derive(Insertable)]
-#[diesel(table_name = crate::info_schema::info::ingest_timings)]
-pub struct NewGameIngestTimings {
-    pub ingest_id: i64,
-    pub index: i32,
-
-    pub get_batch_to_process_duration: f64,
-    pub deserialize_games_duration: f64,
-    pub filter_finished_games_duration: f64,
-    pub parse_and_sim_duration: f64,
-    pub db_insert_duration: f64,
-    pub db_insert_delete_old_games_duration: f64,
-    pub db_insert_update_weather_table_duration: f64,
-    pub db_insert_insert_games_duration: f64,
-    pub db_insert_insert_logs_duration: f64,
-    pub db_insert_insert_events_duration: f64,
-    pub db_insert_get_event_ids_duration: f64,
-    pub db_insert_insert_baserunners_duration: f64,
-    pub db_insert_insert_fielders_duration: f64,
-    pub db_fetch_for_check_duration: f64,
-    pub db_fetch_for_check_get_game_id_duration: f64,
-    pub db_fetch_for_check_get_events_duration: f64,
-    pub db_fetch_for_check_group_events_duration: f64,
-    pub db_fetch_for_check_get_runners_duration: f64,
-    pub db_fetch_for_check_group_runners_duration: f64,
-    pub db_fetch_for_check_get_fielders_duration: f64,
-    pub db_fetch_for_check_group_fielders_duration: f64,
-    pub db_fetch_for_check_post_process_duration: f64,
-    pub check_round_trip_duration: f64,
-    pub insert_extra_logs_duration: f64,
-    pub save_duration: f64,
-}
-
-#[derive(Identifiable, Queryable, Selectable, Associations)]
-#[diesel(belongs_to(DbIngest, foreign_key = ingest_id))]
-#[diesel(table_name = crate::info_schema::info::ingest_timings)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbGameIngestTimings {
-    pub id: i64,
-    pub ingest_id: i64,
-    pub index: i32,
-    pub get_batch_to_process_duration: f64,
-    pub deserialize_games_duration: f64,
-    pub filter_finished_games_duration: f64,
-    pub parse_and_sim_duration: f64,
-    pub db_insert_duration: f64,
-    pub db_fetch_for_check_get_game_id_duration: f64,
-    pub db_fetch_for_check_get_events_duration: f64,
-    pub db_fetch_for_check_group_events_duration: f64,
-    pub db_fetch_for_check_get_runners_duration: f64,
-    pub db_fetch_for_check_group_runners_duration: f64,
-    pub db_fetch_for_check_get_fielders_duration: f64,
-    pub db_fetch_for_check_group_fielders_duration: f64,
-    pub db_fetch_for_check_post_process_duration: f64,
-    pub db_fetch_for_check_duration: f64,
-    pub check_round_trip_duration: f64,
-    pub insert_extra_logs_duration: f64,
-    pub save_duration: f64,
 }
 
 #[derive(Insertable)]
@@ -785,25 +707,6 @@ pub struct NewAuroraPhoto<'a> {
     pub team_emoji: &'a str,
     pub player_slot: i64,
     pub player_name: &'a str,
-}
-
-#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
-#[diesel(table_name = crate::info_schema::info::ingest_counts)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbIngestCount {
-    pub id: i64,
-    pub ingest_id: i64,
-    pub name: String,
-    pub count: i32,
-}
-
-#[derive(Clone, Debug, Insertable, PartialEq, AsChangeset)]
-#[diesel(table_name = crate::info_schema::info::ingest_counts)]
-#[diesel(treat_none_as_default_value = false)]
-pub struct NewIngestCount<'a> {
-    pub ingest_id: i64,
-    pub name: &'a str,
-    pub count: i32,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
