@@ -1,18 +1,15 @@
+use crate::IngestibleFromVersions;
 use crate::ingest::VersionIngestLogs;
 use crate::ingest_feed_shared::{
     FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START, FeedItemContainer,
 };
 use crate::ingest_players::day_to_db;
-use crate::{
-    IngestibleFromVersions,
-};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use tracing::error;
 use mmolb_parsing::enums::{Attribute, Day};
 use mmolb_parsing::feed_event::FeedEvent;
 use mmolb_parsing::player_feed::ParsedPlayerFeedEventText;
@@ -23,6 +20,7 @@ use mmoldb_db::models::{
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncPgConnection, Connection, PgConnection, QueryResult, async_db, db};
 use std::fmt::{Display, Formatter};
+use tracing::error;
 
 lazy_static! {
     #[rustfmt::skip]

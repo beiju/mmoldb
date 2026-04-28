@@ -3,10 +3,10 @@ use crate::taxa::Taxa;
 use diesel::sql_types::BigInt;
 use diesel::{Connection, ConnectionError, PgConnection, RunQueryDsl};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use tracing::{info, warn};
 use miette::Diagnostic;
 use std::error::Error;
 use thiserror::Error;
+use tracing::{info, warn};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../migrations");
 const MIGRATION_LOCK_ID: i64 = 42416;

@@ -4,13 +4,13 @@ use crate::ingest_games::{check_round_trip, sim};
 use chron::ChronEntity;
 use chrono::Utc;
 use itertools::{Either, Itertools, izip};
-use tracing::{debug, error, info};
 use miette::Context;
 use mmolb_parsing::enums::EventType;
 use mmoldb_db::db::{CompletedGameForDb, GameForDb};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{IngestLog, PgConnection, db};
 use serde::de::IntoDeserializer;
+use tracing::{debug, error, info};
 
 pub trait GameExt {
     /// Returns true for any game which will never be updated. This includes all

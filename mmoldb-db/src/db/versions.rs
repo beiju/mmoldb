@@ -9,7 +9,7 @@ use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
-use tracing::{info, error};
+use tracing::{error, info};
 
 pub fn get_latest_raw_version_cursor(
     conn: &mut PgConnection,
@@ -114,19 +114,31 @@ pub fn insert_versions_one_error<'v>(
             let second_half = &versions[split_at..];
             assert_eq!(first_half.len() + second_half.len(), versions.len());
             if first_half.is_empty() {
-                info!("Error inserting batch of {} versions. Trying to insert one...", versions.len());
+                info!(
+                    "Error inserting batch of {} versions. Trying to insert one...",
+                    versions.len()
+                );
                 // Then second_half must contain the one and only version
                 assert_eq!(second_half.len(), 1);
                 insert_versions(conn, second_half).map_err(|e| (&second_half[0], e))
             } else {
-                info!("Error inserting batch of {} versions. Trying to insert the first {}...", versions.len(), first_half.len());
+                info!(
+                    "Error inserting batch of {} versions. Trying to insert the first {}...",
+                    versions.len(),
+                    first_half.len()
+                );
                 let size1 = insert_versions_one_error(conn, first_half)?;
-                info!("First half succeeded. Trying to insert the last {}...", second_half.len());
+                info!(
+                    "First half succeeded. Trying to insert the last {}...",
+                    second_half.len()
+                );
                 let size2 = insert_versions_one_error(conn, second_half)?;
-                error!("Both halves succeeded, but we're already in the error branch. One of the halves should have failed!");
+                error!(
+                    "Both halves succeeded, but we're already in the error branch. One of the halves should have failed!"
+                );
                 Ok(size1 + size2)
             }
-        },
+        }
     }
 }
 

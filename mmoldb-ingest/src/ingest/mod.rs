@@ -1,12 +1,12 @@
 mod fetch;
 mod processing;
 
-use tracing::{info_span, debug, error, info, warn, Instrument};
 use crate::config::{IngestConfig, IngestibleConfig};
 use crate::partitioner::Partitioner;
 use chron::{ChronEntity, ChronStreamError};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use futures::{pin_mut, Stream, StreamExt};
+pub use fetch::ChronFetchArgs;
+use futures::{Stream, StreamExt, pin_mut};
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
 use itertools::{Either, Itertools};
@@ -14,9 +14,9 @@ use miette::Diagnostic;
 use mmoldb_db::models::NewVersionIngestLog;
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{
-    db, AsyncConnection, AsyncPgConnection, ConnectionPool, PgConnection,
-    QueryError, QueryResult,
+    AsyncConnection, AsyncPgConnection, ConnectionPool, PgConnection, QueryError, QueryResult, db,
 };
+pub use processing::ProcessingArgs;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::fmt::{Debug, Display, Formatter};
@@ -31,9 +31,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinError;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
-pub use fetch::ChronFetchArgs;
-pub use processing::ProcessingArgs;
-
+use tracing::{Instrument, debug, error, info, info_span, warn};
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -328,11 +326,11 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
             //         }
             //     }
             // } else {
-                info!(
-                    "{} stage 2 ingest coordinator exiting because there is no waker from the previous stage",
-                    self.kind
-                );
-                break;
+            info!(
+                "{} stage 2 ingest coordinator exiting because there is no waker from the previous stage",
+                self.kind
+            );
+            break;
             // }
         }
 
@@ -668,7 +666,6 @@ impl Display for IngestKind {
     }
 }
 
-
 #[derive(Debug)]
 pub struct IngestForKind {
     kind: IngestKind,
@@ -677,11 +674,21 @@ pub struct IngestForKind {
 }
 
 impl IngestForKind {
-    pub fn new(kind: IngestKind, fetch_args: ChronFetchArgs, processing_args: ProcessingArgs) -> Self {
-        Self { kind, fetch_args, processing_args }
+    pub fn new(
+        kind: IngestKind,
+        fetch_args: ChronFetchArgs,
+        processing_args: ProcessingArgs,
+    ) -> Self {
+        Self {
+            kind,
+            fetch_args,
+            processing_args,
+        }
     }
 
-    pub fn kind(&self) -> IngestKind { self.kind }
+    pub fn kind(&self) -> IngestKind {
+        self.kind
+    }
 
     pub fn fetch_is_enabled(&self) -> bool {
         self.fetch_args.enabled
@@ -693,7 +700,9 @@ impl IngestForKind {
 
     /// The indefinite fetch task. Repeats until canceled.
     pub async fn fetch_task(&self) -> Result<(), IngestFatalError> {
-        let mut interval = tokio::time::interval(Duration::from_secs(self.fetch_args.chron_fetch_interval_seconds));
+        let mut interval = tokio::time::interval(Duration::from_secs(
+            self.fetch_args.chron_fetch_interval_seconds,
+        ));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         while !self.fetch_args.shutdown_requested.is_cancelled() {
@@ -721,27 +730,35 @@ impl IngestForKind {
                 fetch::fetch_version_kind(kind.as_kind(), self.fetch_args.clone())
                     .instrument(info_span!("fetch_task", kind = kind.as_kind()))
                     .await
-            },
+            }
             IngestKind::Feed(kind) => {
-                fetch::fetch_feed_event_version_kind(kind.as_feed_event_kind(), self.fetch_args.clone())
-                    .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind()))
-                    .await
-            },
+                fetch::fetch_feed_event_version_kind(
+                    kind.as_feed_event_kind(),
+                    self.fetch_args.clone(),
+                )
+                .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind()))
+                .await
+            }
             IngestKind::Entity(kind) => {
                 fetch::fetch_entity_kind(kind.as_kind(), self.fetch_args.clone())
                     .instrument(info_span!("fetch_task", kind = kind.as_kind()))
                     .await
-            },
+            }
         }
     }
 
     /// The indefinite processing task. Repeats until canceled.
     pub async fn processing_task(&self) -> Result<(), IngestFatalError> {
-        let mut interval = tokio::time::interval(Duration::from_secs(self.processing_args.processing_interval_seconds));
+        let mut interval = tokio::time::interval(Duration::from_secs(
+            self.processing_args.processing_interval_seconds,
+        ));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         while !self.processing_args.shutdown_requested.is_cancelled() {
-            debug!("Sleeping until it's time for the next {:?} processing", self.kind);
+            debug!(
+                "Sleeping until it's time for the next {:?} processing",
+                self.kind
+            );
             tokio::select! {
                 biased;
                 _ = self.processing_args.shutdown_requested.cancelled() => {
@@ -765,28 +782,53 @@ impl IngestForKind {
                 processing::process_version_kind(kind.as_kind(), self.processing_args.clone())
                     .instrument(info_span!("processing_task", kind = kind.as_kind()))
                     .await
-            },
+            }
             IngestKind::Feed(kind) => {
-                processing::process_feed_event_version_kind(kind.as_feed_event_kind(), self.processing_args.clone())
-                    .instrument(info_span!("processing_task", kind = kind.as_feed_event_kind()))
-                    .await
-            },
+                processing::process_feed_event_version_kind(
+                    kind.as_feed_event_kind(),
+                    self.processing_args.clone(),
+                )
+                .instrument(info_span!(
+                    "processing_task",
+                    kind = kind.as_feed_event_kind()
+                ))
+                .await
+            }
             IngestKind::Entity(kind) => {
                 processing::process_entity_kind(kind.as_kind(), self.processing_args.clone())
                     .instrument(info_span!("processing_task", kind = kind.as_kind()))
                     .await
-            },
+            }
         }
     }
 }
 
-pub fn ingest_kinds(shutdown_requested: &CancellationToken, pool: &ConnectionPool, config: &'static IngestConfig) -> Vec<Arc<IngestForKind>> {
+pub fn ingest_kinds(
+    shutdown_requested: &CancellationToken,
+    pool: &ConnectionPool,
+    config: &'static IngestConfig,
+) -> Vec<Arc<IngestForKind>> {
     let kinds_configs = [
-        (IngestKind::Versioned(VersionedIngestKind::Team), &config.team_ingest),
-        (IngestKind::Feed(VersionedIngestKind::Team), &config.team_feed_ingest),
-        (IngestKind::Versioned(VersionedIngestKind::Player), &config.player_ingest),
-        (IngestKind::Feed(VersionedIngestKind::Player), &config.player_feed_ingest),
-        (IngestKind::Entity(EntityIngestKind::Game), &config.game_ingest),
+        (
+            IngestKind::Versioned(VersionedIngestKind::Team),
+            &config.team_ingest,
+        ),
+        (
+            IngestKind::Feed(VersionedIngestKind::Team),
+            &config.team_feed_ingest,
+        ),
+        (
+            IngestKind::Versioned(VersionedIngestKind::Player),
+            &config.player_ingest,
+        ),
+        (
+            IngestKind::Feed(VersionedIngestKind::Player),
+            &config.player_feed_ingest,
+        ),
+        (
+            IngestKind::Entity(EntityIngestKind::Game),
+            &config.game_ingest,
+        ),
     ];
 
     kinds_configs

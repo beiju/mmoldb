@@ -1,17 +1,15 @@
-use crate::ingest::{
-    IngestibleFromVersions, VersionIngestLogs
-};
+use crate::ingest::{IngestibleFromVersions, VersionIngestLogs};
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::Stream;
 use itertools::Itertools;
 use mmolb_parsing::enums::Slot;
 use mmolb_parsing::{
-    team::TeamPlayerCollection, AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized,
+    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, team::TeamPlayerCollection,
 };
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{async_db, db, AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult};
+use mmoldb_db::{AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult, async_db, db};
 use std::str::FromStr;
 
 pub struct TeamIngestFromVersions;

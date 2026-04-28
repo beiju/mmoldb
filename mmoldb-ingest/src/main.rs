@@ -8,21 +8,21 @@ mod ingest_team_feed;
 mod ingest_teams;
 mod partitioner;
 
-use tokio::task::JoinHandle;
-use tokio::signal::unix as tokio_signal;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use config::IngestConfig;
 use futures::{FutureExt, StreamExt};
-use tracing::{error, info, info_span, span, warn, Instrument, Level};
 use miette::{Context, IntoDiagnostic};
-use mmoldb_db::{ConnectionPool, db, QueryResult, PgConnection};
+use mmoldb_db::{ConnectionPool, PgConnection, QueryResult, db};
 use std::time::Duration;
+use tokio::signal::unix as tokio_signal;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tracing::{Instrument, Level, error, info, info_span, span, warn};
 
 use cap::Cap;
+use futures::stream::FuturesUnordered;
 pub use ingest::*;
 use std::alloc;
-use futures::stream::FuturesUnordered;
 
 static MEMORY_TRACKING_PERIOD_MS: u64 = 10_000;
 static ITEM_COUNTING_PERIOD_MS: u64 = 30_000;
@@ -75,7 +75,8 @@ async fn main() -> miette::Result<()> {
     // construct a subscriber that prints formatted traces to stdout
     let filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive("mmoldb_ingest=debug".parse().into_diagnostic()?)
-        .from_env().into_diagnostic()?
+        .from_env()
+        .into_diagnostic()?
         .add_directive("chron=info".parse().into_diagnostic()?)
         .add_directive("mmolb_parsing=off".parse().into_diagnostic()?);
 
@@ -93,7 +94,8 @@ async fn main() -> miette::Result<()> {
     let pool = mmoldb_db::get_pool(config.db_pool_size).into_diagnostic()?;
     {
         let mut conn = pool.get().into_diagnostic()?;
-        set_statement_timeout(&mut conn, config.set_postgres_statement_timeout).into_diagnostic()?;
+        set_statement_timeout(&mut conn, config.set_postgres_statement_timeout)
+            .into_diagnostic()?;
     }
     mmoldb_db::run_migrations().into_diagnostic()?;
 
@@ -106,13 +108,15 @@ async fn main() -> miette::Result<()> {
     // Launch background, non-ingest tasks
     info!("Launching background memory tracking task");
     tasks.push(tokio::task::spawn(
-        memory_tracking_task(shutdown_requested.clone()).map(Ok)
-            .instrument(info_span!("memory_tracking"))
+        memory_tracking_task(shutdown_requested.clone())
+            .map(Ok)
+            .instrument(info_span!("memory_tracking")),
     ));
     info!("Launching background item counting task");
     tasks.push(tokio::task::spawn(
-        counting_task(shutdown_requested.clone(), pool.clone()).map(Ok)
-            .instrument(info_span!("counting"))
+        counting_task(shutdown_requested.clone(), pool.clone())
+            .map(Ok)
+            .instrument(info_span!("counting")),
     ));
 
     if config.fetch_known_missing_games {
@@ -163,7 +167,10 @@ fn get_config() -> miette::Result<&'static IngestConfig> {
     Ok(config)
 }
 
-fn set_statement_timeout(conn: &mut PgConnection, statement_timeout: Option<i64>) -> QueryResult<()> {
+fn set_statement_timeout(
+    conn: &mut PgConnection,
+    statement_timeout: Option<i64>,
+) -> QueryResult<()> {
     if let Some(statement_timeout) = statement_timeout {
         if statement_timeout < 0 {
             panic!("Negative STATEMENT_TIMEOUT_SEC not allowed ({statement_timeout})");
@@ -189,7 +196,6 @@ async fn wait_until_shutdown(
     mut sigint: tokio_signal::Signal,
     shutdown_requested: CancellationToken,
 ) -> miette::Result<()> {
-
     // Wait for tasks
     tokio::select! {
         // Wait for sigint and sigterm to respond to them appropriately
@@ -218,10 +224,10 @@ async fn wait_until_shutdown(
         match task.await {
             Ok(Ok(())) => {
                 info!("Successfully shut down the task")
-            },
+            }
             Ok(Err(internal_error)) => {
                 error!("Ingest fatal error: {}", internal_error);
-            },
+            }
             Err(join_error) => {
                 error!("Error joining task: {}", join_error);
             }

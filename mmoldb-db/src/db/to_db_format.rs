@@ -11,7 +11,6 @@ use crate::{
     ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome,
 };
 use itertools::Itertools;
-use tracing::warn;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
 use mmolb_parsing::parsed_event::{
@@ -22,6 +21,7 @@ use mmolb_parsing::parsed_event::{
 use std::str::FromStr;
 use strum::ParseError;
 use thiserror::Error;
+use tracing::warn;
 
 pub fn event_to_row<'e>(
     taxa: &Taxa,

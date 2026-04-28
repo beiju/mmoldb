@@ -5,16 +5,14 @@ mod worker;
 
 use worker::*;
 
-use crate::partitioner::Partitioner;
 use crate::IngestFatalError;
+use crate::partitioner::Partitioner;
 use chron::{Chron, ChronEntity};
+use futures::FutureExt;
 use futures::{Stream, StreamExt, TryStreamExt, pin_mut};
 use itertools::Itertools;
-use tracing::{debug, error, info, warn};
 use mmoldb_db::taxa::Taxa;
-use mmoldb_db::{
-    AsyncConnection, AsyncPgConnection, ConnectionPool, QueryResult, async_db, db,
-};
+use mmoldb_db::{AsyncConnection, AsyncPgConnection, ConnectionPool, QueryResult, async_db, db};
 use std::collections::HashSet;
 use std::hash::RandomState;
 use std::num::NonZero;
@@ -24,7 +22,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::LinesStream;
 use tokio_util::sync::CancellationToken;
-use futures::FutureExt;
+use tracing::{debug, error, info, warn};
 
 const CHRON_MAX_IDS_PER_CALL: usize = 50;
 const PROCESS_GAME_BATCH_SIZE: usize = 100;
@@ -114,9 +112,11 @@ pub async fn ingest_stage_2(
             // it's just that the more parallelism you want the more buffer you probably
             // also want.
             let (send, recv) = tokio::sync::mpsc::channel(num_workers.get());
-            let handle = tokio::task::Builder::new()
-                .name(name)
-                .spawn(process_games(pool.clone(), recv, *worker_idx))?;
+            let handle = tokio::task::Builder::new().name(name).spawn(process_games(
+                pool.clone(),
+                recv,
+                *worker_idx,
+            ))?;
 
             Ok::<_, IngestFatalError>((name.as_str(), send, handle))
         })
@@ -124,17 +124,14 @@ pub async fn ingest_stage_2(
 
     let stream = async_db::stream_unprocessed_game_versions(&mut async_conn)
         .await?
-        .take_until(
-            finish.cancelled()
-                .then(|()| {
-                    // Some detail of the Rust compiler makes it forget that this is 'static
-                    // during some important checking phase. The only way I've found to make
-                    // that not cause issues is to make it an owned value.
-                    Box::pin(async move {
-                        info!("Closing game processing stream because shutdown was requested");
-                    })
-                })
-        );
+        .take_until(finish.cancelled().then(|()| {
+            // Some detail of the Rust compiler makes it forget that this is 'static
+            // during some important checking phase. The only way I've found to make
+            // that not cause issues is to make it an owned value.
+            Box::pin(async move {
+                info!("Closing game processing stream because shutdown was requested");
+            })
+        }));
 
     let tasks = dispatch_to_stage_2_workers(&partitioner, tasks, stream).await?;
 
@@ -302,12 +299,7 @@ async fn process_games_internal(
             "Processing batch of {} raw games on worker {worker_idx}",
             raw_games.len()
         );
-        let stats = ingest_page_of_games(
-            &taxa,
-            raw_games,
-            &mut conn,
-            worker_idx,
-        )?;
+        let stats = ingest_page_of_games(&taxa, raw_games, &mut conn, worker_idx)?;
         info!(
             "Ingested {} games, skipped {} games due to fatal errors, ignored {} games in \
             progress, skipped {} unsupported games, and skipped {} bugged games on worker {}.",

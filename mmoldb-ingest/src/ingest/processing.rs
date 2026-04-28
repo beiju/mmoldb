@@ -1,14 +1,14 @@
-use std::num::NonZero;
-use std::sync::Arc;
-use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
-use mmoldb_db::ConnectionPool;
-use mmoldb_db::db::{refresh_game_matviews, refresh_player_matviews};
-use crate::{IngestFatalError, Stage2Ingest};
 use crate::ingest_player_feed::PlayerFeedIngestFromVersions;
 use crate::ingest_players::PlayerIngestFromVersions;
 use crate::ingest_team_feed::TeamFeedIngestFromVersions;
 use crate::ingest_teams::TeamIngestFromVersions;
+use crate::{IngestFatalError, Stage2Ingest};
+use mmoldb_db::ConnectionPool;
+use mmoldb_db::db::{refresh_game_matviews, refresh_player_matviews};
+use std::num::NonZero;
+use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone)]
 pub struct ProcessingArgs {
@@ -22,14 +22,14 @@ pub struct ProcessingArgs {
 }
 
 // It may be possible to remove 'static
-pub async fn process_entity_kind(kind: &'static str, args: ProcessingArgs) -> Result<(), IngestFatalError> {
+pub async fn process_entity_kind(
+    kind: &'static str,
+    args: ProcessingArgs,
+) -> Result<(), IngestFatalError> {
     assert_eq!(kind, "game", "`game` is the only supported entity kind");
 
     // TODO Refactor this code to get rid of remnants of the old staged system
-    crate::ingest_games::ingest_stage_2(
-        args.pool.clone(),
-        args.shutdown_requested,
-    ).await?;
+    crate::ingest_games::ingest_stage_2(args.pool.clone(), args.shutdown_requested).await?;
     info!("game process iteration finished. Refreshing game matviews.");
     // TODO Don't hard-code this
     match args.pool.get() {
@@ -39,14 +39,20 @@ pub async fn process_entity_kind(kind: &'static str, args: ProcessingArgs) -> Re
             }
         }
         Err(err) => {
-            warn!("Couldn't get database connection to update game matviews: {}", err);
+            warn!(
+                "Couldn't get database connection to update game matviews: {}",
+                err
+            );
         }
     }
     Ok(())
 }
 
 // It may be possible to remove 'static
-pub async fn process_version_kind(kind: &'static str, args: ProcessingArgs) -> Result<(), IngestFatalError> {
+pub async fn process_version_kind(
+    kind: &'static str,
+    args: ProcessingArgs,
+) -> Result<(), IngestFatalError> {
     // TODO Refactor this to not match on kind
     match kind {
         "player" => {
@@ -63,7 +69,10 @@ pub async fn process_version_kind(kind: &'static str, args: ProcessingArgs) -> R
                     }
                 }
                 Err(err) => {
-                    warn!("Couldn't get database connection to update player matviews: {}", err);
+                    warn!(
+                        "Couldn't get database connection to update player matviews: {}",
+                        err
+                    );
                 }
             }
             Ok(())
@@ -80,7 +89,10 @@ pub async fn process_version_kind(kind: &'static str, args: ProcessingArgs) -> R
 }
 
 // It may be possible to remove 'static
-pub async fn process_feed_event_version_kind(kind: &'static str, args: ProcessingArgs) -> Result<(), IngestFatalError> {
+pub async fn process_feed_event_version_kind(
+    kind: &'static str,
+    args: ProcessingArgs,
+) -> Result<(), IngestFatalError> {
     // TODO Refactor this to not match on kind
     match kind {
         "player_feed" => {

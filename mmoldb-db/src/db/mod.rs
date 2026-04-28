@@ -18,27 +18,26 @@ use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use tracing::{debug, info, trace, warn};
 use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::Day;
 use serde::Serialize;
 use std::iter;
 use thiserror::Error;
+use tracing::{debug, info, trace, warn};
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{
     DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth,
-    DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame,
-    DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion,
-    DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition,
-    DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither,
-    NewEventIngestLog, NewFeedEventProcessed, NewGame,
-    NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion,
-    NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift,
-    NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion,
-    NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion,
-    NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog,
-    RawDbColumn, RawDbTable,
+    DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification,
+    DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion,
+    DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion,
+    DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog,
+    NewFeedEventProcessed, NewGame, NewModification, NewPlayerAttributeAugment,
+    NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion,
+    NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion,
+    NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion,
+    NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion,
+    NewTeamVersion, NewVersionIngestLog, RawDbColumn, RawDbTable,
 };
 use crate::taxa::Taxa;
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};

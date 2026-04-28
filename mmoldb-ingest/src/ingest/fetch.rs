@@ -1,17 +1,17 @@
-use std::iter;
-use std::num::NonZero;
+use crate::IngestFatalError;
+use chron::{Chron, ChronEntity};
 use chrono::NaiveDateTime;
 use futures::{FutureExt, StreamExt};
-use futures::{pin_mut, TryStreamExt};
-use hashbrown::hash_map::Entry;
+use futures::{TryStreamExt, pin_mut};
 use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
 use itertools::Either;
-use tracing::{error, info};
 use mmolb_parsing::player::Deserialize;
+use mmoldb_db::{ConnectionPool, db};
+use std::iter;
+use std::num::NonZero;
 use tokio_util::sync::CancellationToken;
-use chron::{Chron, ChronEntity};
-use mmoldb_db::{db, ConnectionPool};
-use crate::IngestFatalError;
+use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct ChronFetchArgs {
@@ -25,7 +25,10 @@ pub struct ChronFetchArgs {
 }
 
 // It may be possible to remove 'static
-pub async fn fetch_entity_kind(kind: &'static str, args: ChronFetchArgs) -> Result<(), IngestFatalError> {
+pub async fn fetch_entity_kind(
+    kind: &'static str,
+    args: ChronFetchArgs,
+) -> Result<(), IngestFatalError> {
     let mut conn = args.pool.get()?;
     let chron = Chron::new(args.chron_fetch_batch_size);
 
@@ -40,18 +43,18 @@ pub async fn fetch_entity_kind(kind: &'static str, args: ChronFetchArgs) -> Resu
         // End the stream early when cancellation is requested. By ending the stream at this
         // point, we stop waiting for any more network requests but we still process any that
         // are still waiting to be collected in the next try_chunks item.
-        .take_until(
-            args.shutdown_requested.cancelled()
-                .then(|()| {
-                    // Some detail of the Rust compiler makes it forget that this is 'static
-                    // during some important checking phase. The only way I've found to make
-                    // that not cause issues is to make it an owned value.
-                    let kind = kind.to_string();
-                    Box::pin(async move {
-                        info!("Closing {} entities stream because shutdown was requested", kind);
-                    })
-                })
-        )
+        .take_until(args.shutdown_requested.cancelled().then(|()| {
+            // Some detail of the Rust compiler makes it forget that this is 'static
+            // during some important checking phase. The only way I've found to make
+            // that not cause issues is to make it an owned value.
+            let kind = kind.to_string();
+            Box::pin(async move {
+                info!(
+                    "Closing {} entities stream because shutdown was requested",
+                    kind
+                );
+            })
+        }))
         .try_chunks(args.insert_raw_entity_batch_size.into());
     pin_mut!(stream);
 
@@ -77,12 +80,15 @@ pub async fn fetch_entity_kind(kind: &'static str, args: ChronFetchArgs) -> Resu
 }
 
 // It may be possible to remove 'static
-pub async fn fetch_version_kind(kind: &'static str, args: ChronFetchArgs) -> Result<(), IngestFatalError> {
+pub async fn fetch_version_kind(
+    kind: &'static str,
+    args: ChronFetchArgs,
+) -> Result<(), IngestFatalError> {
     let mut conn = args.pool.get()?;
     let chron = Chron::new(args.chron_fetch_batch_size);
 
-    let start_cursor = db::get_latest_raw_version_cursor(&mut conn, kind)?
-        .map(|(dt, id)| (dt.and_utc(), id));
+    let start_cursor =
+        db::get_latest_raw_version_cursor(&mut conn, kind)?.map(|(dt, id)| (dt.and_utc(), id));
     let start_date = start_cursor.as_ref().map(|(dt, _)| *dt);
 
     info!("{} fetch will start from date {:?}", kind, start_date);
@@ -92,18 +98,18 @@ pub async fn fetch_version_kind(kind: &'static str, args: ChronFetchArgs) -> Res
         // End the stream early when cancellation is requested. By ending the stream at this
         // point, we stop waiting for any more network requests but we still process any that
         // are still waiting to be collected in the next try_chunks item.
-        .take_until(
-            args.shutdown_requested.cancelled()
-                .then(|()| {
-                    // Some detail of the Rust compiler makes it forget that this is 'static
-                    // during some important checking phase. The only way I've found to make
-                    // that not cause issues is to make it an owned value.
-                    let kind = kind.to_string();
-                    Box::pin(async move {
-                        info!("Closing {} versions stream because shutdown was requested", kind);
-                    })
-                })
-        )
+        .take_until(args.shutdown_requested.cancelled().then(|()| {
+            // Some detail of the Rust compiler makes it forget that this is 'static
+            // during some important checking phase. The only way I've found to make
+            // that not cause issues is to make it an owned value.
+            let kind = kind.to_string();
+            Box::pin(async move {
+                info!(
+                    "Closing {} versions stream because shutdown was requested",
+                    kind
+                );
+            })
+        }))
         // We ask Chron to start at a given valid_from. It will give us all versions whose
         // valid_from is greater than _or equal to_ that value. That's good, because it
         // means that if we left off halfway through processing a batch of entities with
@@ -137,12 +143,7 @@ pub async fn fetch_version_kind(kind: &'static str, args: ChronFetchArgs) -> Res
             Ok(chunk) => (chunk, None),
             Err(err) => (err.0, Some(err.1)),
         };
-        info!(
-            "{} stage 1 ingest saving {} {}(s)",
-            kind,
-            chunk.len(),
-            kind
-        );
+        info!("{kind} stage 1 ingest saving {} {kind}(s)", chunk.len());
         let inserted = match db::insert_versions_one_error(&mut conn, &chunk) {
             Ok(x) => Ok(x),
             Err((entity, err)) => {
@@ -150,10 +151,7 @@ pub async fn fetch_version_kind(kind: &'static str, args: ChronFetchArgs) -> Res
                 Err(err)
             }
         }?;
-        info!(
-            "{} stage 1 ingest saved {} {}(s)",
-            kind, inserted, kind
-        );
+        info!("{kind} stage 1 ingest saved {inserted} {kind}(s)");
 
         if let Some(err) = maybe_err {
             Err(err)?;
@@ -165,12 +163,15 @@ pub async fn fetch_version_kind(kind: &'static str, args: ChronFetchArgs) -> Res
 }
 
 // It may be possible to remove 'static
-pub async fn fetch_feed_event_version_kind(kind: &'static str, args: ChronFetchArgs) -> Result<(), IngestFatalError> {
+pub async fn fetch_feed_event_version_kind(
+    kind: &'static str,
+    args: ChronFetchArgs,
+) -> Result<(), IngestFatalError> {
     let mut conn = args.pool.get()?;
     let chron = Chron::new(args.chron_fetch_batch_size);
 
-    let start_cursor = db::get_latest_raw_feed_event_version_cursor(&mut conn, kind)?
-        .map(|(dt, id, _)| (dt, id));
+    let start_cursor =
+        db::get_latest_raw_feed_event_version_cursor(&mut conn, kind)?.map(|(dt, id, _)| (dt, id));
     let start_cursor_utc = start_cursor.as_ref().map(|(dt, id)| (dt.and_utc(), id));
 
     let start_date = start_cursor.as_ref().map(|(dt, _)| dt.and_utc());
@@ -183,18 +184,18 @@ pub async fn fetch_feed_event_version_kind(kind: &'static str, args: ChronFetchA
         // End the stream early when cancellation is requested. By ending the stream at this
         // point, we stop waiting for any more network requests but we still process any that
         // are still waiting to be collected in the next try_chunks item.
-        .take_until(
-            args.shutdown_requested.cancelled()
-                .then(|()| {
-                    // Some detail of the Rust compiler makes it forget that this is 'static
-                    // during some important checking phase. The only way I've found to make
-                    // that not cause issues is to make it an owned value.
-                    let kind = kind.to_string();
-                    Box::pin(async move {
-                        info!("Closing {} feed event versions stream because shutdown was requested", kind);
-                    })
-                })
-        )
+        .take_until(args.shutdown_requested.cancelled().then(|()| {
+            // Some detail of the Rust compiler makes it forget that this is 'static
+            // during some important checking phase. The only way I've found to make
+            // that not cause issues is to make it an owned value.
+            let kind = kind.to_string();
+            Box::pin(async move {
+                info!(
+                    "Closing {} feed event versions stream because shutdown was requested",
+                    kind
+                );
+            })
+        }))
         // We ask Chron to start at a given valid_from. It will give us
         // all versions whose valid_from is greater than _or equal to_
         // that value. That's good, because it means that if we left
@@ -267,12 +268,7 @@ pub async fn fetch_feed_event_version_kind(kind: &'static str, args: ChronFetchA
             Err(err) => (err.0, Some(err.1)),
         };
 
-        info!(
-            "{} stage 1 ingest saving {} {}(s)",
-            kind,
-            chunk.len(),
-            kind
-        );
+        info!("{kind} stage 1 ingest saving {} {kind}(s)", chunk.len());
         let inserted = match db::insert_feed_event_versions(&mut conn, kind, &chunk) {
             Ok(x) => Ok(x),
             Err(err) => {
@@ -280,10 +276,7 @@ pub async fn fetch_feed_event_version_kind(kind: &'static str, args: ChronFetchA
                 Err(err)
             }
         }?;
-        info!(
-            "{} stage 1 ingest saved {} {}(s)",
-            kind, inserted, kind
-        );
+        info!("{kind} stage 1 ingest saved {inserted} {kind}(s)");
 
         if let Some(err) = maybe_err {
             Err(err)?;

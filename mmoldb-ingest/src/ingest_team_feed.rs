@@ -1,9 +1,7 @@
+use crate::IngestibleFromVersions;
 use crate::ingest::VersionIngestLogs;
 use crate::ingest_feed_shared::{
     FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START, FeedItemContainer,
-};
-use crate::{
-    IngestibleFromVersions,
 };
 use chron::ChronEntity;
 use chrono::{DateTime, NaiveDateTime, Utc};

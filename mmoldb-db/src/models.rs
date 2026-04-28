@@ -2,7 +2,6 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::Serialize;
 
-
 #[derive(Debug, Insertable)]
 #[diesel(table_name = crate::data_schema::data::weather)]
 pub struct NewWeather<'a> {

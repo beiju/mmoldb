@@ -3,7 +3,6 @@ use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::Itertools;
-use tracing::{error, warn};
 use mmolb_parsing::enums::{
     Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position, Uncategorized,
 };
@@ -16,10 +15,9 @@ use std::fmt::Display;
 use std::iter;
 use strum::IntoEnumIterator;
 use thiserror::Error;
+use tracing::{error, warn};
 
-use crate::{
-    IngestibleFromVersions, VersionIngestLogs,
-};
+use crate::{IngestibleFromVersions, VersionIngestLogs};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{
@@ -308,8 +306,7 @@ fn chron_player_as_new<'a>(
     Vec<NewVersionIngestLog<'a>>,
 ) {
     // TODO Can I avoid repeating this string constant?
-    let mut ingest_logs =
-        VersionIngestLogs::new("player", &entity.entity_id, entity.valid_from);
+    let mut ingest_logs = VersionIngestLogs::new("player", &entity.entity_id, entity.valid_from);
     let (birthday_type, birthday_day, birthday_superstar_day) =
         day_to_db(Some(&entity.data.birthday), taxa);
 

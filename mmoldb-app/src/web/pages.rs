@@ -241,12 +241,14 @@ pub async fn debug_no_games_page() -> Result<Template, AppError> {
 
 #[get("/status")]
 pub async fn status_page(db: Db) -> Result<Template, AppError> {
-    let counts = db.run(move |conn| {
-        conn.transaction(|conn| {
-            let counts = db::entity_counts(conn)?;
-            Ok::<_, AppError>(counts)
+    let counts = db
+        .run(move |conn| {
+            conn.transaction(|conn| {
+                let counts = db::entity_counts(conn)?;
+                Ok::<_, AppError>(counts)
+            })
         })
-    }).await?;
+        .await?;
 
     #[derive(Serialize)]
     struct IngestibleWithErrors<'a> {

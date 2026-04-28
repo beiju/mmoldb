@@ -1,5 +1,4 @@
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
-use tracing::warn;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType,
@@ -29,6 +28,7 @@ use std::fmt::Debug;
 use std::fmt::Write;
 use strum::IntoDiscriminant;
 use thiserror::Error;
+use tracing::warn;
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Parse error: {}", .0)]
