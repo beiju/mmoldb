@@ -25,6 +25,7 @@ use std::iter;
 use std::num::NonZero;
 use std::sync::Arc;
 use std::time::Duration;
+use serde::de::IntoDeserializer;
 use thiserror::Error;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::error::SendError;
@@ -463,7 +464,8 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                     warn!("{} ingest task got a {} entity!", self.kind, entity.kind);
                 }
 
-                match serde_json::from_value(entity.data) {
+                let des = entity.data.into_deserializer();
+                match serde_path_to_error::deserialize(des) {
                     Ok(data) => Either::Left(ChronEntity {
                         kind: entity.kind,
                         entity_id: entity.entity_id,
@@ -492,7 +494,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 valid_from: valid_from.naive_utc(),
                 log_index: 0, // Deserialize error is always the 0th log item for that version
                 log_level: 0, // Critical error
-                log_text: format!("{:?}", err), // Not sure whether this should be debug
+                log_text: format!("Error deserializing: {:?}", err), // Not sure whether this should be debug
             })
             .collect();
 
