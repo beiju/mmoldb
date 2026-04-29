@@ -213,7 +213,6 @@ pub trait IngestibleFromVersions {
     type Entity: serde::de::DeserializeOwned + Send;
     type BatchSplitKey: Clone + Debug + Eq + Hash + Send;
 
-    fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>>;
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value;
     fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey;
     fn insert_batch(
@@ -221,10 +220,9 @@ pub trait IngestibleFromVersions {
         taxa: &Taxa,
         versions: &Vec<ChronEntity<Self::Entity>>,
     ) -> QueryResult<(usize, usize)>;
-    fn stream_versions_at_cursor(
+    fn stream_unprocessed_versions(
         conn: &mut AsyncPgConnection,
         kind: &str,
-        cursor: Option<(NaiveDateTime, String)>,
     ) -> impl Future<
         Output = QueryResult<
             impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>> + Send,
@@ -272,20 +270,15 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
             .collect::<Result<Vec<_>, _>>()
             .map_err(IngestFatalError::TaskSpawnError)?;
 
-        let start_cursor = {
-            let mut conn = args.pool.get()?;
-            VersionIngest::get_start_cursor(&mut conn)?
-        };
         // TODO Pool this too?
         let url = mmoldb_db::postgres_url_from_environment();
         let mut async_conn = AsyncPgConnection::establish(&url).await?;
 
         // Probably not all of this needs to be in the loop but I'm tired, boss
         loop {
-            let versions_stream = VersionIngest::stream_versions_at_cursor(
+            let versions_stream = VersionIngest::stream_unprocessed_versions(
                 &mut async_conn,
                 self.kind,
-                start_cursor.clone(),
             )
             .await?;
             pin_mut!(versions_stream);

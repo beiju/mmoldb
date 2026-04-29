@@ -429,12 +429,6 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
     type Entity = FeedItemContainer;
     type BatchSplitKey = (String, i32);
 
-    fn get_start_cursor(_: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
-        // TODO: This is None because I'm not using a cursor for player feeds any more. Update
-        //   the infrastructure to not require a stub.
-        Ok(None)
-    }
-
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
         version.clone()
     }
@@ -464,14 +458,10 @@ impl IngestibleFromVersions for PlayerFeedIngestFromVersions {
         conn.transaction(|c| db::insert_player_feed_versions(c, &new_versions))
     }
 
-    async fn stream_versions_at_cursor(
+    async fn stream_unprocessed_versions(
         conn: &mut AsyncPgConnection,
         kind: &str,
-        _: Option<(NaiveDateTime, String)>,
     ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
-        // This ingestible doesn't use a cursor. I used to have an assert that cursor
-        // was None, but that's incorrect because the machinery opportunistically updates
-        // the cursor based on values that are passing through
         async_db::stream_unprocessed_feed_event_versions(conn, kind).await
     }
 }

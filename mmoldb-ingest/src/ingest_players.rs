@@ -35,10 +35,6 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
     type Entity = mmolb_parsing::player::Player;
     type BatchSplitKey = String;
 
-    fn get_start_cursor(conn: &mut PgConnection) -> QueryResult<Option<(NaiveDateTime, String)>> {
-        db::get_player_ingest_start_cursor(conn)
-    }
-
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
         match version {
             serde_json::Value::Object(obj) => obj
@@ -94,12 +90,11 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
         db::insert_player_versions(conn, &new_versions)
     }
 
-    async fn stream_versions_at_cursor(
+    async fn stream_unprocessed_versions(
         conn: &mut AsyncPgConnection,
         kind: &str,
-        cursor: Option<(NaiveDateTime, String)>,
     ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
-        async_db::stream_versions_at_cursor(conn, kind, cursor).await
+        async_db::stream_unprocessed_versions(conn, kind).await
     }
 }
 

@@ -552,6 +552,15 @@ pub mod data {
     }
 
     diesel::table! {
+        data.versions_processed (kind, entity_id, valid_from) {
+            kind -> Text,
+            entity_id -> Text,
+            valid_from -> Timestamp,
+            skipped -> Bool,
+        }
+    }
+
+    diesel::table! {
         data.weather (id) {
             id -> Int8,
             name -> Text,
@@ -630,6 +639,7 @@ pub mod data {
         team_player_versions,
         team_versions,
         versions,
+        versions_processed,
         weather,
         wither,
     );

@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use futures::future::Either;
 use futures::{Stream, TryStreamExt};
+use crate::models::DbVersion;
 
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::data_schema::data::versions)]
@@ -57,54 +58,43 @@ pub(crate) fn version_cursor_query<'a, 'b>(
     version_cursor_query_diesel(kind, cursor_date, cursor_id)
 }
 
-fn version_to_chron(v: Version) -> ChronEntity<serde_json::Value> {
-    ChronEntity {
-        kind: v.kind,
-        entity_id: v.entity_id,
-        valid_from: v.valid_from.and_utc(),
-        valid_to: v.valid_to.map(|dt| dt.and_utc()),
-        data: v.data,
-    }
-}
-
-pub async fn stream_versions_at_cursor(
+pub async fn stream_unprocessed_versions(
     conn: &mut AsyncPgConnection,
     kind: &str,
-    cursor: Option<(NaiveDateTime, String)>,
 ) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
-    let cursor = cursor.as_ref().map(|(dt, id)| (*dt, id.as_str()));
+    use crate::schema::data_schema::data::versions::dsl as v_dsl;
+    use crate::schema::data_schema::data::versions_processed::dsl as vp_dsl;
 
-    let stream = version_cursor_query(kind, cursor)
-        .select(Version::as_select())
-        .load_stream(conn)
+    let stream = v_dsl::versions
+        .filter(v_dsl::kind.eq(kind))
+        .filter(diesel::dsl::not(diesel::dsl::exists(
+            // This subquery is meant to check if there is a corresponding entry in versions_processed
+            vp_dsl::versions_processed
+                .filter(vp_dsl::kind.eq(v_dsl::kind))
+                .filter(vp_dsl::entity_id.eq(v_dsl::entity_id))
+                .filter(vp_dsl::valid_from.eq(v_dsl::valid_from))
+        )))
+        // Callers of this function rely on the results being sorted by
+        // (valid_from, entity_id) with the highest id last
+        .order_by((
+            v_dsl::valid_from.asc(),
+            v_dsl::entity_id.asc(),
+        ))
+        .select(DbVersion::as_select())
+        .load_stream::<DbVersion>(conn)
         .await?
-        .map_ok(version_to_chron);
+        .map_ok(|v| {
+            ChronEntity {
+                kind: v.kind,
+                entity_id: v.entity_id,
+                valid_from: v.valid_from.and_utc(),
+                valid_to: v.valid_to.map(|dt| dt.and_utc()),
+                // Kind of a hack to smuggle extra data through the machinery
+                data: v.data,
+            }
+        });
 
     Ok(stream)
-}
-
-pub async fn stream_versions_at_cursor_until(
-    conn: &mut AsyncPgConnection,
-    kind: &str,
-    cursor: Option<(NaiveDateTime, String)>,
-    until: Option<NaiveDateTime>,
-) -> QueryResult<impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>>> {
-    let Some(until) = until else {
-        return stream_versions_at_cursor(conn, kind, cursor)
-            .await
-            .map(Either::Left);
-    };
-
-    let cursor = cursor.as_ref().map(|(dt, id)| (*dt, id.as_str()));
-
-    let stream = version_cursor_query(kind, cursor)
-        .filter(versions_dsl::valid_from.lt(until))
-        .select(Version::as_select())
-        .load_stream(conn)
-        .await?
-        .map_ok(version_to_chron);
-
-    Ok(Either::Right(stream))
 }
 
 pub async fn stream_unprocessed_feed_event_versions(

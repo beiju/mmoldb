@@ -2,6 +2,51 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::Serialize;
 
+#[derive(Insertable)]
+#[diesel(table_name = crate::data_schema::data::versions)]
+#[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id))]
+pub struct NewVersion<'a> {
+    pub kind: &'a str,
+    pub entity_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    // New versions always have null valid_until, and it's set later by a database function
+    pub data: &'a serde_json::Value,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::versions)]
+#[diesel(check_for_backend(diesel::pg::Pg), primary_key(kind, entity_id))]
+pub struct DbVersion {
+    pub kind: String,
+    pub entity_id: String,
+    pub valid_from: NaiveDateTime,
+    // TODO Rename this column valid_until in the database
+    pub valid_to: Option<NaiveDateTime>,
+    pub data: serde_json::Value,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::data_schema::data::feed_event_versions)]
+#[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id, feed_event_index))]
+pub struct NewFeedEventVersion<'a> {
+    pub kind: &'a str,
+    pub entity_id: &'a str,
+    pub feed_event_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub data: &'a serde_json::Value,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::feed_event_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg), primary_key(kind, entity_id, feed_event_index))]
+pub struct DbFeedEventVersion {
+    pub kind: String,
+    pub entity_id: String,
+    pub feed_event_index: i32,
+    pub valid_from: NaiveDateTime,
+    pub data: serde_json::Value,
+}
+
 #[derive(Debug, Insertable)]
 #[diesel(table_name = crate::data_schema::data::weather)]
 pub struct NewWeather<'a> {
@@ -1059,7 +1104,7 @@ pub struct DbConsumptionContestEvent {
 
 #[derive(Clone, Debug, Insertable, PartialEq, AsChangeset, Identifiable)]
 #[diesel(table_name = crate::data_schema::data::feed_events_processed)]
-#[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id))]
+#[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id, feed_event_index))]
 pub struct NewFeedEventProcessed<'a> {
     pub kind: &'a str,
     pub entity_id: &'a str,
@@ -1069,7 +1114,7 @@ pub struct NewFeedEventProcessed<'a> {
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
 #[diesel(table_name = crate::data_schema::data::feed_events_processed)]
-#[diesel(check_for_backend(diesel::pg::Pg), primary_key(kind, entity_id))]
+#[diesel(check_for_backend(diesel::pg::Pg), primary_key(kind, entity_id, feed_event_index))]
 pub struct DbFeedEventProcessed {
     pub kind: String,
     pub entity_id: String,
@@ -1192,4 +1237,24 @@ pub struct DbPlayerPitchCategoryBonusVersion {
     pub valid_from: NaiveDateTime,
     pub valid_until: Option<NaiveDateTime>,
     pub bonus: f64,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq, AsChangeset, Identifiable)]
+#[diesel(table_name = crate::data_schema::data::versions_processed)]
+#[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id))]
+pub struct NewVersionProcessed<'a> {
+    pub kind: &'a str,
+    pub entity_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub skipped: bool,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::versions_processed)]
+#[diesel(check_for_backend(diesel::pg::Pg), primary_key(kind, entity_id))]
+pub struct DbVersionProcessed {
+    pub kind: String,
+    pub entity_id: String,
+    pub valid_from: NaiveDateTime,
+    pub skipped: bool,
 }
