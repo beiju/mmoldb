@@ -6,7 +6,7 @@ use itertools::Itertools;
 use mmolb_parsing::enums::{
     Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position, Uncategorized,
 };
-use mmolb_parsing::player::{ComplexTalkStars, PlayerEquipment, TalkCategory, TalkStars};
+use mmolb_parsing::player::{ComplexTalkStars, Player, PlayerEquipment, TalkCategory, TalkStars};
 use mmolb_parsing::{
     AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater,
     RemovedLaterResult,
@@ -27,6 +27,7 @@ use mmoldb_db::models::{
 };
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaModificationType, TaxaSlot};
 use mmoldb_db::{AsyncPgConnection, PgConnection, QueryResult, async_db, db};
+use crate::ingest_feed_shared::datetime_from_parts;
 
 pub struct PlayerIngestFromVersions;
 
@@ -1063,14 +1064,34 @@ fn chron_player_as_new<'a>(
                         };
 
                         if root_ty != base_attributes_ty {
-                            ingest_logs.warn(format!(
-                                "{}th pitch type in BaseAttributes ({}) does not match the \
-                                corresponding pitch type in the root object ({})",
-                                index, base_attributes_ty, root_ty,
-                            ));
+                            if ignore_pitch_type_inconsistency(&entity) {
+                                ingest_logs.info(format!(
+                                    "{}th pitch type in BaseAttributes ({}) does not match the \
+                                    corresponding pitch type in the root object ({}). However, \
+                                    this player version has been checked and it never pitched a \
+                                    game. So MMOLDB will store whichever value it feels like, \
+                                    secure in the knowledge that it doesn't matter.",
+                                    index, base_attributes_ty, root_ty,
+                                ));
+                            } else {
+                                ingest_logs.warn(format!(
+                                    "{}th pitch type in BaseAttributes ({}) does not match the \
+                                    corresponding pitch type in the root object ({})",
+                                    index, base_attributes_ty, root_ty,
+                                ));
+                            }
                         }
                     }
-                } else {
+                } else if ignore_pitch_type_inconsistency(&entity) {
+                    ingest_logs.info(format!(
+                        "PitchTypes in BaseAttributes has length {}, but PitchTypes on the root \
+                        object has length {} (expected equal length). However, this player version \
+                        has been checked and it never pitched a game. So MMOLDB will store which\
+                        ever value it feels like, secure in the knowledge that it doesn't matter.",
+                        base_attributes.pitch_types.len(),
+                        pitch_types.len()
+                    ));
+                } else  {
                     ingest_logs.warn(format!(
                         "PitchTypes in BaseAttributes has length {}, but PitchTypes on the root \
                         object has length {} (expected equal length)",
@@ -1100,6 +1121,15 @@ fn chron_player_as_new<'a>(
                             ));
                         }
                     }
+                } else if ignore_pitch_type_inconsistency(&entity) {
+                    ingest_logs.info(format!(
+                        "PitchSelection in BaseAttributes has length {}, but PitchSelection on the \
+                        root object has length {} (expected equal length). However, this player version \
+                        has been checked and it never pitched a game. So MMOLDB will store which\
+                        ever value it feels like, secure in the knowledge that it doesn't matter.",
+                        base_attributes.pitch_selection.len(),
+                        pitch_selection.len()
+                    ));
                 } else {
                     ingest_logs.warn(format!(
                         "PitchSelection in BaseAttributes has length {}, but PitchSelection on the \
@@ -1299,6 +1329,21 @@ fn chron_player_as_new<'a>(
         pitch_category_bonuses,
         ingest_logs.into_vec(),
     )
+}
+
+fn ignore_pitch_type_inconsistency(entity: &ChronEntity<Player>) -> bool {
+    // Around January 19-20 of 2026, some players were observed with
+    // inconsistent values of PitchTypes and PitchSelection between two
+    // different parts of their player objects. However, none of these
+    // players pitched a game while these observations were in effect, so
+    // it's safe to assume that these inconsistencies don't matter. The
+    // MMOLDB code will use one of the two values and if they didn't pitch
+    // then it doesn't matter which it is.
+    // I got confirmation of this assumption thanks to a volunteer:
+    //   https://discord.com/channels/1136709081319604324/1364685052419510404/1498891730337136641
+    entity.kind == "player"
+        && entity.valid_from >= datetime_from_parts(2026, 01, 19, 06, 09, 41, 319157)
+        && entity.valid_from <= datetime_from_parts(2026, 01, 20, 12, 56, 26, 172728)
 }
 
 fn report_from_talk<'e>(
