@@ -1073,11 +1073,12 @@ pub fn chron_player_feed_as_new<'a>(
         | ParsedPlayerFeedEventText::Augment { .. }
         | ParsedPlayerFeedEventText::BoonRecombobulated { .. }
         | ParsedPlayerFeedEventText::PlayersSwapped { .. }
-        | ParsedPlayerFeedEventText::ConsumptionContestToPlayer { .. }
+        | ParsedPlayerFeedEventText::ConsumptionContestDelivery { .. }
         | ParsedPlayerFeedEventText::ConsumptionContestToTeam { .. }
         | ParsedPlayerFeedEventText::PlayerReflected { .. }
         | ParsedPlayerFeedEventText::ElectionAppliedLevelUps { .. }
-        | ParsedPlayerFeedEventText::LesserBoon { .. } => {}
+        | ParsedPlayerFeedEventText::LesserBoon { .. }
+        | ParsedPlayerFeedEventText::ResumedHolidayProcessingReplacement { .. } => {}
     }
 
     // Apply any pending inferred whose time is before this event's time

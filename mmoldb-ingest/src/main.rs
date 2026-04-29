@@ -25,7 +25,7 @@ pub use ingest::*;
 use std::alloc;
 
 static MEMORY_TRACKING_PERIOD_MS: u64 = 10_000;
-static ITEM_COUNTING_PERIOD_MS: u64 = 30_000;
+static ITEM_COUNTING_WAIT_MS: u64 = 30_000;
 
 #[global_allocator]
 static ALLOCATOR: Cap<alloc::System> = Cap::new(alloc::System, usize::MAX);
@@ -48,8 +48,6 @@ async fn memory_tracking_task(shutdown_requested: CancellationToken) {
 }
 
 async fn counting_task(shutdown_requested: CancellationToken, pool: ConnectionPool) {
-    let mut interval = tokio::time::interval(Duration::from_millis(ITEM_COUNTING_PERIOD_MS));
-
     loop {
         match pool.get() {
             Ok(mut conn) => {
@@ -63,8 +61,11 @@ async fn counting_task(shutdown_requested: CancellationToken, pool: ConnectionPo
             }
         }
 
+        // I am intentionally using a timed wait instead of a tokio Interval here.
+        // The timed wait ensures there will be a minimum idle time during which
+        // postgres can run maintenance tasks on these matviews.
         tokio::select! {
-            _ = interval.tick() => {}
+            _ = tokio::time::sleep(Duration::from_millis(ITEM_COUNTING_WAIT_MS)) => {}
             _ = shutdown_requested.cancelled() => { break; }
         }
     }

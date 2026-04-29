@@ -1964,7 +1964,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.62.0"
-source = "git+https://github.com/beiju/mmolb_parsing.git?branch=feature%2Fs11-fixes#7452098657d9c0202bbbdbb932557697c17c7ed8"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=feature%2Fs11-postseason-fixes#2c6f7ea6c694799ad9accf36ce89e0199edc7db0"
 dependencies = [
  "chrono",
  "indexmap 2.13.0",
@@ -4221,9 +4221,9 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "uuid"
-version = "1.23.0"
+version = "1.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ac8b6f42ead25368cf5b098aeb3dc8a1a2c05a3eee8a9a1a68c640edbfc79d9"
+checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",

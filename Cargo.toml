@@ -1,3 +1,11 @@
 [workspace]
 resolver = "3"
 members = ["mmoldb-app", "mmoldb-ingest", "mmoldb-db", "chron"]
+
+# This doesn't add any dependencies to the child packages directly,
+# but child packages can specifiy that they depend on any of these
+# dependencies but delegate the selection of which version they
+# depend on to this file. The syntax for that is:
+# package_name = { workspace = true }
+[workspace.dependencies]
+mmolb_parsing = { git = "https://github.com/beiju/mmolb_parsing.git", branch = "feature/s11-postseason-fixes" }

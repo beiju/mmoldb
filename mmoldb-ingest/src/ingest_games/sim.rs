@@ -3988,6 +3988,48 @@ impl<'g> Game<'g> {
                     // Nothing to do for this event type
                     None
                 },
+                [ParsedEventMessageDiscriminants::WeatherNoisy]
+                ParsedEventMessage::WeatherNoisy { ump_team, player_team, tokens_earnt } => {
+                    if ump_team.emoji == player_team.emoji &&
+                        ump_team.name == player_team.name {
+                        ingest_logs.warn(format!(
+                            "Can't tell who got the Simulacrum weather payout because \
+                            {ump_team} and {player_team} have the same name and emoji. \
+                            Recording it as nobody."
+                        ));
+                    } else if player_team.emoji == self.home.team_emoji &&
+                        player_team.name == self.home.team_name &&
+                        ump_team.emoji == self.away.team_emoji &&
+                        ump_team.name == self.away.team_name  {
+                        if self.home_team_earned_coins.is_some() {
+                            ingest_logs.warn(format!(
+                                "Somehow the {player_team} earned coins before the end-of-game event \
+                                during Simulacrum weather. The coins total will be incorrect.,\
+                            "));
+                        }
+                        self.home_team_earned_coins = Some(*tokens_earnt as i32);
+                    } else if player_team.emoji == self.away.team_emoji &&
+                        player_team.name == self.away.team_name &&
+                        ump_team.emoji == self.home.team_emoji &&
+                        ump_team.name == self.home.team_name  {
+                        if self.home_team_earned_coins.is_some() {
+                            ingest_logs.warn(format!(
+                                "Somehow the {player_team} earned coins before the end-of-game event \
+                                during Simulacrum weather. The coins total will be incorrect.,\
+                            "));
+                        }
+                        self.home_team_earned_coins = Some(*tokens_earnt as i32);
+                    } else {
+                        ingest_logs.warn(format!(
+                            "Can't tell who got the Simulacrum weather payout because \
+                            {ump_team} and {player_team} do not match {} {} and {} {}. \
+                            Recording it as nobody.",
+                            self.home.team_emoji, self.home.team_name,
+                            self.away.team_emoji, self.away.team_name,
+                        ));
+                    }
+                    None
+                },
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for
                 [ParsedEventMessageDiscriminants::KnownBug]

@@ -18,7 +18,7 @@ figment = { version = "0.10.19", features = ["env"] }
 chrono = "0.4.41"
 itertools = "0.14.0"
 serde_json = "1.0.140"
-mmolb_parsing = { git = "https://github.com/beiju/mmolb_parsing.git", branch = "feature/s11-fixes" }
+mmolb_parsing = { workspace = true }
 miette = "7.6.0"
 hashbrown = "0.16.0"
 thiserror = "2.0.12"
