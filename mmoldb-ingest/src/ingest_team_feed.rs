@@ -1,10 +1,10 @@
-use crate::IngestibleFromVersions;
+use crate::{IngestibleFromVersions, PreparedIngestItem};
 use crate::ingest::VersionIngestLogs;
 use crate::ingest_feed_shared::{
     FEED_INVERSION_EVENT_END, FEED_INVERSION_EVENT_START, FeedItemContainer,
 };
 use chron::ChronEntity;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use futures::Stream;
 use itertools::Itertools;
 use mmolb_parsing::enums::LinkType;
@@ -17,24 +17,53 @@ pub struct TeamFeedIngestFromVersions;
 
 impl IngestibleFromVersions for TeamFeedIngestFromVersions {
     type Entity = FeedItemContainer;
-    type BatchSplitKey = (String, i32);
+    type Ident = (String, i32);
 
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
         version.clone()
     }
 
-    fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey {
+    fn ident_raw(entity: &ChronEntity<serde_json::Value>) -> Self::Ident {
+        let _ = entity; // This will be used if that TODO gets hit
+        todo!("Not sure this will ever get called. If not, can I refactor it away?")
+    }
+
+    fn ident(entity: &ChronEntity<Self::Entity>) -> Self::Ident {
         (entity.entity_id.to_string(), entity.data.feed_event_index)
     }
 
     fn insert_batch(
         conn: &mut PgConnection,
         _: &Taxa,
-        versions: &Vec<ChronEntity<Self::Entity>>,
+        versions: &Vec<PreparedIngestItem<Self::Ident, Self::Entity>>,
     ) -> QueryResult<(usize, usize)> {
         let new_versions = versions
             .iter()
-            .map(|team| chron_team_feed_as_new(&team.entity_id, team.valid_from, &team.data))
+            .map(|item| match item {
+                PreparedIngestItem::MarkAsSkipped((entity_id, feed_event_index), valid_from) => {
+                    let fep = NewFeedEventProcessed {
+                        kind: "team_feed", // TODO Don't hard-code this
+                        entity_id,
+                        feed_event_index: *feed_event_index,
+                        valid_from: valid_from.naive_utc(),
+                        skipped: true,
+                        fatal_error: false,
+                    };
+                    (fep, None, Vec::new())
+                }
+                PreparedIngestItem::MarkAsFatalError((entity_id, feed_event_index), valid_from) => {
+                    let fep = NewFeedEventProcessed {
+                        kind: "team_feed", // TODO Don't hard-code this
+                        entity_id,
+                        feed_event_index: *feed_event_index,
+                        valid_from: valid_from.naive_utc(),
+                        skipped: false,
+                        fatal_error: true,
+                    };
+                    (fep, None, Vec::new())
+                }
+                PreparedIngestItem::DoIngest(team) => chron_team_feed_as_new(&team.entity_id, team.valid_from, &team.data),
+            })
             .collect_vec();
 
         conn.transaction(|c| db::insert_team_feed_versions(c, &new_versions))
@@ -65,6 +94,8 @@ pub fn chron_team_feed_as_new<'a>(
         entity_id: team_id,
         feed_event_index: item.feed_event_index,
         valid_from: valid_from.naive_utc(),
+        skipped: false,
+        fatal_error: false,
     };
 
     if FEED_INVERSION_EVENT_START <= valid_from && valid_from <= FEED_INVERSION_EVENT_END {

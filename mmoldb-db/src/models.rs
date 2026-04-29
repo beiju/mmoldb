@@ -1110,6 +1110,8 @@ pub struct NewFeedEventProcessed<'a> {
     pub entity_id: &'a str,
     pub feed_event_index: i32,
     pub valid_from: NaiveDateTime,
+    pub skipped: bool,
+    pub fatal_error: bool,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -1120,6 +1122,8 @@ pub struct DbFeedEventProcessed {
     pub entity_id: String,
     pub feed_event_index: i32,
     pub valid_from: NaiveDateTime,
+    pub skipped: bool,
+    pub fatal_error: bool,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq)]
@@ -1247,6 +1251,7 @@ pub struct NewVersionProcessed<'a> {
     pub entity_id: &'a str,
     pub valid_from: NaiveDateTime,
     pub skipped: bool,
+    pub fatal_error: bool,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -1257,4 +1262,5 @@ pub struct DbVersionProcessed {
     pub entity_id: String,
     pub valid_from: NaiveDateTime,
     pub skipped: bool,
+    pub fatal_error: bool,
 }

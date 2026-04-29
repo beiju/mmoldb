@@ -1,30 +1,26 @@
-use chrono::NaiveDateTime;
 use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use mmolb_parsing::enums::{
     Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position, Uncategorized,
 };
-use mmolb_parsing::player::{ComplexTalkStars, Player, PlayerEquipment, TalkCategory, TalkStars};
+use mmolb_parsing::player::{ComplexTalkStars, PlayerEquipment, TalkCategory, TalkStars};
 use mmolb_parsing::{
     AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater,
     RemovedLaterResult,
 };
 use std::fmt::Display;
 use std::iter;
+use serde_json::Value;
 use strum::IntoEnumIterator;
 use thiserror::Error;
 use tracing::{error, warn};
 
-use crate::{IngestibleFromVersions, VersionIngestLogs};
+use crate::{IngestibleFromVersions, PreparedIngestItem, VersionIngestLogs};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{
-    NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion,
-    NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion,
-    NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog,
-};
+use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog, NewVersionProcessed};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaModificationType, TaxaSlot};
 use mmoldb_db::{AsyncPgConnection, PgConnection, QueryResult, async_db, db};
 use crate::ingest_feed_shared::datetime_from_parts;
@@ -33,7 +29,7 @@ pub struct PlayerIngestFromVersions;
 
 impl IngestibleFromVersions for PlayerIngestFromVersions {
     type Entity = mmolb_parsing::player::Player;
-    type BatchSplitKey = String;
+    type Ident = String;
 
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
         match version {
@@ -46,37 +42,45 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
         }
     }
 
-    fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey {
+    fn ident_raw(entity: &ChronEntity<Value>) -> Self::Ident {
+        entity.entity_id.to_string()
+    }
+
+    fn ident(entity: &ChronEntity<Self::Entity>) -> Self::Ident {
         entity.entity_id.to_string()
     }
 
     fn insert_batch(
         conn: &mut PgConnection,
         taxa: &Taxa,
-        versions: &Vec<ChronEntity<Self::Entity>>,
+        versions: &Vec<PreparedIngestItem<Self::Ident, Self::Entity>>,
     ) -> QueryResult<(usize, usize)> {
         // Collect all modifications that appear in this batch so we can ensure they're all added
         let unique_modifications = versions
             .iter()
-            .flat_map(|version| {
-                version
-                    .data
-                    .modifications
-                    .iter()
-                    .chain(version.data.lesser_boon.iter())
-                    .chain(version.data.greater_boon.iter())
-                    .chain(version.data.lesser_boons.iter().flat_map(|b| b.iter()))
-                    .chain(version.data.greater_boons.iter().flat_map(|b| b.iter()))
-                    .map(|m| {
-                        // TODO Do this for extra_fields in other types
-                        if !m.extra_fields.is_empty() {
-                            warn!(
+            .flat_map(|version| match version {
+                PreparedIngestItem::MarkAsSkipped(_, _) => Either::Left(iter::empty()),
+                PreparedIngestItem::MarkAsFatalError(_, _) => Either::Left(iter::empty()),
+                PreparedIngestItem::DoIngest(version) => Either::Right({
+                    version
+                        .data
+                        .modifications
+                        .iter()
+                        .chain(version.data.lesser_boon.iter())
+                        .chain(version.data.greater_boon.iter())
+                        .chain(version.data.lesser_boons.iter().flat_map(|b| b.iter()))
+                        .chain(version.data.greater_boons.iter().flat_map(|b| b.iter()))
+                        .map(|m| {
+                            // TODO Do this for extra_fields in other types
+                            if !m.extra_fields.is_empty() {
+                                warn!(
                                 "Modification had extra fields that were not captured: {:?}",
                                 m.extra_fields
                             );
-                        }
-                        (m.name.as_str(), m.emoji.as_str(), m.description.as_str())
-                    })
+                            }
+                            (m.name.as_str(), m.emoji.as_str(), m.description.as_str())
+                        })
+                })
             })
             .unique()
             .collect_vec();
@@ -84,10 +88,52 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
         let modifications = get_filled_modifications_map(conn, &unique_modifications)?;
         let new_versions = versions
             .iter()
-            .map(|entity| chron_player_as_new(taxa, &entity, &modifications))
+            .map(|item| match item {
+                PreparedIngestItem::MarkAsSkipped(entity_id, valid_from) => {
+                    let processed = NewVersionProcessed {
+                        kind: "player",  // TODO avoid repeating literal
+                        entity_id,
+                        valid_from: valid_from.naive_utc(),
+                        skipped: true,
+                        fatal_error: false,
+                    };
+                    (
+                        processed,
+                        None,
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                    )
+                }
+                PreparedIngestItem::MarkAsFatalError(entity_id, valid_from) => {
+                    let processed = NewVersionProcessed {
+                        kind: "player",  // TODO avoid repeating literal
+                        entity_id,
+                        valid_from: valid_from.naive_utc(),
+                        skipped: false,
+                        fatal_error: true,
+                    };
+                    (
+                        processed,
+                        None,
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                    )
+                }
+                PreparedIngestItem::DoIngest(entity) => chron_player_as_new(taxa, entity, &modifications),
+            })
             .collect_vec();
 
-        db::insert_player_versions(conn, &new_versions)
+        db::insert_player_versions_all(conn, &new_versions)
     }
 
     async fn stream_unprocessed_versions(
@@ -286,7 +332,8 @@ fn chron_player_as_new<'a>(
     entity: &'a ChronEntity<mmolb_parsing::player::Player>,
     modifications: &HashMap<NameEmojiTooltip, i64>,
 ) -> (
-    NewPlayerVersion<'a>,
+    NewVersionProcessed<'a>,
+    Option<NewPlayerVersion<'a>>,
     Vec<NewPlayerModificationVersion<'a>>,
     Vec<(
         NewPlayerReportVersion<'a>,
@@ -303,6 +350,15 @@ fn chron_player_as_new<'a>(
 ) {
     // TODO Can I avoid repeating this string constant?
     let mut ingest_logs = VersionIngestLogs::new("player", &entity.entity_id, entity.valid_from);
+
+    let processed = NewVersionProcessed {
+        kind: "player", // TODO Avoid hard-coding this
+        entity_id: &entity.entity_id,
+        valid_from: entity.valid_from.naive_utc(),
+        skipped: false,
+        fatal_error: false,
+    };
+
     let (birthday_type, birthday_day, birthday_superstar_day) =
         day_to_db(Some(&entity.data.birthday), taxa);
 
@@ -1315,7 +1371,10 @@ fn chron_player_as_new<'a>(
     };
 
     (
-        player,
+        processed,
+        // This Some() is to give this function a more convenient return type,
+        // which can more easily be compsed
+        Some(player),
         modifications,
         report_versions,
         equipment,
@@ -1326,7 +1385,7 @@ fn chron_player_as_new<'a>(
     )
 }
 
-fn ignore_pitch_type_inconsistency(entity: &ChronEntity<Player>) -> bool {
+fn ignore_pitch_type_inconsistency(entity: &ChronEntity<mmolb_parsing::player::Player>) -> bool {
     // Around January 19-20 of 2026, some players were observed with
     // inconsistent values of PitchTypes and PitchSelection between two
     // different parts of their player objects. However, none of these

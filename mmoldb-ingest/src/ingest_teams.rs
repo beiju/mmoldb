@@ -1,22 +1,23 @@
 use crate::ingest::{IngestibleFromVersions, VersionIngestLogs};
 use chron::ChronEntity;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use futures::Stream;
 use itertools::Itertools;
 use mmolb_parsing::enums::Slot;
 use mmolb_parsing::{
     AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, team::TeamPlayerCollection,
 };
-use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog};
+use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult, async_db, db};
 use std::str::FromStr;
+use crate::PreparedIngestItem;
 
 pub struct TeamIngestFromVersions;
 
 impl IngestibleFromVersions for TeamIngestFromVersions {
     type Entity = mmolb_parsing::team::Team;
-    type BatchSplitKey = String;
+    type Ident = String;
 
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value {
         match version {
@@ -71,21 +72,47 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
         }
     }
 
-    fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey {
+    fn ident_raw(entity: &ChronEntity<serde_json::Value>) -> Self::Ident {
+        entity.entity_id.to_string()
+    }
+
+    fn ident(entity: &ChronEntity<Self::Entity>) -> Self::Ident {
         entity.entity_id.to_string()
     }
 
     fn insert_batch(
         conn: &mut PgConnection,
         taxa: &Taxa,
-        versions: &Vec<ChronEntity<Self::Entity>>,
+        versions: &Vec<PreparedIngestItem<Self::Ident, Self::Entity>>,
     ) -> QueryResult<(usize, usize)> {
         let new_team_versions = versions
             .iter()
-            .map(|team| chron_team_as_new(taxa, &team.entity_id, team.valid_from, &team.data))
+            .map(|item| match item {
+                PreparedIngestItem::MarkAsSkipped(entity_id, valid_from) => {
+                    let vp = NewVersionProcessed {
+                        kind: "team", // TODO Don't hard-code this
+                        entity_id,
+                        valid_from: valid_from.naive_utc(),
+                        skipped: true,
+                        fatal_error: false,
+                    };
+                    (vp, None, Vec::new(), Vec::new())
+                }
+                PreparedIngestItem::MarkAsFatalError(entity_id, valid_from) => {
+                    let vp = NewVersionProcessed {
+                        kind: "team", // TODO Don't hard-code this
+                        entity_id,
+                        valid_from: valid_from.naive_utc(),
+                        skipped: false,
+                        fatal_error: true,
+                    };
+                    (vp, None, Vec::new(), Vec::new())
+                }
+                PreparedIngestItem::DoIngest(team) => chron_team_as_new(taxa, &team.entity_id, team.valid_from, &team.data),
+            })
             .collect_vec();
 
-        db::insert_team_versions(conn, &new_team_versions)
+        db::insert_team_versions_all(conn, &new_team_versions)
     }
 
     async fn stream_unprocessed_versions(
@@ -102,12 +129,21 @@ fn chron_team_as_new<'a>(
     valid_from: DateTime<Utc>,
     team: &'a mmolb_parsing::team::Team,
 ) -> (
-    NewTeamVersion<'a>,
+    NewVersionProcessed<'a>,
+    Option<NewTeamVersion<'a>>,
     Vec<NewTeamPlayerVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 ) {
     // TODO Can I avoid repeating this string constant?
     let mut ingest_logs = VersionIngestLogs::new("team", team_id, valid_from);
+
+    let new_processed = NewVersionProcessed {
+        kind: "team", // TODO Avoid hard-coding this
+        entity_id: team_id,
+        valid_from: valid_from.naive_utc(),
+        skipped: false,
+        fatal_error: false,
+    };
 
     let new_team_players = match &team.players {
         TeamPlayerCollection::Vec(v) => v
@@ -168,7 +204,7 @@ fn chron_team_as_new<'a>(
         ingest_logs.error("Got a duplicate team player");
     }
 
-    (new_team, new_team_players, ingest_logs.into_vec())
+    (new_processed, Some(new_team), new_team_players, ingest_logs.into_vec())
 }
 
 pub fn chron_team_player_as_new<'a>(

@@ -216,6 +216,8 @@ pub mod data {
             entity_id -> Text,
             feed_event_index -> Int4,
             valid_from -> Timestamp,
+            skipped -> Bool,
+            fatal_error -> Bool,
         }
     }
 
@@ -557,6 +559,7 @@ pub mod data {
             entity_id -> Text,
             valid_from -> Timestamp,
             skipped -> Bool,
+            fatal_error -> Bool,
         }
     }
 

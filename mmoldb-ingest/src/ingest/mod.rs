@@ -9,7 +9,7 @@ pub use fetch::ChronFetchArgs;
 use futures::{Stream, StreamExt, pin_mut};
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use miette::Diagnostic;
 use mmoldb_db::models::NewVersionIngestLog;
 use mmoldb_db::taxa::Taxa;
@@ -211,14 +211,15 @@ pub struct Stage2Ingest<VersionIngest> {
 
 pub trait IngestibleFromVersions {
     type Entity: serde::de::DeserializeOwned + Send;
-    type BatchSplitKey: Clone + Debug + Eq + Hash + Send;
+    type Ident: Clone + Debug + Eq + Hash + Send;
 
     fn trim_unused(version: &serde_json::Value) -> serde_json::Value;
-    fn batch_split_key(entity: &ChronEntity<Self::Entity>) -> Self::BatchSplitKey;
+    fn ident_raw(entity: &ChronEntity<serde_json::Value>) -> Self::Ident;
+    fn ident(entity: &ChronEntity<Self::Entity>) -> Self::Ident;
     fn insert_batch(
         conn: &mut PgConnection,
         taxa: &Taxa,
-        versions: &Vec<ChronEntity<Self::Entity>>,
+        versions: &Vec<PreparedIngestItem<Self::Ident, Self::Entity>>,
     ) -> QueryResult<(usize, usize)>;
     fn stream_unprocessed_versions(
         conn: &mut AsyncPgConnection,
@@ -228,6 +229,27 @@ pub trait IngestibleFromVersions {
             impl Stream<Item = QueryResult<ChronEntity<serde_json::Value>>> + Send,
         >,
     > + Send;
+}
+
+enum FilteredIngestItem<IdentT> {
+    MarkAsSkipped(IdentT, DateTime<Utc>),
+    DoIngest(ChronEntity<serde_json::Value>),
+}
+
+pub enum PreparedIngestItem<IdentT, EntityT> {
+    MarkAsSkipped(IdentT, DateTime<Utc>),
+    MarkAsFatalError(IdentT, DateTime<Utc>),
+    DoIngest(ChronEntity<EntityT>),
+}
+
+impl<IdentT, EntityT> PreparedIngestItem<IdentT, EntityT> {
+    pub fn valid_from(&self) -> DateTime<Utc> {
+        match self {
+            PreparedIngestItem::MarkAsSkipped(_, dt) => *dt,
+            PreparedIngestItem::MarkAsFatalError(_, dt) => *dt,
+            PreparedIngestItem::DoIngest(entity) => entity.valid_from,
+        }
+    }
 }
 
 impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest<VersionIngest> {
@@ -380,39 +402,37 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let mut last_print = Utc::now();
         let mut cache = HashMap::new();
         let chunk_stream = tokio_stream::wrappers::ReceiverStream::new(version_recv)
-            .filter_map(|version| {
-                std::future::ready({
-                    let trimmed_version = VersionIngest::trim_unused(&version.data);
+            .map(|version| {
+                let trimmed_version = VersionIngest::trim_unused(&version.data);
 
-                    let now = Utc::now();
-                    if last_print + chrono::Duration::seconds(5) < now {
-                        info!(
-                            "{} cache has {} items and occupies {} bytes",
-                            self.kind,
-                            cache.len(),
-                            cache.allocation_size()
-                        );
-                        last_print = now;
+                let now = Utc::now();
+                if last_print + chrono::Duration::seconds(5) < now {
+                    info!(
+                        "{} cache has {} items and occupies {} bytes",
+                        self.kind,
+                        cache.len(),
+                        cache.allocation_size()
+                    );
+                    last_print = now;
+                }
+
+                match cache.entry(version.entity_id.clone()) {
+                    Entry::Vacant(vacant) => {
+                        // We store the trimmed version for future comparisons
+                        vacant.insert(trimmed_version);
+                        // We need to return the untrimmed version, or else deserialize will fail
+                        FilteredIngestItem::DoIngest(version)
                     }
-
-                    match cache.entry(version.entity_id.clone()) {
-                        Entry::Vacant(vacant) => {
-                            // We store the trimmed version for future comparisons
-                            vacant.insert(trimmed_version);
-                            // We need to return the untrimmed version, or else deserialize will fail
-                            Some(version)
-                        }
-                        Entry::Occupied(mut occupied) => {
-                            if occupied.get() == &trimmed_version {
-                                // This is a duplicate -- no need to return it
-                                None
-                            } else {
-                                occupied.insert(trimmed_version);
-                                Some(version)
-                            }
+                    Entry::Occupied(mut occupied) => {
+                        if occupied.get() == &trimmed_version {
+                            // This is a duplicate -- no need to return it
+                            FilteredIngestItem::MarkAsSkipped(VersionIngest::ident_raw(&version), version.valid_from)
+                        } else {
+                            occupied.insert(trimmed_version);
+                            FilteredIngestItem::DoIngest(version)
                         }
                     }
-                })
+                }
             })
             .chunks(args.process_batch_size.into());
         pin_mut!(chunk_stream);
@@ -438,7 +458,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
     fn ingest_page(
         &self,
         taxa: &Taxa,
-        raw_versions: Vec<ChronEntity<serde_json::Value>>,
+        raw_versions: Vec<FilteredIngestItem<<VersionIngest as IngestibleFromVersions>::Ident>>,
         conn: &mut PgConnection,
         worker_id: usize,
         debug_db_insert_delay: f64,
@@ -450,60 +470,68 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         );
         let save_start = Utc::now();
 
-        let deserialize_start = Utc::now();
-        let (entities, deserialize_errors): (Vec<_>, Vec<_>) =
-            raw_versions.into_par_iter().partition_map(|entity| {
-                if entity.kind != self.kind {
-                    warn!("{} ingest task got a {} entity!", self.kind, entity.kind);
-                }
+        let (deserialize_errors, items): (Vec<_>, Vec<_>) = raw_versions.into_par_iter()
+            .map(|item| match item {
+                FilteredIngestItem::MarkAsSkipped(entity_id, valid_from ) => (None, PreparedIngestItem::MarkAsSkipped(entity_id, valid_from)),
+                FilteredIngestItem::DoIngest(entity) => {
+                    if entity.kind != self.kind {
+                        warn!("{} ingest task got a {} entity!", self.kind, entity.kind);
+                    }
 
-                let des = entity.data.into_deserializer();
-                match serde_path_to_error::deserialize(des) {
-                    Ok(data) => Either::Left(ChronEntity {
-                        kind: entity.kind,
-                        entity_id: entity.entity_id,
-                        valid_from: entity.valid_from,
-                        valid_to: entity.valid_to,
-                        data,
-                    }),
-                    Err(err) => Either::Right((err, entity.entity_id, entity.valid_from)),
+                    let des = (&entity.data).into_deserializer();
+                    match serde_path_to_error::deserialize(des) {
+                        Ok(data) => {
+                            let item = PreparedIngestItem::DoIngest(ChronEntity {
+                                kind: entity.kind,
+                                entity_id: entity.entity_id,
+                                valid_from: entity.valid_from,
+                                valid_to: entity.valid_to,
+                                data,
+                            });
+                            (None, item)
+                        },
+                        Err(err) => (
+                            // Kinda inefficient to return the entity id and valid from twice, but it makes
+                            // downstream code a little nicer
+                            Some((err, entity.entity_id.clone(), entity.valid_from)),
+                            PreparedIngestItem::MarkAsSkipped(VersionIngest::ident_raw(&entity), entity.valid_from),
+                        ),
+                    }
                 }
-            });
-        let deserialize_duration = (Utc::now() - deserialize_start).as_seconds_f64();
-        debug!(
-            "Deserialized {} {}(s) in {:.2} seconds on worker {}. {} deserialize errors.",
-            entities.len(),
-            self.kind,
-            deserialize_duration,
-            worker_id,
-            deserialize_errors.len(),
-        );
+            })
+            .unzip();
 
         let new_ingest_logs = deserialize_errors
             .iter()
-            .map(|(err, entity_id, valid_from)| NewVersionIngestLog {
+            .filter_map(|e| e.as_ref().map(|(err, entity_id, valid_from)| NewVersionIngestLog {
                 kind: self.kind,
                 entity_id,
                 valid_from: valid_from.naive_utc(),
                 log_index: 0, // Deserialize error is always the 0th log item for that version
                 log_level: 0, // Critical error
                 log_text: format!("Error deserializing: {:?}", err), // Not sure whether this should be debug
-            })
+            }))
             .collect();
 
         let inserted = db::insert_ingest_logs(conn, new_ingest_logs)?;
         debug!("Saved {inserted} deserialize errors");
 
-        let latest_time = entities
-            .last()
-            .map(|version| version.valid_from)
+        let earliest_time = items
+            .first()
+            .map(|version| version.valid_from())
             .unwrap_or(Utc::now());
-        let time_ago = latest_time.signed_duration_since(Utc::now());
-        let human_time_ago = chrono_humanize::HumanTime::from(time_ago);
+        let earliest_time_ago = earliest_time.signed_duration_since(Utc::now());
+        let earliest_human_time_ago = chrono_humanize::HumanTime::from(earliest_time_ago);
+        let latest_time = items
+            .last()
+            .map(|version| version.valid_from())
+            .unwrap_or(Utc::now());
+        let latest_time_ago = latest_time.signed_duration_since(Utc::now());
+        let latest_human_time_ago = chrono_humanize::HumanTime::from(latest_time_ago);
 
         // Insert a layer of Option so we can remove entries from the middle without
         // shifting indices around
-        let mut entities = entities.into_iter().map(Some).collect_vec();
+        let mut entities = items.into_iter().map(Some).collect_vec();
 
         let entity_ids_indices = entities
             .iter()
@@ -512,7 +540,13 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 let version = version
                     .as_ref()
                     .expect("Every element should be a Some at this point");
-                (VersionIngest::batch_split_key(version), index)
+                match version {
+                    PreparedIngestItem::MarkAsSkipped(ident, _) => (ident.clone(), index),
+                    PreparedIngestItem::MarkAsFatalError(ident, _) => (ident.clone(), index),
+                    PreparedIngestItem::DoIngest(version) => {
+                        (VersionIngest::ident(version), index)
+                    }
+                }
             })
             .collect_vec();
 
@@ -541,6 +575,12 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
             let (total, inserted) = VersionIngest::insert_batch(conn, taxa, &batch)?;
             total_inserted += inserted as i32;
+
+            let human_time_ago = if latest_human_time_ago == earliest_human_time_ago {
+                format!("{}", latest_human_time_ago)
+            } else {
+                format!("{} to {}", earliest_human_time_ago, latest_human_time_ago)
+            };
 
             info!(
                 "Sent rows for {} new {} versions out of {} to the database. \
