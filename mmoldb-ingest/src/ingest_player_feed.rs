@@ -556,7 +556,9 @@ pub fn chron_player_feed_as_new<'a>(
     // TODO Can I avoid repeating this string constant?
     let mut ingest_logs = VersionIngestLogs::new("player_feed", player_id, valid_from);
 
-    let processed = NewFeedEventProcessed {
+    // This is mut so later code can mark a fatal error on this version. 
+    // An ideal architecture would not need this to be mut.
+    let mut processed = NewFeedEventProcessed {
         kind: "player_feed",
         entity_id: player_id,
         feed_event_index: event.feed_event_index,
@@ -672,7 +674,7 @@ pub fn chron_player_feed_as_new<'a>(
         } else {
             ingest_logs.error(format!(
                 "Player {} feed event index {} had a previous version without special \
-                handling. Skipping this version.\n\
+                handling. Marking this version as a fatal error.\n\
                 previous version text: {}\n\
                 previous version valid_from: {}\n\
                 this version text: {}\n\
@@ -689,6 +691,7 @@ pub fn chron_player_feed_as_new<'a>(
                 valid_from,
             ));
 
+            processed.fatal_error = true;
             return (processed, None, None, Vec::new(), ingest_logs.into_vec());
         }
     }
