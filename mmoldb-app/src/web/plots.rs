@@ -11,7 +11,11 @@ pub fn plot(progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::
         let drawing_area = SVGBackend::with_string(&mut svg_content, (WIDTH, HEIGHT)).into_drawing_area();
         drawing_area.fill(&RGBColor(20, 20, 20))?;
 
-        let max_bucket_size = progress.buckets.iter().map(|(_, count)| count).max().cloned().unwrap_or(0);
+        let max_bucket_size = progress.buckets
+            .iter()
+            .map(|bucket| bucket.raw_total)
+            .max()
+            .unwrap_or(0);
 
         let mut chart = ChartBuilder::on(&drawing_area)
             .margin(5)
@@ -28,11 +32,25 @@ pub fn plot(progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::
             .x_labels(10)
             .draw()?;
 
+        let buckets_for_raw: Vec<_> = progress.buckets
+            .iter()
+            .map(|bucket| (bucket.bucket_start, bucket.raw_total))
+            .collect();
         let color = RGBColor(200, 200, 200);
         chart
             .draw_series(
-                AreaSeries::new(progress.buckets, 0, color.mix(0.2))
+                AreaSeries::new(buckets_for_raw, 0, color.mix(0.2))
                     .border_style(color)
+            )?;
+
+        let buckets_for_processed: Vec<_> = progress.buckets
+            .iter()
+            .map(|bucket| (bucket.bucket_start, bucket.processed_total))
+            .collect();
+        chart
+            .draw_series(
+                AreaSeries::new(buckets_for_processed, 0, BLUE.mix(0.2))
+                    .border_style(BLUE)
             )?;
 
         drawing_area.present()?;

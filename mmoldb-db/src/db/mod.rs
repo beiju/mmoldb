@@ -1715,10 +1715,17 @@ define_sql_function!(
     fn timespan_bucket(in_date: Timestamp, epoch_date: Timestamp, bucket_size: Interval) -> Integer
 );
 
+pub struct ProgressBucket {
+    pub bucket_start: DateTime<Utc>,
+    pub raw_total: i64,
+    pub processed_total: i64,
+    // TODO skipped total and error total?
+}
+
 pub struct Progress {
     pub history_start: DateTime<Utc>,
     pub history_end: DateTime<Utc>,
-    pub buckets: Vec<(DateTime<Utc>, i64)>,
+    pub buckets: Vec<ProgressBucket>,
 }
 
 #[derive(QueryableByName)]
@@ -1746,7 +1753,7 @@ pub fn games_progress(
     //     .select((date_bucket_expr, count_star()))
     //     .get_results::<(i32, i64)>(conn)?;
 
-    let mut buckets = vec![0; num_buckets as usize];
+    let mut buckets = vec![(0, 0); num_buckets as usize];
     let progress_entries = sql_query("
         select
             timespan_bucket(valid_from, $1, $2) as bucket_index,
@@ -1760,7 +1767,22 @@ pub fn games_progress(
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
-        buckets[progress_entry.bucket_index as usize] = progress_entry.count;
+        buckets[progress_entry.bucket_index as usize].0 = progress_entry.count;
+    }
+    let progress_entries = sql_query("
+        select
+            timespan_bucket(from_version, $1, $2) as bucket_index,
+            count(*) as count
+        from data.games
+        group by bucket_index
+        order by bucket_index
+    ")
+        .bind::<Timestamp, _>(history_start.naive_utc())
+        .bind::<Interval, _>(time_step)
+        .get_results::<DbProgressEntry>(conn)?;
+
+    for progress_entry in progress_entries {
+        buckets[progress_entry.bucket_index as usize].1 = progress_entry.count;
     }
 
     Ok(Progress {
@@ -1769,7 +1791,11 @@ pub fn games_progress(
         buckets: buckets
             .into_iter()
             .enumerate()
-            .map(|(bucket_index, count)| (history_start + time_step * bucket_index as i32, count))
+            .map(|(bucket_index, (raw_total, processed_total))| ProgressBucket {
+                bucket_start: history_start + time_step * bucket_index as i32,
+                raw_total,
+                processed_total,
+            })
             .collect(),
     })
 }
