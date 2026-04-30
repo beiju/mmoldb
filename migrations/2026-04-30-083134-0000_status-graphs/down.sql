@@ -1,0 +1,1 @@
+drop function timespan_bucket;

@@ -1710,6 +1710,70 @@ pub fn game_and_raw_events(
     })
 }
 
+define_sql_function!(
+    // Custom function defined in the status-graphs migration
+    fn timespan_bucket(in_date: Timestamp, epoch_date: Timestamp, bucket_size: Interval) -> Integer
+);
+
+pub struct Progress {
+    pub history_start: DateTime<Utc>,
+    pub history_end: DateTime<Utc>,
+    pub buckets: Vec<(DateTime<Utc>, i64)>,
+}
+
+#[derive(QueryableByName)]
+pub struct DbProgressEntry {
+    #[diesel(sql_type = Integer)]
+    pub bucket_index: i32,
+    #[diesel(sql_type = BigInt)]
+    pub count: i64,
+}
+
+pub fn games_progress(
+    conn: &mut PgConnection,
+) -> QueryResult<Progress> {
+    // use crate::schema::data_schema::data::entities::dsl as entities_dsl;
+
+    let history_start = DateTime::parse_from_rfc3339("2025-07-02T05:40:45.517276Z").unwrap().to_utc();
+    let history_end = Utc::now();
+    let num_buckets = 800;
+    let time_step = (history_end - history_start) / num_buckets;
+
+    // let date_bucket_expr = timespan_bucket(entities_dsl::valid_from, history_start.naive_utc(), time_step);
+    // let results = entities_dsl::entities
+    //     .filter(entities_dsl::kind.eq("game"))
+    //     .group_by(date_bucket_expr)
+    //     .select((date_bucket_expr, count_star()))
+    //     .get_results::<(i32, i64)>(conn)?;
+
+    let mut buckets = vec![0; num_buckets as usize];
+    let progress_entries = sql_query("
+        select
+            timespan_bucket(valid_from, $1, $2) as bucket_index,
+            count(*) as count
+        from data.entities
+        group by bucket_index
+        order by bucket_index
+    ")
+        .bind::<Timestamp, _>(history_start.naive_utc())
+        .bind::<Interval, _>(time_step)
+        .get_results::<DbProgressEntry>(conn)?;
+
+    for progress_entry in progress_entries {
+        buckets[progress_entry.bucket_index as usize] = progress_entry.count;
+    }
+
+    Ok(Progress {
+        history_start,
+        history_end,
+        buckets: buckets
+            .into_iter()
+            .enumerate()
+            .map(|(bucket_index, count)| (history_start + time_step * bucket_index as i32, count))
+            .collect(),
+    })
+}
+
 #[derive(Debug, Error)]
 pub enum DbMetaQueryError {
     #[error(transparent)]

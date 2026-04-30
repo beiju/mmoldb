@@ -31,3 +31,9 @@
     font-style: italic;
     color: #8c8c8c;
 }
+
+.progress-plot {
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+}

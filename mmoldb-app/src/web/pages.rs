@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use super::docs_pages::*;
 use crate::Db;
 use crate::records_cache::{Record, RecordsCache};
@@ -13,6 +14,7 @@ use mmoldb_db::models::DbEventIngestLog;
 use num_format::{Locale, ToFormattedString};
 use rocket::http::uri::Origin;
 use rocket::{State, get, uri};
+use rocket::http::ContentType;
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 
@@ -257,6 +259,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         count_with_errors: i64,
         total_url: Option<Origin<'a>>,
         with_errors_url: Option<Origin<'a>>,
+        progress_plot_url: Option<Origin<'a>>,
     }
 
     impl<'url> IngestibleWithErrors<'url> {
@@ -267,6 +270,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
                 count_with_errors,
                 total_url: None,
                 with_errors_url: None,
+                progress_plot_url: None,
             }
         }
 
@@ -275,6 +279,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             (count_total, count_with_errors): (i64, i64),
             total_url: Origin<'url>,
             with_errors_url: Origin<'url>,
+            progress_plot_url: Origin<'url>,
         ) -> Self {
             Self {
                 name,
@@ -282,6 +287,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
                 count_with_errors,
                 total_url: Some(total_url),
                 with_errors_url: Some(with_errors_url),
+                progress_plot_url: Some(progress_plot_url),
             }
         }
     }
@@ -292,6 +298,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             counts.get("game").cloned().unwrap_or((0, 0)),
             uri!(games_page()),
             uri!(games_with_issues_page()),
+            uri!(games_progress_plot()),
         ),
         IngestibleWithErrors::new(
             "player versions",
@@ -499,6 +506,29 @@ pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, App
             records: records_context,
         },
     ))
+}
+
+fn svg_err(err: impl Debug) -> String {
+    format!(
+        "<svg width=\"800\" height=\"200\" viewBox=\"0 0 800 200\" xmlns=\"http://www.w3.org/2000/svg\">
+        <rect x=\"0\" y=\"0\" width=\"800\" height=\"200\" opacity=\"1\" fill=\"#141414\" stroke=\"none\"/>
+        <text x=\"20\" y=\"100\" dy=\"0.5ex\" text-anchor=\"start\" font-family=\"monospace\" font-size=\"12.903225806451614\" opacity=\"1\" fill=\"#FF0000\">
+        Plot error: {:?}
+        </text>
+        </svg>",
+        err,
+    )
+}
+
+
+#[get("/games/progress_plot.svg")]
+pub async fn games_progress_plot(db: Db) -> (ContentType, String) {
+    let content = match db.run(|mut conn| db::games_progress(&mut conn)).await {
+        Ok(progress) => crate::web::plots::plot(progress).unwrap_or_else(svg_err),
+        Err(err) => svg_err(err),
+    };
+
+    (ContentType::SVG, content)
 }
 
 #[get("/")]

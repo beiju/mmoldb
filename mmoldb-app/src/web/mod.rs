@@ -3,6 +3,7 @@ mod error;
 mod pages;
 mod player_pages;
 mod utility_contexts;
+mod plots;
 
 pub fn routes() -> Vec<rocket::Route> {
     rocket::routes![
@@ -20,6 +21,7 @@ pub fn routes() -> Vec<rocket::Route> {
         pages::game_page,
         pages::debug_always_error_page,
         pages::records_page,
+        pages::games_progress_plot,
         player_pages::player,
     ]
 }

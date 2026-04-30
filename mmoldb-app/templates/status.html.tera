@@ -41,7 +41,16 @@
     </section>
 
     <section class="card">
-        <p class="no-ingests">MMOLDB no longer has distinct ingests. This section will hopefully be updated to be more useful soon.</p>
+        {% for ingestible in ingestibles %}
+        {% if ingestible.progress_plot_url %}
+        <img
+            class="progress-plot"
+            width="800"
+            height="200"
+            src="{{ ingestible.progress_plot_url }}"
+            alt="A plot of MMOLB {{ ingestible.name }} over time and their ingest status" />
+        {% endif %}
+        {% endfor %}
     </section>
 </body>
 </html>
