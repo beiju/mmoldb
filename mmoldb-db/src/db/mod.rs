@@ -1767,7 +1767,10 @@ pub fn games_progress(
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
-        buckets[progress_entry.bucket_index as usize].0 = progress_entry.count;
+        // Race conditions can get us buckets that are past the max. We discard them
+        if let Some(entry) = buckets.get_mut(progress_entry.bucket_index as usize) {
+            entry.0 = progress_entry.count;
+        }
     }
     let progress_entries = sql_query("
         select
@@ -1782,7 +1785,10 @@ pub fn games_progress(
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
-        buckets[progress_entry.bucket_index as usize].1 = progress_entry.count;
+        // Race conditions can get us buckets that are past the max. We discard them
+        if let Some(entry) = buckets.get_mut(progress_entry.bucket_index as usize) {
+            entry.1 = progress_entry.count;
+        }
     }
 
     Ok(Progress {
@@ -1825,7 +1831,10 @@ pub fn versions_progress(
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
-        buckets[progress_entry.bucket_index as usize].0 = progress_entry.count;
+        // Race conditions can get us buckets that are past the max. We discard them
+        if let Some(entry) = buckets.get_mut(progress_entry.bucket_index as usize) {
+            entry.0 = progress_entry.count;
+        }
     }
     let progress_entries = sql_query("
         select
@@ -1842,7 +1851,10 @@ pub fn versions_progress(
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
-        buckets[progress_entry.bucket_index as usize].1 = progress_entry.count;
+        // Race conditions can get us buckets that are past the max. We discard them
+        if let Some(entry) = buckets.get_mut(progress_entry.bucket_index as usize) {
+            entry.1 = progress_entry.count;
+        }
     }
 
     Ok(Progress {
@@ -1885,7 +1897,10 @@ pub fn feed_event_versions_progress(
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
-        buckets[progress_entry.bucket_index as usize].0 = progress_entry.count;
+        // Race conditions can get us buckets that are past the max. We discard them
+        if let Some(entry) = buckets.get_mut(progress_entry.bucket_index as usize) {
+            entry.0 = progress_entry.count;
+        }
     }
     let progress_entries = sql_query("
         select
@@ -1902,7 +1917,10 @@ pub fn feed_event_versions_progress(
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
-        buckets[progress_entry.bucket_index as usize].1 = progress_entry.count;
+        // Race conditions can get us buckets that are past the max. We discard them
+        if let Some(entry) = buckets.get_mut(progress_entry.bucket_index as usize) {
+            entry.1 = progress_entry.count;
+        }
     }
 
     Ok(Progress {
