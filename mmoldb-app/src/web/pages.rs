@@ -274,6 +274,21 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             }
         }
 
+        pub fn new_with_progress_plot(
+            name: &'static str,
+            (count_total, count_with_errors): (i64, i64),
+            progress_plot_url: Origin<'url>,
+        ) -> Self {
+            Self {
+                name,
+                count_total,
+                count_with_errors,
+                total_url: None,
+                with_errors_url: None,
+                progress_plot_url: Some(progress_plot_url),
+            }
+        }
+
         pub fn new_with_urls(
             name: &'static str,
             (count_total, count_with_errors): (i64, i64),
@@ -300,9 +315,10 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             uri!(games_with_issues_page()),
             uri!(games_progress_plot()),
         ),
-        IngestibleWithErrors::new(
+        IngestibleWithErrors::new_with_progress_plot(
             "player versions",
             counts.get("player").cloned().unwrap_or((0, 0)),
+            uri!(player_versions_progress_plot()),
         ),
         IngestibleWithErrors::new(
             "player feed event versions",
@@ -524,7 +540,17 @@ fn svg_err(err: impl Debug) -> String {
 #[get("/games/progress_plot.svg")]
 pub async fn games_progress_plot(db: Db) -> (ContentType, String) {
     let content = match db.run(|mut conn| db::games_progress(&mut conn)).await {
-        Ok(progress) => crate::web::plots::plot(progress).unwrap_or_else(svg_err),
+        Ok(progress) => crate::web::plots::plot("Game", progress).unwrap_or_else(svg_err),
+        Err(err) => svg_err(err),
+    };
+
+    (ContentType::SVG, content)
+}
+
+#[get("/player_versions/progress_plot.svg")]
+pub async fn player_versions_progress_plot(db: Db) -> (ContentType, String) {
+    let content = match db.run(|mut conn| db::versions_progress("player", &mut conn)).await {
+        Ok(progress) => crate::web::plots::plot("Player version", progress).unwrap_or_else(svg_err),
         Err(err) => svg_err(err),
     };
 

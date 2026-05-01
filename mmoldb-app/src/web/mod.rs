@@ -22,6 +22,7 @@ pub fn routes() -> Vec<rocket::Route> {
         pages::debug_always_error_page,
         pages::records_page,
         pages::games_progress_plot,
+        pages::player_versions_progress_plot,
         player_pages::player,
     ]
 }

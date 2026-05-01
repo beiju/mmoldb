@@ -1741,7 +1741,7 @@ pub fn games_progress(
 ) -> QueryResult<Progress> {
     // use crate::schema::data_schema::data::entities::dsl as entities_dsl;
 
-    let history_start = DateTime::parse_from_rfc3339("2025-07-02T05:40:45.517276Z").unwrap().to_utc();
+    let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z").unwrap().to_utc();
     let history_end = Utc::now();
     let num_buckets = 800;
     let time_step = (history_end - history_start) / num_buckets;
@@ -1779,6 +1779,66 @@ pub fn games_progress(
     ")
         .bind::<Timestamp, _>(history_start.naive_utc())
         .bind::<Interval, _>(time_step)
+        .get_results::<DbProgressEntry>(conn)?;
+
+    for progress_entry in progress_entries {
+        buckets[progress_entry.bucket_index as usize].1 = progress_entry.count;
+    }
+
+    Ok(Progress {
+        history_start,
+        history_end,
+        buckets: buckets
+            .into_iter()
+            .enumerate()
+            .map(|(bucket_index, (raw_total, processed_total))| ProgressBucket {
+                bucket_start: history_start + time_step * bucket_index as i32,
+                raw_total,
+                processed_total,
+            })
+            .collect(),
+    })
+}
+
+pub fn versions_progress(
+    kind: &str,
+    conn: &mut PgConnection,
+) -> QueryResult<Progress> {
+    let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z").unwrap().to_utc();
+    let history_end = Utc::now();
+    let num_buckets = 800;
+    let time_step = (history_end - history_start) / num_buckets;
+
+    let mut buckets = vec![(0, 0); num_buckets as usize];
+    let progress_entries = sql_query("
+        select
+            timespan_bucket(valid_from, $1, $2) as bucket_index,
+            count(*) as count
+        from data.versions
+        where kind=$3
+        group by bucket_index
+        order by bucket_index
+    ")
+        .bind::<Timestamp, _>(history_start.naive_utc())
+        .bind::<Interval, _>(time_step)
+        .bind::<Text, _>(kind)
+        .get_results::<DbProgressEntry>(conn)?;
+
+    for progress_entry in progress_entries {
+        buckets[progress_entry.bucket_index as usize].0 = progress_entry.count;
+    }
+    let progress_entries = sql_query("
+        select
+            timespan_bucket(valid_from, $1, $2) as bucket_index,
+            count(*) as count
+        from data.versions_processed
+        where kind=$3
+        group by bucket_index
+        order by bucket_index
+    ")
+        .bind::<Timestamp, _>(history_start.naive_utc())
+        .bind::<Interval, _>(time_step)
+        .bind::<Text, _>(kind)
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {

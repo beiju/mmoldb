@@ -1,7 +1,7 @@
 use plotters::prelude::*;
 use mmoldb_db::db::{Progress, ProgressBucket};
 
-pub fn plot(progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::Error>> {
+pub fn plot(kind_label: &str, progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::Error>> {
     const WIDTH: u32 = 800;
     const HEIGHT: u32 = 200;
 
@@ -21,7 +21,7 @@ pub fn plot(progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::
             .margin(5)
             .x_label_area_size(30)
             .y_label_area_size(50)
-            .caption("Game ingest status", ("sans-serif", 20, &RGBColor(255, 255, 255)))
+            .caption(format!("{kind_label} ingest progress"), ("sans-serif", 20, &RGBColor(255, 255, 255)))
             .build_cartesian_2d(progress.history_start..progress.history_end, (0..max_bucket_size).log_scale())?;
 
         chart.configure_mesh()
@@ -31,16 +31,15 @@ pub fn plot(progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::
             .x_label_formatter(&|v| format!("{}", v.date_naive()))
             .x_labels(10)
             .draw()?;
-
         fn raw_total(bucket: &ProgressBucket) -> i64 { bucket.raw_total }
         fn processed_total(bucket: &ProgressBucket) -> i64 { bucket.processed_total }
 
         let lines = [
-            (RGBColor(200, 200, 200), raw_total as fn(&ProgressBucket) -> i64),
-            (BLUE, processed_total as fn(&ProgressBucket) -> i64),
+            ("Raw", RGBColor(200, 200, 200), raw_total as fn(&ProgressBucket) -> i64),
+            ("Processed", BLUE, processed_total as fn(&ProgressBucket) -> i64),
         ];
 
-        for (color, extractor) in lines {
+        for (label, color, extractor) in lines {
             let mut buckets_for_line: Vec<_> = progress.buckets
                 .iter()
                 .map(|bucket| (bucket.bucket_start, extractor(bucket)))
@@ -56,9 +55,24 @@ pub fn plot(progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::
             chart
                 .draw_series(
                     AreaSeries::new(buckets_for_line, 0, color.mix(0.2))
-                        .border_style(color)
-                )?;
+                        .border_style(&color)
+                )?
+                .label(label)
+                .legend(move |(x,y)| {
+                    let half_size = 6;
+                    // See docs for legend for why the coordinates are like this
+                    Rectangle::new([(x, y - half_size), (x + 2 * half_size, y + half_size)], color.filled())
+                });
         }
+
+        chart.configure_series_labels()
+            .position(SeriesLabelPosition::UpperLeft)
+            .margin(10)
+            .legend_area_size(20)
+            .border_style(BLACK)
+            .background_style(&RGBColor(30, 30, 30))
+            .label_font(("sans-serif", 15, &WHITE))
+            .draw()?;
 
         drawing_area.present()?;
     }
