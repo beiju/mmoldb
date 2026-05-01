@@ -41,6 +41,7 @@ truncate table
     data.team_games_played,
 
     -- generic
+    data.versions_processed,
     data.feed_events_processed,
     info.version_ingest_log;
 
