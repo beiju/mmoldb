@@ -268,7 +268,11 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::ElectionAppliedLevelUps { .. }
         | ParsedTeamFeedEventText::Restyle { .. }
         | ParsedTeamFeedEventText::Augment { .. }
-        | ParsedTeamFeedEventText::BulkImmunized { .. } => None,
+        | ParsedTeamFeedEventText::BulkImmunized { .. }
+        | ParsedTeamFeedEventText::GildedUmpiresPayout { .. }
+        | ParsedTeamFeedEventText::GoldenPlayerReplacementFailed { .. }
+        | ParsedTeamFeedEventText::ResumedHolidayProcessingReplacement { .. }
+        | ParsedTeamFeedEventText::GoldenPlayerEmerged { .. } => None,
     };
 
     (processed, game_outcome, ingest_logs.into_vec())

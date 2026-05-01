@@ -8,16 +8,20 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
+2026-04-30
 ----------
 - Mutes some player ingest warnings that turn out not to affect data quality. 
   Thanks to starlitecho for doing the legwork to prove that it's safe to 
   ignore these warnings.
 - Supports Noise weather (note that jeers in noise weather will be reported 
   in the cheer column of data.events).
-- Supports a few more player feed events. The only effect of this is that 
-  these events no longer increase the "with issues" count.
-- Add some more debugging info to diagnose a team feed ingest issue.
+- Supports a few more feed event types. The only effect of this is that these 
+  events no longer increase the "with issues" count.
+- Fixes a long-standing issue that could cause player and team versions to
+  be missed during processing. The raw data was never affected, and the 
+  database has now been rebuilt, fixing any versions that were missed in the
+  past.
+- Adds graphs to track ingest progress.
 
 2026-04-29
 ----------
