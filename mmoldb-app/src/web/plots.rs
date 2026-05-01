@@ -1,5 +1,5 @@
 use plotters::prelude::*;
-use mmoldb_db::db::Progress;
+use mmoldb_db::db::{Progress, ProgressBucket};
 
 pub fn plot(progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::Error>> {
     const WIDTH: u32 = 800;
@@ -32,26 +32,33 @@ pub fn plot(progress: Progress) -> Result<String, DrawingAreaErrorKind<std::io::
             .x_labels(10)
             .draw()?;
 
-        let buckets_for_raw: Vec<_> = progress.buckets
-            .iter()
-            .map(|bucket| (bucket.bucket_start, bucket.raw_total))
-            .collect();
-        let color = RGBColor(200, 200, 200);
-        chart
-            .draw_series(
-                AreaSeries::new(buckets_for_raw, 0, color.mix(0.2))
-                    .border_style(color)
-            )?;
+        fn raw_total(bucket: &ProgressBucket) -> i64 { bucket.raw_total }
+        fn processed_total(bucket: &ProgressBucket) -> i64 { bucket.processed_total }
 
-        let buckets_for_processed: Vec<_> = progress.buckets
-            .iter()
-            .map(|bucket| (bucket.bucket_start, bucket.processed_total))
-            .collect();
-        chart
-            .draw_series(
-                AreaSeries::new(buckets_for_processed, 0, BLUE.mix(0.2))
-                    .border_style(BLUE)
-            )?;
+        let lines = [
+            (RGBColor(200, 200, 200), raw_total as fn(&ProgressBucket) -> i64),
+            (BLUE, processed_total as fn(&ProgressBucket) -> i64),
+        ];
+
+        for (color, extractor) in lines {
+            let mut buckets_for_line: Vec<_> = progress.buckets
+                .iter()
+                .map(|bucket| (bucket.bucket_start, extractor(bucket)))
+                .collect();
+            // Don't draw points at zero after the last nonzero, to make it easier to
+            // see where the data stops
+            let Some(last_nonzero) = buckets_for_line.iter().rposition(|(_, count)| *count > 0) else {
+                // If this is None, that means there's no nonzero values so there's nothing to plot
+                continue;
+            };
+            buckets_for_line.truncate(last_nonzero + 1);
+
+            chart
+                .draw_series(
+                    AreaSeries::new(buckets_for_line, 0, color.mix(0.2))
+                        .border_style(color)
+                )?;
+        }
 
         drawing_area.present()?;
     }
