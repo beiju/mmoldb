@@ -148,6 +148,16 @@ nullable_explanation = """
 """
 
 [[table.column]]
+name = "away_manager_name"
+type = "text"
+description = """
+The name of the away team's manager.
+"""
+nullable_explanation = """
+`null` for games before season 12, when named managers were added.
+"""
+
+[[table.column]]
 name = "home_team_emoji"
 type = "text"
 description = """
@@ -176,6 +186,16 @@ The home team's final score.
 """
 nullable_explanation = """
 `null` for incomplete games.
+"""
+
+[[table.column]]
+name = "home_manager_name"
+type = "text"
+description = """
+The name of the home team's manager.
+"""
+nullable_explanation = """
+`null` for games before season 12, when named managers were added.
 """
 
 [[table.column]]
@@ -1243,6 +1263,14 @@ The actual data of the entity. This is the data exactly as returned by the
 MMOLB API with no modification, so structure is subject to change whenever the
 API changes.
 """
+
+[[table]]
+name = "versions_processed"
+description = """
+Bookkeeping data that MMOLDB uses during ingest. The columns are undocumented
+and may change at any time.
+"""
+allow_undocumented = true
 
 [[table]]
 name = "feed_event_versions"
