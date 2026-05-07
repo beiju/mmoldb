@@ -246,6 +246,8 @@ pub mod data {
             home_team_photo_contest_score -> Nullable<Int4>,
             away_team_photo_contest_top_scorer -> Nullable<Text>,
             away_team_photo_contest_score -> Nullable<Int4>,
+            away_manager_name -> Nullable<Text>,
+            home_manager_name -> Nullable<Text>,
         }
     }
 

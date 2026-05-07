@@ -348,6 +348,7 @@ impl BatterStats {
 pub struct TeamInGame<'g> {
     team_name: &'g str,
     team_emoji: &'g str,
+    manager_name: Option<&'g str>,
     // I need another field to store the automatic runner because it's
     // not always the batter who most recently stepped up, in the case
     // of automatic runners after an inning-ending CS
@@ -374,6 +375,10 @@ impl<'g> TeamInGame<'g> {
             TaxaFielderLocation::Pitcher => Some(self.active_pitcher.name),
             other => self.fielder_locations.get(&other).map(|v| *v),
         }
+    }
+
+    pub fn manager_name(&self) -> Option<&'g str> {
+        self.manager_name
     }
 }
 
@@ -1368,11 +1373,20 @@ impl<'g> Game<'g> {
         ingest_logs.push(event_ingest_logs.into_vec());
 
         game_event_index += 1;
-        let away_lineup = extract_next_game_event!(
+        let (away_manager_name, away_lineup) = extract_next_game_event!(
             events,
             [ParsedEventMessageDiscriminants::Lineup]
-            ParsedEventMessage::Lineup { side: HomeAway::Away, players } => players
+            ParsedEventMessage::Lineup { side: HomeAway::Away, manager_name, players } => (manager_name, players)
         )?;
+        if let Some(away_manager_name) = away_manager_name {
+            ingest_logs.push({
+                let mut logs = IngestLogs::new(game_event_index);
+                logs.debug(format!(
+                    "Set away manager name to: {away_manager_name}"
+                ));
+                logs.into_vec()
+            });
+        }
         ingest_logs.push({
             let mut logs = IngestLogs::new(game_event_index);
             logs.debug(format!(
@@ -1391,11 +1405,20 @@ impl<'g> Game<'g> {
             .collect();
 
         game_event_index += 1;
-        let home_lineup = extract_next_game_event!(
+        let (home_manager_name, home_lineup) = extract_next_game_event!(
             events,
             [ParsedEventMessageDiscriminants::Lineup]
-            ParsedEventMessage::Lineup { side: HomeAway::Home, players } => players
+            ParsedEventMessage::Lineup { side: HomeAway::Home, manager_name, players } => (manager_name, players)
         )?;
+        if let Some(home_manager_name) = home_manager_name {
+            ingest_logs.push({
+                let mut logs = IngestLogs::new(game_event_index);
+                logs.debug(format!(
+                    "Set home manager name to: {home_manager_name}"
+                ));
+                logs.into_vec()
+            });
+        }
         ingest_logs.push({
             let mut logs = IngestLogs::new(game_event_index);
             logs.debug(format!(
@@ -1449,6 +1472,7 @@ impl<'g> Game<'g> {
             away: TeamInGame {
                 team_name: away_team_name,
                 team_emoji: away_team_emoji,
+                manager_name: *away_manager_name,
                 automatic_runner: None,
                 active_pitcher: BestEffortSlottedPlayer {
                     name: away_pitcher_name,
@@ -1467,6 +1491,7 @@ impl<'g> Game<'g> {
             home: TeamInGame {
                 team_name: home_team_name,
                 team_emoji: home_team_emoji,
+                manager_name: *home_manager_name,
                 automatic_runner: None,
                 active_pitcher: BestEffortSlottedPlayer {
                     name: home_pitcher_name,
@@ -1523,6 +1548,9 @@ impl<'g> Game<'g> {
             _ => true,
         }
     }
+
+    pub fn away_team(&self) -> &TeamInGame<'g> { &self.away }
+    pub fn home_team(&self) -> &TeamInGame<'g> { &self.home }
 
     fn batting_team(&self) -> &TeamInGame<'g> {
         match self.state.inning_half {
@@ -1595,6 +1623,27 @@ impl<'g> Game<'g> {
         };
 
         entry.or_default()
+    }
+
+    fn check_defending_team_manager_name(&self, manager_name: Option<&str>, ingest_logs: &mut IngestLogs) {
+        // If manager_name is None, there's nothing to check
+        let Some(incoming_manager_name) = manager_name else {
+            return;
+        };
+        let team = self.defending_team();
+        if let Some(stored_manager_name) = team.manager_name {
+            if stored_manager_name != incoming_manager_name {
+                ingest_logs.error(format!(
+                    "Expected the defending team's manager's stored name to be \
+                    {incoming_manager_name}, but it was {stored_manager_name}."
+                ));
+            }
+        } else {
+            ingest_logs.error(format!(
+                "Expected the defending team's manager's stored name to be \
+                {incoming_manager_name}, but there was no stored manager name."
+            ));
+        }
     }
 
     fn check_batter(
@@ -2655,7 +2704,8 @@ impl<'g> Game<'g> {
                     picher_swap_result
                 },
                 [ParsedEventMessageDiscriminants::MoundVisit]
-                ParsedEventMessage::MoundVisit { team, mound_visit_type } => {
+                ParsedEventMessage::MoundVisit { team, manager_name, mound_visit_type } => {
+                    self.check_defending_team_manager_name(*manager_name, ingest_logs);
                     self.process_mound_visit(team, ingest_logs, *mound_visit_type, ContextAfterMoundVisitOutcome::ExpectNowBatting);
                     None
                 },
@@ -2924,7 +2974,8 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)
                     },
                     [ParsedEventMessageDiscriminants::MoundVisit]
-                    ParsedEventMessage::MoundVisit { team, mound_visit_type } => {
+                    ParsedEventMessage::MoundVisit { manager_name, team, mound_visit_type } => {
+                        self.check_defending_team_manager_name(*manager_name, ingest_logs);
                         self.process_mound_visit(team, ingest_logs, *mound_visit_type, ContextAfterMoundVisitOutcome::ExpectPitch {
                             batter_name,
                             // Mound visit isn't a pitch, so if we're currently expecting
@@ -3047,7 +3098,8 @@ impl<'g> Game<'g> {
                     None
                 },
                 [ParsedEventMessageDiscriminants::MoundVisit]
-                ParsedEventMessage::MoundVisit { team, mound_visit_type } => {
+                ParsedEventMessage::MoundVisit { manager_name, team, mound_visit_type } => {
+                    self.check_defending_team_manager_name(*manager_name, ingest_logs);
                     self.process_mound_visit(team, ingest_logs, *mound_visit_type, ContextAfterMoundVisitOutcome::ExpectNowBatting);
                     None
                 },
