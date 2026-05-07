@@ -1165,11 +1165,22 @@ fn chron_player_as_new<'a>(
                         // It's 3 decimal digits because that becomes 1 digit after formatting as a
                         // percentage, which is how it's displayed on the player page
                         if format!("{:.3}", root_freq) != format!("{:.3}", base_attributes_freq) {
-                            ingest_logs.warn(format!(
-                                "{}th pitch frequency in BaseAttributes ({}) does not match the \
-                                corresponding pitch frequency in the root object ({})",
-                                index, base_attributes_freq, root_freq,
-                            ));
+                            if ignore_pitch_type_inconsistency(&entity) {
+                                ingest_logs.info(format!(
+                                    "{}th pitch frequency in BaseAttributes ({}) does not match the \
+                                    corresponding pitch frequency in the root object ({}). However, this \
+                                    player version has been checked and it never pitched a game. So MMOLDB \
+                                    will store which ever value it feels like, secure in the knowledge that \
+                                    it doesn't matter.",
+                                    index, base_attributes_freq, root_freq,
+                                ));
+                            } else {
+                                ingest_logs.warn(format!(
+                                    "{}th pitch frequency in BaseAttributes ({}) does not match the \
+                                    corresponding pitch frequency in the root object ({})",
+                                    index, base_attributes_freq, root_freq,
+                                ));
+                            }
                         }
                     }
                 } else if ignore_pitch_type_inconsistency(&entity) {
