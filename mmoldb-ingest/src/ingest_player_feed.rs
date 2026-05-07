@@ -90,7 +90,7 @@ lazy_static! {
                 (("68655e2e02f61969e2ced862", 20), ("Vandium Peterson", "Melissa Lavoie", "2025-08-08T04:12:06.045493+00:00", 4, Day::Day(240))),
                 (("6805db0cac48194de3cd4017", 7), ("Fred Rush", "Miguel Porter", "2025-08-12T01:16:55.053911+00:00", 4, Day::Holiday)),
                 (("6805db0cac48194de3cd3ff9", 8), ("Débora Randolph", "Rowan Aung", "2025-08-12T01:40:41.803615+00:00", 4, Day::Holiday)),
-                // (("68abe24b2cd8a532516a0336", 1), ("Koala Kono", "Kate Sherwood", "2025-09-01T05:09:32.514563+00:00", 5, Day::Election)),
+                (("68417b78925dd4f9d72ac307", 20), ("Lawrence Matsui", "Wade Lovelady", "2025-08-18T23:50:58.312168+00:00", 5, Day::Preseason)),
                 // Actually I went back to doing it by a query:
                 // select
                 //     '(("'
@@ -237,6 +237,7 @@ lazy_static! {
                 (("68472a73fc876482fd5f9b7e", 33), ("Courtney Lake", "Albert Yusupova", "2025-10-14T13:30:50.549424+00:00", 6, Day::Day(120))),
                 (("68ec5452d834c6992b5c52b7", 0), ("Cal Salinas", "Uncle Carlsen", "2025-10-14T23:28:21.143234+00:00", 6, Day::Day(120))),
                 (("6840fc1e144e874e6deb8207", 47), ("R. Baxter", "Christy Vanterpool", "2025-10-18T04:07:05.558477+00:00", 6, Day::Day(169))),
+                (("6843449d925dd4f9d72ac5f2", 48), ("Randall Brennan", "Finnegan Yamada", "2025-10-18T04:11:07.294553+00:00", 6, Day::Day(169))),
                 (("6843449d925dd4f9d72ac5f2", 48), ("Randall Brennan", "Finnegan Yamada", "2025-10-18T04:11:07.294553+00:00", 6, Day::Day(169))),
             ]
             .into_iter()
