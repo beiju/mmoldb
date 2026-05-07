@@ -3,3 +3,5 @@
 /measure
 .db_admin_password
 .env
+/migrations/.diesel_lock
+/MMOLDB.toml
