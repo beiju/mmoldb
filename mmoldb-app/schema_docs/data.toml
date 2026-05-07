@@ -69,16 +69,6 @@ Always use `mmolb_game_id` for that instead.
 """
 
 [[table.column]]
-name = "ingest"
-type = "bigint"
-description = """
-The ID of the ingest that added this game. References `info.ingests`.
-
-Incomplete games are deleted and re-added, so a given game's `ingest`
-may change over time.
-"""
-
-[[table.column]]
 name = "mmolb_game_id"
 type = "text"
 description = """
