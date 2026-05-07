@@ -8,6 +8,12 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+----------
+- Backfills another reverted recomposition.
+- Adds support for manager names, added in Season 12.
+- Increases the statement timeout from 30 minutes to 4 hours.
+
 2026-04-30
 ----------
 - Mutes some player ingest warnings that turn out not to affect data quality. 
