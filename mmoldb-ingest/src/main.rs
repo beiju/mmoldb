@@ -221,10 +221,11 @@ async fn wait_until_shutdown(
 
     shutdown_requested.cancel();
     info!("Trying to shut down. Waiting for all tasks...");
-    for task in tasks {
+    let num_tasks = tasks.len();
+    for (task_i, task) in tasks.into_iter().enumerate() {
         match task.await {
             Ok(Ok(())) => {
-                info!("Successfully shut down the task")
+                info!("Successfully shut down task {} of {}", task_i + 1, num_tasks);
             }
             Ok(Err(internal_error)) => {
                 error!("Ingest fatal error: {}", internal_error);

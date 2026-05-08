@@ -406,7 +406,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 let trimmed_version = VersionIngest::trim_unused(&version.data);
 
                 let now = Utc::now();
-                if last_print + chrono::Duration::seconds(5) < now {
+                if last_print + chrono::Duration::seconds(15) < now {
                     info!(
                         "{} cache has {} items and occupies {} bytes",
                         self.kind,
@@ -437,7 +437,10 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
             .chunks(args.process_batch_size.into());
         pin_mut!(chunk_stream);
 
+        let mut wait_for_chunk_start = Utc::now();
         while let Some(raw_versions) = chunk_stream.next().await {
+            let wait_for_chunk_duration = Utc::now() - wait_for_chunk_start;
+            info!("{} ingest worker {} waited {:.2} seconds for a chunk of {} {}s", self.kind, worker_idx, wait_for_chunk_duration.as_seconds_f64(), raw_versions.len(), self.kind);
             self.ingest_page(
                 &taxa,
                 raw_versions,
@@ -445,6 +448,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 worker_idx,
                 args.debug_db_insert_delay,
             )?;
+            wait_for_chunk_start = Utc::now();
         }
 
         debug!(
@@ -809,7 +813,7 @@ impl IngestForKind {
         Ok(())
     }
 
-    /// One single instance of processing. Exits once Chron says we're caught up,
+    /// One single instance of processing. Exits once the db says we're caught up,
     /// or when canceled.
     async fn processing_all_available(&self) -> Result<(), IngestFatalError> {
         match self.kind {

@@ -12,7 +12,6 @@ use mmolb_parsing::{
 };
 use std::fmt::Display;
 use std::iter;
-use serde_json::Value;
 use strum::IntoEnumIterator;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -42,7 +41,7 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
         }
     }
 
-    fn ident_raw(entity: &ChronEntity<Value>) -> Self::Ident {
+    fn ident_raw(entity: &ChronEntity<serde_json::Value>) -> Self::Ident {
         entity.entity_id.to_string()
     }
 
