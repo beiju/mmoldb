@@ -1378,21 +1378,17 @@ impl<'g> Game<'g> {
             [ParsedEventMessageDiscriminants::Lineup]
             ParsedEventMessage::Lineup { side: HomeAway::Away, manager_name, players } => (manager_name, players)
         )?;
-        if let Some(away_manager_name) = away_manager_name {
-            ingest_logs.push({
-                let mut logs = IngestLogs::new(game_event_index);
-                logs.debug(format!(
-                    "Set away manager name to: {away_manager_name}"
-                ));
-                logs.into_vec()
-            });
-        }
         ingest_logs.push({
             let mut logs = IngestLogs::new(game_event_index);
             logs.debug(format!(
                 "Set away lineup to: {}",
                 format_lineup(&away_lineup)
             ));
+            if let Some(away_manager_name) = away_manager_name {
+                logs.debug(format!(
+                    "Set away manager name to: {away_manager_name}"
+                ));
+            }
             logs.into_vec()
         });
         let away_batter_stats = away_lineup
@@ -1410,21 +1406,17 @@ impl<'g> Game<'g> {
             [ParsedEventMessageDiscriminants::Lineup]
             ParsedEventMessage::Lineup { side: HomeAway::Home, manager_name, players } => (manager_name, players)
         )?;
-        if let Some(home_manager_name) = home_manager_name {
-            ingest_logs.push({
-                let mut logs = IngestLogs::new(game_event_index);
-                logs.debug(format!(
-                    "Set home manager name to: {home_manager_name}"
-                ));
-                logs.into_vec()
-            });
-        }
         ingest_logs.push({
             let mut logs = IngestLogs::new(game_event_index);
             logs.debug(format!(
                 "Set home lineup to: {}",
                 format_lineup(&home_lineup)
             ));
+            if let Some(home_manager_name) = home_manager_name {
+                logs.debug(format!(
+                    "Set home manager name to: {home_manager_name}"
+                ));
+            }
             logs.into_vec()
         });
         let home_batter_stats = home_lineup
