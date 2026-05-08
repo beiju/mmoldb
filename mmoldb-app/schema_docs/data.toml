@@ -279,7 +279,7 @@ nullable_explanation = """
 `null` in the following situations:
 1. This is not Geomagnetic Storms weather.
 2. There were no aurorae during this game, so there was no photo contest.
-3. We can't tell which player belongs to the home team because the home and
+3. We can't tell which player belongs to the away team because the home and
    away teams have the exact same name and emoji.
 """
 
