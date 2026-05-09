@@ -73,9 +73,9 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
                             // TODO Do this for extra_fields in other types
                             if !m.extra_fields.is_empty() {
                                 warn!(
-                                "Modification had extra fields that were not captured: {:?}",
-                                m.extra_fields
-                            );
+                                    "Modification had extra fields that were not captured: {:?}",
+                                    m.extra_fields
+                                );
                             }
                             (m.name.as_str(), m.emoji.as_str(), m.description.as_str())
                         })

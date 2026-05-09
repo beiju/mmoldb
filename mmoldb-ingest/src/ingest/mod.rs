@@ -280,10 +280,12 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let tasks = task_names_and_nums
             .iter()
             .map(|(name, worker_idx)| {
-                // There's not a principled reason `parallelism` is used as the buffer size,
-                // it's just that the more parallelism you want the more buffer you probably
-                // also want.
-                let (send, recv) = tokio::sync::mpsc::channel(args.parallelism.get());
+                // The channel buffer is the mechanism by which we can collect one batch
+                // of versions while still processing the previous batch (I think). To
+                // get perfect concurrency, we need to have the channel buffer size (at
+                // least) match the size of the chunk() call on the other end, which is
+                // args.process_batch_size
+                let (send, recv) = tokio::sync::mpsc::channel(args.process_batch_size.get());
                 let task = tokio::task::Builder::new()
                     .name(name)
                     .spawn(self.clone().worker(args.clone(), recv, *worker_idx))?;
@@ -525,13 +527,13 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
             .map(|version| version.valid_from())
             .unwrap_or(Utc::now());
         let earliest_time_ago = earliest_time.signed_duration_since(Utc::now());
-        let earliest_human_time_ago = chrono_humanize::HumanTime::from(earliest_time_ago);
+        let earliest_human_time_ago = chrono_humanize::HumanTime::from(earliest_time_ago).to_string();
         let latest_time = items
             .last()
             .map(|version| version.valid_from())
             .unwrap_or(Utc::now());
         let latest_time_ago = latest_time.signed_duration_since(Utc::now());
-        let latest_human_time_ago = chrono_humanize::HumanTime::from(latest_time_ago);
+        let latest_human_time_ago = chrono_humanize::HumanTime::from(latest_time_ago).to_string();
 
         // Insert a layer of Option so we can remove entries from the middle without
         // shifting indices around
@@ -561,7 +563,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let mut total_inserted = 0;
         for batch_indices in batch_by_entity(entity_ids_indices) {
             if debug_db_insert_delay > 0. {
-                std::thread::sleep(std::time::Duration::from_secs_f64(debug_db_insert_delay));
+                std::thread::sleep(Duration::from_secs_f64(debug_db_insert_delay));
             }
             let to_insert = batch_indices.len();
             info!(

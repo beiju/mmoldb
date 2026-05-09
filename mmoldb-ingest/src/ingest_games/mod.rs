@@ -108,10 +108,12 @@ pub async fn ingest_stage_2(
     let tasks = task_names_and_nums
         .iter()
         .map(|(name, worker_idx)| {
-            // There's not a principled reason `parallelism` is used as the buffer size,
-            // it's just that the more parallelism you want the more buffer you probably
-            // also want.
-            let (send, recv) = tokio::sync::mpsc::channel(num_workers.get());
+            // The channel buffer is the mechanism by which we can collect one batch
+            // of versions while still processing the previous batch (I think). To
+            // get perfect concurrency, we need to have the channel buffer size (at
+            // least) match the size of the chunk() call on the other end, which is
+            // PROCESS_GAME_BATCH_SIZE
+            let (send, recv) = tokio::sync::mpsc::channel(PROCESS_GAME_BATCH_SIZE);
             let handle = tokio::task::Builder::new().name(name).spawn(process_games(
                 pool.clone(),
                 recv,
