@@ -8,11 +8,15 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
+2026-05-09
 ----------
 - Backfills another reverted recomposition.
 - Adds support for manager names, added in Season 12.
 - Increases the statement timeout from 30 minutes to 4 hours.
+- Known issue: Newly-added columns `lesser_durability` and 
+  `greater_durability` on relation `data.player_verisons`, as well as 
+  `manager_name` on relation `data.team_versions`, are all unreliable. This 
+  issue is planned to be addressed soon.
 
 2026-04-30
 ----------
