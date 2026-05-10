@@ -824,7 +824,7 @@ pub struct DbTeamVersion {
     pub num_players: i32,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq, Default)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::team_player_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewTeamPlayerVersion<'a> {

@@ -3189,15 +3189,18 @@ fn insert_team_versions(
 fn insert_team_player_versions(
     conn: &mut PgConnection,
     new_team_player_versions: Vec<&Vec<NewTeamPlayerVersion>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::team_player_versions::dsl as tpv_dsl;
 
     let new_team_player_versions = new_team_player_versions.into_iter().flatten().collect_vec();
+    let num_records = new_team_player_versions.len();
 
     // Insert new records
-    diesel::copy_from(tpv_dsl::team_player_versions)
+    let num_inserted = diesel::copy_from(tpv_dsl::team_player_versions)
         .from_insertable(new_team_player_versions)
-        .execute(conn)
+        .execute(conn)?;
+
+    Ok((num_records, num_inserted))
 }
 
 pub fn insert_team_versions_all<'container, 'game: 'container>(
@@ -3233,8 +3236,9 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
     let insert_team_version_duration = (Utc::now() - insert_team_version_start).as_seconds_f64();
 
     let insert_team_player_versions_start = Utc::now();
-    total += new_team_player_versions.len();
-    inserted += insert_team_player_versions(conn, new_team_player_versions)?;
+    let (tpv_total, tpv_inserted) = insert_team_player_versions(conn, new_team_player_versions)?;
+    total += tpv_total;
+    inserted += tpv_inserted;
     let insert_team_player_versions_duration =
         (Utc::now() - insert_team_player_versions_start).as_seconds_f64();
 
