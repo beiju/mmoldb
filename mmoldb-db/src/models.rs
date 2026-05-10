@@ -344,7 +344,7 @@ pub struct DbModification {
     pub description: String,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_modification_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerModificationVersion<'a> {
@@ -369,7 +369,7 @@ pub struct DbPlayerModificationVersion {
     pub modification_id: i64,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerVersion<'a> {
@@ -558,7 +558,7 @@ pub struct DbPlayerReportVersion {
     pub included_attributes: Vec<Option<i64>>,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_report_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerReportVersion<'a> {
@@ -591,7 +591,7 @@ pub struct DbPlayerReportAttributeVersion {
     pub modified_total: Option<f64>,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_report_attribute_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerReportAttributeVersion<'a> {
@@ -631,7 +631,7 @@ pub struct DbPlayerEquipmentVersion {
     pub specialized: Option<bool>,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_equipment_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerEquipmentVersion<'a> {
@@ -670,7 +670,7 @@ pub struct DbPlayerEquipmentEffectVersion {
     pub tier: Option<i32>,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_equipment_effect_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerEquipmentEffectVersion<'a> {
@@ -1177,7 +1177,7 @@ pub struct DbEfflorescenceGrowth {
     pub attribute: i64,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_pitch_type_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerPitchTypeVersion<'a> {
@@ -1204,7 +1204,7 @@ pub struct DbPlayerPitchTypeVersion {
     pub expect_full_precision: bool,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_pitch_type_bonus_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerPitchTypeBonusVersion<'a> {
@@ -1227,7 +1227,7 @@ pub struct DbPlayerPitchTypeBonusVersion {
     pub bonus: f64,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::player_pitch_category_bonus_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerPitchCategoryBonusVersion<'a> {

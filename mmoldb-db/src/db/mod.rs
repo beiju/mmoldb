@@ -2206,7 +2206,7 @@ type NewPlayerFeedVersionExt<'a> = (
     Vec<NewVersionIngestLog<'a>>,
 );
 
-type NewPlayerVersionExt<'a> = (
+pub(crate) type NewPlayerVersionExt<'a> = (
     NewVersionProcessed<'a>,
     Option<NewPlayerVersion<'a>>,
     Vec<NewPlayerModificationVersion<'a>>,
@@ -2227,7 +2227,7 @@ type NewPlayerVersionExt<'a> = (
 fn insert_player_report_attribute_versions(
     conn: &mut PgConnection,
     new_player_report_attribute_versions: Vec<&Vec<NewPlayerReportAttributeVersion>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_report_attribute_versions::dsl as prav_dsl;
     let new_player_report_attribute_versions = new_player_report_attribute_versions
         .into_iter()
@@ -2235,9 +2235,12 @@ fn insert_player_report_attribute_versions(
         .collect_vec();
 
     // Insert new records
-    diesel::copy_from(prav_dsl::player_report_attribute_versions)
+    let total_prav = new_player_report_attribute_versions.len();
+    let inserted_prav = diesel::copy_from(prav_dsl::player_report_attribute_versions)
         .from_insertable(new_player_report_attribute_versions)
-        .execute(conn)
+        .execute(conn)?;
+
+    Ok((total_prav, inserted_prav))
 }
 
 fn insert_player_report_versions(
@@ -2245,7 +2248,7 @@ fn insert_player_report_versions(
     new_player_report_versions: Vec<
         &Vec<(NewPlayerReportVersion, Vec<NewPlayerReportAttributeVersion>)>,
     >,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_report_versions::dsl as prv_dsl;
 
     // Flatten and convert reference to tuple to tuple of references
@@ -2266,19 +2269,22 @@ fn insert_player_report_versions(
     );
 
     // Insert new records
-    let num_inserted = diesel::copy_from(prv_dsl::player_report_versions)
+    let mut total_prv = new_player_report_versions.len();
+    let mut inserted_prv = diesel::copy_from(prv_dsl::player_report_versions)
         .from_insertable(new_player_report_versions)
         .execute(conn)?;
 
-    insert_player_report_attribute_versions(conn, new_player_report_attribute_versions)?;
+    let (total_prav, inserted_prav) = insert_player_report_attribute_versions(conn, new_player_report_attribute_versions)?;
+    total_prv += total_prav;
+    inserted_prv += inserted_prav;
 
-    Ok(num_inserted)
+    Ok((total_prv, inserted_prv))
 }
 
 fn insert_player_equipment_effects(
     conn: &mut PgConnection,
     new_player_equipment_effects: Vec<&Vec<NewPlayerEquipmentEffectVersion>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_equipment_effect_versions::dsl as peev_dsl;
 
     let new_player_equipment_effects = new_player_equipment_effects
@@ -2287,12 +2293,15 @@ fn insert_player_equipment_effects(
         .collect_vec();
 
     // Insert new records
-    diesel::copy_from(peev_dsl::player_equipment_effect_versions)
+    let total_peev = new_player_equipment_effects.len();
+    let inserted_peev = diesel::copy_from(peev_dsl::player_equipment_effect_versions)
         .from_insertable(new_player_equipment_effects)
-        .execute(conn)
+        .execute(conn)?;
+
+    Ok((total_peev, inserted_peev))
 }
 
-fn insert_player_equipment(
+fn insert_player_equipment_versions(
     conn: &mut PgConnection,
     new_player_equipment: Vec<
         &Vec<(
@@ -2300,7 +2309,7 @@ fn insert_player_equipment(
             Vec<NewPlayerEquipmentEffectVersion>,
         )>,
     >,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_equipment_versions::dsl as pev_dsl;
 
     // Flatten and convert reference to tuple to tuple of references
@@ -2316,41 +2325,48 @@ fn insert_player_equipment(
 
     // Insert new records
     let insert_versions_start = Utc::now();
-    let num_inserted = diesel::copy_from(pev_dsl::player_equipment_versions)
+    let mut total_pev = new_player_equipment_versions.len();
+    let mut inserted_pev = diesel::copy_from(pev_dsl::player_equipment_versions)
         .from_insertable(new_player_equipment_versions)
         .execute(conn)?;
     let insert_versions_duration = (Utc::now() - insert_versions_start).as_seconds_f64();
 
     let insert_effect_versions_start = Utc::now();
-    insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
+    let (total_peev, inserted_peev) = insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
+    total_pev += total_peev;
+    inserted_pev += inserted_peev;
     let insert_effect_versions_duration =
         (Utc::now() - insert_effect_versions_start).as_seconds_f64();
+
     info!(
         "insert_equipment_versions_duration: {insert_versions_duration:.2}, \
         insert_equipment_effect_versions_duration: {insert_effect_versions_duration:.2}"
     );
 
-    Ok(num_inserted)
+    Ok((total_pev, inserted_pev))
 }
 
-fn insert_player_pitch_types(
+fn insert_player_pitch_type_versions(
     conn: &mut PgConnection,
     new_player_pitch_types: Vec<&Vec<NewPlayerPitchTypeVersion>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_pitch_type_versions::dsl as pptv_dsl;
 
     let new_player_pitch_types = new_player_pitch_types.into_iter().flatten().collect_vec();
 
     // Insert new records
-    diesel::copy_from(pptv_dsl::player_pitch_type_versions)
+    let total_pptv = new_player_pitch_types.len();
+    let inserted_pptv = diesel::copy_from(pptv_dsl::player_pitch_type_versions)
         .from_insertable(new_player_pitch_types)
-        .execute(conn)
+        .execute(conn)?;
+
+    Ok((total_pptv, inserted_pptv))
 }
 
-fn insert_player_pitch_type_bonuses(
+fn insert_player_pitch_type_bonus_versions(
     conn: &mut PgConnection,
     new_player_pitch_type_bonuses: Vec<&Vec<NewPlayerPitchTypeBonusVersion>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_pitch_type_bonus_versions::dsl as pptbv_dsl;
 
     let new_player_pitch_type_bonuses = new_player_pitch_type_bonuses
@@ -2359,15 +2375,18 @@ fn insert_player_pitch_type_bonuses(
         .collect_vec();
 
     // Insert new records
-    diesel::copy_from(pptbv_dsl::player_pitch_type_bonus_versions)
+    let total_pptbv = new_player_pitch_type_bonuses.len();
+    let inserted_pptbv = diesel::copy_from(pptbv_dsl::player_pitch_type_bonus_versions)
         .from_insertable(new_player_pitch_type_bonuses)
-        .execute(conn)
+        .execute(conn)?;
+
+    Ok((total_pptbv, inserted_pptbv))
 }
 
-fn insert_player_pitch_category_bonuses(
+fn insert_player_pitch_category_bonus_versions(
     conn: &mut PgConnection,
     new_player_pitch_category_bonuses: Vec<&Vec<NewPlayerPitchCategoryBonusVersion>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_pitch_category_bonus_versions::dsl as ppcbv_dsl;
 
     let new_player_pitch_category_bonuses = new_player_pitch_category_bonuses
@@ -2376,9 +2395,12 @@ fn insert_player_pitch_category_bonuses(
         .collect_vec();
 
     // Insert new records
-    diesel::copy_from(ppcbv_dsl::player_pitch_category_bonus_versions)
+    let total_ppcbv = new_player_pitch_category_bonuses.len();
+    let inserted_ppcbv = diesel::copy_from(ppcbv_dsl::player_pitch_category_bonus_versions)
         .from_insertable(new_player_pitch_category_bonuses)
-        .execute(conn)
+        .execute(conn)?;
+
+    Ok((total_ppcbv, inserted_ppcbv))
 }
 
 pub fn insert_to_error<'container, InsertableT: 'container>(
@@ -2620,7 +2642,7 @@ fn insert_player_attribute_augments(
 fn insert_player_versions(
     conn: &mut PgConnection,
     new_player_versions: Vec<&Option<NewPlayerVersion>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
     let new_player_versions = new_player_versions
@@ -2629,15 +2651,18 @@ fn insert_player_versions(
         .collect_vec();
 
     // Insert new records
-    diesel::copy_from(pv_dsl::player_versions)
+    let total_pv = new_player_versions.len();
+    let inserted_pv = diesel::copy_from(pv_dsl::player_versions)
         .from_insertable(new_player_versions)
-        .execute(conn)
+        .execute(conn)?;
+
+    Ok((total_pv, inserted_pv))
 }
 
-fn insert_player_modifications(
+fn insert_player_modification_versions(
     conn: &mut PgConnection,
     new_player_modification_versions: Vec<&Vec<NewPlayerModificationVersion>>,
-) -> QueryResult<usize> {
+) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_modification_versions::dsl as pmv_dsl;
 
     let new_player_modification_versions = new_player_modification_versions
@@ -2646,9 +2671,12 @@ fn insert_player_modifications(
         .collect_vec();
 
     // Insert new records
-    diesel::copy_from(pmv_dsl::player_modification_versions)
+    let total_pmv = new_player_modification_versions.len();
+    let inserted_pmv = diesel::copy_from(pmv_dsl::player_modification_versions)
         .from_insertable(new_player_modification_versions)
-        .execute(conn)
+        .execute(conn)?;
+
+    Ok((total_pmv, inserted_pmv))
 }
 
 pub fn insert_player_versions_all<'container, 'game: 'container>(
@@ -2667,7 +2695,7 @@ pub fn insert_player_versions_all<'container, 'game: 'container>(
         new_versions_processed,
         new_player_versions,
         new_player_modification_versions,
-        new_player_report_attributes,
+        new_player_report_versions,
         new_player_equipment,
         new_player_pitch_types,
         new_player_pitch_type_bonuses,
@@ -2728,45 +2756,51 @@ pub fn insert_player_versions_all<'container, 'game: 'container>(
         (Utc::now() - insert_version_processed_start).as_seconds_f64();
 
     let insert_player_version_start = Utc::now();
-    total_versions += new_player_versions.len();
-    inserted_versions += insert_player_versions(conn, new_player_versions)?;
+    let (total_pv, inserted_pv) = insert_player_versions(conn, new_player_versions)?;
+    total_versions += total_pv;
+    inserted_versions += inserted_pv;
     let insert_player_version_duration =
         (Utc::now() - insert_player_version_start).as_seconds_f64();
 
     let insert_player_modifications_start = Utc::now();
-    total_versions += new_player_modification_versions.len();
-    inserted_versions += insert_player_modifications(conn, new_player_modification_versions)?;
+    let (total_pmv, inserted_pmv) = insert_player_modification_versions(conn, new_player_modification_versions)?;
+    total_versions += total_pmv;
+    inserted_versions += inserted_pmv;
     let insert_player_modifications_duration =
         (Utc::now() - insert_player_modifications_start).as_seconds_f64();
 
     let insert_player_reports_start = Utc::now();
-    total_versions += new_player_report_attributes.len();
-    inserted_versions += insert_player_report_versions(conn, new_player_report_attributes)?;
+    let (total_prv, inserted_prv) = insert_player_report_versions(conn, new_player_report_versions)?;
+    total_versions += total_prv;
+    inserted_versions += inserted_prv;
     let insert_player_reports_duration =
         (Utc::now() - insert_player_reports_start).as_seconds_f64();
 
     let insert_player_equipment_start = Utc::now();
-    total_versions += new_player_equipment.len();
-    inserted_versions += insert_player_equipment(conn, new_player_equipment)?;
+    let (total_pev, inserted_pev) = insert_player_equipment_versions(conn, new_player_equipment)?;
+    total_versions += total_pev;
+    inserted_versions += inserted_pev;
     let insert_player_equipment_duration =
         (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
     let insert_player_pitch_types_start = Utc::now();
-    total_versions += new_player_pitch_types.len();
-    inserted_versions += insert_player_pitch_types(conn, new_player_pitch_types)?;
+    let (total_pptv, inserted_pptv) = insert_player_pitch_type_versions(conn, new_player_pitch_types)?;
+    total_versions += total_pptv;
+    inserted_versions += inserted_pptv;
     let insert_player_pitch_types_duration =
         (Utc::now() - insert_player_pitch_types_start).as_seconds_f64();
 
     let insert_player_pitch_type_bonuses_start = Utc::now();
-    total_versions += new_player_pitch_type_bonuses.len();
-    inserted_versions += insert_player_pitch_type_bonuses(conn, new_player_pitch_type_bonuses)?;
+    let (total_pptbv, inserted_pptbv) = insert_player_pitch_type_bonus_versions(conn, new_player_pitch_type_bonuses)?;
+    total_versions += total_pptbv;
+    inserted_versions += inserted_pptbv;
     let insert_player_pitch_type_bonuses_duration =
         (Utc::now() - insert_player_pitch_type_bonuses_start).as_seconds_f64();
 
     let insert_player_pitch_category_bonuses_start = Utc::now();
-    total_versions += new_player_pitch_category_bonuses.len();
-    inserted_versions +=
-        insert_player_pitch_category_bonuses(conn, new_player_pitch_category_bonuses)?;
+    let (total_ppcbv, inserted_ppcbv) = insert_player_pitch_category_bonus_versions(conn, new_player_pitch_category_bonuses)?;
+    total_versions += total_ppcbv;
+    inserted_versions += inserted_ppcbv;
     let insert_player_pitch_category_bonuses_duration =
         (Utc::now() - insert_player_pitch_category_bonuses_start).as_seconds_f64();
 
@@ -3165,7 +3199,7 @@ pub fn player_all(
     })
 }
 
-type NewTeamVersionExt<'a> = (
+pub(crate) type NewTeamVersionExt<'a> = (
     NewVersionProcessed<'a>,
     Option<NewTeamVersion<'a>>,
     Vec<NewTeamPlayerVersion<'a>>,
