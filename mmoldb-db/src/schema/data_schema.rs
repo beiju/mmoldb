@@ -542,6 +542,7 @@ pub mod data {
             mmolb_league_id -> Nullable<Text>,
             ballpark_name -> Nullable<Text>,
             num_players -> Int4,
+            manager_name -> Nullable<Text>,
         }
     }
 

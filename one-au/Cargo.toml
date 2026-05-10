@@ -1,0 +1,11 @@
+[package]
+name = "one-au"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+chrono = ["dep:chrono"]
+
+[dependencies]
+one-au-derive = { path = "../one-au-derive" }
+chrono = { version = "0.4.44", optional = true }

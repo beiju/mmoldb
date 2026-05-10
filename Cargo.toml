@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["mmoldb-app", "mmoldb-ingest", "mmoldb-db", "chron"]
+members = ["mmoldb-app", "mmoldb-ingest", "mmoldb-db", "chron", "one-au-derive", "one-au"]
 
 # This doesn't add any dependencies to the child packages directly,
 # but child packages can specifiy that they depend on any of these

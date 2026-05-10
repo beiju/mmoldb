@@ -6,6 +6,8 @@
       <sourceFolder url="file://$MODULE_DIR$/mmoldb-app/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/mmoldb-db/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/mmoldb-ingest/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/one-au-derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/one-au/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.idea/dataSources" />
       <excludeFolder url="file://$MODULE_DIR$/http-cacache-tmp" />
       <excludeFolder url="file://$MODULE_DIR$/measure" />

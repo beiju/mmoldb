@@ -1,6 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use serde::Serialize;
+use one_au::OneAu;
 
 #[derive(Insertable)]
 #[diesel(table_name = crate::data_schema::data::versions)]
@@ -782,7 +783,7 @@ pub struct NewVersionIngestLog<'a> {
     pub log_text: String,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::team_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewTeamVersion<'a> {
@@ -798,6 +799,7 @@ pub struct NewTeamVersion<'a> {
     pub championships: Option<i32>,
     pub mmolb_league_id: Option<&'a str>,
     pub ballpark_name: Option<&'a str>,
+    pub manager_name: Option<&'a str>,
     pub num_players: i32,
 }
 
@@ -818,10 +820,11 @@ pub struct DbTeamVersion {
     pub championships: Option<i32>,
     pub mmolb_league_id: Option<String>,
     pub ballpark_name: Option<String>,
+    pub manager_name: Option<String>,
     pub num_players: i32,
 }
 
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq, Default)]
 #[diesel(table_name = crate::data_schema::data::team_player_versions)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewTeamPlayerVersion<'a> {

@@ -1718,6 +1718,8 @@ pub fn game_and_raw_events(
     })
 }
 
+// TODO Replace all uses of timespan_bucket with
+// width_bucket(extract(epoch from valid_from), extract(epoch from history_start), extract(epoch from history_end), n_buckets) as bucket_index,
 define_sql_function!(
     // Custom function defined in the status-graphs migration
     fn timespan_bucket(in_date: Timestamp, epoch_date: Timestamp, bucket_size: Interval) -> Integer
@@ -1762,7 +1764,7 @@ pub fn games_progress(
     //     .get_results::<(i32, i64)>(conn)?;
 
     let mut buckets = vec![(0, 0); num_buckets as usize];
-    let progress_entries = sql_query("
+    let q = sql_query("
         select
             timespan_bucket(valid_from, $1, $2) as bucket_index,
             count(*) as count
@@ -1771,7 +1773,9 @@ pub fn games_progress(
         order by bucket_index
     ")
         .bind::<Timestamp, _>(history_start.naive_utc())
-        .bind::<Interval, _>(time_step)
+        .bind::<Interval, _>(time_step);
+    println!("{}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
+    let progress_entries = q
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
@@ -1780,7 +1784,7 @@ pub fn games_progress(
             entry.0 = progress_entry.count;
         }
     }
-    let progress_entries = sql_query("
+    let q = sql_query("
         select
             timespan_bucket(from_version, $1, $2) as bucket_index,
             count(*) as count
@@ -1789,7 +1793,9 @@ pub fn games_progress(
         order by bucket_index
     ")
         .bind::<Timestamp, _>(history_start.naive_utc())
-        .bind::<Interval, _>(time_step)
+        .bind::<Interval, _>(time_step);
+    println!("{}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
+    let progress_entries = q
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
