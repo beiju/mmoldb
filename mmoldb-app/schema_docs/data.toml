@@ -3206,7 +3206,7 @@ type = "integer"
 description = """
 The index of this modification in the player's list of greater boons, lesser
 boons, or regular modifications list. Check `modification_type` to see which of
-those lists thsi index is indexing. A
+those lists this index is indexing. A
 `(mmolb_player_id, modification_type, modification_index)` triple uniquely and
 stably identifies a modification on a player.
 """
