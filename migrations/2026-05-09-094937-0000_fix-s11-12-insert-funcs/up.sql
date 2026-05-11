@@ -124,7 +124,7 @@ begin
       and modification_index >= NEW.num_modifications
       and valid_until is null;
 
-    -- ...and any greater boons that are now past the end of the modifications list...
+    -- ...and any greater boons that are now past the end of the greater boons list...
     update data.player_modification_versions
     set valid_until = NEW.valid_from
     where mmolb_player_id = NEW.mmolb_player_id
@@ -132,7 +132,7 @@ begin
       and modification_index >= NEW.num_greater_boons
       and valid_until is null;
 
-    -- ...and any lesser boons that are now past the end of the modifications list...
+    -- ...and any lesser boons that are now past the end of the lesser boons list...
     update data.player_modification_versions
     set valid_until = NEW.valid_from
     where mmolb_player_id = NEW.mmolb_player_id

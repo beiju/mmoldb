@@ -49,14 +49,13 @@ mod tests {
         let mut conn = PgConnection::establish(&url)
             .expect("postgres_url_from_environment should return a valid connection string");
 
-        let entity_id = "dummy-team-entity-id";
         let valid_from = Utc::now();
 
         conn.test_transaction(|mut conn| {
             // 1. Insert a reference record
             let processed = NewVersionProcessed {
                 kind: "team",
-                entity_id,
+                entity_id: "",
                 valid_from: valid_from.naive_utc(),
                 skipped: false,
                 fatal_error: false,
@@ -85,7 +84,6 @@ mod tests {
 
             // 3. Iterate through fields, insert the record with a modified version of that field, expect 1 row added
             for field in <NewTeamVersion as OneAu>::fields() {
-                // Ignore fields that are part of identification and versioning
                 match field {
                     <NewTeamVersion as OneAu>::Field::mmolb_team_id |
                     <NewTeamVersion as OneAu>::Field::valid_from |
@@ -192,7 +190,6 @@ mod tests {
         let mut conn = PgConnection::establish(&url)
             .expect("postgres_url_from_environment should return a valid connection string");
 
-        let entity_id = "dummy-player-entity-id";
         let valid_from = Utc::now();
 
         conn.test_transaction(|mut conn| {
@@ -206,7 +203,7 @@ mod tests {
             // 1. Insert a reference record
             let processed = NewVersionProcessed {
                 kind: "player",
-                entity_id,
+                entity_id: "",
                 valid_from: valid_from.naive_utc(),
                 skipped: false,
                 fatal_error: false,
@@ -217,8 +214,8 @@ mod tests {
             player_version.included_report_categories = vec![0]; // Don't close out the player report version we're inserting
             player_version.occupied_equipment_slots = vec![""]; // Don't close out the player equipment version we're inserting
             player_version.num_pitch_types = 1; // Don't close out the player pitch type version we're inserting
-            player_version.included_pitch_type_bonuses = vec![0]; // Don't close out the player pitch type bonus version we're inserting
-            player_version.included_pitch_category_bonuses = vec![0]; // Don't close out the player pitch category bonus version we're inserting
+            player_version.included_pitch_type_bonuses = vec![1]; // Don't close out the player pitch type bonus version we're inserting
+            player_version.included_pitch_category_bonuses = vec![1]; // Don't close out the player pitch category bonus version we're inserting
             let mut player_modification_version = NewPlayerModificationVersion::default();
             player_modification_version.valid_from = valid_from.naive_utc();
             player_modification_version.modification_id = modification_id; // Need a valid modification ID to satisfy the foreign key constraint
@@ -269,7 +266,7 @@ mod tests {
             for field in <NewPlayerVersion as OneAu>::fields() {
                 // Ignore fields that are part of identification and versioning
                 match field {
-                    <NewPlayerVersion as OneAu>::Field::mmolb_team_id |
+                    <NewPlayerVersion as OneAu>::Field::mmolb_player_id |
                     <NewPlayerVersion as OneAu>::Field::valid_from |
                     <NewPlayerVersion as OneAu>::Field::valid_until => { continue; }
                     _ => {}
@@ -283,10 +280,88 @@ mod tests {
                 assert_eq!(inserted, 2, "After modifying NewPlayerVersion::{:?}, should have inserted `processed` and `player_version`", field);
             }
 
-            // TODO
-            // player_modification_version_duplicate_detection(&mut conn, &mut team)?;
+            // TODO all the child tables (to the tune of all the single ladies)
+            player_modification_version_duplicate_detection(&mut conn, &mut player)?;
 
             Ok::<_, diesel::result::Error>(())
         })
+    }
+
+    fn player_modification_version_duplicate_detection(conn: &mut PgConnection, player: &mut db::NewPlayerVersionExt) -> Result<(), diesel::result::Error> {
+        use diesel::{QueryDsl, SelectableHelper, ExpressionMethods, RunQueryDsl};
+        // 4. Insert a player version that closes out the one (1) player modification
+        // version. Don't insert a player modification version, insert_player_versions_all
+        // makes no ordering guarantees so it might either be inserted and immediately closed
+        // out or it might be inserted after the previous version is closed out
+        let player_modification_version = player.2.pop().unwrap();
+        player.1.as_mut().unwrap().num_modifications = 0;
+        player_increment_valid_from(player);
+        let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+        assert_eq!(total, 9, "We provided 9 total records");
+        assert_eq!(inserted, 2, "Should have inserted `processed` and `player_version`");
+
+        let _mods_before = crate::data_schema::data::player_modification_versions::dsl::player_modification_versions
+            .filter(crate::data_schema::data::player_modification_versions::dsl::mmolb_player_id.eq(player.0.entity_id))
+            .order_by(crate::data_schema::data::player_modification_versions::dsl::valid_from)
+            .select(models::DbPlayerModificationVersion::as_select())
+            .get_results(conn)?;
+
+        // 5. Re-insert the same player modification version, which should be inserted even
+        // though it's identical to the previous version because the previous version
+        // was closed out
+        player.2.push(player_modification_version);
+        player.1.as_mut().unwrap().num_modifications = 1;
+        player_increment_valid_from(player);
+        let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+
+        let _mods_after = crate::data_schema::data::player_modification_versions::dsl::player_modification_versions
+            .filter(crate::data_schema::data::player_modification_versions::dsl::mmolb_player_id.eq(player.0.entity_id))
+            .order_by(crate::data_schema::data::player_modification_versions::dsl::valid_from)
+            .select(models::DbPlayerModificationVersion::as_select())
+            .get_results(conn)?;
+        assert_eq!(total, 10, "We provided 10 total records");
+        // If this assert fails, it may be because the previous step failed to close out the
+        // child version, or because this step incorrectly detected the parent version as a
+        // duplicate, or because the child's duplicate detection is incorrectly identifyin a
+        // closed-out version as a duplicate
+        assert_eq!(inserted, 3, "Should have inserted `processed`, `player_version`, and `player_modification_version`");
+
+        // TODO Test close-out functionality for num_greater_boons and num_lesser_boons too
+
+        // We need a second valid modification id
+        let another_modification_id = db::insert_modifications(conn, &[&("2", "2", "2")])?
+            .expect("DB should not already have an empty modification")
+            .first()
+            .expect("insert_modifications should return a vec with the same length as the slice it was given, or None")
+            .1;
+
+
+        // 6. Iterate through player modification version fields, insert the record with a modified
+        // version of that field, expect 1 row added
+        for field in <NewPlayerModificationVersion as OneAu>::fields() {
+            // Ignore fields that are part of identification and versioning
+            match field {
+                <NewPlayerModificationVersion as OneAu>::Field::mmolb_player_id |
+                <NewPlayerModificationVersion as OneAu>::Field::modification_type |
+                <NewPlayerModificationVersion as OneAu>::Field::modification_index |
+                <NewPlayerModificationVersion as OneAu>::Field::valid_from |
+                <NewPlayerModificationVersion as OneAu>::Field::valid_until => { continue; }
+                _ => {}
+            }
+
+            // Special handling for modification ID because it has a foreign key constraint
+            if let <NewPlayerModificationVersion as OneAu>::Field::modification_id = field {
+                player.2.first_mut().unwrap().modification_id = another_modification_id;
+            } else {
+                *player.2.first_mut().unwrap() = player.2.first().unwrap().clone().au(field);
+            }
+
+            player_increment_valid_from(player);
+            let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+            assert_eq!(total, 10, "After modifying NewTeamPlayerVersion::{:?}, we provided 10 total records", field);
+            assert_eq!(inserted, 2, "After modifying NewTeamPlayerVersion::{:?}, should have inserted `processed` and `player_modification_version`", field);
+        }
+
+        Ok(())
     }
 }

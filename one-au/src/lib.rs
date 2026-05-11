@@ -22,7 +22,7 @@ impl<T: OneAu + Default> OneAu for Option<T> {
     }
 }
 
-impl<T: OneAu + Default> OneAu for Vec<T> {
+impl<T: OneAu + Default + Clone> OneAu for Vec<T> {
     type Field = T::Field;
 
     fn fields() -> impl Iterator<Item=Self::Field> {
@@ -30,8 +30,13 @@ impl<T: OneAu + Default> OneAu for Vec<T> {
     }
 
     fn au(mut self, field: Self::Field) -> Self {
-        if let Some(last_entry) = self.pop() {
-            self.push(last_entry.au(field));
+        // This must (a) not ever remove a value and (b) maintain sort, or it will
+        // interfere with version closeouts in the test. This is unintentional
+        // coupling that should be fixed. It can be assumed that the only entry
+        // in a string vec will be the empty string, so it will always be sorted
+        // first.
+        if let Some(last_entry) = self.last() {
+            self.push(last_entry.clone().au(field));
         } else {
             self.push(T::default());
         }
@@ -52,6 +57,9 @@ macro_rules! one_au_arithmetic {
     };
 }
 
+// This must not ever return a smaller value or it will interfere with version
+// closeouts in the test. This is unintentional coupling that should be fixed.
+// It can be assumed that adding 1 will not cause overflow.
 one_au_arithmetic!(i8, 1);
 one_au_arithmetic!(i16, 1);
 one_au_arithmetic!(i32, 1);
