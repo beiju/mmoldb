@@ -126,13 +126,8 @@ pub async fn ingest_stage_2(
 
     let stream = async_db::stream_unprocessed_game_versions(&mut async_conn)
         .await?
-        .take_until(finish.cancelled().then(|()| {
-            // Some detail of the Rust compiler makes it forget that this is 'static
-            // during some important checking phase. The only way I've found to make
-            // that not cause issues is to make it an owned value.
-            Box::pin(async move {
-                info!("Closing game processing stream because shutdown was requested");
-            })
+        .take_until(finish.cancelled().then(|()| async move {
+            info!("Closing game processing stream because shutdown was requested");
         }));
 
     let tasks = dispatch_to_stage_2_workers(&partitioner, tasks, stream).await?;

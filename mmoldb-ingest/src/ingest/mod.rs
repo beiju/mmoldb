@@ -1,3 +1,4 @@
+use futures::FutureExt;
 mod fetch;
 mod processing;
 
@@ -304,7 +305,19 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 &mut async_conn,
                 self.kind,
             )
-            .await?;
+            .await?
+                .take_until(args.shutdown_requested.cancelled().then(|()| {
+                    // Some detail of the Rust compiler makes it forget that this is 'static
+                    // during some important checking phase. The only way I've found to make
+                    // that not cause issues is to make it an owned value.
+                    let kind = self.kind.to_string();
+                    async move {
+                        info!(
+                            "Closing {} processing stream because shutdown was requested",
+                            kind
+                        );
+                    }
+                }));
             pin_mut!(versions_stream);
 
             while let Some(version_result) = versions_stream.next().await {

@@ -192,6 +192,7 @@ fn chron_team_as_new<'a>(
         championships: team.championships.as_ref().map(|c| *c as i32),
         mmolb_league_id: team.league.as_deref(),
         ballpark_name: team.ballpark_name.as_ref().ok().map(|s| s.as_str()),
+        manager_name: team.manager_name.as_ref().ok().map(|s| s.as_str()),
         num_players: new_team_players.len() as i32,
     };
 

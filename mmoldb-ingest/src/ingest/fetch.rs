@@ -48,12 +48,12 @@ pub async fn fetch_entity_kind(
             // during some important checking phase. The only way I've found to make
             // that not cause issues is to make it an owned value.
             let kind = kind.to_string();
-            Box::pin(async move {
+            async move {
                 info!(
-                    "Closing {} entities stream because shutdown was requested",
+                    "Closing {} entities fetch stream because shutdown was requested",
                     kind
                 );
-            })
+            }
         }))
         .try_chunks(args.insert_raw_entity_batch_size.into());
     pin_mut!(stream);
@@ -103,12 +103,12 @@ pub async fn fetch_version_kind(
             // during some important checking phase. The only way I've found to make
             // that not cause issues is to make it an owned value.
             let kind = kind.to_string();
-            Box::pin(async move {
+            async move {
                 info!(
-                    "Closing {} versions stream because shutdown was requested",
+                    "Closing {} versions fetch stream because shutdown was requested",
                     kind
                 );
-            })
+            }
         }))
         // We ask Chron to start at a given valid_from. It will give us all versions whose
         // valid_from is greater than _or equal to_ that value. That's good, because it
@@ -189,12 +189,12 @@ pub async fn fetch_feed_event_version_kind(
             // during some important checking phase. The only way I've found to make
             // that not cause issues is to make it an owned value.
             let kind = kind.to_string();
-            Box::pin(async move {
+            async move {
                 info!(
-                    "Closing {} feed event versions stream because shutdown was requested",
+                    "Closing {} feed event versions fetch stream because shutdown was requested",
                     kind
                 );
-            })
+            }
         }))
         // We ask Chron to start at a given valid_from. It will give us
         // all versions whose valid_from is greater than _or equal to_
