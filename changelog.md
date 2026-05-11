@@ -8,10 +8,29 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+--------
+- Adds `manager_name` to `data.teams`. See docs for details.
+- Fixes issues involving duplicate handling for several tables. These issues 
+  have meant  that, previously, some columns may have failed to update when 
+  they should have:
+  - `lesser_durability` and `greater_durability` on `data.player_versions`
+  - `tier` on `data.player_equipment_effect_versions`
+  Additionally, some entire rows didn't have their `valid_from` set when their
+  version was deleted.
+  - When a player number of Greater Boons decreased from X to Y (including by 
+    recomposition), the first Y boons were replaced correctly, but the (Y+1)th
+    to Xth boons were left as valid. They now have their `valid_from` updated
+    correctly.
+  - Same as above, but for Lesser Boons.
+  - Same as above, but for equipment effects (if an equipment item with X 
+    effects was replaced with one with Y<X effects.)
+- Improves ingest speed slightly.
+
 2026-05-09
 ----------
 - Backfills another reverted recomposition.
-- Adds support for manager names, added in Season 12.
+- Adds support for manager names in game logs.
 - Increases the statement timeout from 30 minutes to 4 hours.
 - Known issue: Newly-added columns `lesser_durability` and 
   `greater_durability` on relation `data.player_verisons`, as well as 
