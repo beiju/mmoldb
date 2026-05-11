@@ -522,6 +522,7 @@ pub mod data {
             number -> Int4,
             slot -> Nullable<Int8>,
             mmolb_player_id -> Nullable<Text>,
+            name_suffix -> Nullable<Text>,
         }
     }
 

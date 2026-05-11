@@ -3,9 +3,8 @@ use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use itertools::Itertools;
-use mmolb_parsing::enums::Slot;
 use mmolb_parsing::{
-    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, team::TeamPlayerCollection,
+    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, team::TeamPlayerCollection, enums::FullSlot,
 };
 use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed};
 use mmoldb_db::taxa::Taxa;
@@ -192,7 +191,7 @@ fn chron_team_as_new<'a>(
         championships: team.championships.as_ref().map(|c| *c as i32),
         mmolb_league_id: team.league.as_deref(),
         ballpark_name: team.ballpark_name.as_ref().ok().map(|s| s.as_str()),
-        manager_name: team.manager_name.as_ref().ok().map(|s| s.as_str()),
+        manager_name: team.manager.as_ref().ok().map(|s| s.as_str()),
         num_players: new_team_players.len() as i32,
     };
 
@@ -214,7 +213,7 @@ pub fn chron_team_player_as_new<'a>(
     valid_from: DateTime<Utc>,
     idx: usize,
     pl: &'a mmolb_parsing::team::TeamPlayer,
-    slot: &AddedLaterResult<MaybeRecognizedResult<Slot>>, // note this is NOT 'a
+    slot: &AddedLaterResult<MaybeRecognizedResult<FullSlot>>, // note this is NOT 'a
     ingest_logs: &mut VersionIngestLogs,
 ) -> NewTeamPlayerVersion<'a> {
     // Note: I have to include undrafted players because the closeout
@@ -226,9 +225,20 @@ pub fn chron_team_player_as_new<'a>(
         valid_until: None,
         first_name: &pl.first_name,
         last_name: &pl.last_name,
+        name_suffix: match pl.suffix.as_ref() {
+            Ok(Some(s)) => Some(s.as_str()),
+            _ => None,
+        },
         number: pl.number as i32,
         slot: match slot {
-            Ok(Ok(slot)) => Some(taxa.slot_id(BestEffortSlot::from_slot(*slot).into())),
+            Ok(Ok(FullSlot::Roster(slot))) => Some(taxa.slot_id(BestEffortSlot::from_slot(*slot).into())),
+            Ok(Ok(FullSlot::Bench(slot))) => {
+                ingest_logs.error(format!(
+                    "Player on the roster had a bench slot ({})",
+                    slot,
+                ));
+                None
+            },
             Ok(Err(NotRecognized(other))) => {
                 ingest_logs.error(format!(
                     "Failed to parse {} {}'s slot ({other:?}",

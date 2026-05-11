@@ -2814,7 +2814,7 @@ type = "text"
 description = """
 The player's first name.
 
-Players names are usually found in full when they appear in other tables. You
+Player names are often found in full when they appear in other tables. You
 can assemble the player's full name using the `player_full_name` helper
 function, which accepts a `data.player_versions` row as an argument.
 """
@@ -2825,7 +2825,7 @@ type = "text"
 description = """
 The player's last name.
 
-Players names are usually found in full when they appear in other tables. You
+Player names are often found in full when they appear in other tables. You
 can assemble the player's full name using the `player_full_name` helper
 function, which accepts a `data.player_versions` row as an argument.
 """
@@ -2842,7 +2842,7 @@ name suffixes. For example, several players have the last name "II", and the
 various Stanley Demir clones from the Falling Stars exhibition had roman
 numerals manually apended to their last names.
 
-Players names are usually found in full when they appear in other tables. You
+Player names are often found in full when they appear in other tables. You
 can assemble the player's full name using the `player_full_name` helper
 function, which accepts a `data.player_versions` row as an argument.
 """
@@ -4836,6 +4836,10 @@ name = "first_name"
 type = "text"
 description = """
 The player's first name, as in `data.player_versions`.
+
+Player names are often found in full when they appear in other tables. You
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.team_player_version` row as an argument.
 """
 
 [[table.column]]
@@ -4843,6 +4847,24 @@ name = "last_name"
 type = "text"
 description = """
 The player's last name, as in `data.player_versions`.
+
+Player names are often found in full when they appear in other tables. You
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.team_player_version` row as an argument.
+"""
+
+[[table.column]]
+name = "name_suffix"
+type = "text"
+description = """
+The player's name suffix (Roman numeral) if they have one.
+
+Player names are often found in full when they appear in other tables. You
+can assemble the player's full name using the `player_full_name` helper
+function, which accepts a `data.team_player_version` row as an argument.
+"""
+nullable_explanation = """
+`null` if this player doesn't have a name suffix.
 """
 
 [[table.column]]
@@ -5015,7 +5037,7 @@ type = "text"
 description = """
 The player's first name.
 
-Players names are usually found in full when they appear in other tables. You
+Player names are often found in full when they appear in other tables. You
 can assemble the player's full name using the `player_full_name` helper
 function, which accepts a `data.player_versions_extended` row as an argument.
 """
@@ -5027,7 +5049,7 @@ type = "text"
 description = """
 The player's last name.
 
-Players names are usually found in full when they appear in other tables. You
+Player names are often found in full when they appear in other tables. You
 can assemble the player's full name using the `player_full_name` helper
 function, which accepts a `data.player_versions_extended` row as an argument.
 """
@@ -5039,7 +5061,7 @@ type = "text"
 description = """
 The player's name suffix (Roman numeral) if they have one.
 
-Players names are usually found in full when they appear in other tables. You
+Player names are often found in full when they appear in other tables. You
 can assemble the player's full name using the `player_full_name` helper
 function, which accepts a `data.player_versions_extended` row as an argument.
 """
