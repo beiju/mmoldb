@@ -284,6 +284,9 @@ mod tests {
             player_modification_version_duplicate_detection(&mut conn, &mut player)?;
             player_report_version_duplicate_detection(&mut conn, &mut player)?;
             player_equipment_version_duplicate_detection(&mut conn, &mut player)?;
+            player_pitch_type_version_duplicate_detection(&mut conn, &mut player)?;
+            player_pitch_type_bonus_version_duplicate_detection(&mut conn, &mut player)?;
+            player_pitch_category_bonus_version_duplicate_detection(&mut conn, &mut player)?;
 
             Ok::<_, diesel::result::Error>(())
         })
@@ -500,7 +503,7 @@ mod tests {
 
     fn player_equipment_effect_version_duplicate_detection(conn: &mut PgConnection, player: &mut db::NewPlayerVersionExt) -> Result<(), diesel::result::Error> {
         // 4. Insert a player version that closes out the one (1) player equipment effect
-        // version. Don't insert a player report version, insert_player_versions_all
+        // version. Don't insert a player equipment effect version, insert_player_versions_all
         // makes no ordering guarantees so it might either be inserted and immediately closed
         // out or it might be inserted after the previous version is closed out
         let player_equipment_effect_version = player.4.first_mut().unwrap().1.pop().unwrap();
@@ -521,7 +524,7 @@ mod tests {
         assert_eq!(total, 10, "We provided 10 total records");
         assert_eq!(inserted, 3, "Should have inserted `processed`, `player_equipment_version`, and `player_equipment_effect_version`");
 
-        // 6. Iterate through player report attribute version fields, insert the record with a modified
+        // 6. Iterate through player equipment effect version fields, insert the record with a modified
         // version of that field, expect 1 row added
         for field in <NewPlayerEquipmentEffectVersion as OneAu>::fields() {
             // Ignore fields that are part of identification and versioning
@@ -540,6 +543,144 @@ mod tests {
             let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
             assert_eq!(total, 10, "After modifying NewPlayerEquipmentEffectVersion::{:?}, we provided 10 total records", field);
             assert_eq!(inserted, 2, "After modifying NewPlayerEquipmentEffectVersion::{:?}, should have inserted `processed` and `player_equipment_effect_version`", field);
+        }
+
+        Ok(())
+    }
+
+    fn player_pitch_type_version_duplicate_detection(conn: &mut PgConnection, player: &mut db::NewPlayerVersionExt) -> Result<(), diesel::result::Error> {
+        // 4. Insert a player version that closes out the one (1) player pitch type
+        // version. Don't insert a player pitch type version, insert_player_versions_all
+        // makes no ordering guarantees so it might either be inserted and immediately closed
+        // out or it might be inserted after the previous version is closed out
+        let player_pitch_type_version = player.5.pop().unwrap();
+        player.1.as_mut().unwrap().num_pitch_types = 0;
+        player_increment_valid_from(player);
+        let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+        assert_eq!(total, 9, "We provided 9 total records");
+        assert_eq!(inserted, 2, "Should have inserted `processed` and `player_version`");
+
+        // 5. Re-insert the same player pitch type version, which should be inserted even
+        // though it's identical to the previous version because the previous version
+        // was closed out
+        player.5.push(player_pitch_type_version);
+        player.1.as_mut().unwrap().num_pitch_types = 1;
+        player_increment_valid_from(player);
+        let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+
+        assert_eq!(total, 10, "We provided 10 total records");
+        assert_eq!(inserted, 3, "Should have inserted `processed`, `player_version`, and `player_pitch_type_version`");
+
+        // 6. Iterate through player pitch type version fields, insert the record with a modified
+        // version of that field, expect 1 row added
+        for field in <NewPlayerPitchTypeVersion as OneAu>::fields() {
+            // Ignore fields that are part of identification and versioning
+            match field {
+                <NewPlayerPitchTypeVersion as OneAu>::Field::mmolb_player_id |
+                <NewPlayerPitchTypeVersion as OneAu>::Field::pitch_type_index |
+                <NewPlayerPitchTypeVersion as OneAu>::Field::valid_from |
+                <NewPlayerPitchTypeVersion as OneAu>::Field::valid_until => { continue; }
+                _ => {}
+            }
+
+            *player.5.first_mut().unwrap() = player.5.first().unwrap().clone().au(field);
+
+            player_increment_valid_from(player);
+            let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+            assert_eq!(total, 10, "After modifying NewPlayerPitchTypeVersion::{:?}, we provided 10 total records", field);
+            assert_eq!(inserted, 2, "After modifying NewPlayerPitchTypeVersion::{:?}, should have inserted `processed` and `player_pitch_type_version`", field);
+        }
+
+        Ok(())
+    }
+
+    fn player_pitch_type_bonus_version_duplicate_detection(conn: &mut PgConnection, player: &mut db::NewPlayerVersionExt) -> Result<(), diesel::result::Error> {
+        // 4. Insert a player version that closes out the one (1) player pitch type bonus
+        // version. Don't insert a player pitch type bonus version, insert_player_versions_all
+        // makes no ordering guarantees so it might either be inserted and immediately closed
+        // out or it might be inserted after the previous version is closed out
+        let player_pitch_type_bonus_version = player.6.pop().unwrap();
+        player.1.as_mut().unwrap().included_pitch_type_bonuses = vec![];
+        player_increment_valid_from(player);
+        let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+        assert_eq!(total, 9, "We provided 9 total records");
+        assert_eq!(inserted, 2, "Should have inserted `processed` and `player_version`");
+
+        // 5. Re-insert the same player pitch type bonus version, which should be inserted even
+        // though it's identical to the previous version because the previous version
+        // was closed out
+        player.6.push(player_pitch_type_bonus_version);
+        player.1.as_mut().unwrap().included_pitch_type_bonuses = vec![1];
+        player_increment_valid_from(player);
+        let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+
+        assert_eq!(total, 10, "We provided 10 total records");
+        assert_eq!(inserted, 3, "Should have inserted `processed`, `player_version`, and `player_pitch_type_bonus_version`");
+
+        // 6. Iterate through player pitch type bonus version fields, insert the record with a modified
+        // version of that field, expect 1 row added
+        for field in <NewPlayerPitchTypeBonusVersion as OneAu>::fields() {
+            // Ignore fields that are part of identification and versioning
+            match field {
+                <NewPlayerPitchTypeBonusVersion as OneAu>::Field::mmolb_player_id |
+                <NewPlayerPitchTypeBonusVersion as OneAu>::Field::pitch_type |
+                <NewPlayerPitchTypeBonusVersion as OneAu>::Field::valid_from |
+                <NewPlayerPitchTypeBonusVersion as OneAu>::Field::valid_until => { continue; }
+                _ => {}
+            }
+
+            *player.6.first_mut().unwrap() = player.6.first().unwrap().clone().au(field);
+
+            player_increment_valid_from(player);
+            let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+            assert_eq!(total, 10, "After modifying NewPlayerPitchTypeBonusVersion::{:?}, we provided 10 total records", field);
+            assert_eq!(inserted, 2, "After modifying NewPlayerPitchTypeBonusVersion::{:?}, should have inserted `processed` and `player_pitch_type_bonus_version`", field);
+        }
+
+        Ok(())
+    }
+
+    fn player_pitch_category_bonus_version_duplicate_detection(conn: &mut PgConnection, player: &mut db::NewPlayerVersionExt) -> Result<(), diesel::result::Error> {
+        // 4. Insert a player version that closes out the one (1) player pitch category bonus
+        // version. Don't insert a player pitch category bonus version, insert_player_versions_all
+        // makes no ordering guarantees so it might either be inserted and immediately closed
+        // out or it might be inserted after the previous version is closed out
+        let player_pitch_category_bonus_version = player.7.pop().unwrap();
+        player.1.as_mut().unwrap().included_pitch_category_bonuses = vec![];
+        player_increment_valid_from(player);
+        let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+        assert_eq!(total, 9, "We provided 9 total records");
+        assert_eq!(inserted, 2, "Should have inserted `processed` and `player_version`");
+
+        // 5. Re-insert the same player pitch category bonus version, which should be inserted even
+        // though it's identical to the previous version because the previous version
+        // was closed out
+        player.7.push(player_pitch_category_bonus_version);
+        player.1.as_mut().unwrap().included_pitch_category_bonuses = vec![1];
+        player_increment_valid_from(player);
+        let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+
+        assert_eq!(total, 10, "We provided 10 total records");
+        assert_eq!(inserted, 3, "Should have inserted `processed`, `player_version`, and `player_pitch_category_bonus_version`");
+
+        // 6. Iterate through player pitch category bonus version fields, insert the record with a modified
+        // version of that field, expect 1 row added
+        for field in <NewPlayerPitchCategoryBonusVersion as OneAu>::fields() {
+            // Ignore fields that are part of identification and versioning
+            match field {
+                <NewPlayerPitchCategoryBonusVersion as OneAu>::Field::mmolb_player_id |
+                <NewPlayerPitchCategoryBonusVersion as OneAu>::Field::pitch_category |
+                <NewPlayerPitchCategoryBonusVersion as OneAu>::Field::valid_from |
+                <NewPlayerPitchCategoryBonusVersion as OneAu>::Field::valid_until => { continue; }
+                _ => {}
+            }
+
+            *player.7.first_mut().unwrap() = player.7.first().unwrap().clone().au(field);
+
+            player_increment_valid_from(player);
+            let (total, inserted) = db::insert_player_versions_all(conn, vec![&*player])?;
+            assert_eq!(total, 10, "After modifying NewPlayerPitchCategoryBonusVersion::{:?}, we provided 10 total records", field);
+            assert_eq!(inserted, 2, "After modifying NewPlayerPitchCategoryBonusVersion::{:?}, should have inserted `processed` and `player_pitch_category_bonus_version`", field);
         }
 
         Ok(())

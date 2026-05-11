@@ -4725,7 +4725,17 @@ description = """
 The name of this team's ballpark, if any.
 """
 nullable_explanation = """
-`null` for version from before ballparks existed.
+`null` for versions from before ballparks existed.
+"""
+
+[[table.column]]
+name = "manager_name"
+type = "text"
+description = """
+The name of this team's manager, if any.
+"""
+nullable_explanation = """
+`null` for versions from before managers were named.
 """
 
 [[table.column]]
