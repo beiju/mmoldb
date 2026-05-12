@@ -12,7 +12,7 @@ begin
     -- we'll miss changes
     perform 1
     from data.team_player_versions tpv
-    where tpv.mmolb_team_id = NEW.mmolb_player_id
+    where tpv.mmolb_team_id = NEW.mmolb_team_id
       and tpv.team_player_index = NEW.team_player_index
       and tpv.valid_until is null
       -- note: "is not distinct from" is like "=" except for how it treats nulls.
