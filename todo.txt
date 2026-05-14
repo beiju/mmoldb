@@ -1,0 +1,7 @@
+- Fix bug: Ballpark names during the period where the API exposed the
+  individual fields are not correct. MMOLDB needs to assemble the name from
+  the individual fields.
+- Add team mods, now that the Patreon-related team mods exist. Special-case
+  the Hype team mod so that it never shows in MMOLDB.
+- Extract cheers to a subtable, using the modifications/weather system to add
+  new cheers on demand. Do a similar thing for balk messages.
