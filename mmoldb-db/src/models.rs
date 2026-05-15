@@ -798,7 +798,7 @@ pub struct NewTeamVersion<'a> {
     pub abbreviation: Option<&'a str>,
     pub championships: Option<i32>,
     pub mmolb_league_id: Option<&'a str>,
-    pub ballpark_name: Option<&'a str>,
+    pub ballpark_name: Option<String>,
     pub manager_name: Option<&'a str>,
     pub num_players: i32,
 }

@@ -178,6 +178,78 @@ fn chron_team_as_new<'a>(
             .collect_vec(),
     };
 
+    // The existence of team.ballpark_use_city is the signal we use to tell if the ballpark name is made of components
+    let ballpark_full_name = match &team.ballpark_name {
+        Ok(name) => {
+            ingest_logs.info(format!(
+                "Using ballpark name \"{name}\" from the `ballpark_name` property",
+            ));
+
+            Some(name.clone())
+        },
+        Err(AddedLater) => match &team.ballpark_use_city {
+            Ok(use_city) => {
+                let mut ballpark_name_components: Vec<&str> = Vec::new();
+                if *use_city {
+                    ballpark_name_components.push(&team.location);
+                }
+                match &team.ballpark_word_1 {
+                    Ok(Some(word)) => {
+                        ballpark_name_components.push(word);
+                    }
+                    Ok(None) => {}
+                    Err(AddedLater) => {
+                        ingest_logs.warn(
+                            "Team version had `ballpark_use_city` but not `ballpark_word_1`, \
+                            ballpark name may not be correct",
+                        );
+                    }
+                }
+                match &team.ballpark_word_2 {
+                    Ok(Some(word)) => {
+                        ballpark_name_components.push(word);
+                    }
+                    Ok(None) => {}
+                    Err(AddedLater) => {
+                        ingest_logs.warn(
+                            "Team version had `ballpark_use_city` but not `ballpark_word_2`, \
+                            ballpark name may not be correct",
+                        );
+                    }
+                }
+                match &team.ballpark_suffix {
+                    Ok(Ok(suffix)) => {
+                        ballpark_name_components.push(suffix.into());
+                    }
+                    Ok(Err(NotRecognized(serde_json::Value::String(suffix)))) => {
+                        ballpark_name_components.push(suffix);
+                    }
+                    Ok(Err(NotRecognized(non_string))) => {
+                        ingest_logs.error(format!(
+                            "Team ballpark suffix was a non-string value: {non_string:?}",
+                        ));
+                    }
+                    Err(AddedLater) => {
+                        ingest_logs.warn(
+                            "Team version had `ballpark_use_city` but not `ballpark_suffix`, \
+                            ballpark name may not be correct",
+                        );
+                    }
+                }
+                let assembled_name = ballpark_name_components.iter().join(" ");
+                ingest_logs.info(format!(
+                    "Using ballpark name \"{assembled_name}\" assembled from `ballpark_use_city`, \
+                    `ballpark_word_1`, `ballpark_word_2`, and `ballpark_suffix`",
+                ));
+                Some(assembled_name)
+            },
+            Err(AddedLater) => {
+                ingest_logs.info("No ballpark name");
+                None
+            },
+        }
+    };
+
     let new_team = NewTeamVersion {
         mmolb_team_id: team_id,
         valid_from: valid_from.naive_utc(),
@@ -190,7 +262,7 @@ fn chron_team_as_new<'a>(
         abbreviation: team.abbreviation.as_deref().ok(),
         championships: team.championships.as_ref().map(|c| *c as i32),
         mmolb_league_id: team.league.as_deref(),
-        ballpark_name: team.ballpark_name.as_ref().ok().map(|s| s.as_str()),
+        ballpark_name: ballpark_full_name,
         manager_name: team.manager.as_ref().ok().map(|s| s.as_str()),
         num_players: new_team_players.len() as i32,
     };

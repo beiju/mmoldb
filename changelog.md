@@ -8,7 +8,12 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
+Upcoming (Not yet deployed)
+--------
+- Fixes ballpark name during the period when it was computed from separate 
+  parts
+
+Upcoming (Deployed to staging)
 --------
 - Adds `manager_name` to `data.teams`. See docs for details.
 - Fixes issues involving duplicate handling for several tables. These issues 
