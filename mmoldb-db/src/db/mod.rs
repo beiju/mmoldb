@@ -2,6 +2,7 @@ mod entities;
 mod to_db_format;
 mod versions;
 mod weather;
+pub(crate) mod cheers;
 
 use std::collections::HashSet;
 // Reexports
@@ -13,7 +14,7 @@ pub use versions::*;
 // Third-party imports
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::connection::DefaultLoadingMode;
-use diesel::dsl::{count, count_star, max, min};
+use diesel::dsl::{count, count_star};
 use diesel::query_builder::SqlQuery;
 use diesel::{PgConnection, prelude::*, sql_query, sql_types::*};
 use hashbrown::HashMap;
@@ -864,7 +865,20 @@ pub fn insert_games(
     taxa: &Taxa,
     games: &[GameForDb],
 ) -> QueryResult<InsertGamesTimings> {
-    conn.transaction(|conn| insert_games_internal(conn, taxa, games))
+    let all_cheer_messages = games.iter()
+        .flat_map(|game| match game {
+            GameForDb::Completed { game, .. } => {
+                let cheers = game.events.iter()
+                    .flat_map(|event| &event.cheer)
+                    .map(|cheer| cheer.to_string());
+                Either::Left(cheers)
+            }
+            _ => Either::Right(iter::empty()),
+        })
+        .collect();
+
+    let cheer_table = cheers::create_cheers_table(conn, &all_cheer_messages)?;
+    conn.transaction(|conn| insert_games_internal(conn, taxa, games, cheer_table))
 }
 
 fn insert_aurora_photos<'e>(
@@ -1230,10 +1244,46 @@ fn insert_consumption_contests<'e>(
     Ok(())
 }
 
+fn insert_cheers<'e>(
+    conn: &mut PgConnection,
+    event_ids_by_game: &Vec<(i64, Vec<i64>)>,
+    completed_games: &[(i64, &CompletedGameForDb)],
+    cheer_table: &cheers::CheerTable,
+) -> QueryResult<()> {
+    let new_cheers: Vec<_> = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_from_event_ids, event_ids), (game_id_from_games, game))| {
+            assert_eq!(game_id_from_event_ids, game_id_from_games);
+            iter::zip(event_ids, &game.events)
+                .flat_map(|(event_id, event)| {
+                    event.cheer.as_ref().map(|cheer| {
+                        to_db_format::cheer_to_rows(*event_id, cheer, &cheer_table)
+                    })
+                })
+        })
+        .collect();
+
+    let n_cheers_to_insert = new_cheers.len();
+    let n_cheers_inserted = diesel::copy_from(
+        crate::schema::data_schema::data::cheers::dsl::cheers,
+    )
+    .from_insertable(&new_cheers)
+    .execute(conn)?;
+
+    log_only_assert!(
+        n_cheers_to_insert == n_cheers_inserted,
+        "Cheers insert should have inserted {} rows, but it inserted {}",
+        n_cheers_to_insert,
+        n_cheers_inserted,
+    );
+
+    Ok(())
+}
+
 fn insert_games_internal<'e>(
     conn: &mut PgConnection,
     taxa: &Taxa,
     games: &[GameForDb],
+    cheer_table: cheers::CheerTable,
 ) -> QueryResult<InsertGamesTimings> {
     use crate::data_schema::data::event_baserunners::dsl as baserunners_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielders_dsl;
@@ -1612,6 +1662,11 @@ fn insert_games_internal<'e>(
     insert_consumption_contests(conn, &completed_games)?;
     let _insert_consumption_contests_duration =
         (Utc::now() - insert_consumption_contests_start).as_seconds_f64();
+
+    let insert_cheers_start = Utc::now();
+    insert_cheers(conn, &event_ids_by_game, &completed_games, &cheer_table)?;
+    let _insert_cheers_duration =
+        (Utc::now() - insert_cheers_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,
@@ -3210,8 +3265,8 @@ pub fn player_all(
             .select((
                 event_dsl::pitch_type,
                 event_dsl::event_type,
-                min(event_dsl::pitch_speed),
-                max(event_dsl::pitch_speed),
+                diesel::dsl::min(event_dsl::pitch_speed),
+                diesel::dsl::max(event_dsl::pitch_speed),
                 count(event_dsl::id),
             ))
             .get_results::<PitchTypeInfo>(conn)?;

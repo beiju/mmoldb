@@ -1,5 +1,5 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewCheer, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
 use crate::taxa::Taxa;
 use crate::{
     ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome,
@@ -483,6 +483,18 @@ pub fn consumption_contest_event_to_rows(
         game_event_index: contest.game_event_index as i32,
         batting_team_consumed: contest.batting_consumed as i32,
         defending_team_consumed: contest.defending_consumed as i32,
+    }
+}
+
+pub fn cheer_to_rows(
+    event_id: i64,
+    cheer: &Cheer,
+    cheers_table: &crate::db::cheers::CheerTable,
+) -> NewCheer {
+    NewCheer {
+        event_id,
+        cheer_id: *cheers_table.get(&cheer.to_string())
+            .expect("Cheers table must be pre-populated with all cheers in this batch"),
     }
 }
 

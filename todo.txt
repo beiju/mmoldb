@@ -2,3 +2,4 @@
   the Hype team mod so that it never shows in MMOLDB.
 - Extract cheers to a subtable, using the modifications/weather system to add
   new cheers on demand. Do a similar thing for balk messages.
+- Check to make sure games in the Ongoing state are re-ingested once they're done
