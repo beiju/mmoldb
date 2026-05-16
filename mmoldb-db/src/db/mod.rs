@@ -3,6 +3,7 @@ mod to_db_format;
 mod versions;
 mod weather;
 pub(crate) mod cheers;
+pub(crate) mod balk_reasons;
 
 use std::collections::HashSet;
 // Reexports
@@ -420,6 +421,35 @@ pub fn group_cheer_table_results<'a>(
     results
 }
 
+pub fn group_balk_reason_table_results<'a>(
+    games_events: impl IntoIterator<Item = &'a Vec<DbEvent>>,
+    balk_reasons: Vec<(i64, Option<String>)>,
+) -> Vec<Vec<Vec<Option<String>>>> {
+    let mut balk_reason_iter = balk_reasons.into_iter().peekable();
+
+    let results = games_events
+        .into_iter()
+        .map(|game_events| {
+            game_events
+                .iter()
+                .map(|game_event| {
+                    let mut children = Vec::new();
+                    while let Some((_, message)) = balk_reason_iter.next_if(|(event_id, _)| {
+                        *event_id == game_event.id
+                    }) {
+                        children.push(message);
+                    }
+                    children
+                })
+                .collect_vec()
+        })
+        .collect_vec();
+
+    assert_eq!(balk_reason_iter.count(), 0);
+
+    results
+}
+
 pub fn events_for_games(
     conn: &mut PgConnection,
     taxa: &Taxa,
@@ -442,6 +472,8 @@ pub fn events_for_games(
     use crate::data_schema::data::wither::dsl as wither_dsl;
     use crate::data_schema::data::event_cheers::dsl as event_cheers_dsl;
     use crate::data_schema::data::cheers::dsl as cheers_dsl;
+    use crate::data_schema::data::event_balk_reasons::dsl as event_balk_reasons_dsl;
+    use crate::data_schema::data::balk_reasons::dsl as balk_reasons_dsl;
 
     let get_game_ids_start = Utc::now();
     let game_ids = games_dsl::games
@@ -636,6 +668,19 @@ pub fn events_for_games(
     let db_cheer = group_cheer_table_results(&db_games_events, db_cheer);
     let _group_cheer_duration = (Utc::now() - group_cheer_start).as_seconds_f64();
 
+    let get_balk_reason_start = Utc::now();
+    let db_balk_reason = event_balk_reasons_dsl::event_balk_reasons
+        .left_join(balk_reasons_dsl::balk_reasons.on(event_balk_reasons_dsl::balk_reason_id.eq(balk_reasons_dsl::id)))
+        .filter(event_balk_reasons_dsl::event_id.eq_any(&all_event_ids))
+        .order_by(event_balk_reasons_dsl::event_id)
+        .select((event_balk_reasons_dsl::event_id, balk_reasons_dsl::balk_reason.nullable()))
+        .load::<(i64, Option<String>)>(conn)?;
+    let _get_balk_reason_duration = (Utc::now() - get_balk_reason_start).as_seconds_f64();
+
+    let group_balk_reason_start = Utc::now();
+    let db_balk_reason = group_balk_reason_table_results(&db_games_events, db_balk_reason);
+    let _group_balk_reason_duration = (Utc::now() - group_balk_reason_start).as_seconds_f64();
+
     let post_process_start = Utc::now();
     let result = itertools::izip!(
         game_ids,
@@ -651,6 +696,7 @@ pub fn events_for_games(
         db_efflorescence_growths,
         db_wither,
         db_cheer,
+        db_balk_reason,
     )
     .map(
         |(
@@ -667,6 +713,7 @@ pub fn events_for_games(
             efflorescence_growths,
             wither,
             cheer,
+            balk_reason,
         )| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
@@ -683,6 +730,7 @@ pub fn events_for_games(
                 efflorescence_growths,
                 wither,
                 cheer,
+                balk_reason,
             )
             .map(
                 |(
@@ -698,6 +746,7 @@ pub fn events_for_games(
                     efflorescence_growths,
                     wither,
                     cheer,
+                    balk_reason,
                 )| {
                     to_db_format::row_to_event(
                         taxa,
@@ -713,6 +762,7 @@ pub fn events_for_games(
                         efflorescence_growths,
                         wither,
                         cheer,
+                        balk_reason,
                     )
                 },
             )
@@ -878,7 +928,22 @@ pub fn insert_games(
         .collect();
 
     let cheer_table = cheers::create_cheers_table(conn, &all_cheer_messages)?;
-    conn.transaction(|conn| insert_games_internal(conn, taxa, games, cheer_table))
+
+    let all_balk_reason_messages = games.iter()
+        .flat_map(|game| match game {
+            GameForDb::Completed { game, .. } => {
+                let balk_reasons = game.events.iter()
+                    .flat_map(|event| &event.balk_reason)
+                    .map(|balk_reason| balk_reason.to_string());
+                Either::Left(balk_reasons)
+            }
+            _ => Either::Right(iter::empty()),
+        })
+        .collect();
+
+    let balk_reason_table = balk_reasons::create_balk_reasons_table(conn, &all_balk_reason_messages)?;
+
+    conn.transaction(|conn| insert_games_internal(conn, taxa, games, cheer_table, balk_reason_table))
 }
 
 fn insert_aurora_photos<'e>(
@@ -1279,11 +1344,47 @@ fn insert_cheers<'e>(
     Ok(())
 }
 
+fn insert_balk_reasons<'e>(
+    conn: &mut PgConnection,
+    event_ids_by_game: &Vec<(i64, Vec<i64>)>,
+    completed_games: &[(i64, &CompletedGameForDb)],
+    balk_reason_table: &balk_reasons::BalkReasonTable,
+) -> QueryResult<()> {
+    let new_balk_reasons: Vec<_> = iter::zip(event_ids_by_game, completed_games)
+        .flat_map(|((game_id_from_event_ids, event_ids), (game_id_from_games, game))| {
+            assert_eq!(game_id_from_event_ids, game_id_from_games);
+            iter::zip(event_ids, &game.events)
+                .flat_map(|(event_id, event)| {
+                    event.balk_reason.as_ref().map(|balk_reason| {
+                        to_db_format::balk_reason_to_rows(*event_id, balk_reason, &balk_reason_table)
+                    })
+                })
+        })
+        .collect();
+
+    let n_balk_reasons_to_insert = new_balk_reasons.len();
+    let n_balk_reasons_inserted = diesel::copy_from(
+        crate::schema::data_schema::data::event_balk_reasons::dsl::event_balk_reasons,
+    )
+    .from_insertable(&new_balk_reasons)
+    .execute(conn)?;
+
+    log_only_assert!(
+        n_balk_reasons_to_insert == n_balk_reasons_inserted,
+        "balk_reasons insert should have inserted {} rows, but it inserted {}",
+        n_balk_reasons_to_insert,
+        n_balk_reasons_inserted,
+    );
+
+    Ok(())
+}
+
 fn insert_games_internal<'e>(
     conn: &mut PgConnection,
     taxa: &Taxa,
     games: &[GameForDb],
     cheer_table: cheers::CheerTable,
+    balk_reason_table: balk_reasons::BalkReasonTable,
 ) -> QueryResult<InsertGamesTimings> {
     use crate::data_schema::data::event_baserunners::dsl as baserunners_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielders_dsl;
@@ -1667,6 +1768,11 @@ fn insert_games_internal<'e>(
     insert_cheers(conn, &event_ids_by_game, &completed_games, &cheer_table)?;
     let _insert_cheers_duration =
         (Utc::now() - insert_cheers_start).as_seconds_f64();
+
+    let insert_balk_reasons_start = Utc::now();
+    insert_balk_reasons(conn, &event_ids_by_game, &completed_games, &balk_reason_table)?;
+    let _insert_balk_reasons_duration =
+        (Utc::now() - insert_balk_reasons_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,

@@ -600,6 +600,7 @@ struct EventDetailBuilder<'g> {
     described_as_sacrifice: Option<bool>,
     is_toasty: Option<bool>,
     home_run_distance: Option<i32>,
+    balk_reason: Option<&'g str>,
     fielders: Vec<EventDetailFielder<&'g str>>,
     advances: Vec<RunnerAdvance<&'g str>>,
     scores: Vec<&'g str>,
@@ -618,6 +619,11 @@ struct EventDetailBuilder<'g> {
 impl<'g> EventDetailBuilder<'g> {
     fn home_run_distance(mut self, home_run_distance: Option<u32>) -> Self {
         self.home_run_distance = home_run_distance.map(|d| d as i32);
+        self
+    }
+
+    fn balk_reason(mut self, balk_reason: &'g str) -> Self {
+        self.balk_reason = Some(balk_reason);
         self
     }
 
@@ -1146,6 +1152,7 @@ impl<'g> EventDetailBuilder<'g> {
             described_as_sacrifice: self.described_as_sacrifice,
             is_toasty: self.is_toasty,
             home_run_distance: self.home_run_distance,
+            balk_reason: self.balk_reason,
             baserunners,
             pitcher_count: game.defending_team().pitcher_count,
             batter_count: game.batting_team().batter_count,
@@ -1828,6 +1835,7 @@ impl<'g> Game<'g> {
             described_as_sacrifice: None,
             is_toasty: None,
             home_run_distance: None,
+            balk_reason: None,
             scores: Vec::new(),
             steals: Vec::new(),
             runner_added: None,
@@ -2978,7 +2986,7 @@ impl<'g> Game<'g> {
                         None
                     },
                     [ParsedEventMessageDiscriminants::Balk]
-                    ParsedEventMessage::Balk { advances, pitcher, scores } => {
+                    ParsedEventMessage::Balk { balk_reason, advances, pitcher, scores } => {
                         self.check_pitcher(pitcher, ingest_logs);
 
                         // A balk has perfectly predictable effects on the runners, but
@@ -2996,6 +3004,7 @@ impl<'g> Game<'g> {
                         );
 
                         detail_builder
+                            .balk_reason(balk_reason)
                             .pitch(pitch)
                             .runner_changes(advances.clone(), scores.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Balk)

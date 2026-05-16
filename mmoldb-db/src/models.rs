@@ -1301,3 +1301,35 @@ pub struct DbEventCheer {
     pub event_id: i64,
     pub cheer_id: i64,
 }
+
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
+#[diesel(table_name = crate::data_schema::data::balk_reasons)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewBalkReason<'a> {
+    pub balk_reason: &'a str,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::balk_reasons)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbBalkReason {
+    pub id: i64,
+    pub balk_reason: String,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
+#[diesel(table_name = crate::data_schema::data::event_balk_reasons)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewEventBalkReason {
+    pub event_id: i64,
+    pub balk_reason_id: i64,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::event_balk_reasons)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbEventBalkReasons {
+    pub id: i64,
+    pub event_id: i64,
+    pub balk_reason_id: i64,
+}

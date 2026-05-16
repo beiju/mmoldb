@@ -63,6 +63,7 @@ pub struct EventDetail<StrT: Clone> {
     pub described_as_sacrifice: Option<bool>,
     pub is_toasty: Option<bool>,
     pub home_run_distance: Option<i32>,
+    pub balk_reason: Option<StrT>,
 
     pub baserunners: Vec<EventDetailRunner<StrT>>,
     pub pitcher_count: i32,
@@ -186,6 +187,9 @@ pub enum ToParsedError<'g> {
 
     #[error("{event_type} must have a non-null is_toasty")]
     MissingIsToasty { event_type: TaxaEventType },
+
+    #[error("{event_type} must have a balk reason")]
+    MissingBalkReason { event_type: TaxaEventType },
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -748,6 +752,11 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             }
             TaxaEventType::Balk => ParsedEventMessage::Balk {
                 pitcher: self.pitcher_name.as_ref(),
+                balk_reason: self.balk_reason.as_ref()
+                    .ok_or_else(|| ToParsedError::MissingBalkReason {
+                        event_type: self.detail_type,
+                    })?
+                    .as_ref(),
                 scores: self.scores(),
                 advances: self.advances(false),
             },

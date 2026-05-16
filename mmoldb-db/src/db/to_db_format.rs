@@ -1,5 +1,5 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewEventCheer, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewEventCheer, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither, NewEventBalkReason};
 use crate::taxa::Taxa;
 use crate::{
     ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome,
@@ -498,6 +498,18 @@ pub fn cheer_to_rows(
     }
 }
 
+pub fn balk_reason_to_rows(
+    event_id: i64,
+    balk_reason: &str,
+    balk_reasons_table: &crate::db::balk_reasons::BalkReasonTable,
+) -> NewEventBalkReason {
+    NewEventBalkReason {
+        event_id,
+        balk_reason_id: *balk_reasons_table.get(balk_reason)
+            .expect("Balk reasons table must be pre-populated with all balk reasons in this batch"),
+    }
+}
+
 #[derive(Debug, Error, Diagnostic)]
 pub enum RowToEventError {
     #[error("invalid event type id {0}")]
@@ -520,6 +532,12 @@ pub enum RowToEventError {
 
     #[error("invalid number of cheers on a single event (expected 0 or 1, not {0})")]
     InvalidNumberOfCheers(usize),
+
+    #[error("event balk reason record referenced a nonexistent balk reason message")]
+    NonexistentBalkReasonMessage,
+
+    #[error("invalid number of balk reasons on a single event (expected 0 or 1, not {0})")]
+    InvalidNumberOfBalkReasons(usize),
 
     #[error(
         "{item_index}th prize {door_prize_index} for {player_name} failed to parse item name \
@@ -700,7 +718,9 @@ pub fn row_to_event<'e>(
     efflorescence_growths: Vec<DbEfflorescenceGrowth>,
     wither: Vec<DbWither>,
     // A None value means a nonexistent cheer was referenced
-    cheer_message: Vec<Option<String>>,
+    cheer: Vec<Option<String>>,
+    // A None value means a nonexistent balk_reason was referenced
+    balk_reason: Vec<Option<String>>,
 ) -> Result<EventDetail<String>, RowToEventError> {
     let baserunners = runners
         .into_iter()
@@ -1013,10 +1033,10 @@ pub fn row_to_event<'e>(
         }
     };
 
-    let cheer = match cheer_message.len() {
+    let cheer = match cheer.len() {
         0 => None,
         1 => {
-            let (cheer,) = cheer_message.into_iter().collect_tuple().unwrap();
+            let (cheer,) = cheer.into_iter().collect_tuple().unwrap();
             if let Some(message) = cheer {
                 Some(Cheer::new(&message))
             } else {
@@ -1025,6 +1045,21 @@ pub fn row_to_event<'e>(
         }
         other => {
             return Err(RowToEventError::InvalidNumberOfCheers(other));
+        }
+    };
+
+    let balk_reason = match balk_reason.len() {
+        0 => None,
+        1 => {
+            let (balk_reason,) = balk_reason.into_iter().collect_tuple().unwrap();
+            if let Some(message) = balk_reason {
+                Some(message)
+            } else {
+                return Err(RowToEventError::NonexistentBalkReasonMessage)
+            }
+        }
+        other => {
+            return Err(RowToEventError::InvalidNumberOfBalkReasons(other));
         }
     };
 
@@ -1065,6 +1100,7 @@ pub fn row_to_event<'e>(
         described_as_sacrifice: event.described_as_sacrifice,
         is_toasty: event.is_toasty,
         home_run_distance: event.home_run_distance,
+        balk_reason,
         fielders,
         baserunners,
         pitcher_count: event.pitcher_count,
