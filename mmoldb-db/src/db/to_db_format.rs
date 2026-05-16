@@ -1,11 +1,5 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{
-    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth,
-    DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto,
-    NewBaserunner, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize,
-    NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent,
-    NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither,
-};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither};
 use crate::taxa::Taxa;
 use crate::{
     ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome,
@@ -13,11 +7,7 @@ use crate::{
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
-use mmolb_parsing::parsed_event::{
-    Cheer, DoorPrize, Efflorescence, EfflorescenceOutcome, Ejection, EjectionReason,
-    EjectionReplacement, EmojiTeam, GrowAttributeChange, Item, ItemAffixes, ItemEquip, ItemPrize,
-    PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle,
-};
+use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Efflorescence, EfflorescenceOutcome, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, GrowAttributeChange, Item, ItemAffixes, ItemEquip, ItemPrize, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
 use std::str::FromStr;
 use strum::ParseError;
 use thiserror::Error;
@@ -64,7 +54,6 @@ pub fn event_to_row<'e>(
         batter_name: event.batter_name,
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
-        cheer: event.cheer.as_ref().map(|c| c.to_string()),
         home_run_distance: event.home_run_distance,
     }
 }
@@ -514,6 +503,12 @@ pub enum RowToEventError {
     #[error("invalid number of wither struggles on a single event (expected 0 or 1, not {0})")]
     InvalidNumberOfWitherStruggles(usize),
 
+    #[error("event cheer record referenced a nonexistent cheer message")]
+    NonexistentCheerMessage,
+
+    #[error("invalid number of cheers on a single event (expected 0 or 1, not {0})")]
+    InvalidNumberOfCheers(usize),
+
     #[error(
         "{item_index}th prize {door_prize_index} for {player_name} failed to parse item name \
         (discarded: {discarded}): {parse_error}"
@@ -692,6 +687,8 @@ pub fn row_to_event<'e>(
     efflorescences: Vec<DbEfflorescence>,
     efflorescence_growths: Vec<DbEfflorescenceGrowth>,
     wither: Vec<DbWither>,
+    // A None value means a nonexistent cheer was referenced
+    cheer_message: Vec<Option<String>>,
 ) -> Result<EventDetail<String>, RowToEventError> {
     let baserunners = runners
         .into_iter()
@@ -1004,6 +1001,21 @@ pub fn row_to_event<'e>(
         }
     };
 
+    let cheer = match cheer_message.len() {
+        0 => None,
+        1 => {
+            let (cheer,) = cheer_message.into_iter().collect_tuple().unwrap();
+            if let Some(message) = cheer {
+                Some(Cheer::new(&message))
+            } else {
+                return Err(RowToEventError::NonexistentCheerMessage)
+            }
+        }
+        other => {
+            return Err(RowToEventError::InvalidNumberOfCheers(other));
+        }
+    };
+
     Ok(EventDetail {
         game_event_index: event.game_event_index as usize,
         fair_ball_event_index: event.fair_ball_event_index.map(|i| i as usize),
@@ -1046,7 +1058,7 @@ pub fn row_to_event<'e>(
         pitcher_count: event.pitcher_count,
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
-        cheer: event.cheer.as_deref().map(Cheer::new),
+        cheer,
         aurora_photos,
         ejection,
         door_prizes,

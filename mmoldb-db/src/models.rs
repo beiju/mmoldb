@@ -160,9 +160,6 @@ pub struct NewEvent<'a> {
     pub batter_name: &'a str,
     pub batter_count: i32,
     pub batter_subcount: i32,
-    // This is an owned string because it's generated at the last minute
-    // TODO Set up a foreign relationship for cheers like weather has
-    pub cheer: Option<String>,
     pub home_run_distance: Option<i32>,
 }
 #[derive(Queryable, Selectable, Identifiable)]
@@ -201,7 +198,6 @@ pub struct DbEvent {
     pub batter_name: String,
     pub batter_count: i32,
     pub batter_subcount: i32,
-    pub cheer: Option<String>,
     pub home_run_distance: Option<i32>,
 }
 
@@ -1272,4 +1268,36 @@ pub struct DbVersionProcessed {
     pub valid_from: NaiveDateTime,
     pub skipped: bool,
     pub fatal_error: bool,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
+#[diesel(table_name = crate::data_schema::data::cheer_messages)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewCheerMessage<'a> {
+    pub message: &'a str,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::cheer_messages)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbCheerMessage {
+    pub id: i64,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
+#[diesel(table_name = crate::data_schema::data::cheers)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewCheer {
+    pub event_id: i64,
+    pub cheer_id: i64,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::cheers)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbCheer {
+    pub id: i64,
+    pub event_id: i64,
+    pub cheer_id: i64,
 }

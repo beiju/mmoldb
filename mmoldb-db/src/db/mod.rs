@@ -390,6 +390,35 @@ pub fn group_wither_table_results<'a>(
     results
 }
 
+pub fn group_cheer_table_results<'a>(
+    games_events: impl IntoIterator<Item = &'a Vec<DbEvent>>,
+    cheers: Vec<(i64, Option<String>)>,
+) -> Vec<Vec<Vec<Option<String>>>> {
+    let mut cheer_iter = cheers.into_iter().peekable();
+
+    let results = games_events
+        .into_iter()
+        .map(|game_events| {
+            game_events
+                .iter()
+                .map(|game_event| {
+                    let mut children = Vec::new();
+                    while let Some((_, message)) = cheer_iter.next_if(|(event_id, _)| {
+                        *event_id == game_event.id
+                    }) {
+                        children.push(message);
+                    }
+                    children
+                })
+                .collect_vec()
+        })
+        .collect_vec();
+
+    assert_eq!(cheer_iter.count(), 0);
+
+    results
+}
+
 pub fn events_for_games(
     conn: &mut PgConnection,
     taxa: &Taxa,
@@ -410,6 +439,8 @@ pub fn events_for_games(
     use crate::data_schema::data::failed_ejections::dsl as failed_ejection_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::data_schema::data::wither::dsl as wither_dsl;
+    use crate::data_schema::data::cheers::dsl as cheer_dsl;
+    use crate::data_schema::data::cheer_messages::dsl as cheer_messages_dsl;
 
     let get_game_ids_start = Utc::now();
     let game_ids = games_dsl::games
@@ -591,6 +622,19 @@ pub fn events_for_games(
         group_wither_table_results(&db_games_events, db_wither);
     let _group_wither_duration = (Utc::now() - group_wither_start).as_seconds_f64();
 
+    let get_cheer_start = Utc::now();
+    let db_cheer = cheer_dsl::cheers
+        .left_join(cheer_messages_dsl::cheer_messages.on(cheer_dsl::cheer_id.eq(cheer_messages_dsl::id)))
+        .filter(cheer_dsl::event_id.eq_any(&all_event_ids))
+        .order_by(cheer_dsl::event_id)
+        .select((cheer_dsl::event_id, cheer_messages_dsl::message.nullable()))
+        .load::<(i64, Option<String>)>(conn)?;
+    let _get_cheer_duration = (Utc::now() - get_cheer_start).as_seconds_f64();
+
+    let group_cheer_start = Utc::now();
+    let db_cheer = group_cheer_table_results(&db_games_events, db_cheer);
+    let _group_cheer_duration = (Utc::now() - group_cheer_start).as_seconds_f64();
+
     let post_process_start = Utc::now();
     let result = itertools::izip!(
         game_ids,
@@ -605,6 +649,7 @@ pub fn events_for_games(
         db_efflorescences,
         db_efflorescence_growths,
         db_wither,
+        db_cheer,
     )
     .map(
         |(
@@ -620,6 +665,7 @@ pub fn events_for_games(
             efflorescence,
             efflorescence_growths,
             wither,
+            cheer,
         )| {
             // Note: This should stay a vec of results. The individual results for each
             // entry are semantically meaningful.
@@ -635,6 +681,7 @@ pub fn events_for_games(
                 efflorescence,
                 efflorescence_growths,
                 wither,
+                cheer,
             )
             .map(
                 |(
@@ -649,6 +696,7 @@ pub fn events_for_games(
                     efflorescence,
                     efflorescence_growths,
                     wither,
+                    cheer,
                 )| {
                     to_db_format::row_to_event(
                         taxa,
@@ -663,6 +711,7 @@ pub fn events_for_games(
                         efflorescence,
                         efflorescence_growths,
                         wither,
+                        cheer,
                     )
                 },
             )

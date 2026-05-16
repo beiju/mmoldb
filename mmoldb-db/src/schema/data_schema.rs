@@ -13,6 +13,21 @@ pub mod data {
     }
 
     diesel::table! {
+        data.cheer_messages (id) {
+            id -> Int8,
+            message -> Text,
+        }
+    }
+
+    diesel::table! {
+        data.cheers (id) {
+            id -> Int8,
+            event_id -> Int8,
+            cheer_id -> Int8,
+        }
+    }
+
+    diesel::table! {
         data.consumption_contest_events (id) {
             id -> Int8,
             game_id -> Int8,
@@ -184,7 +199,6 @@ pub mod data {
             batter_subcount -> Int4,
             errors_before -> Int4,
             errors_after -> Int4,
-            cheer -> Nullable<Text>,
             fair_ball_fielder_name -> Nullable<Text>,
             home_run_distance -> Nullable<Int4>,
         }
@@ -593,6 +607,8 @@ pub mod data {
     }
 
     diesel::joinable!(aurora_photos -> events (event_id));
+    diesel::joinable!(cheers -> cheer_messages (cheer_id));
+    diesel::joinable!(cheers -> events (event_id));
     diesel::joinable!(consumption_contest_events -> games (game_id));
     diesel::joinable!(consumption_contests -> games (game_id));
     diesel::joinable!(door_prize_items -> events (event_id));
@@ -612,6 +628,8 @@ pub mod data {
 
     diesel::allow_tables_to_appear_in_same_query!(
         aurora_photos,
+        cheer_messages,
+        cheers,
         consumption_contest_events,
         consumption_contests,
         door_prize_items,

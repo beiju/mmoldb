@@ -9,10 +9,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
-use mmolb_parsing::parsed_event::{
-    BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood, FieldingAttempt, Item,
-    KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle,
-};
+use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood, FieldingAttempt, Item, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
 use std::fmt::Formatter;
 use thiserror::Error;
 
