@@ -18,6 +18,10 @@ truncate table
     data.wither,
     data.consumption_contests,
     data.consumption_contest_events,
+    data.cheers,
+    data.event_cheers,
+    data.balk_reasons,
+    data.event_balk_reasons,
     info.event_ingest_log,
 
     -- player
