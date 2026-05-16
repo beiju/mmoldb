@@ -2,10 +2,16 @@
 drop view data.events_extended;
 
 -- Undo: New table for what cheer message happens on an event
-drop table data.cheers;
+drop table data.event_cheers;
 
 -- Undo: New table for what cheer messages exist
-drop table data.cheer_messages;
+drop table data.cheers;
+
+-- Undo: New table for what balk reason happens on an event
+drop table data.event_balk_reasons;
+
+-- Undo: New table for what balk reasons exist
+drop table data.balk_reasons;
 
 -- Undo: Remove cheer column from data.events, to be replaced by this foreign key table
 alter table data.events

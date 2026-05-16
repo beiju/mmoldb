@@ -13,17 +13,16 @@ pub mod data {
     }
 
     diesel::table! {
-        data.cheer_messages (id) {
+        data.balk_reasons (id) {
             id -> Int8,
-            message -> Text,
+            balk_reason -> Text,
         }
     }
 
     diesel::table! {
         data.cheers (id) {
             id -> Int8,
-            event_id -> Int8,
-            cheer_id -> Int8,
+            cheer -> Text,
         }
     }
 
@@ -142,6 +141,14 @@ pub mod data {
     }
 
     diesel::table! {
+        data.event_balk_reasons (id) {
+            id -> Int8,
+            event_id -> Int8,
+            balk_reason_id -> Int8,
+        }
+    }
+
+    diesel::table! {
         data.event_baserunners (id) {
             id -> Int8,
             event_id -> Int8,
@@ -153,6 +160,14 @@ pub mod data {
             steal -> Bool,
             source_event_index -> Nullable<Int4>,
             is_earned -> Bool,
+        }
+    }
+
+    diesel::table! {
+        data.event_cheers (id) {
+            id -> Int8,
+            event_id -> Int8,
+            cheer_id -> Int8,
         }
     }
 
@@ -607,8 +622,6 @@ pub mod data {
     }
 
     diesel::joinable!(aurora_photos -> events (event_id));
-    diesel::joinable!(cheers -> cheer_messages (cheer_id));
-    diesel::joinable!(cheers -> events (event_id));
     diesel::joinable!(consumption_contest_events -> games (game_id));
     diesel::joinable!(consumption_contests -> games (game_id));
     diesel::joinable!(door_prize_items -> events (event_id));
@@ -616,7 +629,11 @@ pub mod data {
     diesel::joinable!(efflorescence -> events (event_id));
     diesel::joinable!(efflorescence_growth -> events (event_id));
     diesel::joinable!(ejections -> events (event_id));
+    diesel::joinable!(event_balk_reasons -> balk_reasons (balk_reason_id));
+    diesel::joinable!(event_balk_reasons -> events (event_id));
     diesel::joinable!(event_baserunners -> events (event_id));
+    diesel::joinable!(event_cheers -> cheers (cheer_id));
+    diesel::joinable!(event_cheers -> events (event_id));
     diesel::joinable!(event_fielders -> events (event_id));
     diesel::joinable!(events -> games (game_id));
     diesel::joinable!(failed_ejections -> events (event_id));
@@ -628,7 +645,7 @@ pub mod data {
 
     diesel::allow_tables_to_appear_in_same_query!(
         aurora_photos,
-        cheer_messages,
+        balk_reasons,
         cheers,
         consumption_contest_events,
         consumption_contests,
@@ -638,7 +655,9 @@ pub mod data {
         efflorescence_growth,
         ejections,
         entities,
+        event_balk_reasons,
         event_baserunners,
+        event_cheers,
         event_fielders,
         events,
         failed_ejections,

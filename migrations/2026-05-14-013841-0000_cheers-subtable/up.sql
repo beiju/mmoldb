@@ -5,17 +5,31 @@ drop materialized view data.defense_outcomes;
 drop materialized view data.offense_outcomes;
 
 -- New table for what cheer messages exist
-create table data.cheer_messages (
+create table data.cheers (
     id bigserial primary key not null,
-    message text not null,
-    unique (message)
+    cheer text not null,
+    unique (cheer)
 );
 
 -- New table for what cheer message happens on an event
-create table data.cheers (
+create table data.event_cheers (
     id bigserial primary key not null,
     event_id bigint references data.events not null,
-    cheer_id bigint references data.cheer_messages not null
+    cheer_id bigint references data.cheers not null
+);
+
+-- New table for what balk reasons exist
+create table data.balk_reasons (
+    id bigserial primary key not null,
+    balk_reason text not null,
+    unique (balk_reason)
+);
+
+-- New table for what balk reason happens on an event
+create table data.event_balk_reasons (
+    id bigserial primary key not null,
+    event_id bigint references data.events not null,
+    balk_reason_id bigint references data.balk_reasons not null
 );
 
 -- Drop events_extended view, because it references the cheer column
@@ -35,7 +49,8 @@ with game_end_times as (
 )
 select
     e.*,
-    cm.message as cheer,
+    ch.cheer,
+    br.balk_reason,
     -- I have to enumerate all game fields except id, because if I do *
     -- it tries to include g.id which conflicts with e.id
     g.mmolb_game_id,
@@ -68,5 +83,7 @@ select
 from data.events e
 left join data.games g on g.id=e.game_id
 left join game_end_times get on get.mmolb_game_id=g.mmolb_game_id
-left join data.cheers on e.id=cheers.event_id
-left join data.cheer_messages cm on cm.id=cheers.cheer_id;
+left join data.event_cheers ec on e.id=ec.event_id
+left join data.cheers ch on ch.id=ec.cheer_id
+left join data.event_balk_reasons eb on e.id=eb.event_id
+left join data.balk_reasons br on br.id=eb.balk_reason_id;

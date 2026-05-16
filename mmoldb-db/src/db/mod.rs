@@ -440,8 +440,8 @@ pub fn events_for_games(
     use crate::data_schema::data::failed_ejections::dsl as failed_ejection_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::data_schema::data::wither::dsl as wither_dsl;
-    use crate::data_schema::data::cheers::dsl as cheer_dsl;
-    use crate::data_schema::data::cheer_messages::dsl as cheer_messages_dsl;
+    use crate::data_schema::data::event_cheers::dsl as event_cheers_dsl;
+    use crate::data_schema::data::cheers::dsl as cheers_dsl;
 
     let get_game_ids_start = Utc::now();
     let game_ids = games_dsl::games
@@ -624,11 +624,11 @@ pub fn events_for_games(
     let _group_wither_duration = (Utc::now() - group_wither_start).as_seconds_f64();
 
     let get_cheer_start = Utc::now();
-    let db_cheer = cheer_dsl::cheers
-        .left_join(cheer_messages_dsl::cheer_messages.on(cheer_dsl::cheer_id.eq(cheer_messages_dsl::id)))
-        .filter(cheer_dsl::event_id.eq_any(&all_event_ids))
-        .order_by(cheer_dsl::event_id)
-        .select((cheer_dsl::event_id, cheer_messages_dsl::message.nullable()))
+    let db_cheer = event_cheers_dsl::event_cheers
+        .left_join(cheers_dsl::cheers.on(event_cheers_dsl::cheer_id.eq(cheers_dsl::id)))
+        .filter(event_cheers_dsl::event_id.eq_any(&all_event_ids))
+        .order_by(event_cheers_dsl::event_id)
+        .select((event_cheers_dsl::event_id, cheers_dsl::cheer.nullable()))
         .load::<(i64, Option<String>)>(conn)?;
     let _get_cheer_duration = (Utc::now() - get_cheer_start).as_seconds_f64();
 
@@ -1264,7 +1264,7 @@ fn insert_cheers<'e>(
 
     let n_cheers_to_insert = new_cheers.len();
     let n_cheers_inserted = diesel::copy_from(
-        crate::schema::data_schema::data::cheers::dsl::cheers,
+        crate::schema::data_schema::data::event_cheers::dsl::event_cheers,
     )
     .from_insertable(&new_cheers)
     .execute(conn)?;

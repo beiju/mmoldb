@@ -1271,32 +1271,32 @@ pub struct DbVersionProcessed {
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
-#[diesel(table_name = crate::data_schema::data::cheer_messages)]
-#[diesel(treat_none_as_default_value = false)]
-pub struct NewCheerMessage<'a> {
-    pub message: &'a str,
-}
-
-#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
-#[diesel(table_name = crate::data_schema::data::cheer_messages)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DbCheerMessage {
-    pub id: i64,
-    pub message: String,
-}
-
-#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::cheers)]
 #[diesel(treat_none_as_default_value = false)]
-pub struct NewCheer {
-    pub event_id: i64,
-    pub cheer_id: i64,
+pub struct NewCheer<'a> {
+    pub cheer: &'a str,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
 #[diesel(table_name = crate::data_schema::data::cheers)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbCheer {
+    pub id: i64,
+    pub cheer: String,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
+#[diesel(table_name = crate::data_schema::data::event_cheers)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewEventCheer {
+    pub event_id: i64,
+    pub cheer_id: i64,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::event_cheers)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbEventCheer {
     pub id: i64,
     pub event_id: i64,
     pub cheer_id: i64,
