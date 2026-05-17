@@ -1,3 +1,4 @@
 - Add team mods, now that the Patreon-related team mods exist. Special-case
   the Hype team mod so that it never shows in MMOLDB.
 - Check to make sure games in the Ongoing state are re-ingested once they're done
+- Save retired players. They live in the team object and are not yet deseralizized

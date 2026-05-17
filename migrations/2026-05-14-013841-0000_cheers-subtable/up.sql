@@ -14,8 +14,8 @@ create table data.cheers (
 -- New table for what cheer message happens on an event
 create table data.event_cheers (
     id bigserial primary key not null,
-    event_id bigint references data.events not null,
-    cheer_id bigint references data.cheers not null
+    event_id bigint references data.events on delete cascade not null,
+    cheer_id bigint references data.cheers on delete cascade not null
 );
 
 -- New table for what balk reasons exist
@@ -28,8 +28,8 @@ create table data.balk_reasons (
 -- New table for what balk reason happens on an event
 create table data.event_balk_reasons (
     id bigserial primary key not null,
-    event_id bigint references data.events not null,
-    balk_reason_id bigint references data.balk_reasons not null
+    event_id bigint references data.events on delete cascade not null,
+    balk_reason_id bigint references data.balk_reasons on delete cascade not null
 );
 
 -- Drop events_extended view, because it references the cheer column
@@ -87,3 +87,7 @@ left join data.event_cheers ec on e.id=ec.event_id
 left join data.cheers ch on ch.id=ec.cheer_id
 left join data.event_balk_reasons eb on e.id=eb.event_id
 left join data.balk_reasons br on br.id=eb.balk_reason_id;
+
+-- Requested by ifhbiff for optimization. These are idempotent, so don't need to be in `down`.
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+GRANT pg_read_all_stats TO guest;

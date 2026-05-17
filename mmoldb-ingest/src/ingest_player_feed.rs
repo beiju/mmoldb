@@ -1115,7 +1115,8 @@ pub fn chron_player_feed_as_new<'a>(
         | ParsedPlayerFeedEventText::PlayerReflected { .. }
         | ParsedPlayerFeedEventText::ElectionAppliedLevelUps { .. }
         | ParsedPlayerFeedEventText::LesserBoon { .. }
-        | ParsedPlayerFeedEventText::ResumedHolidayProcessingReplacement { .. } => {}
+        | ParsedPlayerFeedEventText::ResumedHolidayProcessingReplacement { .. }
+        | ParsedPlayerFeedEventText::GainedModificationFromGreaterAugment { .. } => {}
     }
 
     // Apply any pending inferred whose time is before this event's time

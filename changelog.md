@@ -8,14 +8,30 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming (Not yet deployed)
+Upcoming
 --------
-- Fixes ballpark name during the period when it was computed from separate 
-  parts
+- Ballpark names are now computed from parts for team versions where that was
+  all that was available.
+- The `cheer` column in `data.events` is removed. A new table `data.cheers`
+  stores the list of possible cheer messages, and a second new table, 
+  `data.event_cheers`, links this table to `data.events`. This is a space and
+  possibly a performance optimization.
+- A new `data.balk_reasons` table and `data.event_balk_reasons` table are
+  added. This works the same as the new cheers system, and brings custom balk
+  message support to MMOLDB.
+- Reverse weather is now supported. Also, all new instances of superstar-style
+  pitching (a new pitcher each inning) will be automatically supported.
+- Several deserialization errors are now fixed. 
+- Several feed event errors are now fixed.
+- `pg_stat_statements` is now available.
 
-Upcoming (Deployed to staging)
---------
+2026-05-16
+----------
 - Adds `manager_name` to `data.teams`. See docs for details.
+- Adds `name_suffix` to `data.team_player_versions`, and adds an overload of
+  the `player_full_name` function that accepts a `team_player_versions` row. 
+  This should have been added a while ago, thanks to Bagyilisk for pointing out
+  the oversight.
 - Fixes issues involving duplicate handling for several tables. These issues 
   have meant  that, previously, some columns may have failed to update when 
   they should have:
@@ -29,7 +45,7 @@ Upcoming (Deployed to staging)
     correctly.
   - Same as above, but for Lesser Boons.
   - Same as above, but for equipment effects (if an equipment item with X 
-    effects was replaced with one with Y<X effects.)
+    effects was replaced with one with Y<X effects).
 - Improves ingest speed slightly.
 
 2026-05-09

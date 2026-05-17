@@ -272,7 +272,8 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::GildedUmpiresPayout { .. }
         | ParsedTeamFeedEventText::GoldenPlayerReplacementFailed { .. }
         | ParsedTeamFeedEventText::ResumedHolidayProcessingReplacement { .. }
-        | ParsedTeamFeedEventText::GoldenPlayerEmerged { .. } => None,
+        | ParsedTeamFeedEventText::GoldenPlayerEmerged { .. }
+        | ParsedTeamFeedEventText::GainedModificationFromGreaterAugment { .. } => None,
     };
 
     (processed, game_outcome, ingest_logs.into_vec())

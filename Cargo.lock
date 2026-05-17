@@ -2166,7 +2166,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.62.0"
-source = "git+https://github.com/beiju/mmolb_parsing.git?branch=feature%2Fs11-postseason-fixes#2fc2737eec018e9380af6e4e0bfa7dd3c89b2566"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=feature%2Fs11-postseason-fixes#433fd3464916e8667bd161a8d468c09e5e35e078"
 dependencies = [
  "chrono",
  "indexmap 2.13.0",
