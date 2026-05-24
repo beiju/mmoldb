@@ -8,8 +8,8 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
-Upcoming
---------
+2026-05-23
+----------
 - Ballpark names are now computed from parts for team versions where that was
   all that was available.
 - The `cheer` column in `data.events` is removed. A new table `data.cheers`
@@ -20,7 +20,8 @@ Upcoming
   added. This works the same as the new cheers system, and brings custom balk
   message support to MMOLDB.
 - Reverse weather is now supported. Also, all new instances of superstar-style
-  pitching (a new pitcher each inning) will be automatically supported.
+  pitching (where the pitcher changes each inning) will be automatically 
+  supported.
 - Several deserialization errors are now fixed. 
 - Several feed event errors are now fixed.
 - `pg_stat_statements` is now available.

@@ -852,23 +852,6 @@ each `(game_id, top_of_inning, batter_count)` combination.
 """
 
 [[table.column]]
-name = "cheer"
-type = "text"
-description = """
-The crowd's cheer on this event, if any.
-
-Note: Cheers on fair balls are from the event referenced by
-fair_ball_event_index. Cheers on other event types are from the event
-referenced by game_event_index.
-
-WARNING: This column may be turned into a foreign key reference soon, similar
-to weather. Treat it as unstable.
-"""
-nullable_explanation = """
-`null` for events where the crowd did not cheer.
-"""
-
-[[table.column]]
 name = "home_run_distance"
 type = "integer"
 description = """
@@ -2630,6 +2613,118 @@ name = "defending_team_consumed"
 type = "integer"
 description = """
 The amount of food the defending team's representative consumed on this event.
+"""
+
+[[table]]
+name = "cheers"
+description = """
+Lists what cheers exist. Each distinct cheer message has one entry in this
+table. This includes negative cheers (aka jeers).
+
+See `data.event_cheers` to see which cheer happened on which game event.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+cheer, use its message.
+"""
+
+[[table.column]]
+name = "cheer"
+type = "text"
+description = """
+The text of the cheer.
+"""
+
+[[table]]
+name = "event_cheers"
+description = """
+Connects an event with the cheer that happened on that event, if any.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event on which this cheer happened. References `data.events`.
+
+Note: Cheers on fair balls are from the event referenced by
+fair_ball_event_index. Cheers on other event types are from the event
+referenced by game_event_index.
+"""
+
+[[table.column]]
+name = "cheer_id"
+type = "bigint"
+description = """
+The id of the cheer that happened on this event. References `data.cheers`.
+"""
+
+[[table]]
+name = "balk_reasons"
+description = """
+Reasons a pitcher can earn a balk. This comes from the event text and is
+purely flavor.
+
+See `data.event_balk_reasons` to see which balk reason happened on which
+game event.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a particular
+balk_reason, use its message.
+"""
+
+[[table.column]]
+name = "balk_reason"
+type = "text"
+description = """
+The text of the balk reason.
+"""
+
+[[table]]
+name = "event_balk_reasons"
+description = """
+Connects a balk event with a balk reason.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "bigint"
+description = """
+The id of the event on which this balk happened. References `data.events`. The
+referenced event should always have `event_type` `Balk`.
+"""
+
+[[table.column]]
+name = "balk_reason_id"
+type = "bigint"
+description = """
+The id of the reason for this balk. References `data.balk_reasons`.
 """
 
 [[table]]
