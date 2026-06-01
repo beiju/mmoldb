@@ -7,12 +7,13 @@ mod ingest_players;
 mod ingest_team_feed;
 mod ingest_teams;
 mod partitioner;
+mod modifier_effects_value;
 
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use config::IngestConfig;
 use futures::{FutureExt, StreamExt};
 use miette::{Context, IntoDiagnostic};
-use mmoldb_db::{ConnectionPool, PgConnection, QueryResult, db};
+use mmoldb_db::{ConnectionPool, PgConnection, QueryResult, db, taxa::Taxa};
 use std::time::Duration;
 use tokio::signal::unix as tokio_signal;
 use tokio::task::JoinHandle;
@@ -97,6 +98,8 @@ async fn main() -> miette::Result<()> {
         let mut conn = pool.get().into_diagnostic()?;
         set_statement_timeout(&mut conn, config.set_postgres_statement_timeout)
             .into_diagnostic()?;
+        let taxa = Taxa::new(&mut conn).into_diagnostic()?;
+        modifier_effects_value::update_modifier_effects_values(&mut conn, &taxa).into_diagnostic()?;
     }
     mmoldb_db::run_migrations().into_diagnostic()?;
 

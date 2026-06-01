@@ -1333,3 +1333,27 @@ pub struct DbEventBalkReasons {
     pub event_id: i64,
     pub balk_reason_id: i64,
 }
+
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
+#[diesel(table_name = crate::data_schema::data::modification_effects)]
+#[diesel(treat_none_as_default_value = false, primary_key(modification_name, valid_from, attribute, bonus_type))]
+pub struct NewModificationEffects<'a> {
+    pub modification_name: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub attribute: i64,
+    pub bonus_type: i64,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::modification_effects)]
+#[diesel(check_for_backend(diesel::pg::Pg), primary_key(modification_name, valid_from, attribute, bonus_type))]
+pub struct DbModificationEffects {
+    pub modification_name: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub attribute: i64,
+    pub bonus_type: i64,
+    pub value: f64,
+}

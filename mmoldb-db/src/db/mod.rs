@@ -28,7 +28,7 @@ use thiserror::Error;
 use tracing::{debug, info, trace, warn};
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
 use crate::taxa::Taxa;
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -3991,4 +3991,19 @@ pub fn highest_reported_attribute(
         order by prav.modified_total desc, prav.valid_from asc
         limit 1
     ").bind::<Text, _>(attr_name).get_result(conn).optional()
+}
+
+pub fn replace_modifier_effects(conn: &mut PgConnection, effects: Vec<NewModificationEffects>) -> QueryResult<()> {
+    use crate::data_schema::data::modification_effects::dsl as me_dsl;
+
+    // Delete previous contents
+    diesel::delete(me_dsl::modification_effects)
+        .execute(conn)?;
+
+    // Insert new contents
+    diesel::copy_from(me_dsl::modification_effects)
+        .from_insertable(effects)
+        .execute(conn)?;
+
+    Ok(())
 }

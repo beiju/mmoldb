@@ -1,0 +1,3 @@
+[submodule "mmoldb-ingest/mmolb-modifiers"]
+	path = mmoldb-ingest/mmolb-modifiers
+	url = https://github.com/anodoze/mmolb-modifiers.git

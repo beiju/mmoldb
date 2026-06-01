@@ -281,6 +281,17 @@ pub mod data {
     }
 
     diesel::table! {
+        data.modification_effects (modification_name, valid_from, attribute, bonus_type) {
+            modification_name -> Text,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            attribute -> Int8,
+            bonus_type -> Int8,
+            value -> Float8,
+        }
+    }
+
+    diesel::table! {
         data.modifications (id) {
             id -> Int8,
             name -> Text,
@@ -664,6 +675,7 @@ pub mod data {
         feed_event_versions,
         feed_events_processed,
         games,
+        modification_effects,
         modifications,
         parties,
         pitcher_changes,

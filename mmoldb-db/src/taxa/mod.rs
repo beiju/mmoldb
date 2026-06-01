@@ -9,7 +9,7 @@ use diesel::QueryResult;
 use diesel::prelude::*;
 use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::collections::HashSet;
 use taxa_macro::*;
 use tracing::{error, warn};
@@ -1274,7 +1274,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::attribute,
         table = crate::taxa_schema::taxa::attribute::dsl::attribute,
         id_column = crate::taxa_schema::taxa::attribute::dsl::id,
-        derive = (Serialize)
+        derive = (Serialize, Deserialize)
     ]
     pub enum TaxaAttribute {
         // NOTE: Category numbers reference the assigned values in TaxaAttributeCategory
@@ -1452,7 +1452,7 @@ taxa! {
         schema = crate::taxa_schema::taxa::attribute_effect_type,
         table = crate::taxa_schema::taxa::attribute_effect_type::dsl::attribute_effect_type,
         id_column = crate::taxa_schema::taxa::attribute_effect_type::dsl::id,
-        derive = (Serialize)
+        derive = (Serialize, Deserialize)
     ]
     pub enum TaxaEffectType {
         Flat = 1,
