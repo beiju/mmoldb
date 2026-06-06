@@ -8,6 +8,11 @@ updates would be much slower.
 
 Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
 
+Upcoming
+--------
+- Fixes event_baserunners in double plays where the batter gets out while a 
+  batter with the same name is on first (the Sizzle Udea problem). 
+
 2026-05-23
 ----------
 - Ballpark names are now computed from parts for team versions where that was

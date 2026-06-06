@@ -2164,18 +2164,29 @@ impl<'g> Game<'g> {
 
             // Next, look for outs
             if let Some(out) = runners_out_iter.peeking_next(|o| {
-                // A runner-out is eligible if the name matches and
-                // all bases behind the one they got out at are
-                // clear. The one they got out at may be occupied.
-                // This translates to a >= condition compared to
-                // the > condition for other tests.
+                // A runner-out is eligible if the name matches and all bases behind
+                // the one they got out at are clear. The one they got out at may be
+                // occupied. This translates to a >= condition compared to the >
+                // condition for other tests.
                 if o.runner != runner.runner_name {
                     return false;
                 }
 
                 if let Some(occupied_base) = last_occupied_base {
                     if occupied_base >= o.base.into() {
-                        true
+                        if updates.runners_out_may_include_batter.is_some() && runner.base == o.base.into() {
+                            ingest_logs.debug(format!(
+                                "This is an event where the batter-runner may be listed as \
+                                one of the outs. In this case, the Sizzle Udea problem means \
+                                we must assume runners can't get out at the base they were \
+                                already on. Assuming out for {} at {} does not refer to the \
+                                existing runner.",
+                                runner.runner_name, runner.base
+                            ));
+                            false
+                        } else {
+                            true
+                        }
                     } else {
                         false
                     }
@@ -2186,7 +2197,7 @@ impl<'g> Game<'g> {
             }) {
                 // Every runner out is an out (obviously), and
                 // removes the runner from the bases
-                ingest_logs.debug(format!("{} out at {}", runner.runner_name, out.base));
+                ingest_logs.debug(format!("Runner {} out at {}", runner.runner_name, out.base));
                 outs_to_add += 1;
                 return false;
             }
@@ -2228,6 +2239,7 @@ impl<'g> Game<'g> {
             }) {
                 // Every runner out is an out (obviously), and
                 // removes the runner from the bases
+                ingest_logs.debug(format!("Batter-runner {} out", batter_name));
                 outs_to_add += 1;
                 batter_out += 1;
             }
