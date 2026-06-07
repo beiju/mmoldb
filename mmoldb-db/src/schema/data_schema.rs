@@ -359,6 +359,9 @@ pub mod data {
             effect_type -> Int8,
             value -> Float8,
             tier -> Nullable<Int4>,
+            implicit -> Bool,
+            zone -> Nullable<Int4>,
+            phase -> Nullable<Int8>,
         }
     }
 
@@ -383,6 +386,7 @@ pub mod data {
             durability -> Nullable<Int4>,
             prefix_position_type -> Nullable<Int8>,
             specialized -> Nullable<Bool>,
+            corrupted -> Bool,
         }
     }
 

@@ -1466,6 +1466,30 @@ impl From<mmolb_parsing::enums::EquipmentEffectType> for TaxaEffectType {
         match value {
             mmolb_parsing::enums::EquipmentEffectType::FlatBonus => TaxaEffectType::Flat,
             mmolb_parsing::enums::EquipmentEffectType::Multiplier => TaxaEffectType::Multiplier,
+            // Other fields in the db should let the user tell when it's ZoneConditionalMultiplier
+            mmolb_parsing::enums::EquipmentEffectType::ZoneConditionalMultiplier => TaxaEffectType::Multiplier,
+        }
+    }
+}
+
+taxa! {
+    #[
+        schema = crate::taxa_schema::taxa::attribute_effect_phase,
+        table = crate::taxa_schema::taxa::attribute_effect_phase::dsl::attribute_effect_phase,
+        id_column = crate::taxa_schema::taxa::attribute_effect_phase::dsl::id,
+        derive = (Serialize, Deserialize)
+    ]
+    pub enum TaxaEffectPhase {
+        Batting = 1,
+        Pitching = 2,
+    }
+}
+
+impl From<mmolb_parsing::enums::EquipmentEffectPhase> for TaxaEffectPhase {
+    fn from(value: mmolb_parsing::enums::EquipmentEffectPhase) -> Self {
+        match value {
+            mmolb_parsing::enums::EquipmentEffectPhase::Batting => TaxaEffectPhase::Batting,
+            mmolb_parsing::enums::EquipmentEffectPhase::Pitching => TaxaEffectPhase::Pitching,
         }
     }
 }
@@ -1538,6 +1562,7 @@ pub struct Taxa {
     attribute_category_mapping: EnumMap<TaxaAttributeCategory, i64>,
     attribute_mapping: EnumMap<TaxaAttribute, i64>,
     effect_type_mapping: EnumMap<TaxaEffectType, i64>,
+    effect_phase_mapping: EnumMap<TaxaEffectPhase, i64>,
     pitcher_change_source_mapping: EnumMap<TaxaPitcherChangeSource, i64>,
     modification_type_mapping: EnumMap<TaxaModificationType, i64>,
 }
@@ -1563,6 +1588,7 @@ impl Taxa {
             attribute_category_mapping: TaxaAttributeCategory::make_id_mapping(conn)?,
             attribute_mapping: TaxaAttribute::make_id_mapping(conn)?,
             effect_type_mapping: TaxaEffectType::make_id_mapping(conn)?,
+            effect_phase_mapping: TaxaEffectPhase::make_id_mapping(conn)?,
             pitcher_change_source_mapping: TaxaPitcherChangeSource::make_id_mapping(conn)?,
             modification_type_mapping: TaxaModificationType::make_id_mapping(conn)?,
         })
@@ -1630,6 +1656,10 @@ impl Taxa {
 
     pub fn effect_type_id(&self, ty: TaxaEffectType) -> i64 {
         self.effect_type_mapping[ty]
+    }
+    
+    pub fn effect_phase_id(&self, ty: TaxaEffectPhase) -> i64 {
+        self.effect_phase_mapping[ty]
     }
 
     pub fn pitcher_change_source_id(&self, ty: TaxaPitcherChangeSource) -> i64 {
@@ -1740,6 +1770,14 @@ impl Taxa {
             .iter()
             .find(|(_, ty_id)| id == **ty_id)
             .expect("TODO Handle unknown effect type")
+            .0
+    }
+
+    pub fn effect_phase_from_id(&self, id: i64) -> TaxaEffectPhase {
+        self.effect_phase_mapping
+            .iter()
+            .find(|(_, ty_id)| id == **ty_id)
+            .expect("TODO Handle unknown effect phase")
             .0
     }
 

@@ -17,6 +17,13 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.attribute_effect_phase (id) {
+            id -> Int8,
+            name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.attribute_effect_type (id) {
             id -> Int8,
             name -> Text,
@@ -169,6 +176,7 @@ pub mod taxa {
     diesel::allow_tables_to_appear_in_same_query!(
         attribute,
         attribute_category,
+        attribute_effect_phase,
         attribute_effect_type,
         base,
         base_description_format,

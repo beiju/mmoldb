@@ -625,6 +625,7 @@ pub struct DbPlayerEquipmentVersion {
     pub durability: Option<i32>,
     pub prefix_position_type: Option<i64>,
     pub specialized: Option<bool>,
+    pub corrupted: bool,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
@@ -648,6 +649,7 @@ pub struct NewPlayerEquipmentVersion<'a> {
     pub durability: Option<i32>,
     pub prefix_position_type: Option<i64>,
     pub specialized: Option<bool>,
+    pub corrupted: bool,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
@@ -664,6 +666,9 @@ pub struct DbPlayerEquipmentEffectVersion {
     pub effect_type: i64,
     pub value: f64,
     pub tier: Option<i32>,
+    pub implicit: bool,
+    pub zone: Option<i32>,
+    pub phase: Option<i64>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
@@ -679,6 +684,9 @@ pub struct NewPlayerEquipmentEffectVersion<'a> {
     pub effect_type: i64,
     pub value: f64,
     pub tier: Option<i32>,
+    pub implicit: bool,
+    pub zone: Option<i32>,
+    pub phase: Option<i64>,
 }
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]

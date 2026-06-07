@@ -6,12 +6,28 @@ Huge thanks to Astrid for Chron, without which none of this would be possible.
 Another huge thanks to WoofyJack for `mmolb_parsing`, without which MMOLDB 
 updates would be much slower. 
 
-Contributors (project lifetime): WoofyJack, Ifhbiff, Centritide.
+Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
 Upcoming
 --------
 - Fixes event_baserunners in double plays where the batter gets out while a 
   batter with the same name is on first (the Sizzle Udea problem). 
+- Adds special handling for a new Balk reason which was too complex for the
+  default handling.
+- Adds support for Corrupted item modifiers. Turns out these were being 
+  ignored the whole time. They're now included as additional effects in
+  `data.player_equipment_effect_versions`, with the new `implicit` column
+  indicating whether they came from a Corruption Orb (the term "implicit" 
+  comes from the MMOLB API). Also, the new `corrupted` column on 
+  `data.player_equipment_versions` indicates whether the item is corrupted. Not 
+  all corrupted items have a corrupted item effect.
+- Adds support for zone- and phase-specific equipment effects. Zone-specific 
+  effects have the new `zone` column of `data.player_equipment_effect_versions`
+  set to a non-null value, and similarly for phase-specific effects. "Phase" in
+  this context means "Batting" or "Pitching".
+- Adds a new `data.modification_effects` table with a volunteer-maintained 
+  mapping of modification names to effects. Thanks to Tuesday for creating and 
+  maintaining this mapping. See docs for details.
 
 2026-05-23
 ----------

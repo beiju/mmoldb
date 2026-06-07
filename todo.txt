@@ -2,3 +2,11 @@
   the Hype team mod so that it never shows in MMOLDB.
 - Check to make sure games in the Ongoing state are re-ingested once they're done
 - Save retired players. They live in the team object and are not yet deseralizized
+- Solicit help to update data.player_versions_extended
+    - Docs need fixing, e.g. they refer to any equipment in your Accessory slot as
+      a Ring and say that the effect types are Flat, Additive, and Multiplicative
+      (now they're Flat and Multiplier)
+    - Add modified value calculation. Will require adding modification effects'
+      valid_from as breakpoints. Might need to replicate the logic from
+      data.modified_attribute_total, because using the function might cause O(n)
+      joins.

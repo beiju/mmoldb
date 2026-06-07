@@ -2,10 +2,8 @@ use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use mmolb_parsing::enums::{
-    Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, Position, Uncategorized,
-};
-use mmolb_parsing::player::{ComplexTalkStars, PlayerEquipment, TalkCategory, TalkStars};
+use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, ImplicitEquipmentEffectSource, Position, Uncategorized};
+use mmolb_parsing::player::{ComplexTalkStars, EquipmentEffect, PlayerEquipment, TalkCategory, TalkStars};
 use mmolb_parsing::{
     AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater,
     RemovedLaterResult,
@@ -324,6 +322,74 @@ fn equipment_slot_to_str(
         Ok(EquipmentSlot::Body) => "Body",
         Err(NotRecognized(value)) => value.as_str().ok_or(NonStringTypeError(value.clone()))?,
     })
+}
+
+fn chron_equipment_effect_as_new<'g>(
+    taxa: &Taxa,
+    ingest_logs: &mut VersionIngestLogs,
+    entity: &'g ChronEntity<mmolb_parsing::player::Player>,
+    index: &mut usize,
+    effect: &MaybeRecognizedResult<EquipmentEffect>,
+    equipment_slot: String,
+    implicit: bool,
+) -> Option<NewPlayerEquipmentEffectVersion<'g>> {
+    let effect = match effect {
+        Ok(effect) => effect,
+        Err(NotRecognized(value)) => {
+            ingest_logs.error(format!(
+                "Skipping unrecognized equipment effect {value:?}",
+            ));
+            return None;
+        }
+    };
+
+    let attribute = match &effect.attribute {
+        Ok(attribute) => attribute,
+        Err(NotRecognized(value)) => {
+            ingest_logs.error(format!(
+                "Skipping unrecognized equipment effect attribute {:?}",
+                value,
+            ));
+            return None;
+        }
+    };
+
+    let effect_type = match &effect.effect_type {
+        Ok(effect_type) => effect_type,
+        Err(NotRecognized(value)) => {
+            ingest_logs.error(format!(
+                "Skipping unrecognized equipment effect type {:?}",
+                value,
+            ));
+            return None;
+        }
+    };
+
+    let new_version = NewPlayerEquipmentEffectVersion {
+        mmolb_player_id: &entity.entity_id,
+        equipment_slot,
+        effect_index: *index as i32,
+        valid_from: entity.valid_from.naive_utc(),
+        valid_until: None,
+        attribute: taxa.attribute_id((*attribute).into()),
+        effect_type: taxa.effect_type_id((*effect_type).into()),
+        value: effect.value,
+        tier: effect.tier.as_ref().ok().map(|tier| *tier as i32),
+        implicit,
+        zone: effect.zone.map(|n| n as _),
+        phase: match &effect.phase {
+            None => None,
+            Some(Ok(phase)) => Some(taxa.effect_phase_id((*phase).into())),
+            Some(Err(err)) => {
+                ingest_logs.error(format!("Unrecognized equipment phase {:?}", err));
+                None
+            }
+        },
+    };
+
+    *index += 1;
+
+    Some(new_version)
 }
 
 fn chron_player_as_new<'a>(
@@ -648,13 +714,18 @@ fn chron_player_as_new<'a>(
                 for (attr, stars) in &category_talk.stars {
                     match stars {
                         TalkStars::Complex(ComplexTalkStars { attribute, .. }) => {
-                            if attribute != attr {
-                                ingest_logs.warn(format!(
-                                    "Attribute property of a talk page attribute ({}) did not \
-                                    match the object key for this attribute's object ({}).",
-                                    attribute,
-                                    <Attribute as Into<&'static str>>::into(*attr),
-                                ));
+                            match attribute {
+                                Ok(attribute) => if attribute != attr {
+                                    ingest_logs.warn(format!(
+                                        "Attribute property of a talk page attribute ({}) did not \
+                                        match the object key for this attribute's object ({}).",
+                                        attribute,
+                                        <Attribute as Into<&'static str>>::into(*attr),
+                                    ));
+                                }
+                                Err(AddedLater) => {
+                                    // This is fine, for a while ComplexTalkStars didn't have an attribute
+                                }
                             }
                         }
                         TalkStars::Intermediate { .. } => {}
@@ -989,6 +1060,54 @@ fn chron_player_as_new<'a>(
                             Err(AddedLater) => None,
                         };
 
+                        // This is the easiest way to handle gaps
+                        let mut effect_index = 0;
+                        let mut effects = match &equipment.effects {
+                            None => {
+                                // Presumably None effects is the same as empty list of effects
+                                Vec::new()
+                            }
+                            Some(effects) => effects
+                                .into_iter()
+                                .filter_map(|effect| {
+                                    chron_equipment_effect_as_new(
+                                        taxa,
+                                        &mut ingest_logs,
+                                        entity,
+                                        &mut effect_index,
+                                        effect,
+                                        equipment_slot.clone(),
+                                        false,
+                                    )
+                                })
+                                .collect_vec(),
+                        };
+
+                        if let Some(implicit) = &equipment.implicit {
+                            if implicit.source != Ok(ImplicitEquipmentEffectSource::CorruptingOrb) {
+                                ingest_logs.warn(format!("Implicit equipment effect had unknown source {:?}", implicit.source));
+                            }
+                            if !implicit.extra_fields.is_empty() {
+                                ingest_logs.warn(format!("Implicit equipment effect had extra fields {:?}", implicit.extra_fields));
+                            }
+
+                            effects.extend(
+                                implicit.effects
+                                    .iter()
+                                    .filter_map(|effect| {
+                                        chron_equipment_effect_as_new(
+                                            taxa,
+                                            &mut ingest_logs,
+                                            entity,
+                                            &mut effect_index,
+                                            &effect,
+                                            equipment_slot.clone(),
+                                            true,
+                                        )
+                                    })
+                            );
+                        }
+
                         let new_equipment = NewPlayerEquipmentVersion {
                             mmolb_player_id: &entity.entity_id,
                             equipment_slot: equipment_slot.clone(),
@@ -1013,66 +1132,14 @@ fn chron_player_as_new<'a>(
                                 "suffixes",
                             ),
                             rarity,
-                            num_effects: equipment.effects.as_ref().map_or(0, |e| e.len() as i32),
+                            // This has to be the number of effects in the DB, not the number of effects
+                            // in the object, for deletion to work properly. Those numbers can differ if
+                            // there are any effects MMOLDB skips because it lacks support for them.
+                            num_effects: effects.len() as i32,
                             durability: equipment.durability.ok().map(|d| d as i32),
                             prefix_position_type: equipment.prefix_position_type.ok().map(|pt| taxa.slot_type_id(pt.into())),
                             specialized: equipment.specialized.ok(),
-                        };
-
-                        let effects = match equipment.effects {
-                            None => {
-                                // Presumably None effects is the same as empty list of effects
-                                Vec::new()
-                            }
-                            Some(effects) => effects
-                                .into_iter()
-                                .enumerate()
-                                .filter_map(|(index, effect)| {
-                                    let effect = match effect {
-                                        Ok(effect) => effect,
-                                        Err(NotRecognized(value)) => {
-                                            ingest_logs.error(format!(
-                                                "Skipping unrecognized equipment effect {value:?}",
-                                            ));
-                                            return None;
-                                        }
-                                    };
-
-                                    let attribute = match effect.attribute {
-                                        Ok(attribute) => attribute,
-                                        Err(NotRecognized(value)) => {
-                                            ingest_logs.error(format!(
-                                                "Skipping unrecognized equipment effect attribute {:?}",
-                                                value,
-                                            ));
-                                            return None;
-                                        }
-                                    };
-
-                                    let effect_type = match effect.effect_type {
-                                        Ok(effect_type) => effect_type,
-                                        Err(NotRecognized(value)) => {
-                                            ingest_logs.error(format!(
-                                                "Skipping unrecognized equipment effect type {:?}",
-                                                value,
-                                            ));
-                                            return None;
-                                        }
-                                    };
-
-                                    Some(NewPlayerEquipmentEffectVersion {
-                                        mmolb_player_id: &entity.entity_id,
-                                        equipment_slot: equipment_slot.clone(),
-                                        effect_index: index as i32,
-                                        valid_from: entity.valid_from.naive_utc(),
-                                        valid_until: None,
-                                        attribute: taxa.attribute_id(attribute.into()),
-                                        effect_type: taxa.effect_type_id(effect_type.into()),
-                                        value: effect.value,
-                                        tier: effect.tier.ok().map(|tier| tier as i32),
-                                    })
-                                })
-                                .collect_vec(),
+                            corrupted: equipment.corrupted.is_ok_and(|c| c),
                         };
 
                         Some((new_equipment, effects))

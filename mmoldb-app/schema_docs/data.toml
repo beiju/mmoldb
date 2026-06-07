@@ -2779,6 +2779,89 @@ The modification's description as seen in the tooltip.
 """
 
 [[table]]
+name = "modification_effects"
+description = """
+A manually-maintained mapping of modification names to their effects. Unlike
+all other tables in `data`, this does not come from a MMOLB API, as there is
+no API available for modification effects. It is instead updated by hand by
+volunteers and therefore may be incorrect.
+
+This table has an entry for every effect of every modification. A single effect
+affects a single attribute. Many modifications effect multiple attributes, and
+therefore multiple entries in this table.
+
+A single effect also has a single effect type (Flat or Multiplier). If a
+modification has both a Flat and a Multiplier bonus for the same attribute,
+those would each be a separate entry in this table. As of Season 12, this has
+not yet happened.
+
+Modification effects sometimes change over time, so this table uses the
+`valid_from` and `valid_until` system to maintain mulitple versions of the
+effect.
+
+Typical use of this table first joins `data.player_modification_versions` to
+`data.modifications` using the modification id, then to
+`data.modification_effects` using the modification name.
+"""
+
+[[table.column]]
+name = "modification_name"
+type = "text"
+description = """
+The name of the modification. This is the key to use to join with
+`data.modifications`.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the effect was in effect, to our best
+estimate.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The time this version of the effect stopped being in effect, to our best
+estimate.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "attribute"
+type = "bigint"
+description = """
+The attribute that this effect affects. References `taxa.attribute`.
+"""
+
+[[table.column]]
+name = "effect_type"
+type = "bigint"
+description = """
+The type of this effect (Flat or Multiplier for now, although other values may
+be added later). References `taxa.attribute_effect_type`.
+"""
+
+[[table.column]]
+name = "value"
+type = "double precision"
+description = """
+The value of the effect. This value is stored in the 0.0-1.0 scale, which is
+what the API uses. To get to the scale used on the MMOLB player pages, multiply
+by 100 for Flat bonuses or 100% for Multiplier bonuses.
+"""
+
+[[table]]
 name = "player_versions"
 description = """
 Historical and current player information.
@@ -3566,6 +3649,15 @@ nullable_explanation = """
 """
 
 [[table.column]]
+name = "corrupted"
+type = "boolean"
+description = """
+Whether this item is corrupted (has had a Corruption Orb used on it). Corrupted
+items sometimes, but not always, have one or more `implicit`
+`data.player_equipment_effect_versions`.
+"""
+
+[[table.column]]
 name = "num_effects"
 type = "integer"
 description = """
@@ -3699,6 +3791,43 @@ determines the range its `value` can occupy. Infusing an effect increases its
 """
 nullable_explanation = """
 `null` for item versions from before Season 10.
+"""
+
+[[table.column]]
+name = "implicit"
+type = "boolean"
+description = """
+Whether this effect comes from the `'Implicit'` section of the equipment
+object. As of Season 12, this always indicates that the effect is a Corrupted
+effect, but that may not always be the case. Also, as of Season 12, implicit
+effects have never appeared on the new, post-season-10 style of equipment.
+"""
+
+[[table.column]]
+name = "zone"
+type = "integer"
+description = """
+If this effect is Zone-specific, the Zone in which it applies. See
+documentation for `data.events` column `pitch_zone` for Zone numbers.
+"""
+nullable_explanation = """
+`null` if this effect is not Zone-specific.
+
+As of s12, all Zone-specific effects are also Phase-specific and vice versa.
+"""
+
+[[table.column]]
+name = "phase"
+type = "bigint"
+description = """
+If this effect is Phase-specific, the Phase in which it applies. In this
+context, "Phase" means whether the player is pitching or batting. References
+`taxa.attribute_effect_phase`.
+"""
+nullable_explanation = """
+`null` if this effect is not Phase-specific.
+
+As of s12, all Phase-specific effects are also Zone-specific and vice versa.
 """
 
 [[table]]
