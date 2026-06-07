@@ -28,6 +28,8 @@ Upcoming
 - Adds a new `data.modification_effects` table with a volunteer-maintained 
   mapping of modification names to effects. Thanks to Tuesday for creating and 
   maintaining this mapping. See docs for details.
+- Adds function `data.modified_attribute_total` which computes a player's 
+  modified attribute total including all unconditional 
 
 2026-05-23
 ----------

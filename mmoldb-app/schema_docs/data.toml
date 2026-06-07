@@ -4505,6 +4505,45 @@ The value of this attribute after accounting for items and modifications
 
 This uses the 0.0-1.0 range used in the MMOLB back-end. Multiply this value by
 100 to get the number displayed on the Player page.
+
+You can compute the theoretical value of this column, counting the effects of
+all known modifications and equipment, with the function:
+```
+data.modified_attribute_total(
+    player_id text,
+    attribute_id bigint,
+    at_time timestamp without time zone
+)
+```
+
+The arguments are the player's MMOLB ID, the attribute you're interested in
+represented as a `taxa.attribute` id, and the timestamp at which you want to
+compute the value. Passing `null` for the timestamp requests the current value.
+
+This function works for any player version as long as `base_total` exists. It
+always computes the value from components, even when `modified_total` also
+exists. Note that there have been several MMOLB bugs that have caused
+`modified_total` to be computed incorrectly in the API. The `modified_total`
+column always reflects what the API returned, even if it's incorrect. The
+intent of the `data.modified_attribute_total` function is to always return the
+correct value, but it can take us a while to catch up with changes to MMOLB.
+
+Unlike the player page, `data.modified_attribute_total` does not include the
+effects of pending level ups. It represents the attribute value that will
+actually be used during games, excluding conditional effects. Effects that rely
+on game state (e.g. "10% increased Pitching attributes when a runner is in
+scoring position"), pitch zone (e.g. "+100% Discipline in Zone 5"), etc. are
+not included. (Conditional effects are also excluded from `modified_total` and
+the player page.)
+
+This function relies on a manually-maintained list of modification effects, as
+MMOLB doesn't provide an API for us for those. We'll do our best to keep this
+up to date, but we can't promise it will always be correct. See
+`data.modification_effects` for the current list of modification effects.
+
+If you find a mismatch between this value and the value shown on the player
+page, and you're sure the mismatch is not caused by pending level-ups, please
+let us know in the MMOLB discord or on Github (linked above).
 """
 nullable_explanation = """
 `null` for reports from before modified totals were added, or after they were

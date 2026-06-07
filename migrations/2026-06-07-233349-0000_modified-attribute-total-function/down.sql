@@ -1,0 +1,1 @@
+drop function data.modified_attribute_total;

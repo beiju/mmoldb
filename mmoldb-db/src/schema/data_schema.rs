@@ -281,12 +281,12 @@ pub mod data {
     }
 
     diesel::table! {
-        data.modification_effects (modification_name, valid_from, attribute, bonus_type) {
+        data.modification_effects (modification_name, valid_from, attribute, effect_type) {
             modification_name -> Text,
             valid_from -> Timestamp,
             valid_until -> Nullable<Timestamp>,
             attribute -> Int8,
-            bonus_type -> Int8,
+            effect_type -> Int8,
             value -> Float8,
         }
     }
