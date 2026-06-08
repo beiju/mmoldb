@@ -29,7 +29,8 @@ Upcoming
   mapping of modification names to effects. Thanks to Tuesday for creating and 
   maintaining this mapping. See docs for details.
 - Adds function `data.modified_attribute_total` which computes a player's 
-  modified attribute total including all unconditional 
+  modified attribute total. See docs for `modified_total` in 
+  `data.player_report_attribute_versions` for details.
 
 2026-05-23
 ----------
