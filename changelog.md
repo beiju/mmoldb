@@ -8,7 +8,7 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
-Upcoming
+2026-06-21
 --------
 - Fixes event_baserunners in double plays where the batter gets out while a 
   batter with the same name is on first (the Sizzle Udea problem). 
