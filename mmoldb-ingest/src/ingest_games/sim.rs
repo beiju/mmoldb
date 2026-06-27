@@ -3202,16 +3202,17 @@ impl<'g> Game<'g> {
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::NowBatting]
                 ParsedEventMessage::NowBatting { batter, stats, player_swept_away } => {
-                    if self.batter_stats(batter).is_none() {
+                    if let Some(psa) = player_swept_away {
+                        // TODO add a table for flooding sweeps
+                        ingest_logs.info(format!(
+                            "{psa} was swept away. Flooding sweeps are not currently stored. \
+                            I'm working on it.",
+                        ));
+                    } else if self.batter_stats(batter).is_none() {
                         ingest_logs.info(format!(
                             "Batter {batter} is new to this game. Assuming they were swapped in \
                             by an augment.",
                         ));
-                    }
-
-                    // TODO Handle this properly
-                    if let Some(psa) = player_swept_away {
-                        ingest_logs.error(format!("Need to handle player {psa} being swept away..."));
                     }
 
                     let team = self.batting_team_mut();
