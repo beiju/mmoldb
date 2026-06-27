@@ -1211,6 +1211,7 @@ fn is_pitchless_pitch(ty: ParsedEventMessageDiscriminants) -> bool {
         || ty == ParsedEventMessageDiscriminants::Balk
         || ty == ParsedEventMessageDiscriminants::FallingStar
         || ty == ParsedEventMessageDiscriminants::Party
+        || ty == ParsedEventMessageDiscriminants::PartyFriendship
 }
 
 pub enum EventForTable<StrT: Clone> {
@@ -2917,7 +2918,7 @@ impl<'g> Game<'g> {
 
                 if !is_pitchless_pitch(event.discriminant()) {
                     if raw_event.pitch.is_none() {
-                        ingest_logs.error("Event is mising a pitch");
+                        ingest_logs.error("Event is missing a pitch");
                     } else if pitch.is_none() {
                         ingest_logs.error("Pitch type wasn't recognized");
                     }
@@ -3246,6 +3247,23 @@ impl<'g> Game<'g> {
                             batter_attribute: (*batter_attribute).into(),
                             batter_durability_loss,
                         }))
+                    },
+                    [ParsedEventMessageDiscriminants::PartyFriendship]
+                    ParsedEventMessage::PartyFriendship { pitcher_name, batter_name: event_batter_name } => {
+                        self.check_batter(batter_name, event_batter_name, ingest_logs);
+
+                        if pitcher_name != &self.defending_team().active_pitcher.name {
+                            ingest_logs.warn(format!(
+                                "Unexpected pitcher name: Expected {}, but saw {}",
+                                self.defending_team().active_pitcher.name, pitcher_name,
+                            ));
+                        }
+
+                        ingest_logs.info(format!(
+                            "{pitcher_name} and {batter_name} are now friends. This isn't stored \
+                            anywhere in the database yet, but it's on my todo list.",
+                        ));
+                        None
                     },
                 )
             }
