@@ -3982,8 +3982,8 @@ impl<'g> Game<'g> {
                         self.away.team_emoji == self.home.team_emoji &&
                         self.away.team_name == self.home.team_name
                     ) {
-                        self.away_team_earned_coins = Some(*away_income as i32);
-                        self.home_team_earned_coins = Some(*home_income as i32);
+                        *self.away_team_earned_coins.get_or_insert(0) += *away_income as i32;
+                        *self.home_team_earned_coins.get_or_insert(0) += *home_income as i32;
                     } else {
                         ingest_logs.info(format!(
                             "Home team {} {} exactly matches away team {} {}, so we can't record \
@@ -4010,8 +4010,8 @@ impl<'g> Game<'g> {
                             winning_team.emoji == self.home.team_emoji &&
                             winning_team.name == self.home.team_name {
                             // Then losing is away and winning is home
-                            self.away_team_earned_coins = Some(*losing_tokens as i32);
-                            self.home_team_earned_coins = Some(*winning_tokens as i32);
+                            *self.away_team_earned_coins.get_or_insert(0) += *losing_tokens as i32;
+                            *self.home_team_earned_coins.get_or_insert(0) += *winning_tokens as i32;
                             self.away_team_photo_contest_top_scorer = Some(losing_player);
                             self.home_team_photo_contest_top_scorer = Some(winning_player);
                             self.away_team_photo_contest_score = Some(*losing_score as i32);
@@ -4021,8 +4021,8 @@ impl<'g> Game<'g> {
                             losing_team.emoji == self.home.team_emoji &&
                             losing_team.name == self.home.team_name {
                             // Then winning is away and losing is home
-                            self.away_team_earned_coins = Some(*winning_tokens as i32);
-                            self.home_team_earned_coins = Some(*losing_tokens as i32);
+                            *self.away_team_earned_coins.get_or_insert(0) += *winning_tokens as i32;
+                            *self.home_team_earned_coins.get_or_insert(0) += *losing_tokens as i32;
                             self.away_team_photo_contest_top_scorer = Some(winning_player);
                             self.home_team_photo_contest_top_scorer = Some(losing_player);
                             self.away_team_photo_contest_score = Some(*winning_score as i32);
@@ -4147,12 +4147,85 @@ impl<'g> Game<'g> {
                     }
                     None
                 },
+
+                [ParsedEventMessageDiscriminants::EndGameIncome]
+                ParsedEventMessage::EndGameIncome { winning_team, winning_team_income, losing_team, losing_team_income } => {
+                    if self.state.home_score > self.state.away_score {
+                        ingest_logs.info("Winning team should be the home team");
+                        if self.home_team().team_emoji != winning_team.emoji {
+                            ingest_logs.warn(format!(
+                                "Winning team emoji from event text ({}) did not match stored home team emoji ({})",
+                                winning_team.emoji,
+                                self.home_team().team_emoji,
+                            ));
+                        }
+                        if self.home_team().team_name != winning_team.name {
+                            ingest_logs.warn(format!(
+                                "Winning team name from event text ({}) did not match stored home team name ({})",
+                                winning_team.name,
+                                self.home_team().team_name,
+                            ));
+                        }
+                        if self.away_team().team_emoji != losing_team.emoji {
+                            ingest_logs.warn(format!(
+                                "Losing team emoji from event text ({}) did not match stored away team emoji ({})",
+                                losing_team.emoji,
+                                self.away_team().team_emoji,
+                            ));
+                        }
+                        if self.away_team().team_name != losing_team.name {
+                            ingest_logs.warn(format!(
+                                "Losing team name from event text ({}) did not match stored away team name ({})",
+                                losing_team.name,
+                                self.away_team().team_name,
+                            ));
+                        }
+
+                        *self.home_team_earned_coins.get_or_insert(0) += *winning_team_income as i32;
+                        *self.away_team_earned_coins.get_or_insert(0) += *losing_team_income as i32;
+                    } else {
+                        ingest_logs.info("Winning team should be the away team");
+                        if self.away_team().team_emoji != winning_team.emoji {
+                            ingest_logs.warn(format!(
+                                "Winning team emoji from event text ({}) did not match stored away team emoji ({})",
+                                winning_team.emoji,
+                                self.away_team().team_emoji,
+                            ));
+                        }
+                        if self.away_team().team_name != winning_team.name {
+                            ingest_logs.warn(format!(
+                                "Winning team name from event text ({}) did not match stored away team name ({})",
+                                winning_team.name,
+                                self.away_team().team_name,
+                            ));
+                        }
+                        if self.home_team().team_emoji != losing_team.emoji {
+                            ingest_logs.warn(format!(
+                                "Losing team emoji from event text ({}) did not match stored home team emoji ({})",
+                                losing_team.emoji,
+                                self.home_team().team_emoji,
+                            ));
+                        }
+                        if self.home_team().team_name != losing_team.name {
+                            ingest_logs.warn(format!(
+                                "Losing team name from event text ({}) did not match stored home team name ({})",
+                                losing_team.name,
+                                self.home_team().team_name,
+                            ));
+                        }
+
+                        *self.away_team_earned_coins.get_or_insert(0) += *winning_team_income as i32;
+                        *self.home_team_earned_coins.get_or_insert(0) += *losing_team_income as i32;
+                    }
+                    None
+                },
+
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for
                 [ParsedEventMessageDiscriminants::KnownBug]
                 ParsedEventMessage::KnownBug { bug: KnownBug::NoOneProspers } => {
-                    self.away_team_earned_coins = Some(0);
-                    self.home_team_earned_coins = Some(0);
+                    self.away_team_earned_coins.get_or_insert(0);
+                    self.home_team_earned_coins.get_or_insert(0);
                     None
                 }
             ),
