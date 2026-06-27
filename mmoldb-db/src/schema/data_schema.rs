@@ -178,6 +178,7 @@ pub mod data {
             fielder_name -> Text,
             fielder_slot -> Int8,
             play_order -> Int4,
+            was_double_trouble -> Nullable<Bool>,
         }
     }
 
@@ -216,6 +217,7 @@ pub mod data {
             errors_after -> Int4,
             fair_ball_fielder_name -> Nullable<Text>,
             home_run_distance -> Nullable<Int4>,
+            is_surprise_strike -> Nullable<Bool>,
         }
     }
 

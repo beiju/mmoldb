@@ -161,6 +161,7 @@ pub struct NewEvent<'a> {
     pub batter_count: i32,
     pub batter_subcount: i32,
     pub home_run_distance: Option<i32>,
+    pub is_surprise_strike: Option<bool>,
 }
 #[derive(Queryable, Selectable, Identifiable)]
 #[diesel(table_name = crate::data_schema::data::events)]
@@ -199,6 +200,7 @@ pub struct DbEvent {
     pub batter_count: i32,
     pub batter_subcount: i32,
     pub home_run_distance: Option<i32>,
+    pub is_surprise_strike: Option<bool>,
 }
 
 #[derive(Insertable)]
@@ -267,6 +269,7 @@ pub struct NewFielder<'a> {
     pub fielder_name: &'a str,
     pub fielder_slot: i64,
     pub play_order: i32,
+    pub was_double_trouble: Option<bool>,
 }
 
 #[derive(Identifiable, Queryable, Selectable, Associations)]
@@ -279,6 +282,7 @@ pub struct DbFielder {
     pub fielder_name: String,
     pub fielder_slot: i64,
     pub play_order: i32,
+    pub was_double_trouble: Option<bool>,
 }
 
 #[derive(Queryable, Selectable, Serialize)]

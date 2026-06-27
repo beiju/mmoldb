@@ -1,3 +1,14 @@
+Deserialize support added:
+All Weather now grants half as many Tokens as Prosperity Weather.
+Prosperity Weather now grants twice as many tokens as before.
+Added support for 5 new Modifcations: Double Trouble, Surprise Strike
+
+No support yet:
+Added Flood Weather: During Flood Weather, Players may occasionally be swept away by the rising waters. A Bench Player will take the place of the affected Player. Swept away Batters will return for their next Plate Appearance, and Pitchers return at the start of the next Inning.
+Reworked Party Weather: During Party Weather, Players may occasionally Party. Players that Party will become Friends, performing better when playing in any game their Friend is in. You can check which Players are Friends with any given Player on their Player page.
+Added support for 5 new Modifcations: Jetpack, Assassin, and Ascetic.
+
+
 - Add team mods, now that the Patreon-related team mods exist. Special-case
   the Hype team mod so that it never shows in MMOLDB.
 - Check to make sure games in the Ongoing state are re-ingested once they're done

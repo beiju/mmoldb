@@ -29,6 +29,7 @@ pub struct EventDetailRunner<StrT: Clone> {
 pub struct EventDetailFielder<StrT: Clone> {
     pub name: StrT,
     pub slot: TaxaSlot,
+    pub was_double_trouble: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +76,8 @@ pub struct EventDetail<StrT: Clone> {
     pub door_prizes: Vec<DoorPrize<StrT>>,
     pub wither: Option<WitherStruggle<StrT>>,
     pub efflorescences: Vec<Efflorescence<StrT>>,
+
+    pub is_surprise_strike: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -190,6 +193,9 @@ pub enum ToParsedError<'g> {
 
     #[error("{event_type} must have a balk reason")]
     MissingBalkReason { event_type: TaxaEventType },
+
+    #[error("Event had {count} Double Trouble procs, expected at most one")]
+    MultipleDoubleTrouble { count: usize },
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -222,6 +228,16 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
 
     fn fielders(&self) -> Vec<PlacedPlayer<&str>> {
         self.fielders_iter().collect()
+    }
+
+    fn double_trouble(&self) -> Result<Option<PlacedPlayer<&str>>, ToParsedError<'_>> {
+        self.fielders.iter()
+            .filter(|f| f.was_double_trouble.unwrap_or(false))
+            .at_most_one()
+            .map_err(|err| ToParsedError::MultipleDoubleTrouble {
+                count: err.count(),
+            })
+            .map(|opt| opt.map(placed_player_as_ref))
     }
 
     fn steals_iter(&self) -> impl Iterator<Item = BaseSteal<&str>> {
@@ -409,6 +425,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .iter()
                     .map(Efflorescence::to_ref)
                     .collect(),
+                // TODO one the database is rebuilt, a null surprise_strike for a CalledStrike event is an error
+                surprise_strike: self.is_surprise_strike.unwrap_or(false),
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -434,6 +452,8 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .iter()
                     .map(Efflorescence::to_ref)
                     .collect(),
+                // TODO one the database is rebuilt, a null surprise_strike for a SwingingStrike event is an error
+                surprise_strike: self.is_surprise_strike.unwrap_or(false),
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -690,6 +710,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                             advances: self.advances(true),
                             sacrifice,
                             ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                            double_trouble: self.double_trouble()?,
                         }
                     }
                     _ => {

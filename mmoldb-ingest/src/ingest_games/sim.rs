@@ -614,6 +614,7 @@ struct EventDetailBuilder<'g> {
     door_prizes: Vec<DoorPrize<&'g str>>,
     wither: Option<WitherStruggle<&'g str>>,
     efflorescence: Vec<Efflorescence<&'g str>>,
+    is_surprise_strike: Option<bool>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
@@ -733,12 +734,13 @@ impl<'g> EventDetailBuilder<'g> {
         self.fielders = vec![EventDetailFielder {
             name: fielder.name,
             slot: self.placed_player_slot(fielder, ingest_logs)?,
+            was_double_trouble: None,
         }];
 
         Ok(self)
     }
 
-    fn fielders(
+    fn fielders_no_double_trouble(
         mut self,
         fielders: impl IntoIterator<Item = PlacedPlayer<&'g str>>,
         ingest_logs: &mut IngestLogs,
@@ -751,7 +753,27 @@ impl<'g> EventDetailBuilder<'g> {
             .into_iter()
             .map(|f| {
                 self.placed_player_slot(f, ingest_logs)
-                    .map(|slot| EventDetailFielder { name: f.name, slot })
+                    .map(|slot| EventDetailFielder { name: f.name, slot, was_double_trouble: None })
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(self)
+    }
+
+    fn fielders(
+        mut self,
+        fielders: impl IntoIterator<Item = (PlacedPlayer<&'g str>, bool)>,
+        ingest_logs: &mut IngestLogs,
+    ) -> Result<Self, SimEventError> {
+        if !self.fielders.is_empty() {
+            warn!("EventDetailBuilder overwrote existing fielders");
+        }
+
+        self.fielders = fielders
+            .into_iter()
+            .map(|(f, was_double_trouble)| {
+                self.placed_player_slot(f, ingest_logs)
+                    .map(|slot| EventDetailFielder { name: f.name, slot, was_double_trouble: Some(was_double_trouble) })
             })
             .collect::<Result<_, _>>()?;
 
@@ -850,6 +872,11 @@ impl<'g> EventDetailBuilder<'g> {
     fn runner_on_this_event_is_earned(&self, is_error: bool) -> bool {
         self.prev_game_state
             .runner_on_this_event_is_earned(is_error)
+    }
+
+    fn surprise_strike(mut self, is_surprise_strike: Option<bool>) -> Self {
+        self.is_surprise_strike = is_surprise_strike;
+        self
     }
 
     pub fn build_some(
@@ -1163,6 +1190,7 @@ impl<'g> EventDetailBuilder<'g> {
             door_prizes: self.door_prizes,
             wither: self.wither,
             efflorescences: self.efflorescence,
+            is_surprise_strike: self.is_surprise_strike,
         }
     }
 }
@@ -1847,6 +1875,7 @@ impl<'g> Game<'g> {
             door_prizes: Vec::new(),
             wither: None,
             efflorescence: Vec::new(),
+            is_surprise_strike: None,
         }
     }
 
@@ -2655,6 +2684,12 @@ impl<'g> Game<'g> {
                                 new_pitcher_slot: Some(arriving_pitcher.place.into()),
                             }))
                         }
+                        Some(StartOfInningPitcher::Flooded {swept_pitcher_name,incoming_pitcher_name,preemption}) => {
+                            ingest_logs.critical(
+                                format!("Need to save sweep of {swept_pitcher_name} for {incoming_pitcher_name} with preemption {preemption:?} somehow")
+                            );
+                            None
+                        }
                     };
 
                     // Add the automatic runner to our state without emitting a db event for it.
@@ -2785,7 +2820,7 @@ impl<'g> Game<'g> {
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence, surprise_strike } => {
                         self.state.count_strikes += 1;
                         self.check_count(*count, ingest_logs);
 
@@ -2809,6 +2844,7 @@ impl<'g> Game<'g> {
                             .steals(steals.clone())
                             .wither(wither.clone())
                             .efflorescence(efflorescence.clone())
+                            .surprise_strike(Some(*surprise_strike))
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
                                 StrikeType::Swinging => { TaxaEventType::SwingingStrike }
@@ -3081,12 +3117,17 @@ impl<'g> Game<'g> {
             EventContext::ExpectNowBatting => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::NowBatting]
-                ParsedEventMessage::NowBatting { batter, stats } => {
+                ParsedEventMessage::NowBatting { batter, stats, player_swept_away } => {
                     if self.batter_stats(batter).is_none() {
                         ingest_logs.info(format!(
                             "Batter {batter} is new to this game. Assuming they were swapped in \
                             by an augment.",
                         ));
+                    }
+
+                    // TODO Handle this properly
+                    if let Some(psa) = player_swept_away {
+                        ingest_logs.error(format!("Need to handle player {psa} being swept away..."));
                     }
 
                     let team = self.batting_team_mut();
@@ -3183,7 +3224,7 @@ impl<'g> Game<'g> {
                         .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .is_toasty(*amazing)
-                        .fielders(fielders.clone(), ingest_logs)?
+                        .fielders_no_double_trouble(fielders.clone(), ingest_logs)?
                         .runner_changes(advances.clone(), scores.clone())
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::GroundedOut)
                 },
@@ -3313,11 +3354,11 @@ impl<'g> Game<'g> {
                         .ejection(ejection.clone())
                         .runner_changes(advances.clone(), scores.clone())
                         .add_out(*out_two)
-                        .fielders(fielders.clone(), ingest_logs)?
+                        .fielders_no_double_trouble(fielders.clone(), ingest_logs)?
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::DoublePlay)
                 },
                 [ParsedEventMessageDiscriminants::DoublePlayGrounded]
-                ParsedEventMessage::DoublePlayGrounded { batter, advances, scores, out_one, out_two, fielders, sacrifice, ejection } => {
+                ParsedEventMessage::DoublePlayGrounded { batter, advances, scores, out_one, out_two, fielders, sacrifice, ejection, double_trouble } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
 
@@ -3337,6 +3378,17 @@ impl<'g> Game<'g> {
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
 
+                    let mut double_trouble = double_trouble.clone();
+
+                    let fielders_with_double_trouble = fielders.into_iter()
+                        .map(|f| {
+                            if let Some(_) = double_trouble.take_if(|dt| dt == f) {
+                                (f.clone(), true)
+                            } else {
+                                (f.clone(), false)
+                            }
+                        });
+
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
@@ -3344,7 +3396,7 @@ impl<'g> Game<'g> {
                         .runner_changes(advances.clone(), scores.clone())
                         .add_out(*out_one)
                         .add_out(*out_two)
-                        .fielders(fielders.clone(), ingest_logs)?
+                        .fielders(fielders_with_double_trouble, ingest_logs)?
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::DoublePlay)
                 },
                 [ParsedEventMessageDiscriminants::ForceOut]
@@ -3388,7 +3440,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     detail_builder
-                        .fielders(fielders.clone(), ingest_logs)?
+                        .fielders_no_double_trouble(fielders.clone(), ingest_logs)?
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::ForceOut)
                 },
                 [ParsedEventMessageDiscriminants::ReachOnFieldersChoice]
@@ -3421,7 +3473,7 @@ impl<'g> Game<'g> {
                                 .runner_changes(advances.clone(), scores.clone())
                                 .add_runner(batter, TaxaBase::First)
                                 .add_out(*out)
-                                .fielders(fielders.clone(), ingest_logs)?
+                                .fielders_no_double_trouble(fielders.clone(), ingest_logs)?
                                 .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
                         }
                         FieldingAttempt::Error { fielder, error } => {
@@ -3456,7 +3508,7 @@ impl<'g> Game<'g> {
                                 .ejection(ejection.clone())
                                 .runner_changes(advances.clone(), scores.clone())
                                 .add_runner(batter, TaxaBase::First)
-                                .fielders(fielders.clone(), ingest_logs)?
+                                .fielders_no_double_trouble(fielders.clone(), ingest_logs)?
                                 .fielding_error_type((*error).into())
                                 .build_some(self, batter_name, ingest_logs, TaxaEventType::ErrorOnFieldersChoice)
                         }
@@ -3498,7 +3550,7 @@ impl<'g> Game<'g> {
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
                         .add_runner(batter, TaxaBase::First)
-                        .fielders(fielders, ingest_logs)?
+                        .fielders_no_double_trouble(fielders, ingest_logs)?
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
                 },
             ),

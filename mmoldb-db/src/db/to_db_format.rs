@@ -55,6 +55,7 @@ pub fn event_to_row<'e>(
         batter_count: event.batter_count,
         batter_subcount: event.batter_subcount,
         home_run_distance: event.home_run_distance,
+        is_surprise_strike: event.is_surprise_strike,
     }
 }
 
@@ -96,6 +97,7 @@ pub fn event_to_fielders<'e>(
             fielder_name: fielder.name,
             fielder_slot: taxa.slot_id(fielder.slot),
             play_order: i as i32,
+            was_double_trouble: fielder.was_double_trouble,
         })
         .collect()
 }
@@ -748,6 +750,7 @@ pub fn row_to_event<'e>(
             EventDetailFielder {
                 name: f.fielder_name,
                 slot: taxa.slot_from_id(f.fielder_slot).into(),
+                was_double_trouble: f.was_double_trouble,
             }
         })
         .collect();
@@ -1112,5 +1115,6 @@ pub fn row_to_event<'e>(
         door_prizes,
         wither,
         efflorescences,
+        is_surprise_strike: event.is_surprise_strike,
     })
 }
