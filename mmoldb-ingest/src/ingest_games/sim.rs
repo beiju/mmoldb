@@ -6,12 +6,7 @@ use mmolb_parsing::enums::{
     TopBottom,
 };
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{
-    BaseSteal, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement,
-    EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug,
-    ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut,
-    SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle,
-};
+use mmolb_parsing::parsed_event::{BaseSteal, BasicPitcherSwap, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle};
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
@@ -360,6 +355,7 @@ pub struct TeamInGame<'g> {
     // it to None out of convenience, because it might lead to runtime
     // errors.
     active_pitcher: BestEffortSlottedPlayer<&'g str>,
+    currently_swept_pitcher_name: Option<&'g str>,
     batter_stats: HashMap<&'g str, BatterStats>,
     fielder_locations: HashMap<TaxaFielderLocation, &'g str>,
     pitcher_count: i32,
@@ -1507,6 +1503,7 @@ impl<'g> Game<'g> {
                         SimStartupError::FailedToParseStartingPitcher(game_data.away_sp.clone())
                     })?,
                 },
+                currently_swept_pitcher_name: None,
                 batter_stats: away_batter_stats,
                 fielder_locations: away_fielder_locations,
                 pitcher_count: 0,
@@ -1526,6 +1523,7 @@ impl<'g> Game<'g> {
                         SimStartupError::FailedToParseStartingPitcher(game_data.home_sp.clone())
                     })?,
                 },
+                currently_swept_pitcher_name: None,
                 batter_stats: home_batter_stats,
                 fielder_locations: home_fielder_locations,
                 pitcher_count: 0,
@@ -2693,6 +2691,15 @@ impl<'g> Game<'g> {
                             None
                         }
                         Some(StartOfInningPitcher::Same { emoji, name }) => {
+                            // TODO Check pitcher fielding events to see if this replacement lasts through the next half-inning
+                            if let Some(swept_pitcher) = self.defending_team_mut().currently_swept_pitcher_name.take() {
+                                // swept_pitcher should match name, but that'll be checked later in the event
+                                ingest_logs.info(format!(
+                                    "Restoring previously-swept pitcher {swept_pitcher}"
+                                ));
+                                self.defending_team_mut().active_pitcher.name = swept_pitcher;
+                            }
+
                             ingest_logs.info(format!(
                                 "Not incrementing pitcher_count on returning pitcher {} {}",
                                 emoji, name
@@ -2767,11 +2774,61 @@ impl<'g> Game<'g> {
                                 new_pitcher_slot: Some(arriving_pitcher.place.into()),
                             }))
                         }
-                        Some(StartOfInningPitcher::Flooded {swept_pitcher_name,incoming_pitcher_name,preemption}) => {
-                            ingest_logs.critical(
-                                format!("Need to save sweep of {swept_pitcher_name} for {incoming_pitcher_name} with preemption {preemption:?} somehow")
-                            );
-                            None
+                        Some(StartOfInningPitcher::Flooded { swept_pitcher_name, incoming_pitcher_name, preemption }) => {
+                            if *swept_pitcher_name != self.defending_team().active_pitcher.name {
+                                ingest_logs.warn(format!(
+                                    "Pitcher who got swept away, {}, was not the active pitcher, {}",
+                                    swept_pitcher_name,
+                                    self.defending_team().active_pitcher,
+                                ));
+                            }
+
+                            if let Some(BasicPitcherSwap { leaving_pitcher, arriving_pitcher}) = preemption {
+                                ingest_logs.info(format!(
+                                    "Incrementing pitcher count, not because {swept_pitcher_name} \
+                                    was swept, but because {} was replaced by {}",
+                                    leaving_pitcher,
+                                    arriving_pitcher,
+                                ));
+
+                                Some(EventForTable::PitcherChange(PitcherChange {
+                                    game_event_index,
+                                    previous_game_event_index: self.last_game_event_index_with_event_detail,
+                                    source: TaxaPitcherChangeSource::InningChange,
+                                    inning: self.state.inning_number,
+                                    top_of_inning: self.state.inning_half.is_top(),
+                                    pitcher_count: self.defending_team().pitcher_count,
+                                    // Danny has confirmed that the semantics here is that the swept-away
+                                    // pitcher is still the one being replaced. It makes me a little sad
+                                    // that it's not considered to be a replacement of the player who just
+                                    // came in to replace the one who got swept away, but fealty to the
+                                    // game is more important than goofs.
+                                    // https://discord.com/channels/1136709081319604324/1519957460880851034/1520068212153253898
+                                    pitcher_name: leaving_pitcher.name,
+                                    pitcher_slot: leaving_pitcher.place.into(),
+                                    new_pitcher_name: Some(arriving_pitcher.name),
+                                    new_pitcher_slot: Some(arriving_pitcher.place.into()),
+                                }))
+                            } else {
+                                ingest_logs.info(
+                                    "Not incrementing pitcher_count on pitcher sweep — pitcher_count only \
+                                    increments for swaps the manager calls for",
+                                );
+
+                                if let Some(currently_swept_pitcher_name) = self.defending_team().currently_swept_pitcher_name {
+                                    ingest_logs.error(format!(
+                                        "There was already an active pitcher swept away ({}) when \
+                                        this pitcher ({}) was swept. They will be overwritten.",
+                                        currently_swept_pitcher_name,
+                                        self.defending_team().active_pitcher,
+                                    ));
+                                }
+
+                                self.defending_team_mut().currently_swept_pitcher_name = Some(self.defending_team().active_pitcher.name);
+                                self.defending_team_mut().active_pitcher.name = incoming_pitcher_name;
+
+                                None
+                            }
                         }
                     };
 
