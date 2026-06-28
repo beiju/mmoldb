@@ -2644,6 +2644,31 @@ impl<'g> Game<'g> {
         }
     }
 
+    fn fielders_with_double_trouble(
+        fielders: &Vec<PlacedPlayer<&'g str>>,
+        mut double_trouble: Option<&PlacedPlayer<&str>>,
+        ingest_logs: &mut IngestLogs,
+    ) -> Vec<(PlacedPlayer<&'g str>, bool)> {
+        let fielders_with_double_trouble = fielders.into_iter()
+            .map(|f| {
+                // This will take the first matching player, even if multiple players match
+                if let Some(_) = double_trouble.take_if(|dt| *dt == f) {
+                    (f.clone(), true)
+                } else {
+                    (f.clone(), false)
+                }
+            })
+            .collect();
+
+        if let Some(player) = double_trouble {
+            ingest_logs.error(format!(
+                "Double trouble player {player} didn't match any fielder"
+            ));
+        }
+
+        fielders_with_double_trouble
+    }
+
     pub fn next(
         &mut self,
         game_event_index: usize,
@@ -3521,7 +3546,7 @@ impl<'g> Game<'g> {
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::HomeRun)
                 },
                 [ParsedEventMessageDiscriminants::DoublePlayCaught]
-                ParsedEventMessage::DoublePlayCaught { batter, advances, scores, out_two, fair_ball_type, fielders, ejection } => {
+                ParsedEventMessage::DoublePlayCaught { batter, advances, scores, out_two, fair_ball_type, fielders, ejection, double_trouble } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
                     self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
@@ -3541,12 +3566,14 @@ impl<'g> Game<'g> {
                     self.finish_pa(batter_name);  // Must be after all outs are added
                     self.handle_ejection(ejection, ingest_logs);
 
+                    let fielders_with_double_trouble = Self::fielders_with_double_trouble(fielders, double_trouble.as_ref(), ingest_logs);
+
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
                         .ejection(ejection.clone())
                         .runner_changes(advances.clone(), scores.clone())
                         .add_out(*out_two)
-                        .fielders_no_double_trouble(fielders.clone(), ingest_logs)?
+                        .fielders(fielders_with_double_trouble, ingest_logs)?
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::DoublePlay)
                 },
                 [ParsedEventMessageDiscriminants::DoublePlayGrounded]
@@ -3570,16 +3597,7 @@ impl<'g> Game<'g> {
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
 
-                    let mut double_trouble = double_trouble.clone();
-
-                    let fielders_with_double_trouble = fielders.into_iter()
-                        .map(|f| {
-                            if let Some(_) = double_trouble.take_if(|dt| dt == f) {
-                                (f.clone(), true)
-                            } else {
-                                (f.clone(), false)
-                            }
-                        });
+                    let fielders_with_double_trouble = Self::fielders_with_double_trouble(fielders, double_trouble.as_ref(), ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())

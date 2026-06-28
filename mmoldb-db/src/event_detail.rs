@@ -692,6 +692,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                         scores,
                         advances: self.advances(false),
                         ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                        double_trouble: self.double_trouble()?,
                     },
                     [(name_one, base_one), (name_two, base_two)] => {
                         let sacrifice = self.described_as_sacrifice.ok_or_else(|| {
