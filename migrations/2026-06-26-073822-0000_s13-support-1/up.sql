@@ -4,7 +4,8 @@ alter table data.events
 alter table data.event_fielders
     -- I chose to name this "WAS double trouble" (in past tense) to emphasize that being double trouble is a thing that
     -- can happen to a player, rather than a thing that a player always is 
-    add column was_double_trouble boolean; -- null = fielders for this event cannot be double trouble
+    add column was_double_trouble boolean, -- null = fielders for this event cannot be double trouble
+    add column used_jetpack boolean; -- null = this event type can never be jetpack
 
 drop function data.strikes_after(ev data.events, et taxa.event_type);
 create function data.strikes_after(ev data.events, et taxa.event_type) returns int as
@@ -16,3 +17,6 @@ begin
     end;
 end;
 $$ LANGUAGE plpgsql;
+
+create index event_cheers_event_id_index on data.event_cheers (event_id);
+create index event_balk_reasons_event_id_index on data.event_balk_reasons (event_id);

@@ -270,6 +270,7 @@ pub struct NewFielder<'a> {
     pub fielder_slot: i64,
     pub play_order: i32,
     pub was_double_trouble: Option<bool>,
+    pub used_jetpack: Option<bool>,
 }
 
 #[derive(Identifiable, Queryable, Selectable, Associations)]
@@ -283,6 +284,7 @@ pub struct DbFielder {
     pub fielder_slot: i64,
     pub play_order: i32,
     pub was_double_trouble: Option<bool>,
+    pub used_jetpack: Option<bool>,
 }
 
 #[derive(Queryable, Selectable, Serialize)]

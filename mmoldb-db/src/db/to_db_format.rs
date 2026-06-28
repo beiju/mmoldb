@@ -98,6 +98,7 @@ pub fn event_to_fielders<'e>(
             fielder_slot: taxa.slot_id(fielder.slot),
             play_order: i as i32,
             was_double_trouble: fielder.was_double_trouble,
+            used_jetpack: fielder.used_jetpack,
         })
         .collect()
 }
@@ -751,6 +752,7 @@ pub fn row_to_event<'e>(
                 name: f.fielder_name,
                 slot: taxa.slot_from_id(f.fielder_slot).into(),
                 was_double_trouble: f.was_double_trouble,
+                used_jetpack: f.used_jetpack,
             }
         })
         .collect();

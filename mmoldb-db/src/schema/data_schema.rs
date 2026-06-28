@@ -179,6 +179,7 @@ pub mod data {
             fielder_slot -> Int8,
             play_order -> Int4,
             was_double_trouble -> Nullable<Bool>,
+            used_jetpack -> Nullable<Bool>,
         }
     }
 

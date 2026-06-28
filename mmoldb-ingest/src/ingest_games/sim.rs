@@ -731,6 +731,27 @@ impl<'g> EventDetailBuilder<'g> {
             name: fielder.name,
             slot: self.placed_player_slot(fielder, ingest_logs)?,
             was_double_trouble: None,
+            used_jetpack: None,
+        }];
+
+        Ok(self)
+    }
+
+    fn fielder_with_possible_jetpack(
+        mut self,
+        fielder: PlacedPlayer<&'g str>,
+        jetpack: bool,
+        ingest_logs: &mut IngestLogs,
+    ) -> Result<Self, SimEventError> {
+        if !self.fielders.is_empty() {
+            warn!("EventDetailBuilder overwrote existing fielders");
+        }
+
+        self.fielders = vec![EventDetailFielder {
+            name: fielder.name,
+            slot: self.placed_player_slot(fielder, ingest_logs)?,
+            was_double_trouble: None,
+            used_jetpack: Some(jetpack),
         }];
 
         Ok(self)
@@ -749,7 +770,12 @@ impl<'g> EventDetailBuilder<'g> {
             .into_iter()
             .map(|f| {
                 self.placed_player_slot(f, ingest_logs)
-                    .map(|slot| EventDetailFielder { name: f.name, slot, was_double_trouble: None })
+                    .map(|slot| EventDetailFielder {
+                        name: f.name,
+                        slot,
+                        was_double_trouble: None,
+                        used_jetpack: None,
+                    })
             })
             .collect::<Result<_, _>>()?;
 
@@ -769,7 +795,12 @@ impl<'g> EventDetailBuilder<'g> {
             .into_iter()
             .map(|(f, was_double_trouble)| {
                 self.placed_player_slot(f, ingest_logs)
-                    .map(|slot| EventDetailFielder { name: f.name, slot, was_double_trouble: Some(was_double_trouble) })
+                    .map(|slot| EventDetailFielder {
+                        name: f.name,
+                        slot,
+                        was_double_trouble: Some(was_double_trouble),
+                        used_jetpack: None,
+                    })
             })
             .collect::<Result<_, _>>()?;
 
@@ -870,8 +901,8 @@ impl<'g> EventDetailBuilder<'g> {
             .runner_on_this_event_is_earned(is_error)
     }
 
-    fn surprise_strike(mut self, is_surprise_strike: Option<bool>) -> Self {
-        self.is_surprise_strike = is_surprise_strike;
+    fn surprise_strike(mut self, is_surprise_strike: bool) -> Self {
+        self.is_surprise_strike = Some(is_surprise_strike);
         self
     }
 
@@ -2987,7 +3018,7 @@ impl<'g> Game<'g> {
                             .steals(steals.clone())
                             .wither(wither.clone())
                             .efflorescence(efflorescence.clone())
-                            .surprise_strike(Some(*surprise_strike))
+                            .surprise_strike(*surprise_strike)
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
                                 StrikeType::Swinging => { TaxaEventType::SwingingStrike }
@@ -3334,7 +3365,7 @@ impl<'g> Game<'g> {
             EventContext::ExpectFairBallOutcome(batter_name, fair_ball) => game_event!(
                 (previous_event, event),
                 [ParsedEventMessageDiscriminants::CaughtOut]
-                ParsedEventMessage::CaughtOut { batter, fair_ball_type, caught_by, advances, scores, sacrifice, perfect, ejection } => {
+                ParsedEventMessage::CaughtOut { batter, fair_ball_type, caught_by, advances, scores, sacrifice, perfect, ejection, jetpack } => {
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fair_ball_type(&fair_ball, *fair_ball_type, ingest_logs);
                     self.check_placed_fielder(&fair_ball, caught_by, ingest_logs);
@@ -3358,7 +3389,7 @@ impl<'g> Game<'g> {
                         .ejection(ejection.clone())
                         .described_as_sacrifice(*sacrifice)
                         .is_toasty(*perfect)
-                        .fielder(*caught_by, ingest_logs)?
+                        .fielder_with_possible_jetpack(*caught_by, *jetpack, ingest_logs)?
                         .runner_changes(advances.clone(), scores.clone())
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::CaughtOut)
                 },

@@ -30,6 +30,7 @@ pub struct EventDetailFielder<StrT: Clone> {
     pub name: StrT,
     pub slot: TaxaSlot,
     pub was_double_trouble: Option<bool>,
+    pub used_jetpack: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -590,6 +591,9 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     sacrifice,
                     perfect,
                     ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                    // TODO Once the db is rebuilt, make it an error to have a None here (and to have a Some
+                    //   when the event message doesn't have a jetpack field)
+                    jetpack: fielder.used_jetpack.is_some_and(|j| j),
                 }
             }
             TaxaEventType::GroundedOut => ParsedEventMessage::GroundedOut {
