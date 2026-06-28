@@ -2683,6 +2683,16 @@ impl<'g> Game<'g> {
                         self.batting_team_mut().team_emoji = batting_team.emoji;
                     }
 
+                    // TODO Check pitcher fielding events to see if this is the correct time to do the replacement
+                    // I do know from game 6a3d88f4b3e16e990b9dd199 that it at least happens before
+                    // the next potential sweep
+                    if let Some(swept_pitcher) = self.defending_team_mut().currently_swept_pitcher_name.take() {
+                        ingest_logs.info(format!(
+                            "Restoring previously-swept pitcher {swept_pitcher}"
+                        ));
+                        self.defending_team_mut().active_pitcher.name = swept_pitcher;
+                    }
+
                     let picher_swap_result = match pitcher_status {
                         None => {
                             ingest_logs.info(
@@ -2692,15 +2702,6 @@ impl<'g> Game<'g> {
                             None
                         }
                         Some(StartOfInningPitcher::Same { emoji, name }) => {
-                            // TODO Check pitcher fielding events to see if this replacement lasts through the next half-inning
-                            if let Some(swept_pitcher) = self.defending_team_mut().currently_swept_pitcher_name.take() {
-                                // swept_pitcher should match name, but that'll be checked later in the event
-                                ingest_logs.info(format!(
-                                    "Restoring previously-swept pitcher {swept_pitcher}"
-                                ));
-                                self.defending_team_mut().active_pitcher.name = swept_pitcher;
-                            }
-
                             ingest_logs.info(format!(
                                 "Not incrementing pitcher_count on returning pitcher {} {}",
                                 emoji, name
