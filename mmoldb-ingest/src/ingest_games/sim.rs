@@ -2963,11 +2963,11 @@ impl<'g> Game<'g> {
                     [ParsedEventMessageDiscriminants::Strike]
                     ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence, surprise_strike } => {
                         self.state.count_strikes += 1;
+                        self.handle_surprise_strike(*surprise_strike);
                         self.check_count(*count, ingest_logs);
 
                         self.update_runners_steals_only(game_event_index, false, steals, ingest_logs);
                         self.handle_ejection(ejection, ingest_logs);
-                        self.handle_surprise_strike(*surprise_strike);
 
                         if let Some(struggle) = wither {
                             self.state.context = EventContext::ExpectWitherOutcome {

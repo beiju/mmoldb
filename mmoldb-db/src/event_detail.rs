@@ -217,7 +217,9 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
         } else {
             (
                 self.balls_before + if props.is_ball { 1 } else { 0 },
-                self.strikes_before + if props.is_strike { 1 } else { 0 },
+                self.strikes_before
+                    + if props.is_strike { 1 } else { 0 }
+                    + if self.is_surprise_strike.is_some_and(|s| s) { 1 } else { 0 },
             )
         }
     }
