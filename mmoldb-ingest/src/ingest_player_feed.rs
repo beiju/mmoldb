@@ -1117,6 +1117,7 @@ pub fn chron_player_feed_as_new<'a>(
         | ParsedPlayerFeedEventText::LesserBoon { .. }
         | ParsedPlayerFeedEventText::ResumedHolidayProcessingReplacement { .. }
         | ParsedPlayerFeedEventText::GainedModificationFromGreaterAugment { .. } => {}
+        | ParsedPlayerFeedEventText::PlayersBecameFriends { .. } => {}
     }
 
     // Apply any pending inferred whose time is before this event's time

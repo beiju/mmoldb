@@ -197,7 +197,10 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::PhotoContest { .. }
         | ParsedTeamFeedEventText::SpecialDelivery { .. }
         | ParsedTeamFeedEventText::PlayerReflected { .. }
-        | ParsedTeamFeedEventText::SimulacrumPayout { .. } => {
+        | ParsedTeamFeedEventText::SimulacrumPayout { .. }
+        // EndGameIncome doesn't have a link in the rendered text, but it does have one
+        // in the metadata
+        | ParsedTeamFeedEventText::EndGameIncome { .. } => {
             let game_link = item
                 .data
                 .links
@@ -273,7 +276,8 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::GoldenPlayerReplacementFailed { .. }
         | ParsedTeamFeedEventText::ResumedHolidayProcessingReplacement { .. }
         | ParsedTeamFeedEventText::GoldenPlayerEmerged { .. }
-        | ParsedTeamFeedEventText::GainedModificationFromGreaterAugment { .. } => None,
+        | ParsedTeamFeedEventText::GainedModificationFromGreaterAugment { .. }
+        | ParsedTeamFeedEventText::PlayersBecameFriends { .. } => None,
     };
 
     (processed, game_outcome, ingest_logs.into_vec())
