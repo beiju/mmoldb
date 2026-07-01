@@ -9,7 +9,7 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
-use mmolb_parsing::parsed_event::{BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood, FieldingAttempt, Item, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
+use mmolb_parsing::parsed_event::{Assassination, BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood, FieldingAttempt, Item, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
 use std::fmt::Formatter;
 use thiserror::Error;
 
@@ -23,6 +23,8 @@ pub struct EventDetailRunner<StrT: Clone> {
     pub is_steal: bool,
     pub source_event_index: Option<i32>,
     pub is_earned: bool,
+    pub assassinated: Option<bool>,
+    pub assassinated_by: Option<StrT>,
 }
 
 #[derive(Debug, Clone)]
@@ -430,6 +432,14 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .collect(),
                 // TODO one the database is rebuilt, a null surprise_strike for a CalledStrike event is an error
                 surprise_strike: self.is_surprise_strike.unwrap_or(false),
+                assassinations: self.baserunners.iter()
+                    .filter_map(|runner| runner.assassinated_by.as_ref().map(|assassin_name| {
+                        Assassination {
+                            assassin_name: assassin_name.as_ref(),
+                            victim_name: runner.name.as_ref(),
+                        }
+                    }))
+                    .collect(),
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -457,6 +467,14 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .collect(),
                 // TODO one the database is rebuilt, a null surprise_strike for a SwingingStrike event is an error
                 surprise_strike: self.is_surprise_strike.unwrap_or(false),
+                assassinations: self.baserunners.iter()
+                    .filter_map(|runner| runner.assassinated_by.as_ref().map(|assassin_name| {
+                        Assassination {
+                            assassin_name: assassin_name.as_ref(),
+                            victim_name: runner.name.as_ref(),
+                        }
+                    }))
+                    .collect(),
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -481,6 +499,14 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .iter()
                     .map(Efflorescence::to_ref)
                     .collect(),
+                assassinations: self.baserunners.iter()
+                    .filter_map(|runner| runner.assassinated_by.as_ref().map(|assassin_name| {
+                        Assassination {
+                            assassin_name: assassin_name.as_ref(),
+                            victim_name: runner.name.as_ref(),
+                        }
+                    }))
+                    .collect(),
             },
             TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
                 foul: Some(FoulType::Tip),
@@ -504,6 +530,14 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .efflorescences
                     .iter()
                     .map(Efflorescence::to_ref)
+                    .collect(),
+                assassinations: self.baserunners.iter()
+                    .filter_map(|runner| runner.assassinated_by.as_ref().map(|assassin_name| {
+                        Assassination {
+                            assassin_name: assassin_name.as_ref(),
+                            victim_name: runner.name.as_ref(),
+                        }
+                    }))
                     .collect(),
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {

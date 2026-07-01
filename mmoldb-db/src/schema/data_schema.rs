@@ -160,6 +160,8 @@ pub mod data {
             steal -> Bool,
             source_event_index -> Nullable<Int4>,
             is_earned -> Bool,
+            assassinated -> Nullable<Bool>,
+            assassinated_by -> Nullable<Text>,
         }
     }
 

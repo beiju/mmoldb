@@ -6,7 +6,7 @@ use mmolb_parsing::enums::{
     TopBottom,
 };
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{BaseSteal, BasicPitcherSwap, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle};
+use mmolb_parsing::parsed_event::{Assassination, BaseSteal, BasicPitcherSwap, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle};
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
 use mmoldb_db::taxa::{
@@ -172,6 +172,7 @@ struct FairBall<'g> {
     aurora_photos: Option<SnappedPhotos<&'g str>>,
     door_prizes: Vec<DoorPrize<&'g str>>,
     efflorescences: Vec<Efflorescence<&'g str>>,
+    inferred_assassinations: Vec<TaxaBase>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -611,6 +612,8 @@ struct EventDetailBuilder<'g> {
     wither: Option<WitherStruggle<&'g str>>,
     efflorescence: Vec<Efflorescence<&'g str>>,
     is_surprise_strike: Option<bool>,
+    assassinations: Vec<Assassination<&'g str>>,
+    inferred_assassinations: Vec<TaxaBase>,
 }
 
 impl<'g> EventDetailBuilder<'g> {
@@ -638,6 +641,7 @@ impl<'g> EventDetailBuilder<'g> {
         // Ditto door prizes, etc
         self = self.door_prizes(fair_ball.door_prizes);
         self = self.efflorescence(fair_ball.efflorescences);
+        self = self.inferred_assassinations(fair_ball.inferred_assassinations);
         self
     }
 
@@ -906,6 +910,16 @@ impl<'g> EventDetailBuilder<'g> {
         self
     }
 
+    fn assassinations(mut self, assassinations: Vec<Assassination<&'g str>>) -> Self {
+        self.assassinations = assassinations;
+        self
+    }
+
+    fn inferred_assassinations(mut self, inferred_assassinations: Vec<TaxaBase>) -> Self {
+        self.inferred_assassinations = inferred_assassinations;
+        self
+    }
+
     pub fn build_some(
         self,
         game: &Game<'g>,
@@ -942,6 +956,8 @@ impl<'g> EventDetailBuilder<'g> {
         let mut advances = self.advances.into_iter().peekable();
         let mut runners_out = self.runners_out.into_iter().peekable();
         let mut steals = self.steals.into_iter().peekable();
+        let mut assassinations = self.assassinations.into_iter().peekable();
+        let mut inferred_assassinations = self.inferred_assassinations.clone();
 
         let advances_ref = &mut advances;
         let runners_out_ref = &mut runners_out;
@@ -961,6 +977,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_steal: true,
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
+                        assassinated: None, // Can't be assassinated and then steal a base
+                        assassinated_by: None,
                     }
                 } else if let Some(_scorer_name) = {
                     // Tapping into the if-else chain so I can do some
@@ -991,6 +1009,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_steal: false,
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
+                        assassinated: None, // Can't be assassinated and then score
+                        assassinated_by: None,
                     }
                 } else if let Some(advance) =
                     advances_ref.peeking_next(|a| is_matching_advance(&prev_runner, a))
@@ -1005,6 +1025,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_steal: false,
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
+                        assassinated: None, // Can't be assassinated and then advance
+                        assassinated_by: None,
                     }
                 } else if let Some(out) =
                     runners_out_ref.peeking_next(|o| is_matching_runner_out(&prev_runner, o))
@@ -1019,9 +1041,25 @@ impl<'g> EventDetailBuilder<'g> {
                         is_steal: false,
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
+                        assassinated: None, // Can't be assassinated and then get out
+                        assassinated_by: None,
                     }
                 } else {
                     // If the runner didn't score, advance, or get out they just stayed on base
+                    // TODO Use bases occupied fields to disambiguate multiple potential assassination victims with the same name
+                    let assassinated_by = assassinations.peeking_next(|ass| ass.victim_name == prev_runner.runner_name)
+                        .map(|ass| ass.assassin_name);
+                    let inferred_assassination_idx = inferred_assassinations.iter()
+                        .position(|base| *base == prev_runner.base);
+                    if let Some(idx) = inferred_assassination_idx { inferred_assassinations.remove(idx); }
+                    if assassinated_by.is_some() && inferred_assassination_idx.is_some() {
+                        ingest_logs.warn(format!(
+                            "Assassination of {} from {} was both inferred and explicit, \
+                            it should only be one or the other.",
+                            prev_runner.runner_name,
+                            prev_runner.base,
+                        ));
+                    }
                     EventDetailRunner {
                         name: prev_runner.runner_name,
                         base_before: Some(prev_runner.base),
@@ -1031,6 +1069,8 @@ impl<'g> EventDetailBuilder<'g> {
                         is_steal: false,
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
+                        assassinated: Some(assassinated_by.is_some() || inferred_assassination_idx.is_some()),
+                        assassinated_by
                     }
                 }
             })
@@ -1049,6 +1089,8 @@ impl<'g> EventDetailBuilder<'g> {
                         // index is this event's index
                         source_event_index: Some(self.game_event_index as i32),
                         is_earned: runner_on_this_event_is_earned,
+                        assassinated: None, // Can't be assassinated as the batter-runner, I think
+                        assassinated_by: None,
                     }),
             )
             .collect();
@@ -1078,6 +1120,8 @@ impl<'g> EventDetailBuilder<'g> {
                     is_steal: false,
                     source_event_index: Some(self.game_event_index as i32),
                     is_earned: runner_on_this_event_is_earned,
+                    assassinated: None, // Can't be assassinated and then get out
+                    assassinated_by: None,
                 }
             }),
         );
@@ -1102,6 +1146,8 @@ impl<'g> EventDetailBuilder<'g> {
                     is_steal: false,
                     source_event_index: Some(self.game_event_index as i32),
                     is_earned: runner_on_this_event_is_earned,
+                    assassinated: None, // Can't be assassinated and then get out
+                    assassinated_by: None, // Can't be assassinated and then advance
                 }
             }),
         );
@@ -1117,6 +1163,8 @@ impl<'g> EventDetailBuilder<'g> {
                 is_steal: false,
                 source_event_index: Some(self.game_event_index as i32),
                 is_earned: runner_on_this_event_is_earned,
+                assassinated: None, // Can't be assassinated on a home run
+                assassinated_by: None,
             })
         }
 
@@ -1139,6 +1187,13 @@ impl<'g> EventDetailBuilder<'g> {
         let extra_runners_out = runners_out.collect::<Vec<_>>();
         if !extra_runners_out.is_empty() {
             ingest_logs.error(format!("Runner(s) out not found: {:?}", extra_runners_out));
+        }
+        let extra_assassinations = assassinations.collect::<Vec<_>>();
+        if !extra_assassinations.is_empty() {
+            ingest_logs.error(format!("Assassination(s) not found: {:?}", extra_assassinations));
+        }
+        if !inferred_assassinations.is_empty() {
+            ingest_logs.error(format!("Inferred assassination(s) not found: {:?}", inferred_assassinations));
         }
 
         let pitcher = match &self.raw_event.pitcher {
@@ -1906,6 +1961,8 @@ impl<'g> Game<'g> {
             wither: None,
             efflorescence: Vec::new(),
             is_surprise_strike: None,
+            assassinations: Vec::new(),
+            inferred_assassinations: Vec::new(),
         }
     }
 
@@ -2669,6 +2726,104 @@ impl<'g> Game<'g> {
         fielders_with_double_trouble
     }
 
+    fn handle_assassinations(
+        &mut self,
+        assassinations: &Vec<Assassination<&'g str>>,
+        ingest_logs: &mut IngestLogs,
+    ) {
+        for assassination in assassinations {
+            let candidates = self.state.runners_on.iter()
+                .enumerate()
+                .filter(|(_, runner)| runner.runner_name == assassination.victim_name)
+                .exactly_one();
+            match candidates {
+                Ok((i, runner)) => {
+                    ingest_logs.info(format!(
+                        "{} was assassinated by {}", runner.runner_name, assassination.assassin_name
+                    ));
+                    self.state.runners_on.remove(i);
+                }
+                Err(err) => {
+                    let candidates = err.collect_vec();
+                    if let Some((i, runner)) = candidates.first() {
+                        ingest_logs.warn(format!(
+                            "There are {} runners named {}, and we can't tell which was assassinated. \
+                            Arbitrarily assuming it was the one on {}.",
+                            candidates.len(),
+                            assassination.victim_name,
+                            runner.base,
+                        ));
+                        self.state.runners_on.remove(*i);
+                    } else {
+                        ingest_logs.warn(format!(
+                            "A runner named {} was assassinated, but there are no runners with that name on base.",
+                            assassination.victim_name,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    fn deduce_inferred_assassinations(
+        &self,
+        raw_event: &'g mmolb_parsing::game::Event,
+        ingest_logs: &mut IngestLogs,
+    ) -> Vec<TaxaBase> {
+        // This only deduces assassinations that leave the base empty.
+        // Assassinations that allow a new player to occupy the base
+        // are detected in update_runners
+
+        // Don't deduce any assassinations before s13
+        if self.season < 13 { return Vec::new() }
+
+        let mut inferred_assassinations = Vec::new();
+        self.state.runners_on.iter().for_each(|runner| {
+            let is_on = match runner.base {
+                TaxaBase::Home => {
+                    ingest_logs.warn(format!(
+                        "Runner {} was in the runners_on list at Home base. \
+                        Runners should be removed after reaching home.",
+                        runner.runner_name,
+                    ));
+                    return;
+                }
+                TaxaBase::First => raw_event.on_1b,
+                TaxaBase::Second => raw_event.on_2b,
+                TaxaBase::Third => raw_event.on_3b,
+            };
+
+            if !is_on {
+                ingest_logs.info(format!(
+                    "{} unexpectedly disappeared from {}. Assuming it was a silent assassination.",
+                    runner.runner_name,
+                    runner.base
+                ));
+                inferred_assassinations.push(runner.base);
+            } else {
+            }
+        });
+        inferred_assassinations
+    }
+
+    fn apply_inferred_assassinations(
+        &mut self,
+        inferred_assassinations: &[TaxaBase],
+        ingest_logs: &mut IngestLogs,
+    ) {
+        self.state.runners_on.retain(|runner| {
+            if inferred_assassinations.contains(&runner.base) {
+                ingest_logs.info(format!(
+                    "Removing {} from {} after inferred assassination.",
+                    runner.runner_name, runner.base,
+                ));
+                false
+            } else {
+                true
+            }
+        });
+    }
+
     pub fn next(
         &mut self,
         game_event_index: usize,
@@ -3006,6 +3161,9 @@ impl<'g> Game<'g> {
                             }
                         }
 
+                        let inferred_assassinations = self.deduce_inferred_assassinations(raw_event, ingest_logs);
+                        self.apply_inferred_assassinations(&inferred_assassinations, ingest_logs);
+
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
@@ -3015,10 +3173,13 @@ impl<'g> Game<'g> {
                             .steals(steals.clone())
                             .wither(wither.clone())
                             .efflorescence(efflorescence.clone())
+                            .inferred_assassinations(inferred_assassinations)
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
-                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence, surprise_strike } => {
+                    ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence, surprise_strike, assassinations } => {
+                        self.handle_assassinations(assassinations, ingest_logs); // assassinations happen first
+
                         self.state.count_strikes += 1;
                         self.handle_surprise_strike(*surprise_strike);
                         self.check_count(*count, ingest_logs);
@@ -3044,6 +3205,7 @@ impl<'g> Game<'g> {
                             .wither(wither.clone())
                             .efflorescence(efflorescence.clone())
                             .surprise_strike(*surprise_strike)
+                            .assassinations(assassinations.clone())
                             .build_some(self, batter_name, ingest_logs, match strike {
                                 StrikeType::Looking => { TaxaEventType::CalledStrike }
                                 StrikeType::Swinging => { TaxaEventType::SwingingStrike }
@@ -3100,7 +3262,9 @@ impl<'g> Game<'g> {
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
-                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes, wither, efflorescence } => {
+                    ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes, wither, efflorescence, assassinations } => {
+                        self.handle_assassinations(assassinations, ingest_logs);
+
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
                             self.state.count_strikes += 1;
@@ -3117,6 +3281,9 @@ impl<'g> Game<'g> {
                             }
                         }
 
+                        let inferred_assassinations = self.deduce_inferred_assassinations(raw_event, ingest_logs);
+                        self.apply_inferred_assassinations(&inferred_assassinations, ingest_logs);
+
                         detail_builder
                             .pitch(pitch)
                             .cheer(cheer.clone())
@@ -3125,6 +3292,8 @@ impl<'g> Game<'g> {
                             .steals(steals.clone())
                             .wither(wither.clone())
                             .efflorescence(efflorescence.clone())
+                            .assassinations(assassinations.clone())
+                            .inferred_assassinations(inferred_assassinations.clone())
                             .build_some(self, batter_name, ingest_logs, match foul {
                                 FoulType::Tip => TaxaEventType::FoulTip,
                                 FoulType::Ball => TaxaEventType::FoulBall,
@@ -3133,6 +3302,8 @@ impl<'g> Game<'g> {
                     [ParsedEventMessageDiscriminants::FairBall]
                     ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes, efflorescence } => {
                         self.check_batter(batter_name, batter, ingest_logs);
+
+                        let inferred_assassinations = self.deduce_inferred_assassinations(raw_event, ingest_logs);
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
                             game_event_index,
@@ -3143,6 +3314,7 @@ impl<'g> Game<'g> {
                             aurora_photos: aurora_photos.clone(),
                             door_prizes: door_prizes.clone(),
                             efflorescences: efflorescence.clone(),
+                            inferred_assassinations,
                         });
                         None
                     },
@@ -3408,6 +3580,7 @@ impl<'g> Game<'g> {
                     self.add_out();
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
+                    self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
@@ -3436,6 +3609,7 @@ impl<'g> Game<'g> {
                     self.add_out();
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
+                    self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
@@ -3465,6 +3639,7 @@ impl<'g> Game<'g> {
 
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
+                    self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
@@ -3494,6 +3669,7 @@ impl<'g> Game<'g> {
                     self.add_error();
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
+                    self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
@@ -3536,6 +3712,7 @@ impl<'g> Game<'g> {
                     self.add_runs_to_batting_team(1, ingest_logs);
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
+                    self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
@@ -3565,6 +3742,7 @@ impl<'g> Game<'g> {
                     self.add_out(); // This is the out for the batter
                     self.finish_pa(batter_name);  // Must be after all outs are added
                     self.handle_ejection(ejection, ingest_logs);
+                    self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                     let fielders_with_double_trouble = Self::fielders_with_double_trouble(fielders, double_trouble.as_ref(), ingest_logs);
 
@@ -3598,6 +3776,7 @@ impl<'g> Game<'g> {
                     self.handle_ejection(ejection, ingest_logs);
 
                     let fielders_with_double_trouble = Self::fielders_with_double_trouble(fielders, double_trouble.as_ref(), ingest_logs);
+                    self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                     detail_builder
                         .fair_ball(fair_ball, self.defending_team())
@@ -3631,6 +3810,7 @@ impl<'g> Game<'g> {
                     );
                     self.finish_pa(batter_name);
                     self.handle_ejection(ejection, ingest_logs);
+                    self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                     let detail_builder = detail_builder
                         .fair_ball(fair_ball, self.defending_team())
@@ -3676,6 +3856,7 @@ impl<'g> Game<'g> {
 
                             self.finish_pa(batter_name);
                             self.handle_ejection(ejection, ingest_logs);
+                            self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                             detail_builder
                                 .fair_ball(fair_ball, self.defending_team())
@@ -3712,6 +3893,7 @@ impl<'g> Game<'g> {
                                 ingest_logs.warn("Expected exactly one listed fielder in a fielder's choice with an error");
                             }
                             self.handle_ejection(ejection, ingest_logs);
+                            self.apply_inferred_assassinations(&fair_ball.inferred_assassinations, ingest_logs);
 
                             detail_builder
                                 .fair_ball(fair_ball, self.defending_team())

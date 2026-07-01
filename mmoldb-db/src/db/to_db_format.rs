@@ -79,6 +79,7 @@ pub fn event_to_baserunners<'e>(
             steal: runner.is_steal,
             source_event_index: runner.source_event_index.map(|idx| idx as i32),
             is_earned: runner.is_earned,
+            assassinated_by: runner.assassinated_by,
         })
         .collect()
 }
@@ -740,6 +741,8 @@ pub fn row_to_event<'e>(
                 is_steal: r.steal,
                 source_event_index: r.source_event_index,
                 is_earned: r.is_earned,
+                assassinated: r.assassinated,
+                assassinated_by: r.assassinated_by
             }
         })
         .collect();
