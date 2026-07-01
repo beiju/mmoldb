@@ -23,7 +23,6 @@ pub struct EventDetailRunner<StrT: Clone> {
     pub is_steal: bool,
     pub source_event_index: Option<i32>,
     pub is_earned: bool,
-    pub assassinated: Option<bool>,
     pub assassinated_by: Option<StrT>,
 }
 

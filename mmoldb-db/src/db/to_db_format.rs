@@ -741,7 +741,6 @@ pub fn row_to_event<'e>(
                 is_steal: r.steal,
                 source_event_index: r.source_event_index,
                 is_earned: r.is_earned,
-                assassinated: r.assassinated,
                 assassinated_by: r.assassinated_by
             }
         })

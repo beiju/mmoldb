@@ -8,7 +8,6 @@ alter table data.event_fielders
     add column used_jetpack boolean; -- null = this event type can never be jetpack
 
 alter table data.event_baserunners
-    add column assassinated boolean, -- null = not eligible for assassination
     add column assassinated_by text; -- null = assassin name not known -- either not an assassination or a silent assassination
 
 drop function data.strikes_after(ev data.events, et taxa.event_type);

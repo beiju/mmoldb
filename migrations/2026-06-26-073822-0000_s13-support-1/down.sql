@@ -10,8 +10,7 @@ end;
 $$ LANGUAGE plpgsql;
 
 alter table data.event_baserunners
-    drop column assassinated_by,
-    drop column assassinated;
+    drop column assassinated_by;
 
 alter table data.event_fielders
     drop column used_jetpack,

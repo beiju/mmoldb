@@ -8,8 +8,15 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
-2026-06-21
+Upcoming
 --------
+- Adds support for most s13 mechanics. Silent assassinations (those without 
+  any entry in the game log) are not supported yet. Flooding and the new 
+  Party weather no longer cause errors, but their data is not (yet) available 
+  in the database. Docs are not yet updated for the new columns. 
+
+2026-06-21
+----------
 - Fixes event_baserunners in double plays where the batter gets out while a 
   batter with the same name is on first (the Sizzle Udea problem). 
 - Adds special handling for a new Balk reason which was too complex for the
