@@ -865,6 +865,19 @@ nullable_explanation = """
 `null` for events without a home run distance.
 """
 
+[[table.column]]
+name = "is_surprise_strike"
+type = "boolean"
+description = """
+True if this pitch was a Surprise Strike.
+
+Surprise Strikes are considered in `data.strikes_after` (see documentation for
+`strikes_before` for more).
+"""
+nullable_explanation = """
+`null` for events of a type which can never be a Surprise Strike.
+"""
+
 [[table]]
 name = "event_baserunners"
 description = """
@@ -892,6 +905,9 @@ The particulars:
      `is_out = true`. Note that runners can be put out at home.
   3. They are stranded on base when the inning ends, in which case the
      last row in the chain has `base_after <> 0` and `is_out = false`.
+  4. They are assassinated, in which case the last row in the chain has
+     non-null `assassinated_by`. Note that an assassination is not an
+     out, it just removes the player from base.
   Each subsequent row for a given batter will have `base_before` equal
   to their previous row's `base_after`.
 - Runners who do not move during an event have a row with
@@ -1010,6 +1026,46 @@ pitcher referenced by source_event_index. If false, this runner's score
 will never count as an earned run.
 """
 
+[[table.column]]
+name = "assassinated_on_fair_ball"
+type = "boolean"
+description = """
+Fair ball events (fielded outs, hits, home runs, etc.) are split into two
+"events" in the MMOLB game log, but combined into one event in MMOLDB.
+Assassinations, unlike most effects, can occur on either of these two events.
+This field indicates which of the two events it occurred on.
+
+As of Season 13, no other baserunner changes can happen between a fair ball
+assassination and a fair-ball-outcome assassination, so it's probably not
+necessary to distinguish the two in most cases.
+"""
+nullable_explanation = """
+`null` if this baserunner was not assassinated. This should always be `null`
+when `assassinated_by` is `null` and vice versa.
+
+Checking the null-ness of this column (or, equivalently, the null-ness of
+`assassinated_by`) is the intended way to determine whether this player was
+assassinated.
+"""
+
+[[table.column]]
+name = "assassinated_by"
+type = "text"
+description = """
+If this baserunner was assassinated on this event, the name of the assassin.
+
+Note that an assassination is specifically not an out. Queries that care about
+continuity of baserunners will need to specifically account for assassinations.
+"""
+nullable_explanation = """
+`null` if this baserunner was not assassinated. This should always be `null`
+when `assassinated_on_fair_ball` is `null` and vice versa.
+
+Checking the null-ness of this column (or, equivalently, the null-ness of
+`assassinated_on_fair_ball`) is the intended way to determine whether this
+player was assassinated.
+"""
+
 [[table]]
 name = "event_fielders"
 description = """
@@ -1090,6 +1146,26 @@ The order of this fielder within the play. This is primarily used as a
 sort key. It can also be used along with `mmolb_game_id` and
 `game_event_index` to uniquely and stably identify a row in this table.
 See the documentation of `id` for more.
+"""
+
+[[table.column]]
+name = "was_double_trouble"
+type = "boolean"
+description = """
+Whether this fielder's Double Trouble mod activated for this event.
+"""
+nullable_explanation = """
+`null` if Double Trouble can never activate on an event of this type.
+"""
+
+[[table.column]]
+name = "used_jetpack"
+type = "boolean"
+description = """
+Whether this fielder's Jetpack mod activated for this event.
+"""
+nullable_explanation = """
+`null` if Jetpack can never activate on an event of this type.
 """
 
 [[table]]

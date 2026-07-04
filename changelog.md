@@ -11,9 +11,17 @@ Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 Upcoming
 --------
 - Adds support for most s13 mechanics. Silent assassinations (those without 
-  any entry in the game log) are not supported yet. Flooding and the new 
-  Party weather no longer cause errors, but their data is not (yet) available 
-  in the database. Docs are not yet updated for the new columns. 
+  any entry in the game log) are not supported yet. Flooding sweeps involving
+  a pitcher who is replaced mid-inning are bugged in MMOLB and this bug is not
+  yet handled in MMOLDB.
+- Adds `is_surprise_strike` to `data.events` and updates the 
+  `data.strikes_after` utility function to count surprise strikes. See docs for
+  details.
+- Adds `assassinated_by` and `assassinated_on_fair_ball` to 
+  `data.event_baserunners`. See docs for details. Silent assassinations are not
+  yet supported.
+- Adds `was_double_trouble` to `data.event_fielders`. See docs for details.
+- Adds `used_jetpack` to `data.event_fielders`. See docs for details.
 
 2026-06-21
 ----------
