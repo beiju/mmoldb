@@ -172,6 +172,7 @@ struct FairBall<'g> {
     aurora_photos: Option<SnappedPhotos<&'g str>>,
     door_prizes: Vec<DoorPrize<&'g str>>,
     efflorescences: Vec<Efflorescence<&'g str>>,
+    fair_ball_assassinations: Vec<EventDetailRunner<&'g str>>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -611,6 +612,7 @@ struct EventDetailBuilder<'g> {
     wither: Option<WitherStruggle<&'g str>>,
     efflorescence: Vec<Efflorescence<&'g str>>,
     is_surprise_strike: Option<bool>,
+    fair_ball_assassinations: Vec<EventDetailRunner<&'g str>>,
     assassinations: Vec<Assassination<&'g str>>,
 }
 
@@ -639,6 +641,8 @@ impl<'g> EventDetailBuilder<'g> {
         // Ditto door prizes, etc
         self = self.door_prizes(fair_ball.door_prizes);
         self = self.efflorescence(fair_ball.efflorescences);
+        self.fair_ball_assassinations = fair_ball.fair_ball_assassinations;
+
         self
     }
 
@@ -969,6 +973,7 @@ impl<'g> EventDetailBuilder<'g> {
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
                         assassinated_by: None, // Can't be assassinated and then steal a base
+                        assassinated_on_fair_ball: None,
                     }
                 } else if let Some(_scorer_name) = {
                     // Tapping into the if-else chain so I can do some
@@ -1000,6 +1005,7 @@ impl<'g> EventDetailBuilder<'g> {
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
                         assassinated_by: None, // Can't be assassinated and then score
+                        assassinated_on_fair_ball: None,
                     }
                 } else if let Some(advance) =
                     advances_ref.peeking_next(|a| is_matching_advance(&prev_runner, a))
@@ -1015,6 +1021,7 @@ impl<'g> EventDetailBuilder<'g> {
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
                         assassinated_by: None, // Can't be assassinated and then advance
+                        assassinated_on_fair_ball: None,
                     }
                 } else if let Some(out) =
                     runners_out_ref.peeking_next(|o| is_matching_runner_out(&prev_runner, o))
@@ -1030,6 +1037,7 @@ impl<'g> EventDetailBuilder<'g> {
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
                         assassinated_by: None, // Can't be assassinated and then get out
+                        assassinated_on_fair_ball: None,
                     }
                 } else {
                     // If the runner didn't score, advance, or get out they just stayed on base
@@ -1045,7 +1053,10 @@ impl<'g> EventDetailBuilder<'g> {
                         is_steal: false,
                         source_event_index: prev_runner.source_event_index,
                         is_earned: prev_runner.is_earned,
-                        assassinated_by
+                        assassinated_by,
+                        // Any assassination that comes from this code did not happen on a fair
+                        // ball. Assassinations from fair ball events are handled elsewhere.
+                        assassinated_on_fair_ball: assassinated_by.map(|_| false),
                     }
                 }
             })
@@ -1065,6 +1076,7 @@ impl<'g> EventDetailBuilder<'g> {
                         source_event_index: Some(self.game_event_index as i32),
                         is_earned: runner_on_this_event_is_earned,
                         assassinated_by: None, // Can't be assassinated as the batter-runner, I think
+                        assassinated_on_fair_ball: None,
                     }),
             )
             .collect();
@@ -1095,6 +1107,7 @@ impl<'g> EventDetailBuilder<'g> {
                     source_event_index: Some(self.game_event_index as i32),
                     is_earned: runner_on_this_event_is_earned,
                     assassinated_by: None, // Can't be assassinated and then get out
+                    assassinated_on_fair_ball: None,
                 }
             }),
         );
@@ -1120,9 +1133,14 @@ impl<'g> EventDetailBuilder<'g> {
                     source_event_index: Some(self.game_event_index as i32),
                     is_earned: runner_on_this_event_is_earned,
                     assassinated_by: None, // Can't be assassinated and then advance
+                    assassinated_on_fair_ball: None,
                 }
             }),
         );
+
+        // Runners who were assassinated on the fair ball event won't have been in
+        // runners_on, so we need to add them here
+        baserunners.extend(self.fair_ball_assassinations);
 
         // Finally, on a home run the batter scores
         if self.batter_scores {
@@ -1136,6 +1154,7 @@ impl<'g> EventDetailBuilder<'g> {
                 source_event_index: Some(self.game_event_index as i32),
                 is_earned: runner_on_this_event_is_earned,
                 assassinated_by: None, // Can't be assassinated on a home run
+                assassinated_on_fair_ball: None,
             })
         }
 
@@ -1929,6 +1948,7 @@ impl<'g> Game<'g> {
             wither: None,
             efflorescence: Vec::new(),
             is_surprise_strike: None,
+            fair_ball_assassinations: Vec::new(),
             assassinations: Vec::new(),
         }
     }
@@ -3047,7 +3067,9 @@ impl<'g> Game<'g> {
                 game_event!(
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
-                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence } => {
+                    ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence, assassinations } => {
+                        self.handle_assassinations(assassinations, ingest_logs); // assassinations happen first
+
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
                         self.update_runners(
@@ -3078,6 +3100,7 @@ impl<'g> Game<'g> {
                             .steals(steals.clone())
                             .wither(wither.clone())
                             .efflorescence(efflorescence.clone())
+                            .assassinations(assassinations.clone())
                             .build_some(self, batter_name, ingest_logs, TaxaEventType::Ball)
                     },
                     [ParsedEventMessageDiscriminants::Strike]
@@ -3200,8 +3223,34 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
-                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes, efflorescence } => {
+                    ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes, efflorescence, assassinations } => {
+                        self.handle_assassinations(assassinations, ingest_logs); // assassinations happen first
+
                         self.check_batter(batter_name, batter, ingest_logs);
+
+                        let mut assassinations = assassinations.iter().peekable();
+                        let fair_ball_assassinations = detail_builder.prev_game_state.runners_on.iter()
+                            .filter_map(|runner| {
+                                assassinations.next_if(|ass| ass.victim_name == runner.runner_name)
+                                    .map(|assassination| EventDetailRunner {
+                                        name: runner.runner_name,
+                                        base_before: Some(runner.base.into()),
+                                        base_after: runner.base.into(),
+                                        is_out: false, // An assassination is specifically not an out
+                                        base_description_format: None,
+                                        is_steal: false,
+                                        source_event_index: runner.source_event_index,
+                                        is_earned: runner.is_earned,
+                                        assassinated_by: Some(assassination.assassin_name),
+                                        assassinated_on_fair_ball: Some(true),
+                                    })
+                            })
+                            .collect();
+
+                        let extra_assassinations = assassinations.collect::<Vec<_>>();
+                        if !extra_assassinations.is_empty() {
+                            ingest_logs.error(format!("Fair ball assassination(s) not found: {:?}", extra_assassinations));
+                        }
 
                         self.state.context = EventContext::ExpectFairBallOutcome(batter, FairBall {
                             game_event_index,
@@ -3212,6 +3261,7 @@ impl<'g> Game<'g> {
                             aurora_photos: aurora_photos.clone(),
                             door_prizes: door_prizes.clone(),
                             efflorescences: efflorescence.clone(),
+                            fair_ball_assassinations,
                         });
                         None
                     },
@@ -3488,7 +3538,9 @@ impl<'g> Game<'g> {
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::CaughtOut)
                 },
                 [ParsedEventMessageDiscriminants::GroundedOut]
-                ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, amazing, ejection } => {
+                ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, amazing, ejection, assassinations } => {
+                    self.handle_assassinations(assassinations, ingest_logs); // assassinations happen first
+
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
 
@@ -3512,6 +3564,7 @@ impl<'g> Game<'g> {
                         .is_toasty(*amazing)
                         .fielders_no_double_trouble(fielders.clone(), ingest_logs)?
                         .runner_changes(advances.clone(), scores.clone())
+                        .assassinations(assassinations.clone())
                         .build_some(self, batter_name, ingest_logs, TaxaEventType::GroundedOut)
                 },
                 [ParsedEventMessageDiscriminants::BatterToBase]

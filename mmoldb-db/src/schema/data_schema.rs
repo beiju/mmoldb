@@ -161,6 +161,7 @@ pub mod data {
             source_event_index -> Nullable<Int4>,
             is_earned -> Bool,
             assassinated_by -> Nullable<Text>,
+            assassinated_on_fair_ball -> Nullable<Bool>,
         }
     }
 

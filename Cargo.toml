@@ -8,4 +8,4 @@ members = ["mmoldb-app", "mmoldb-ingest", "mmoldb-db", "chron", "one-au-derive",
 # depend on to this file. The syntax for that is:
 # package_name = { workspace = true }
 [workspace.dependencies]
-mmolb_parsing = { git = "https://github.com/beiju/mmolb_parsing.git", branch = "feature/s11-postseason-fixes" }
+mmolb_parsing = { git = "https://github.com/beiju/mmolb_parsing.git", branch = "s13" }

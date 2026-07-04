@@ -243,6 +243,7 @@ pub struct NewBaserunner<'a> {
     pub source_event_index: Option<i32>,
     pub is_earned: bool,
     pub assassinated_by: Option<&'a str>,
+    pub assassinated_on_fair_ball: Option<bool>,
 }
 
 #[derive(Identifiable, Queryable, Selectable, Associations)]
@@ -261,6 +262,7 @@ pub struct DbRunner {
     pub source_event_index: Option<i32>,
     pub is_earned: bool,
     pub assassinated_by: Option<String>,
+    pub assassinated_on_fair_ball: Option<bool>,
 }
 
 #[derive(Insertable)]

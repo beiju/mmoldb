@@ -49,6 +49,14 @@ truncate table
     data.feed_events_processed,
     info.version_ingest_log;
 
+truncate table
+    data.player_attribute_augments,
+    data.player_recompositions,
+    data.player_paradigm_shifts,
+    data.team_games_played,
+    data.feed_events_processed;
+
+
 refresh materialized view data.player_versions_extended;
 refresh materialized view info.entities_count;
 refresh materialized view info.entities_with_issues_count;

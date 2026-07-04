@@ -24,6 +24,7 @@ pub struct EventDetailRunner<StrT: Clone> {
     pub source_event_index: Option<i32>,
     pub is_earned: bool,
     pub assassinated_by: Option<StrT>,
+    pub assassinated_on_fair_ball: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -339,6 +340,27 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
         self.runners_out_iter().collect()
     }
 
+    fn assassinations_on(&self, fair_ball: bool) -> Vec<Assassination<&str>> {
+        self.baserunners.iter()
+            .filter_map(|runner| {
+                if runner.assassinated_on_fair_ball != Some(fair_ball) { return None; }
+
+                runner.assassinated_by
+                    .as_ref()
+                    .map(|assassin_name| {
+                        Assassination {
+                            assassin_name: assassin_name.as_ref(),
+                            victim_name: runner.name.as_ref(),
+                        }
+                    })
+            })
+            .collect()
+    }
+
+    fn assassinations(&self) -> Vec<Assassination<&str>> {
+        self.assassinations_on(false)
+    }
+
     pub fn to_parsed(&self) -> Result<ParsedEventMessage<&str>, ToParsedError<'_>> {
         let exactly_one_runner_out = || {
             let runners_out = self
@@ -414,6 +436,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .iter()
                     .map(Efflorescence::to_ref)
                     .collect(),
+                assassinations: self.assassinations(),
             },
             TaxaEventType::CalledStrike => ParsedEventMessage::Strike {
                 strike: StrikeType::Looking,
@@ -431,14 +454,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .collect(),
                 // TODO one the database is rebuilt, a null surprise_strike for a CalledStrike event is an error
                 surprise_strike: self.is_surprise_strike.unwrap_or(false),
-                assassinations: self.baserunners.iter()
-                    .filter_map(|runner| runner.assassinated_by.as_ref().map(|assassin_name| {
-                        Assassination {
-                            assassin_name: assassin_name.as_ref(),
-                            victim_name: runner.name.as_ref(),
-                        }
-                    }))
-                    .collect(),
+                assassinations: self.assassinations(),
             },
             TaxaEventType::CalledStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -466,14 +482,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .collect(),
                 // TODO one the database is rebuilt, a null surprise_strike for a SwingingStrike event is an error
                 surprise_strike: self.is_surprise_strike.unwrap_or(false),
-                assassinations: self.baserunners.iter()
-                    .filter_map(|runner| runner.assassinated_by.as_ref().map(|assassin_name| {
-                        Assassination {
-                            assassin_name: assassin_name.as_ref(),
-                            victim_name: runner.name.as_ref(),
-                        }
-                    }))
-                    .collect(),
+                assassinations: self.assassinations(),
             },
             TaxaEventType::SwingingStrikeout => ParsedEventMessage::StrikeOut {
                 foul: None,
@@ -498,14 +507,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .iter()
                     .map(Efflorescence::to_ref)
                     .collect(),
-                assassinations: self.baserunners.iter()
-                    .filter_map(|runner| runner.assassinated_by.as_ref().map(|assassin_name| {
-                        Assassination {
-                            assassin_name: assassin_name.as_ref(),
-                            victim_name: runner.name.as_ref(),
-                        }
-                    }))
-                    .collect(),
+                assassinations: self.assassinations(),
             },
             TaxaEventType::FoulTipStrikeout => ParsedEventMessage::StrikeOut {
                 foul: Some(FoulType::Tip),
@@ -530,14 +532,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                     .iter()
                     .map(Efflorescence::to_ref)
                     .collect(),
-                assassinations: self.baserunners.iter()
-                    .filter_map(|runner| runner.assassinated_by.as_ref().map(|assassin_name| {
-                        Assassination {
-                            assassin_name: assassin_name.as_ref(),
-                            victim_name: runner.name.as_ref(),
-                        }
-                    }))
-                    .collect(),
+                assassinations: self.assassinations(),
             },
             TaxaEventType::Hit => ParsedEventMessage::BatterToBase {
                 batter: self.batter_name.as_ref(),
@@ -640,6 +635,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                         event_type: self.detail_type,
                     })?,
                 ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                assassinations: self.assassinations(),
             },
             TaxaEventType::Walk => ParsedEventMessage::Walk {
                 batter: self.batter_name.as_ref(),
@@ -853,6 +849,7 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 .iter()
                 .map(Efflorescence::to_ref)
                 .collect(),
+            assassinations: self.assassinations_on(true),
         })
     }
 }
