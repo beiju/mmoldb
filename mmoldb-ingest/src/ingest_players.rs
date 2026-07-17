@@ -2,7 +2,7 @@ use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, ImplicitEquipmentEffectSource, Position, Uncategorized};
+use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, ImplicitEquipmentEffectSource, Position, Slot, Uncategorized};
 use mmolb_parsing::player::{ComplexTalkStars, EquipmentEffect, PlayerEquipment, TalkCategory, TalkStars};
 use mmolb_parsing::{
     AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater,
@@ -520,7 +520,7 @@ fn chron_player_as_new<'a>(
         .collect_vec();
 
     let slot = match &entity.data.position {
-        Ok(position) => Some(taxa.slot_id(match position {
+        Ok(Either::Left(position)) => Some(taxa.slot_id(match position {
             Position::Pitcher => TaxaSlot::Pitcher,
             Position::Catcher => TaxaSlot::Catcher,
             Position::FirstBaseman => TaxaSlot::FirstBase,
@@ -533,6 +533,20 @@ fn chron_player_as_new<'a>(
             Position::StartingPitcher => TaxaSlot::StartingPitcher,
             Position::ReliefPitcher => TaxaSlot::ReliefPitcher,
             Position::Closer => TaxaSlot::Closer,
+        })),
+        Ok(Either::Right(slot)) => Some(taxa.slot_id(match slot {
+            Slot::Catcher => TaxaSlot::Catcher,
+            Slot::FirstBaseman => TaxaSlot::FirstBase,
+            Slot::SecondBaseman => TaxaSlot::SecondBase,
+            Slot::ThirdBaseman => TaxaSlot::ThirdBase,
+            Slot::ShortStop => TaxaSlot::Shortstop,
+            Slot::LeftField => TaxaSlot::LeftField,
+            Slot::CenterField => TaxaSlot::CenterField,
+            Slot::RightField => TaxaSlot::RightField,
+            Slot::StartingPitcher(_) => TaxaSlot::StartingPitcher,
+            Slot::ReliefPitcher(_) => TaxaSlot::ReliefPitcher,
+            Slot::Closer => TaxaSlot::Closer,
+            Slot::DesignatedHitter => TaxaSlot::DesignatedHitter,
         })),
         Err(err) => {
             ingest_logs.error(format!("Player position not recognized: {err}"));

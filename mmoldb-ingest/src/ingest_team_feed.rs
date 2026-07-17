@@ -260,7 +260,7 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::Callup { .. }
         | ParsedTeamFeedEventText::GreaterAugment { .. }
         | ParsedTeamFeedEventText::Released { .. }
-        | ParsedTeamFeedEventText::Retirement { .. }
+        | ParsedTeamFeedEventText::OldRetirement { .. }
         | ParsedTeamFeedEventText::PlayerGrewInEfflorescence { .. }
         | ParsedTeamFeedEventText::PlayerEffloresce { .. }
         | ParsedTeamFeedEventText::DeliveryDiscarded { .. }
@@ -277,7 +277,10 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::ResumedHolidayProcessingReplacement { .. }
         | ParsedTeamFeedEventText::GoldenPlayerEmerged { .. }
         | ParsedTeamFeedEventText::GainedModificationFromGreaterAugment { .. }
-        | ParsedTeamFeedEventText::PlayersBecameFriends { .. } => None,
+        | ParsedTeamFeedEventText::PlayersBecameFriends { .. }
+        | ParsedTeamFeedEventText::PlayerTrained { .. }
+        | ParsedTeamFeedEventText::ManagerReplaced { .. }
+        | ParsedTeamFeedEventText::NewRetirement { .. } => None,
     };
 
     (processed, game_outcome, ingest_logs.into_vec())

@@ -1080,7 +1080,7 @@ pub fn chron_player_feed_as_new<'a>(
             // there's been too many bugs with events after Released and I got
             // tired of excluding them one by one.
         }
-        ParsedPlayerFeedEventText::Retirement { .. } => {
+        ParsedPlayerFeedEventText::OldRetirement { .. } => {
             // I used to warn if anything's happened to this player since they were
             // Retired, but there's too many things that happen anyway (durability
             // loss and duplicate retirement for a start)
@@ -1116,8 +1116,10 @@ pub fn chron_player_feed_as_new<'a>(
         | ParsedPlayerFeedEventText::ElectionAppliedLevelUps { .. }
         | ParsedPlayerFeedEventText::LesserBoon { .. }
         | ParsedPlayerFeedEventText::ResumedHolidayProcessingReplacement { .. }
-        | ParsedPlayerFeedEventText::GainedModificationFromGreaterAugment { .. } => {}
-        | ParsedPlayerFeedEventText::PlayersBecameFriends { .. } => {}
+        | ParsedPlayerFeedEventText::GainedModificationFromGreaterAugment { .. }
+        | ParsedPlayerFeedEventText::PlayersBecameFriends { .. }
+        | ParsedPlayerFeedEventText::PlayerTrained { .. }
+        | ParsedPlayerFeedEventText::NewRetirement { .. } => {}
     }
 
     // Apply any pending inferred whose time is before this event's time
