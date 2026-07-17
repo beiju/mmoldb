@@ -2932,6 +2932,23 @@ impl<'g> Game<'g> {
                                     arriving_pitcher,
                                 ));
 
+                                if &leaving_pitcher.name != swept_pitcher_name {
+                                    ingest_logs.warn(format!(
+                                        "Leaving pitcher {} did not match the swept pitcher, {}. This may mean a MMOLB \
+                                        bug was fixed, and MMOLDB needs to be updated to handle the fix. In the \
+                                        meantime, the wrong pitcher may return next inning.",
+                                        leaving_pitcher,
+                                        swept_pitcher_name,
+                                    ));
+                                }
+
+                                // As of mid-s14, when a pitcher is removed from the mound by the manager and swept
+                                // away on the same event, the pitcher is still considered swept-away and will return
+                                // at the start of the next inning. I have reported this as a bug and it is officially
+                                // considered to be "interesting".
+                                // https://discord.com/channels/1136709081319604324/1519957460880851034/1521056466251943936
+                                self.defending_team_mut().currently_swept_pitcher_name = Some(swept_pitcher_name);
+
                                 Some(EventForTable::PitcherChange(PitcherChange {
                                     game_event_index,
                                     previous_game_event_index: self.last_game_event_index_with_event_detail,
@@ -2965,7 +2982,7 @@ impl<'g> Game<'g> {
                                     ));
                                 }
 
-                                self.defending_team_mut().currently_swept_pitcher_name = Some(self.defending_team().active_pitcher.name);
+                                self.defending_team_mut().currently_swept_pitcher_name = Some(swept_pitcher_name);
                                 self.defending_team_mut().active_pitcher.name = incoming_pitcher_name;
 
                                 None

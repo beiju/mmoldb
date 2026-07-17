@@ -11,6 +11,8 @@ Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 Upcoming
 --------
 - Now supports assassinations on strikeouts and walks.
+- Fixes pitchers who get replaced and swept at the same inning start. MMOLDB 
+  now faithfully reproduces MMOLB's bug.
 
 2026-07-06
 ----------
