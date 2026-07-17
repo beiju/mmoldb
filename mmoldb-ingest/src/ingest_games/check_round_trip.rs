@@ -26,8 +26,9 @@ fn log_if_error<'g, E: std::fmt::Display>(
 // was originally there. This causes round-trip errors if it's not specifically
 // address it. This function specifically addresses it by mutating the
 // reconstructed event's places to match the original's, where they're
-// compatible.
-fn downgrade_parsed_places_to_match(
+// compatible. Update: Same thing happens for the silent assassinations where
+// we add the assassination manually, with the same fix.
+fn downgrade_to_match(
     game_event_index: usize,
     ours: &mut ParsedEventMessage<&str>,
     original: &ParsedEventMessage<&str>,
@@ -36,6 +37,21 @@ fn downgrade_parsed_places_to_match(
     // TODO The bodies of the non-empty members of this are nearly
     //   identical. Refactor that logic out into a function somehow.
     match ours {
+        ParsedEventMessage::Ball { assassinations, .. } => {
+            if let ParsedEventMessage::Ball { assassinations: original_assassinations, .. } = original {
+                if original_assassinations.is_empty() { assassinations.clear() }
+            }
+        }
+        ParsedEventMessage::Walk { assassinations, .. } => {
+            if let ParsedEventMessage::Walk { assassinations: original_assassinations, .. } = original {
+                if original_assassinations.is_empty() { assassinations.clear() }
+            }
+        }
+        ParsedEventMessage::FairBall { assassinations, .. } => {
+            if let ParsedEventMessage::FairBall { assassinations: original_assassinations, .. } = original {
+                if original_assassinations.is_empty() { assassinations.clear() }
+            }
+        }
         ParsedEventMessage::BatterToBase { fielder, .. } => {
             if let ParsedEventMessage::BatterToBase {
                 fielder: original_fielder,
@@ -54,7 +70,7 @@ fn downgrade_parsed_places_to_match(
                     game_event_index,
                     format!(
                         "Not downgrading parsed Places because the event types don't match \
-                    (reconstructed is {:?} and original is {:?})",
+                        (reconstructed is {:?} and original is {:?})",
                         ours.discriminant(),
                         original.discriminant(),
                     ),
@@ -79,7 +95,7 @@ fn downgrade_parsed_places_to_match(
                     game_event_index,
                     format!(
                         "Not downgrading parsed Places because the event types don't match \
-                    (reconstructed is {:?} and original is {:?})",
+                        (reconstructed is {:?} and original is {:?})",
                         ours.discriminant(),
                         original.discriminant(),
                     ),
@@ -104,7 +120,7 @@ fn downgrade_parsed_places_to_match(
                     game_event_index,
                     format!(
                         "Not downgrading parsed Places because the event types don't match \
-                    (reconstructed is {:?} and original is {:?})",
+                        (reconstructed is {:?} and original is {:?})",
                         ours.discriminant(),
                         original.discriminant(),
                     ),
@@ -129,7 +145,7 @@ fn downgrade_parsed_places_to_match(
                     game_event_index,
                     format!(
                         "Not downgrading parsed Places because the event types don't match \
-                    (reconstructed is {:?} and original is {:?})",
+                        (reconstructed is {:?} and original is {:?})",
                         ours.discriminant(),
                         original.discriminant(),
                     ),
@@ -154,7 +170,7 @@ fn downgrade_parsed_places_to_match(
                     game_event_index,
                     format!(
                         "Not downgrading parsed Places because the event types don't match \
-                    (reconstructed is {:?} and original is {:?})",
+                        (reconstructed is {:?} and original is {:?})",
                         ours.discriminant(),
                         original.discriminant(),
                     ),
@@ -185,7 +201,7 @@ fn downgrade_places_to_match(
                     game_event_index,
                     format!(
                         "Not downgrading parsed Place for {} because the reconstructed event's \
-                    {log_loc} item at index {i} had no corresponding item in the original",
+                        {log_loc} item at index {i} had no corresponding item in the original",
                         ours.name,
                     ),
                 );
@@ -313,7 +329,7 @@ pub fn check_round_trip(
         return;
     };
 
-    downgrade_parsed_places_to_match(index, &mut parsed_through_detail, parsed, ingest_logs);
+    downgrade_to_match(index, &mut parsed_through_detail, parsed, ingest_logs);
 
     if parsed != &parsed_through_detail {
         ingest_logs.error(
@@ -375,7 +391,7 @@ pub fn check_round_trip(
         return;
     };
 
-    downgrade_parsed_places_to_match(index, &mut parsed_through_db, parsed, ingest_logs);
+    downgrade_to_match(index, &mut parsed_through_db, parsed, ingest_logs);
 
     if parsed != &parsed_through_db {
         ingest_logs.error(

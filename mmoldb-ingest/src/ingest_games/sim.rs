@@ -21,9 +21,42 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::fmt::Write;
+use lazy_static::lazy_static;
 use strum::IntoDiscriminant;
 use thiserror::Error;
 use tracing::warn;
+
+lazy_static! {
+    #[rustfmt::skip]
+    static ref SILENT_ASSASSINATIONS: HashMap<(&'static str, usize), (&'static str, &'static str)> = {
+        HashMap::from_iter(
+            [
+                // (entity id, feed event index), (victim name, assassin name)
+                (("6a3e3fa0b3e16e990ba07566", 251), ("Cait Andersson", "Grace de Almeida")),
+                (("6a3e5bc1b3e16e990ba0ddb5", 319), ("Fannie Carew", "Myrtle Saputra")),
+                (("6a3e5bc1b3e16e990ba0ddb5", 364), ("Derek Krause", "Myrtle Saputra")),
+                (("6a3e5bc1b3e16e990ba0ddb5", 376), ("Bonnie Marte", "Myrtle Saputra")),
+                (("6a3ee860b3e16e990ba2e5cd", 159), ("Ziggy Birch", "Myrtle Saputra")),
+                (("6a3ee860b3e16e990ba2e5cd", 210), ("Coyote Belmont", "Myrtle Saputra")),
+                (("6a3f7501b3e16e990ba4f1c6", 89), ("Regina Mashaba", "Myrtle Saputra")),
+                (("6a3fe581b3e16e990ba695af", 273), ("Cameron Nkurunziza", "Grace de Almeida")),
+                (("6a3fe581b3e16e990ba695af", 277), ("George Maeda", "Grace de Almeida")),
+                (("6a4001a1b3e16e990ba6fe8c", 26), ("Edward Park", "Myrtle Saputra")),
+                (("6a4001a1b3e16e990ba6fe8c", 125), ("Wèi Oliver", "Myrtle Saputra")),
+                (("6a4001a1b3e16e990ba6fe8c", 165), ("Edward Park", "Myrtle Saputra")),
+                (("6a4001a1b3e16e990ba6fe8c", 214), ("Viola de Jesus", ",Myrtle Saputra")),
+                (("6a408e41b3e16e990ba90cc7", 168), ("Lauren Binnington", "Myrtle Saputra")),
+                (("6a411ae1b3e16e990bab1f04", 83), ("Regina Mashaba", "Myrtle Saputra")),
+                (("6a41a782b3e16e990bad3280", 281), ("Novak Bray", "Myrtle Saputra")),
+                (("6a423422b3e16e990baf4b91", 264), ("Yui Nakanishi", "Myrtle Saputra")),
+                (("6a42a4a2b3e16e990bb0f804", 33), ("Cait Andersson", "Grace de Almeida")),
+                (("6a42a4a2b3e16e990bb0f804", 115), ("Jesse Ono", "Grace de Almeida")),
+                (("6a433143b3e16e990bb30ab6", 42), ("Al Santana", "Grace de Almeida")),
+                (("6a43da02b3e16e990bb58bef", 27), ("Patsy Smoltz", "Myrtle Saputra")),
+            ]
+        )
+    };
+}
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Parse error: {}", .0)]
@@ -2715,9 +2748,11 @@ impl<'g> Game<'g> {
 
     fn handle_assassinations(
         &mut self,
+        game_event_index: usize,
         assassinations: &Vec<Assassination<&'g str>>,
         ingest_logs: &mut IngestLogs,
-    ) {
+    ) -> Vec<Assassination<&'g str>> {
+
         for assassination in assassinations {
             let candidates = self.state.runners_on.iter()
                 .enumerate()
@@ -2750,6 +2785,40 @@ impl<'g> Game<'g> {
                 }
             }
         }
+
+        let mut assassinations = assassinations.clone();
+        if let Some((victim_name, assassin_name)) = SILENT_ASSASSINATIONS.get(&(self.game_id, game_event_index)) {
+            let candidates = self.state.runners_on.iter()
+                .enumerate()
+                .filter(|(_, runner)| &runner.runner_name == victim_name)
+                .exactly_one();
+            match candidates {
+                Ok((i, runner)) => {
+                    ingest_logs.info(format!("{} was silently assassinated", runner.runner_name));
+                    self.state.runners_on.remove(i);
+                    assassinations.push(Assassination { assassin_name, victim_name });
+                }
+                Err(err) => {
+                    let candidates = err.collect_vec();
+                    if let Some((i, runner)) = candidates.first() {
+                        ingest_logs.warn(format!(
+                            "There are {} runners named {}, and we can't tell which was silently assassinated. \
+                            Arbitrarily assuming it was the one on {}.",
+                            candidates.len(),
+                            victim_name,
+                            runner.base,
+                        ));
+                        self.state.runners_on.remove(*i);
+                    } else {
+                        ingest_logs.warn(format!(
+                            "A runner named {} was silently assassinated, but there are no runners with that name on base.",
+                            victim_name,
+                        ));
+                    }
+                }
+            }
+        }
+        assassinations
     }
 
     pub fn next(
@@ -3085,7 +3154,7 @@ impl<'g> Game<'g> {
                     (previous_event, event),
                     [ParsedEventMessageDiscriminants::Ball]
                     ParsedEventMessage::Ball { count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence, assassinations } => {
-                        self.handle_assassinations(assassinations, ingest_logs); // assassinations happen first
+                        let assassinations = self.handle_assassinations(game_event_index, assassinations, ingest_logs); // assassinations happen first
 
                         self.state.count_balls += 1;
                         self.check_count(*count, ingest_logs);
@@ -3122,7 +3191,7 @@ impl<'g> Game<'g> {
                     },
                     [ParsedEventMessageDiscriminants::Strike]
                     ParsedEventMessage::Strike { strike, count, steals, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence, surprise_strike, assassinations } => {
-                        self.handle_assassinations(assassinations, ingest_logs); // assassinations happen first
+                        let assassinations = self.handle_assassinations(game_event_index, assassinations, ingest_logs); // assassinations happen first
 
                         self.state.count_strikes += 1;
                         self.handle_surprise_strike(*surprise_strike);
@@ -3157,7 +3226,7 @@ impl<'g> Game<'g> {
                     },
                     [ParsedEventMessageDiscriminants::StrikeOut]
                     ParsedEventMessage::StrikeOut { foul, batter, strike, steals, cheer, aurora_photos, ejection, wither, assassinations } => {
-                        self.handle_assassinations(assassinations, ingest_logs);
+                        let assassinations = self.handle_assassinations(game_event_index, assassinations, ingest_logs);
 
                         self.check_batter(batter_name, batter, ingest_logs);
                         if self.state.count_strikes < 2 {
@@ -3210,7 +3279,7 @@ impl<'g> Game<'g> {
                     },
                     [ParsedEventMessageDiscriminants::Foul]
                     ParsedEventMessage::Foul { foul, steals, count, cheer, aurora_photos, door_prizes, wither, efflorescence, assassinations } => {
-                        self.handle_assassinations(assassinations, ingest_logs);
+                        let assassinations = self.handle_assassinations(game_event_index, assassinations, ingest_logs);
 
                         // Falsehoods...
                         if !(*foul == FoulType::Ball && self.state.count_strikes >= 2) {
@@ -3244,7 +3313,7 @@ impl<'g> Game<'g> {
                     },
                     [ParsedEventMessageDiscriminants::FairBall]
                     ParsedEventMessage::FairBall { batter, fair_ball_type, destination, cheer, aurora_photos, door_prizes, efflorescence, assassinations } => {
-                        self.handle_assassinations(assassinations, ingest_logs); // assassinations happen first
+                        let assassinations = self.handle_assassinations(game_event_index, assassinations, ingest_logs); // assassinations happen first
 
                         self.check_batter(batter_name, batter, ingest_logs);
 
@@ -3287,7 +3356,7 @@ impl<'g> Game<'g> {
                     },
                     [ParsedEventMessageDiscriminants::Walk]
                     ParsedEventMessage::Walk { batter, advances, scores, cheer, aurora_photos, ejection, wither, assassinations } => {
-                        self.handle_assassinations(assassinations, ingest_logs);
+                        let assassinations = self.handle_assassinations(game_event_index, assassinations, ingest_logs);
 
                         self.check_batter(batter_name, batter, ingest_logs);
 
@@ -3562,7 +3631,7 @@ impl<'g> Game<'g> {
                 },
                 [ParsedEventMessageDiscriminants::GroundedOut]
                 ParsedEventMessage::GroundedOut { batter, fielders, scores, advances, amazing, ejection, assassinations } => {
-                    self.handle_assassinations(assassinations, ingest_logs); // assassinations happen first
+                    let assassinations = self.handle_assassinations(game_event_index, assassinations, ingest_logs); // assassinations happen first
 
                     self.check_batter(batter_name, batter, ingest_logs);
                     self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
