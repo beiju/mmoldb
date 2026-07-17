@@ -3139,7 +3139,9 @@ impl<'g> Game<'g> {
                             })
                     },
                     [ParsedEventMessageDiscriminants::StrikeOut]
-                    ParsedEventMessage::StrikeOut { foul, batter, strike, steals, cheer, aurora_photos, ejection, wither } => {
+                    ParsedEventMessage::StrikeOut { foul, batter, strike, steals, cheer, aurora_photos, ejection, wither, assassinations } => {
+                        self.handle_assassinations(assassinations, ingest_logs);
+
                         self.check_batter(batter_name, batter, ingest_logs);
                         if self.state.count_strikes < 2 {
                             ingest_logs.warn(format!(
@@ -3186,6 +3188,7 @@ impl<'g> Game<'g> {
                             .ejection(ejection.clone())
                             .steals(steals.clone())
                             .wither(wither.clone())
+                            .assassinations(assassinations.clone())
                             .build_some(self, batter, ingest_logs, event_type)
                     },
                     [ParsedEventMessageDiscriminants::Foul]
@@ -3266,7 +3269,9 @@ impl<'g> Game<'g> {
                         None
                     },
                     [ParsedEventMessageDiscriminants::Walk]
-                    ParsedEventMessage::Walk { batter, advances, scores, cheer, aurora_photos, ejection, wither } => {
+                    ParsedEventMessage::Walk { batter, advances, scores, cheer, aurora_photos, ejection, wither, assassinations } => {
+                        self.handle_assassinations(assassinations, ingest_logs);
+
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(
@@ -3299,6 +3304,7 @@ impl<'g> Game<'g> {
                             .runner_changes(advances.clone(), scores.clone())
                             .add_runner(batter, TaxaBase::First)
                             .wither(wither.clone())
+                            .assassinations(assassinations.clone())
                             .build_some(self, batter, ingest_logs, TaxaEventType::Walk)
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]

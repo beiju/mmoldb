@@ -10,6 +10,10 @@ Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
 Upcoming
 --------
+- Now supports assassinations on strikeouts and walks.
+
+2026-07-06
+----------
 - Adds support for most s13 mechanics. Silent assassinations (those without 
   any entry in the game log) are not supported yet. Flooding sweeps involving
   a pitcher who is replaced mid-inning are bugged in MMOLB and this bug is not
