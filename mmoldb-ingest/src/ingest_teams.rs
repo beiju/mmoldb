@@ -27,6 +27,9 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
                         // versions created with an integrated feed, and (2) the Feed is persistent,
                         // so we can ignore hundreds of versions and then the first standalone feed
                         // version will capture all the backlog
+                        // LastRosterSwapAt probably isn't important because team player versions
+                        // probably change whenever it does, but it's also not necessary to keep
+                        // so why bother. Same for SwapAvailable.
                         if k == "SeasonStats"
                             || k == "Record"
                             || k == "Feed"
@@ -34,6 +37,11 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
                             || k == "MotesUsed"
                             || k == "SeasonRecords"
                             || k == "Inventory"
+                            || k == "IsPlaying"
+                            || k == "LastRosterSwapAt"
+                            || k == "SwapAvailable"
+                            || k == "SwapSeasonRestricted"
+                            || k == "AutoAcceptExhibitions"
                         {
                             None
                         } else if k == "Players" {
@@ -55,6 +63,45 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
                                                 })
                                             }
                                             other => other.clone(),
+                                        })
+                                        .collect()
+                                }),
+                                other => other.clone(),
+                            };
+                            Some((k.clone(), new_v))
+                        } else if k == "Bench" {
+                            let new_v = match v {
+                                serde_json::Value::Object(obj) => serde_json::Value::Object({
+                                    obj.iter()
+                                        .filter_map(|(bk, bv)| {
+                                            if bk == "Batters" || bk == "Pitchers" {
+                                                let new_bv = match bv {
+                                                    serde_json::Value::Array(arr) => serde_json::Value::Array({
+                                                        arr.iter()
+                                                            .map(|pl| match pl {
+                                                                serde_json::Value::Object(pobj) => {
+                                                                    serde_json::Value::Object({
+                                                                        pobj.iter()
+                                                                            .flat_map(|(pk, pv)| {
+                                                                                if pk == "Stats" {
+                                                                                    None
+                                                                                } else {
+                                                                                    Some((pk.clone(), pv.clone()))
+                                                                                }
+                                                                            })
+                                                                            .collect()
+                                                                    })
+                                                                }
+                                                                other => other.clone(),
+                                                            })
+                                                            .collect()
+                                                    }),
+                                                    other => other.clone(),
+                                                };
+                                                Some((bk.clone(), new_bv))
+                                            } else {
+                                                Some((bk.clone(), bv.clone()))
+                                            }
                                         })
                                         .collect()
                                 }),

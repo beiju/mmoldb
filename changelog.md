@@ -18,6 +18,7 @@ Upcoming
 - Fixes player version deserialization errors.
 - Fixes many feed event deserialization errors.
 - Adds support for Luck augments, which needed special handling for reasons.
+- Team ingest should hopefully go faster now.
 
 2026-07-06
 ----------
