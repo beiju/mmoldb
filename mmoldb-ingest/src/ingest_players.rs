@@ -881,7 +881,12 @@ fn chron_player_as_new<'a>(
         match &entity.data.augment_history {
             Ok(augs) => {
                 for aug in augs {
-                    let Ok(cat) = AttributeCategory::try_from(aug.attribute) else {
+                    let cat = if let Ok(cat) = AttributeCategory::try_from(aug.attribute) {
+                        cat
+                    } else if aug.attribute == Attribute::Luck {
+                        // Luck is in the Defense report for historical reasons
+                        AttributeCategory::Defense
+                    } else {
                         ingest_logs.warn(format!(
                             "Unexpected uncategorized attribute in AppliedAugments: {}.",
                             aug.attribute

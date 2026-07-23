@@ -17,6 +17,7 @@ Upcoming
   for the help!
 - Fixes player version deserialization errors.
 - Fixes many feed event deserialization errors.
+- Adds support for Luck augments, which needed special handling for reasons.
 
 2026-07-06
 ----------
