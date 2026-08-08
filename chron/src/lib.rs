@@ -42,8 +42,8 @@ pub enum ChronStreamError {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ChronEntities<EntityT> {
-    pub items: Vec<ChronEntity<EntityT>>,
+pub struct ChronEntities<ItemT> {
+    pub items: Vec<ItemT>,
     pub next_page: Option<String>,
 }
 
@@ -54,6 +54,31 @@ pub struct ChronEntity<EntityT> {
     pub valid_from: DateTime<Utc>,
     pub valid_to: Option<DateTime<Utc>>,
     pub data: EntityT,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChronFeedEvent<EntityT> {
+    pub event_id: String,
+    pub subject_type: String,
+    pub subject_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub data: EntityT,
+}
+
+trait ChronTimestamped {
+    fn timestamp(&self) -> DateTime<Utc>;
+}
+
+impl<T> ChronTimestamped for ChronEntity<T> {
+    fn timestamp(&self) -> DateTime<Utc> {
+        self.valid_from
+    }
+}
+
+impl<T> ChronTimestamped for ChronFeedEvent<T> {
+    fn timestamp(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
 }
 
 pub struct Chron {
@@ -115,11 +140,33 @@ impl Chron {
         )
     }
 
+    pub fn feed_events(
+        &self,
+        start_at: Option<DateTime<Utc>>,
+        max_retries: usize,
+        use_local_cheap_cashews: bool,
+    ) -> impl Stream<Item = Result<ChronFeedEvent<serde_json::Value>, ChronStreamError>> {
+        // This endpoint never existed on freecashews, only cheapcashews
+        let cheap_cashews_url = if use_local_cheap_cashews {
+            "http://10.0.0.71:3001/chron/v0/feed_events"
+        } else {
+            "https://cheapcashews.beiju.me/chron/v0/feed_events"
+        };
+
+        self.items(
+            cheap_cashews_url,
+            None,
+            max_retries,
+            start_at,
+            None,
+        )
+    }
+
     pub async fn entities_by_id(
         &self,
         kind: &'static str,
         ids: &[&str],
-    ) -> Result<ChronEntities<serde_json::Value>, ChronStreamError> {
+    ) -> Result<ChronEntities<ChronEntity<serde_json::Value>>, ChronStreamError> {
         debug!("Fetching {} {kind} entities", ids.len());
         let client = self.client.clone(); // This is internally reference counted
 
@@ -143,8 +190,8 @@ impl Chron {
             .await
             .map_err(ChronStreamError::RequestBodyError)?;
 
-        let items: ChronEntities<serde_json::Value> =
-            serde_json::from_str(&result).map_err(ChronStreamError::DeserializeError)?;
+        let items = serde_json::from_str(&result)
+            .map_err(ChronStreamError::DeserializeError)?;
 
         Ok(items)
     }
@@ -206,7 +253,7 @@ impl Chron {
             debug!(
                 "Making paginated Chron API call for kind={kind} to {url} from date {segment_start:?} to {segment_end:?}"
             );
-            streams.push(self.items(url, kind, max_retries, segment_start, segment_end));
+            streams.push(self.items(url, Some(kind), max_retries, segment_start, segment_end));
 
             // Next segment starts when this one ends. Note that this assignment does not happen if
             // the start date is after the end date due to the continue; above. That's important.
@@ -218,15 +265,15 @@ impl Chron {
         stream::iter(streams).flatten()
     }
 
-    fn items(
+    fn items<ItemT: ChronTimestamped + for<'de> Deserialize<'de> + 'static>(
         &self,
         url: &'static str,
-        kind: &'static str,
+        kind: Option<&'static str>,
         max_retries: usize,
         start_at: Option<DateTime<Utc>>,
         end_at: Option<DateTime<Utc>>,
-    ) -> impl Stream<Item = Result<ChronEntity<serde_json::Value>, ChronStreamError>> {
-        self.pages(url, kind, max_retries, start_at, end_at)
+    ) -> impl Stream<Item = Result<ItemT, ChronStreamError>> {
+        self.pages::<ItemT>(url, kind, max_retries, start_at, end_at)
             .flat_map(|val| match val {
                 Ok(vec) => {
                     // Turn Vec<T> into a stream of Result<T, E>
@@ -241,7 +288,7 @@ impl Chron {
             // We shouldn't get items past end_at from the api, but cut them off
             // just in case
             .try_take_while(move |entity| {
-                if end_at.is_some_and(|e| entity.valid_from > e) {
+                if end_at.is_some_and(|e| entity.timestamp() > e) {
                     warn!("API gave us a version that started past the `before` parameter");
                     future::ready(Ok(false))
                 } else {
@@ -250,14 +297,14 @@ impl Chron {
             })
     }
 
-    fn pages(
+    fn pages<ItemT: for<'de> Deserialize<'de> + 'static>(
         &self,
         url: &'static str,
-        kind: &'static str,
+        kind: Option<&'static str>,
         max_retries: usize,
         start_at: Option<DateTime<Utc>>,
         end_at: Option<DateTime<Utc>>,
-    ) -> impl Stream<Item = Result<Vec<ChronEntity<serde_json::Value>>, ChronStreamError>> {
+    ) -> impl Stream<Item = Result<Vec<ItemT>, ChronStreamError>> {
         // For lifetimes
         let page_size = self.page_size;
         let client = self.client.clone(); // This is internally reference counted
@@ -342,16 +389,16 @@ impl Chron {
     }
 }
 
-async fn get_next_page_with_retries(
+async fn get_next_page_with_retries<ItemT: for<'de> Deserialize<'de>>(
     client: reqwest::Client,
     url: &str,
-    kind: &str,
+    kind: Option<&str>,
     max_retries: usize,
     page_size: NonZero<usize>,
     start_at: Option<DateTime<Utc>>,
     end_at: Option<DateTime<Utc>>,
     page: Option<String>,
-) -> Result<(reqwest::Client, ChronEntities<serde_json::Value>), ChronStreamError> {
+) -> Result<(reqwest::Client, ChronEntities<ItemT>), ChronStreamError> {
     let mut retries = 0;
     loop {
         match get_next_page(
@@ -382,24 +429,31 @@ async fn get_next_page_with_retries(
     }
 }
 
-async fn get_next_page(
+async fn get_next_page<ItemT: for<'de> Deserialize<'de>>(
     client: &reqwest::Client,
     url: &str,
-    kind: &str,
+    kind: Option<&str>,
     page_size: NonZero<usize>,
     start_at: Option<DateTime<Utc>>,
     end_at: Option<DateTime<Utc>>,
     page: Option<&str>,
-) -> Result<ChronEntities<serde_json::Value>, ChronStreamError> {
-    debug!("Fetching {kind} page {page:?} starting at {start_at:?}");
+) -> Result<ChronEntities<ItemT>, ChronStreamError> {
+    if let Some(kind) = kind {
+        debug!("Fetching {kind} page {page:?} starting at {start_at:?}");
+    } else {
+        debug!("Fetching page {page:?} starting at {start_at:?}");
+    }
 
     let page_size_string = page_size.to_string();
 
     let mut request_builder = client.get(url).query(&[
-        ("kind", kind),
-        ("count", &page_size_string),
         ("order", "asc"),
+        ("count", &page_size_string),
     ]);
+
+    if let Some(kind) = kind {
+        request_builder = request_builder.query(&[("kind", kind)]);
+    }
 
     if let Some(start_at) = start_at {
         request_builder = request_builder.query(&[("after", &start_at.to_rfc3339())]);
@@ -430,8 +484,8 @@ async fn get_next_page(
         .await
         .map_err(ChronStreamError::RequestBodyError)?;
 
-    let items: ChronEntities<serde_json::Value> =
-        serde_json::from_str(&result).map_err(ChronStreamError::DeserializeError)?;
+    let items = serde_json::from_str(&result)
+        .map_err(ChronStreamError::DeserializeError)?;
 
     Ok(items)
 }

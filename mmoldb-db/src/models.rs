@@ -48,6 +48,28 @@ pub struct DbFeedEventVersion {
     pub data: serde_json::Value,
 }
 
+#[derive(Insertable)]
+#[diesel(table_name = crate::data_schema::data::feed_events)]
+#[diesel(treat_none_as_default_value = false, primary_key(event_id, timestamp))]
+pub struct NewFeedEvent<'a> {
+    pub event_id: &'a str,
+    pub subject_type: &'a str,
+    pub subject_id: &'a str,
+    pub timestamp: NaiveDateTime,
+    pub data: &'a serde_json::Value,
+}
+
+#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[diesel(table_name = crate::data_schema::data::feed_events)]
+#[diesel(check_for_backend(diesel::pg::Pg), primary_key(event_id, timestamp))]
+pub struct DbFeedEvent {
+    pub event_id: String,
+    pub subject_type: String,
+    pub subject_id: String,
+    pub timestamp: NaiveDateTime,
+    pub data: serde_json::Value,
+}
+
 #[derive(Debug, Insertable)]
 #[diesel(table_name = crate::data_schema::data::weather)]
 pub struct NewWeather<'a> {

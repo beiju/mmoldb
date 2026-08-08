@@ -44,6 +44,7 @@ pub struct IngestConfig {
     pub player_ingest: IngestibleConfig,
     pub player_feed_ingest: IngestibleConfig,
     pub game_ingest: IngestibleConfig,
+    pub combined_feed_ingest: IngestibleConfig,
 }
 
 impl Default for IngestConfig {
@@ -58,6 +59,7 @@ impl Default for IngestConfig {
             player_ingest: Default::default(),
             player_feed_ingest: Default::default(),
             game_ingest: Default::default(),
+            combined_feed_ingest: Default::default(),
         }
     }
 }

@@ -707,6 +707,7 @@ impl EntityIngestKind {
 pub enum IngestKind {
     Versioned(VersionedIngestKind),
     Feed(VersionedIngestKind),
+    CombinedFeed,
     Entity(EntityIngestKind),
 }
 
@@ -715,6 +716,7 @@ impl Display for IngestKind {
         match self {
             IngestKind::Versioned(k) => write!(f, "{}", k.as_kind()),
             IngestKind::Feed(k) => write!(f, "{}", k.as_feed_event_kind()),
+            IngestKind::CombinedFeed => write!(f, "feed"),
             IngestKind::Entity(k) => write!(f, "{}", k.as_kind()),
         }
     }
@@ -793,6 +795,13 @@ impl IngestForKind {
                 .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind()))
                 .await
             }
+            IngestKind::CombinedFeed => {
+                fetch::fetch_feed_events(
+                    self.fetch_args.clone(),
+                )
+                .instrument(info_span!("fetch_task", kind = "combined_feed"))
+                .await
+            },
             IngestKind::Entity(kind) => {
                 fetch::fetch_entity_kind(kind.as_kind(), self.fetch_args.clone())
                     .instrument(info_span!("fetch_task", kind = kind.as_kind()))
@@ -848,6 +857,10 @@ impl IngestForKind {
                 ))
                 .await
             }
+            IngestKind::CombinedFeed => {
+                warn!("Combined feed event processing is not implemented yet");
+                Ok(())
+            }
             IngestKind::Entity(kind) => {
                 processing::process_entity_kind(kind.as_kind(), self.processing_args.clone())
                     .instrument(info_span!("processing_task", kind = kind.as_kind()))
@@ -882,6 +895,10 @@ pub fn ingest_kinds(
         (
             IngestKind::Entity(EntityIngestKind::Game),
             &config.game_ingest,
+        ),
+        (
+            IngestKind::CombinedFeed,
+            &config.combined_feed_ingest,
         ),
     ];
 

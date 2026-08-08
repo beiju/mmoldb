@@ -245,6 +245,16 @@ pub mod data {
     }
 
     diesel::table! {
+        data.feed_events (event_id, timestamp) {
+            event_id -> Text,
+            subject_type -> Text,
+            subject_id -> Text,
+            timestamp -> Timestamp,
+            data -> Jsonb,
+        }
+    }
+
+    diesel::table! {
         data.feed_events_processed (kind, entity_id, feed_event_index, valid_from) {
             kind -> Text,
             entity_id -> Text,
@@ -682,6 +692,7 @@ pub mod data {
         events,
         failed_ejections,
         feed_event_versions,
+        feed_events,
         feed_events_processed,
         games,
         modification_effects,

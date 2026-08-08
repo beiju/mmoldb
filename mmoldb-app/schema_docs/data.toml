@@ -211,10 +211,11 @@ which will never finish, but they are not "ongoing".
 name = "stadium_name"
 type = "text"
 description = """
-The name of the stadium this game was played in, if any.
+The name of the stadium this game was played in, if provided.
 """
 nullable_explanation = """
-`null` for games from before stadiums were introduced in season 3.
+`null` for games from before stadiums were introduced in season 3, or from
+after stadium names were removed from the game event log in season 15.
 """
 
 [[table.column]]

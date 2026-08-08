@@ -287,6 +287,88 @@ pub async fn fetch_feed_event_version_kind(
     Ok(())
 }
 
+// It may be possible to remove 'static
+pub async fn fetch_feed_events(
+    args: ChronFetchArgs,
+) -> Result<(), IngestFatalError> {
+    let mut conn = args.pool.get()?;
+    let chron = Chron::new(args.chron_fetch_batch_size);
+
+    let start_cursor = db::get_latest_combined_feed_event_version_cursor(&mut conn)?;
+    let start_cursor_utc = start_cursor.as_ref().map(|(dt, id)| (dt.and_utc(), id));
+
+    let start_date = start_cursor_utc.as_ref().map(|(dt, _)| *dt);
+    info!("Combined feed event fetch will start from date {:?}", start_date,);
+
+    let stream = chron
+        .feed_events(start_date, 3, args.use_local_cheap_cashews)
+        // End the stream early when cancellation is requested. By ending the stream at this
+        // point, we stop waiting for any more network requests but we still process any that
+        // are still waiting to be collected in the next try_chunks item.
+        .take_until(args.shutdown_requested.cancelled().then(|()| async {
+            info!("Closing feed events fetch stream because shutdown was requested");
+        }))
+        // We ask Chron to start at a given timestamp. It will give us
+        // all feed events whose timestamp is greater than _or equal to_
+        // that value. That's good, because it means that if we left
+        // off halfway through processing a batch of feed events with
+        // identical timestamp, we won't miss the rest of the batch.
+        // However, we will receive the first half of the batch again.
+        // Later steps in the ingest code will error if we attempt to
+        // ingest a value that's already in the database, so we have to
+        // filter them out. That's what this skip_while is doing.
+        // It returns a future just because that's what's dictated by
+        // the stream api.
+        .skip_while(|result| {
+            let skip_this =
+                start_cursor_utc
+                    .as_ref()
+                    .is_some_and(|(start_timestamp, start_event_id)| {
+                        result.as_ref().is_ok_and(|entity| {
+                            (entity.timestamp, &entity.event_id)
+                                <= (*start_timestamp, start_event_id)
+                        })
+                    });
+
+            futures::future::ready(skip_this)
+        })
+        .map(|result| {
+            result
+                .map_err(IngestFatalError::ChronStreamError)
+                .map(|event| (event.event_id, event.subject_type, event.subject_id, event.timestamp.naive_utc(), event.data))
+        })
+        .try_chunks(args.insert_raw_entity_batch_size.into());
+    pin_mut!(stream);
+
+    while let Some(chunk) = stream.next().await {
+        // When a chunked stream encounters an error, it returns the portion
+        // of the chunk that was collected before the error and the error
+        // itself. We want to insert the successful portion of the chunk,
+        // _then_ propagate any error.
+        let (chunk, maybe_err): (Vec<_>, _) = match chunk {
+            Ok(chunk) => (chunk, None),
+            Err(err) => (err.0, Some(err.1)),
+        };
+
+        info!("Combined feed stage 1 ingest saving {} feed event(s)", chunk.len());
+        let inserted = match db::insert_feed_events(&mut conn, &chunk) {
+            Ok(x) => Ok(x),
+            Err(err) => {
+                error!("Error in stage 1 ingest write: {err}");
+                Err(err)
+            }
+        }?;
+        info!("Combined stage 1 ingest saved {inserted} feed event(s)");
+
+        if let Some(err) = maybe_err {
+            Err(err)?;
+        }
+    }
+
+    info!("Combined feed stage 1 ingest finished");
+    Ok(())
+}
+
 fn filter_cached(
     event_cache: &mut HashMap<(String, i32), serde_json::Value>,
     result: &Result<(String, i32, NaiveDateTime, serde_json::Value), IngestFatalError>,

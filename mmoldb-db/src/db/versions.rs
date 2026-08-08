@@ -5,12 +5,13 @@
 use crate::QueryError;
 use crate::data_schema::data::feed_event_versions::dsl as feed_event_versions_dsl;
 use crate::data_schema::data::versions::dsl as versions_dsl;
+use crate::data_schema::data::feed_events::dsl as feed_events_dsl;
 use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
 use tracing::{error, info};
-use crate::models::{NewFeedEventVersion, NewVersion};
+use crate::models::{NewFeedEvent, NewFeedEventVersion, NewVersion};
 
 pub fn get_latest_raw_version_cursor(
     conn: &mut PgConnection,
@@ -43,6 +44,23 @@ pub fn get_latest_raw_feed_event_version_cursor(
             feed_event_versions_dsl::valid_from.desc(),
             feed_event_versions_dsl::entity_id.desc(),
             feed_event_versions_dsl::feed_event_index.desc(),
+        ))
+        .limit(1)
+        .get_result(conn)
+        .optional()
+}
+
+pub fn get_latest_combined_feed_event_version_cursor(
+    conn: &mut PgConnection,
+) -> QueryResult<Option<(NaiveDateTime, String)>> {
+    feed_events_dsl::feed_events
+        .select((
+            feed_events_dsl::timestamp,
+            feed_events_dsl::event_id,
+        ))
+        .order_by((
+            feed_events_dsl::timestamp,
+            feed_events_dsl::event_id,
         ))
         .limit(1)
         .get_result(conn)
@@ -126,6 +144,26 @@ pub fn insert_feed_event_versions(
         .collect_vec();
 
     diesel::copy_from(feed_event_versions_dsl::feed_event_versions)
+        .from_insertable(&new_versions)
+        .execute(conn)
+}
+
+pub fn insert_feed_events(
+    conn: &mut PgConnection,
+    versions: &[(String, String, String, NaiveDateTime, serde_json::Value)],
+) -> QueryResult<usize> {
+    let new_versions = versions
+        .iter()
+        .map(|(event_id, subject_type, subject_id, timestamp, data)| NewFeedEvent {
+            event_id,
+            subject_type,
+            subject_id,
+            timestamp: *timestamp,
+            data,
+        })
+        .collect_vec();
+
+    diesel::copy_from(feed_events_dsl::feed_events)
         .from_insertable(&new_versions)
         .execute(conn)
 }
