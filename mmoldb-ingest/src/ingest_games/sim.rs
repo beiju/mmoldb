@@ -4622,6 +4622,12 @@ impl<'g> Game<'g> {
                     self.handle_end_game_income(winning_team, *winning_team_income, losing_team, *losing_team_income, ingest_logs);
                     None
                 },
+                [ParsedEventMessageDiscriminants::WeatherPollen]
+                ParsedEventMessage::WeatherPollen { winning_team: _, winning_team_pollen: _, losing_team: _, losing_team_pollen: _ } => {
+                    // As of s15, pollen always equals coins in pollen weather and there's no pollen
+                    // otherwise, so I don't feel a pressing need to store it
+                    None
+                },
                 // TODO see if there's a way to make the error message say which bug(s) we
                 //   were looking for
                 [ParsedEventMessageDiscriminants::KnownBug]

@@ -40,7 +40,9 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::SimulacrumPayout { .. }
         // EndGameIncome doesn't have a link in the rendered text, but it does have one
         // in the metadata
-        | ParsedTeamFeedEventText::EndGameIncome { .. } => {
+        | ParsedTeamFeedEventText::EndGameIncome { .. }
+        // Same for pollen
+        | ParsedTeamFeedEventText::EndGamePollen { .. } => {
             let game_link = feed_event.data
                 .links
                 .iter()
@@ -119,7 +121,9 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::PlayersBecameFriends { .. }
         | ParsedTeamFeedEventText::PlayerTrained { .. }
         | ParsedTeamFeedEventText::ManagerReplaced { .. }
-        | ParsedTeamFeedEventText::NewRetirement { .. } => None,
+        | ParsedTeamFeedEventText::NewRetirement { .. }
+        | ParsedTeamFeedEventText::SweetRelief { .. }
+        | ParsedTeamFeedEventText::DefensiveShift { .. } => None,
     };
 
     game_outcome

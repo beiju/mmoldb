@@ -788,7 +788,9 @@ pub fn chron_player_feed_as_new<'a>(
         | ParsedPlayerFeedEventText::GainedModificationFromGreaterAugment { .. }
         | ParsedPlayerFeedEventText::PlayersBecameFriends { .. }
         | ParsedPlayerFeedEventText::PlayerTrained { .. }
-        | ParsedPlayerFeedEventText::NewRetirement { .. } => {}
+        | ParsedPlayerFeedEventText::NewRetirement { .. }
+        | ParsedPlayerFeedEventText::SweetRelief { .. }
+        | ParsedPlayerFeedEventText::DefensiveShift { .. } => {}
     }
 
     // TODO Re-enable
