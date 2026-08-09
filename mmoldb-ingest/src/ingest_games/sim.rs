@@ -3,12 +3,18 @@ use miette::Diagnostic;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType,
     GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType,
-    TopBottom,
+    TopBottom
 };
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
-use mmolb_parsing::parsed_event::{Assassination, BaseSteal, BasicPitcherSwap, Cheer, ContainResult, DoorPrize, Efflorescence, Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle};
+use mmolb_parsing::parsed_event::{
+    Assassination, BaseSteal, BasicPitcherSwap, Cheer, ContainResult, DoorPrize, Efflorescence,
+    Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome,
+    FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer,
+    RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents,
+    WitherResult, WitherStruggle, AugmentedWeather,
+};
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
-use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource};
+use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource, TaxaPollenCount};
 use mmoldb_db::taxa::{
     TaxaBase, TaxaEventType, TaxaFairBallType, TaxaFielderLocation, TaxaFieldingErrorType, TaxaSlot,
 };
@@ -462,6 +468,7 @@ pub struct Game<'g> {
     pub home_team_photo_contest_score: Option<i32>,
     pub away_team_photo_contest_top_scorer: Option<&'g str>,
     pub away_team_photo_contest_score: Option<i32>,
+    pub pollen_count: Option<TaxaPollenCount>,
     pub last_game_event_index_with_event_detail: Option<usize>,
 
     // Aggregates
@@ -1408,19 +1415,21 @@ impl<'g> Game<'g> {
         let mut ingest_logs = Vec::new();
 
         let mut game_event_index = 0;
-        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji, stadium_name) = extract_next_game_event!(
+        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji, stadium_name, weather) = extract_next_game_event!(
             events,
             [ParsedEventMessageDiscriminants::LiveNow]
             ParsedEventMessage::LiveNow {
                 away_team,
                 home_team,
                 stadium,
+                weather,
             } => (
                 away_team.name,
                 away_team.emoji,
                 home_team.name,
                 home_team.emoji,
                 stadium,
+                weather,
             )
         )?;
 
@@ -1438,14 +1447,42 @@ impl<'g> Game<'g> {
                     logs.warn(format!(
                         "Pre-s3 game was played in a stadium: {stadium_name}"
                     ));
+                } else if game_data.season >= 15 {
+                    logs.warn(format!("Post-s15 game named its stadium: {stadium_name}"));
                 } else {
                     logs.debug(format!("Set stadium name to {stadium_name}"));
                 }
             } else {
                 if game_data.season < 3 {
                     logs.debug("Pre-s3 game was not played in a stadium");
+                } else if game_data.season >= 15 {
+                    logs.debug("Post-s15 game did not name its stadium");
                 } else {
-                    logs.warn("Post-s3 game was not played in a stadium");
+                    logs.warn("Post-s3, pre-s15 game was not played in a stadium");
+                }
+            }
+
+            if let Some(weather) = weather {
+                if game_data.season < 15 {
+                    logs.warn(format!("Pre-s15 game had weather {weather}"));
+                } else {
+                    logs.debug(format!("Post-s15 game had weather {weather}"));
+                }
+
+                if game_data.weather.name != weather.name() {
+                    logs.error(format!(
+                        "Weather from LiveNow event ({}) did not match weather from \
+                        game metadata ({})",
+                        weather.name(),
+                        game_data.weather.name,
+                    ));
+
+                }
+            } else {
+                if game_data.season < 15 {
+                    logs.debug("Pre-s15 game had no weather");
+                } else {
+                    logs.warn("Post-s15 game had no weather");
                 }
             }
 
@@ -1598,6 +1635,10 @@ impl<'g> Game<'g> {
             home_team_photo_contest_score: None,
             away_team_photo_contest_top_scorer: None,
             away_team_photo_contest_score: None,
+            pollen_count: weather.as_ref().and_then(|weather| match weather {
+                AugmentedWeather::Pollen { pollen_count } => Some((*pollen_count).into()),
+                AugmentedWeather::WeatherName(_) => None,
+            }),
             last_game_event_index_with_event_detail: None,
             away: TeamInGame {
                 team_name: away_team_name,

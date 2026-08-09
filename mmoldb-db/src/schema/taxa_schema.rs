@@ -150,6 +150,14 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.pollen_count (id) {
+            id -> Int8,
+            name -> Text,
+            display_name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.slot (id) {
             id -> Int8,
             name -> Text,
@@ -191,6 +199,7 @@ pub mod taxa {
         pitch_category,
         pitch_type,
         pitcher_change_source,
+        pollen_count,
         slot,
         slot_type,
     );

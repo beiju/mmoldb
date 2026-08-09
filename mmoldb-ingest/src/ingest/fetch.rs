@@ -6,7 +6,7 @@ use futures::{TryStreamExt, pin_mut};
 use mmoldb_db::{ConnectionPool, db};
 use std::num::NonZero;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct ChronFetchArgs {

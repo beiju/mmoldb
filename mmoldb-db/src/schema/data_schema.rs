@@ -291,6 +291,7 @@ pub mod data {
             away_team_photo_contest_score -> Nullable<Int4>,
             away_manager_name -> Nullable<Text>,
             home_manager_name -> Nullable<Text>,
+            pollen_count -> Nullable<Int8>,
         }
     }
 

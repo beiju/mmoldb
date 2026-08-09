@@ -115,6 +115,7 @@ pub struct NewGame<'a> {
     pub home_team_photo_contest_score: Option<i32>,
     pub away_team_photo_contest_top_scorer: Option<&'a str>,
     pub away_team_photo_contest_score: Option<i32>,
+    pub pollen_count: Option<i64>,
 }
 
 #[derive(Identifiable, Queryable, Selectable, QueryableByName)]
@@ -145,6 +146,7 @@ pub struct DbGame {
     pub home_team_photo_contest_score: Option<i32>,
     pub away_team_photo_contest_top_scorer: Option<String>,
     pub away_team_photo_contest_score: Option<i32>,
+    pub pollen_count: Option<i64>,
 }
 
 #[derive(Insertable)]

@@ -423,6 +423,7 @@ fn prepare_completed_game_for_db(
         away_team_photo_contest_score: game.away_team_photo_contest_score,
         home_manager_name: game.home_team().manager_name(),
         away_manager_name: game.away_team().manager_name(),
+        pollen_count: game.pollen_count,
     })
 }
 

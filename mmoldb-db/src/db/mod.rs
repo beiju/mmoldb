@@ -29,7 +29,7 @@ use tracing::{debug, info, trace, warn};
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
 use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
-use crate::taxa::Taxa;
+use crate::taxa::{Taxa, TaxaPollenCount};
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
 pub fn set_current_user_statement_timeout(
@@ -810,6 +810,7 @@ pub struct CompletedGameForDb<'g> {
     pub away_team_photo_contest_score: Option<i32>,
     pub home_manager_name: Option<&'g str>,
     pub away_manager_name: Option<&'g str>,
+    pub pollen_count: Option<TaxaPollenCount>,
 }
 
 pub enum GameForDb<'g> {
@@ -1451,6 +1452,7 @@ fn insert_games_internal<'e>(
                     home_team_photo_contest_score: None,
                     away_team_photo_contest_top_scorer: None,
                     away_team_photo_contest_score: None,
+                    pollen_count: None,
                 };
             };
 
@@ -1511,6 +1513,7 @@ fn insert_games_internal<'e>(
                     away_team_photo_contest_top_scorer: completed_game
                         .away_team_photo_contest_top_scorer,
                     away_team_photo_contest_score: completed_game.away_team_photo_contest_score,
+                    pollen_count: completed_game.pollen_count.map(|pollen_count| taxa.pollen_count_id(pollen_count)),
                 },
                 _ => NewGame {
                     mmolb_game_id: game_id,
@@ -1537,6 +1540,7 @@ fn insert_games_internal<'e>(
                     home_team_photo_contest_score: None,
                     away_team_photo_contest_top_scorer: None,
                     away_team_photo_contest_score: None,
+                    pollen_count: None,
                 },
             }
         })
