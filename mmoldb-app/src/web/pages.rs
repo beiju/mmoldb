@@ -324,7 +324,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         IngestibleWithErrors::new_with_progress_plot(
             "player feed event versions",
             counts.get("player_feed").cloned().unwrap_or((0, 0)),
-            uri!(player_feed_event_versions_progress_plot()),
+            uri!(player_feed_events_progress_plot()),
         ),
         IngestibleWithErrors::new_with_progress_plot(
             "team versions",
@@ -334,7 +334,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         IngestibleWithErrors::new_with_progress_plot(
             "team feed event versions",
             counts.get("team_feed").cloned().unwrap_or((0, 0)),
-            uri!(team_feed_event_versions_progress_plot()),
+            uri!(team_feed_events_progress_plot()),
         ),
     ];
 
@@ -561,10 +561,10 @@ pub async fn player_versions_progress_plot(db: Db) -> (ContentType, String) {
     (ContentType::SVG, content)
 }
 
-#[get("/player_feed_event_versions/progress_plot.svg")]
-pub async fn player_feed_event_versions_progress_plot(db: Db) -> (ContentType, String) {
-    let content = match db.run(|mut conn| db::feed_event_versions_progress("player_feed", &mut conn)).await {
-        Ok(progress) => crate::web::plots::plot("Player feed event version", progress).unwrap_or_else(svg_err),
+#[get("/player_feed_events/progress_plot.svg")]
+pub async fn player_feed_events_progress_plot(db: Db) -> (ContentType, String) {
+    let content = match db.run(|mut conn| db::feed_events_progress("player", &mut conn)).await {
+        Ok(progress) => crate::web::plots::plot("Player feed event", progress).unwrap_or_else(svg_err),
         Err(err) => svg_err(err),
     };
 
@@ -581,10 +581,10 @@ pub async fn team_versions_progress_plot(db: Db) -> (ContentType, String) {
     (ContentType::SVG, content)
 }
 
-#[get("/team_feed_event_versions/progress_plot.svg")]
-pub async fn team_feed_event_versions_progress_plot(db: Db) -> (ContentType, String) {
-    let content = match db.run(|mut conn| db::feed_event_versions_progress("team_feed", &mut conn)).await {
-        Ok(progress) => crate::web::plots::plot("Team feed event version", progress).unwrap_or_else(svg_err),
+#[get("/team_feed_events/progress_plot.svg")]
+pub async fn team_feed_events_progress_plot(db: Db) -> (ContentType, String) {
+    let content = match db.run(|mut conn| db::feed_events_progress("team", &mut conn)).await {
+        Ok(progress) => crate::web::plots::plot("Team feed event", progress).unwrap_or_else(svg_err),
         Err(err) => svg_err(err),
     };
 

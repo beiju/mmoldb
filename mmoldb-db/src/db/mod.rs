@@ -2100,8 +2100,8 @@ pub fn versions_progress(
     })
 }
 
-pub fn feed_event_versions_progress(
-    kind: &str,
+pub fn feed_events_progress(
+    subject_type: &str,
     conn: &mut PgConnection,
 ) -> QueryResult<Progress> {
     let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z").unwrap().to_utc();
@@ -2112,16 +2112,16 @@ pub fn feed_event_versions_progress(
     let mut buckets = vec![(0, 0); num_buckets as usize];
     let progress_entries = sql_query("
         select
-            timespan_bucket(valid_from, $1, $2) as bucket_index,
+            timespan_bucket(timestamp, $1, $2) as bucket_index,
             count(*) as count
-        from data.feed_event_versions
-        where kind=$3
+        from data.feed_events
+        where subject_type=$3
         group by bucket_index
         order by bucket_index
     ")
         .bind::<Timestamp, _>(history_start.naive_utc())
         .bind::<Interval, _>(time_step)
-        .bind::<Text, _>(kind)
+        .bind::<Text, _>(subject_type)
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
@@ -2132,16 +2132,16 @@ pub fn feed_event_versions_progress(
     }
     let progress_entries = sql_query("
         select
-            timespan_bucket(valid_from, $1, $2) as bucket_index,
+            timespan_bucket(timestamp, $1, $2) as bucket_index,
             count(*) as count
         from data.feed_events_processed
-        where kind=$3
+        where subject_type=$3
         group by bucket_index
         order by bucket_index
     ")
         .bind::<Timestamp, _>(history_start.naive_utc())
         .bind::<Interval, _>(time_step)
-        .bind::<Text, _>(kind)
+        .bind::<Text, _>(subject_type)
         .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
