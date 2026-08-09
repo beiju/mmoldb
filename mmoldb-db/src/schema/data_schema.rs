@@ -255,11 +255,10 @@ pub mod data {
     }
 
     diesel::table! {
-        data.feed_events_processed (kind, entity_id, feed_event_index, valid_from) {
-            kind -> Text,
-            entity_id -> Text,
-            feed_event_index -> Int4,
-            valid_from -> Timestamp,
+        data.feed_events_processed (event_id, timestamp) {
+            subject_type -> Text,
+            event_id -> Text,
+            timestamp -> Timestamp,
             skipped -> Bool,
             fatal_error -> Bool,
         }
@@ -350,7 +349,6 @@ pub mod data {
         data.player_attribute_augments (id) {
             id -> Int8,
             mmolb_player_id -> Text,
-            feed_event_index -> Int4,
             time -> Timestamp,
             attribute -> Int8,
             value -> Int4,
@@ -358,6 +356,8 @@ pub mod data {
             day_type -> Nullable<Int8>,
             day -> Nullable<Int4>,
             superstar_day -> Nullable<Int4>,
+            feed_event_id -> Text,
+            player_name -> Text,
         }
     }
 
@@ -422,13 +422,14 @@ pub mod data {
         data.player_paradigm_shifts (id) {
             id -> Int8,
             mmolb_player_id -> Text,
-            feed_event_index -> Int4,
             time -> Timestamp,
             attribute -> Int8,
             season -> Int4,
             day_type -> Nullable<Int8>,
             day -> Nullable<Int4>,
             superstar_day -> Nullable<Int4>,
+            feed_event_id -> Text,
+            player_name -> Text,
         }
     }
 
@@ -474,7 +475,6 @@ pub mod data {
         data.player_recompositions (id) {
             id -> Int8,
             mmolb_player_id -> Text,
-            feed_event_index -> Int4,
             time -> Timestamp,
             season -> Int4,
             day_type -> Nullable<Int8>,
@@ -484,6 +484,7 @@ pub mod data {
             player_name_after -> Text,
             inferred_event_index -> Nullable<Int4>,
             reverts_recomposition -> Nullable<Timestamp>,
+            feed_event_id -> Text,
         }
     }
 
@@ -562,9 +563,9 @@ pub mod data {
         data.team_games_played (id) {
             id -> Int8,
             mmolb_team_id -> Text,
-            feed_event_index -> Int4,
             time -> Timestamp,
             mmolb_game_id -> Text,
+            feed_event_id -> Text,
         }
     }
 

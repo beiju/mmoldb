@@ -88,7 +88,7 @@ pub fn feed_event_versions_count(conn: &mut PgConnection, of_kind: &str) -> Quer
     use crate::data_schema::data::feed_events_processed::dsl::*;
 
     feed_events_processed
-        .filter(kind.eq(of_kind))
+        .filter(subject_type.eq(of_kind))
         .count()
         .get_result(conn)
 }
@@ -2408,14 +2408,6 @@ pub fn latest_player_versions(
     Ok(map)
 }
 
-type NewPlayerFeedVersionExt<'a> = (
-    NewFeedEventProcessed<'a>,
-    Option<NewPlayerAttributeAugment<'a>>,
-    Option<NewPlayerParadigmShift<'a>>,
-    Vec<NewPlayerRecomposition<'a>>,
-    Vec<NewVersionIngestLog<'a>>,
-);
-
 pub(crate) type NewPlayerVersionExt<'a> = (
     NewVersionProcessed<'a>,
     Option<NewPlayerVersion<'a>>,
@@ -2666,64 +2658,59 @@ fn insert_to_error_internal<'container, InsertableT: 'container>(
     }
 }
 
-pub fn insert_player_feed_versions<'container, 'game: 'container>(
-    conn: &mut PgConnection,
-    new_player_feed_versions: impl IntoIterator<Item = &'container NewPlayerFeedVersionExt<'game>>,
-) -> QueryResult<(usize, usize)> {
-    // Convert reference to tuple into tuple of references
-    let new_player_feed_versions = new_player_feed_versions
-        .into_iter()
-        .map(|(a, b, c, d, e)| (a, b, c, d, e));
-
-    let (
-        new_player_feed_events_processed,
-        new_player_attribute_augments,
-        new_player_paradigm_shifts,
-        new_player_recompositions,
-        ingest_logs,
-    ): (
-        Vec<&NewFeedEventProcessed>,
-        Vec<&Option<NewPlayerAttributeAugment>>,
-        Vec<&Option<NewPlayerParadigmShift>>,
-        Vec<&Vec<NewPlayerRecomposition>>,
-        Vec<&Vec<NewVersionIngestLog>>,
-    ) = itertools::multiunzip(new_player_feed_versions);
-
-    let mut full_total = 0;
-    let mut full_inserted = 0;
-
-    // Insert new records
-    full_total += new_player_attribute_augments
-        .iter()
-        .map(|o| o.as_ref())
-        .flatten()
-        .count();
-    full_inserted += insert_player_attribute_augments(conn, new_player_attribute_augments)?;
-    full_total += new_player_paradigm_shifts
-        .iter()
-        .map(|o| o.as_ref())
-        .flatten()
-        .count();
-    full_inserted += insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
-    full_total += new_player_recompositions
-        .iter()
-        .map(|v| v.iter())
-        .flatten()
-        .count();
-    full_inserted += insert_player_recompositions(conn, new_player_recompositions)?;
-    insert_nested_ingest_logs(conn, ingest_logs)?;
-
-    // This is last so that we don't mark them as processed if there were db errors
-    insert_feed_events_processed(conn, new_player_feed_events_processed)?;
-
-    Ok((full_total, full_inserted))
-}
-
-type NewTeamFeedVersionExt<'a> = (
+type NewFeedEventExt<'a> = (
     NewFeedEventProcessed<'a>,
+    Option<NewPlayerAttributeAugment<'a>>,
+    Option<NewPlayerParadigmShift<'a>>,
+    Vec<NewPlayerRecomposition<'a>>,
     Option<NewTeamGamePlayed<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 );
+
+fn insert_player_attribute_augments(
+    conn: &mut PgConnection,
+    new_player_augments: Vec<&Option<NewPlayerAttributeAugment>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_attribute_augments::dsl as paa_dsl;
+    let player_attribute_augments = new_player_augments.into_iter().flatten().collect_vec();
+
+    // Insert new records
+    diesel::copy_from(paa_dsl::player_attribute_augments)
+        .from_insertable(player_attribute_augments)
+        .execute(conn)
+}
+
+fn insert_player_paradigm_shifts(
+    conn: &mut PgConnection,
+    new_player_paradigm_shifts: Vec<&Option<NewPlayerParadigmShift>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_paradigm_shifts::dsl as pps_dsl;
+    let player_augments = new_player_paradigm_shifts
+        .into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(pps_dsl::player_paradigm_shifts)
+        .from_insertable(player_augments)
+        .execute(conn)
+}
+
+fn insert_player_recompositions(
+    conn: &mut PgConnection,
+    new_player_recompositions: Vec<&Vec<NewPlayerRecomposition>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::player_recompositions::dsl as pr_dsl;
+    let player_recompositions = new_player_recompositions
+        .into_iter()
+        .flatten()
+        .collect_vec();
+
+    // Insert new records
+    diesel::copy_from(pr_dsl::player_recompositions)
+        .from_insertable(player_recompositions)
+        .execute(conn)
+}
 
 fn insert_new_team_games_played(
     conn: &mut PgConnection,
@@ -2756,43 +2743,62 @@ fn insert_feed_events_processed(
 
 pub fn insert_team_feed_versions<'container, 'game: 'container>(
     conn: &mut PgConnection,
-    new_team_feed_versions: impl IntoIterator<Item = &'container NewTeamFeedVersionExt<'game>>,
+    new_feed_events: impl IntoIterator<Item = &'container NewFeedEventExt<'game>>,
 ) -> QueryResult<(usize, usize)> {
-    let new_team_feed_versions = new_team_feed_versions
+    let new_feed_events = new_feed_events
         .into_iter()
-        .map(|(a, b, c)| (a, b, c));
+        .map(|(a, b, c, d, e, f)| (a, b, c, d, e, f));
 
-    let (new_team_feed_events_processed, new_team_games_played, ingest_logs): (
+    let (
+        new_feed_events_processed,
+        new_player_attribute_augments,
+        new_player_paradigm_shifts,
+        new_player_recompositions,
+        new_team_games_played,
+        ingest_logs,
+    ): (
         Vec<&NewFeedEventProcessed>,
+        Vec<&Option<NewPlayerAttributeAugment>>,
+        Vec<&Option<NewPlayerParadigmShift>>,
+        Vec<&Vec<NewPlayerRecomposition>>,
         Vec<&Option<NewTeamGamePlayed>>,
         Vec<&Vec<NewVersionIngestLog>>,
-    ) = itertools::multiunzip(new_team_feed_versions);
+    ) = itertools::multiunzip(new_feed_events);
+
+    let mut full_total = 0;
+    let mut full_inserted = 0;
 
     // Insert new records
-    let total = new_team_games_played.len();
-    let inserted = insert_new_team_games_played(conn, new_team_games_played)?;
+    full_total += new_player_attribute_augments
+        .iter()
+        .map(|o| o.as_ref())
+        .flatten()
+        .count();
+    full_inserted += insert_player_attribute_augments(conn, new_player_attribute_augments)?;
+    full_total += new_player_paradigm_shifts
+        .iter()
+        .map(|o| o.as_ref())
+        .flatten()
+        .count();
+    full_inserted += insert_player_paradigm_shifts(conn, new_player_paradigm_shifts)?;
+    full_total += new_player_recompositions
+        .iter()
+        .map(|v| v.iter())
+        .flatten()
+        .count();
+    full_inserted += insert_player_recompositions(conn, new_player_recompositions)?;
+    full_total += new_team_games_played
+        .iter()
+        .map(|o| o.as_ref())
+        .flatten()
+        .count();
+    full_inserted += insert_new_team_games_played(conn, new_team_games_played)?;
     insert_nested_ingest_logs(conn, ingest_logs)?;
 
     // This is last so that we don't mark them as processed if there were db errors
-    insert_feed_events_processed(conn, new_team_feed_events_processed)?;
+    insert_feed_events_processed(conn, new_feed_events_processed)?;
 
-    Ok((total, inserted))
-}
-
-fn insert_player_recompositions(
-    conn: &mut PgConnection,
-    new_player_recompositions: Vec<&Vec<NewPlayerRecomposition>>,
-) -> QueryResult<usize> {
-    use crate::data_schema::data::player_recompositions::dsl as pr_dsl;
-    let player_recompositions = new_player_recompositions
-        .into_iter()
-        .flatten()
-        .collect_vec();
-
-    // Insert new records
-    diesel::copy_from(pr_dsl::player_recompositions)
-        .from_insertable(player_recompositions)
-        .execute(conn)
+    Ok((full_total, full_inserted))
 }
 
 pub fn insert_ingest_logs(
@@ -2817,35 +2823,6 @@ fn insert_nested_ingest_logs(
     // Insert new records
     diesel::copy_from(vil_dsl::version_ingest_log)
         .from_insertable(new_logs)
-        .execute(conn)
-}
-
-fn insert_player_paradigm_shifts(
-    conn: &mut PgConnection,
-    new_player_paradigm_shifts: Vec<&Option<NewPlayerParadigmShift>>,
-) -> QueryResult<usize> {
-    use crate::data_schema::data::player_paradigm_shifts::dsl as pps_dsl;
-    let player_augments = new_player_paradigm_shifts
-        .into_iter()
-        .flatten()
-        .collect_vec();
-
-    // Insert new records
-    diesel::copy_from(pps_dsl::player_paradigm_shifts)
-        .from_insertable(player_augments)
-        .execute(conn)
-}
-
-fn insert_player_attribute_augments(
-    conn: &mut PgConnection,
-    new_player_augments: Vec<&Option<NewPlayerAttributeAugment>>,
-) -> QueryResult<usize> {
-    use crate::data_schema::data::player_attribute_augments::dsl as paa_dsl;
-    let player_attribute_augments = new_player_augments.into_iter().flatten().collect_vec();
-
-    // Insert new records
-    diesel::copy_from(paa_dsl::player_attribute_augments)
-        .from_insertable(player_attribute_augments)
         .execute(conn)
 }
 
@@ -3155,8 +3132,7 @@ pub fn get_player_recompositions(
     pr_dsl::player_recompositions
         .filter(pr_dsl::mmolb_player_id.eq(player_id))
         .order((
-            pr_dsl::feed_event_index.asc(),
-            pr_dsl::inferred_event_index.asc().nulls_last(),
+            pr_dsl::time.asc(),
         ))
         .select(DbPlayerRecomposition::as_select())
         .get_results(conn)
@@ -3170,7 +3146,7 @@ pub fn get_player_attribute_augments(
 
     paa_dsl::player_attribute_augments
         .filter(paa_dsl::mmolb_player_id.eq(player_id))
-        .order(paa_dsl::feed_event_index.asc())
+        .order(paa_dsl::time.asc())
         .select(DbPlayerAttributeAugment::as_select())
         .get_results(conn)
 }

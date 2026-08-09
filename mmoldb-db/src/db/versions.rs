@@ -59,8 +59,8 @@ pub fn get_latest_combined_feed_event_version_cursor(
             feed_events_dsl::event_id,
         ))
         .order_by((
-            feed_events_dsl::timestamp,
-            feed_events_dsl::event_id,
+            feed_events_dsl::timestamp.desc(),
+            feed_events_dsl::event_id.desc(),
         ))
         .limit(1)
         .get_result(conn)

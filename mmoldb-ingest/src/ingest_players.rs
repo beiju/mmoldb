@@ -14,13 +14,13 @@ use strum::IntoEnumIterator;
 use thiserror::Error;
 use tracing::{error, warn};
 
+use crate::util::datetime_from_parts;
 use crate::{IngestibleFromVersions, PreparedIngestItem, VersionIngestLogs};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog, NewVersionProcessed};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaModificationType, TaxaSlot};
 use mmoldb_db::{AsyncPgConnection, PgConnection, QueryResult, async_db, db};
-use crate::ingest_feed_shared::datetime_from_parts;
 
 pub struct PlayerIngestFromVersions;
 

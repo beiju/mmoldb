@@ -480,12 +480,13 @@ pub struct DbPlayerVersion {
 pub struct DbPlayerAttributeAugment {
     pub id: i64,
     pub mmolb_player_id: String,
-    pub feed_event_index: i32,
+    pub feed_event_id: String,
     pub time: NaiveDateTime,
     pub season: i32,
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
+    pub player_name: String,
     pub attribute: i64,
     pub value: i32,
 }
@@ -495,12 +496,13 @@ pub struct DbPlayerAttributeAugment {
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerAttributeAugment<'a> {
     pub mmolb_player_id: &'a str,
-    pub feed_event_index: i32,
+    pub feed_event_id: &'a str,
     pub time: NaiveDateTime,
     pub season: i32,
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
+    pub player_name: &'a str,
     pub attribute: i64,
     pub value: i32,
 }
@@ -511,12 +513,13 @@ pub struct NewPlayerAttributeAugment<'a> {
 pub struct DbPlayerParadigmShift {
     pub id: i64,
     pub mmolb_player_id: String,
-    pub feed_event_index: i32,
+    pub feed_event_id: String,
     pub time: NaiveDateTime,
     pub season: i32,
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
+    pub player_name: String,
     pub attribute: i64,
 }
 
@@ -525,12 +528,13 @@ pub struct DbPlayerParadigmShift {
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerParadigmShift<'a> {
     pub mmolb_player_id: &'a str,
-    pub feed_event_index: i32,
+    pub feed_event_id: &'a str,
     pub time: NaiveDateTime,
     pub season: i32,
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
+    pub player_name: &'a str,
     pub attribute: i64,
 }
 
@@ -540,7 +544,7 @@ pub struct NewPlayerParadigmShift<'a> {
 pub struct DbPlayerRecomposition {
     pub id: i64,
     pub mmolb_player_id: String,
-    pub feed_event_index: i32,
+    pub feed_event_id: String,
     pub inferred_event_index: Option<i32>,
     pub time: NaiveDateTime,
     pub season: i32,
@@ -557,7 +561,7 @@ pub struct DbPlayerRecomposition {
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewPlayerRecomposition<'a> {
     pub mmolb_player_id: &'a str,
-    pub feed_event_index: i32,
+    pub feed_event_id: &'a str,
     pub inferred_event_index: Option<i32>,
     pub time: NaiveDateTime,
     pub season: i32,
@@ -1026,8 +1030,8 @@ pub struct DbParty {
 #[diesel(table_name = crate::data_schema::data::team_games_played)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct NewTeamGamePlayed<'a> {
+    pub feed_event_id: &'a str,
     pub mmolb_team_id: &'a str,
-    pub feed_event_index: i32,
     pub time: NaiveDateTime,
     pub mmolb_game_id: &'a str,
 }
@@ -1149,24 +1153,22 @@ pub struct DbConsumptionContestEvent {
 
 #[derive(Clone, Debug, Insertable, PartialEq, AsChangeset, Identifiable)]
 #[diesel(table_name = crate::data_schema::data::feed_events_processed)]
-#[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id, feed_event_index))]
+#[diesel(treat_none_as_default_value = false, primary_key(event_id, timestamp))]
 pub struct NewFeedEventProcessed<'a> {
-    pub kind: &'a str,
-    pub entity_id: &'a str,
-    pub feed_event_index: i32,
-    pub valid_from: NaiveDateTime,
+    pub subject_type: &'a str,
+    pub event_id: &'a str,
+    pub timestamp: NaiveDateTime,
     pub skipped: bool,
     pub fatal_error: bool,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
 #[diesel(table_name = crate::data_schema::data::feed_events_processed)]
-#[diesel(check_for_backend(diesel::pg::Pg), primary_key(kind, entity_id, feed_event_index))]
+#[diesel(check_for_backend(diesel::pg::Pg), primary_key(event_id, timestamp))]
 pub struct DbFeedEventProcessed {
-    pub kind: String,
-    pub entity_id: String,
-    pub feed_event_index: i32,
-    pub valid_from: NaiveDateTime,
+    pub subject_type: String,
+    pub event_id: String,
+    pub timestamp: NaiveDateTime,
     pub skipped: bool,
     pub fatal_error: bool,
 }

@@ -20,13 +20,13 @@ use mmoldb_db::{
 pub use processing::ProcessingArgs;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
+use serde::de::IntoDeserializer;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
 use std::iter;
 use std::num::NonZero;
 use std::sync::Arc;
 use std::time::Duration;
-use serde::de::IntoDeserializer;
 use thiserror::Error;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::error::SendError;
@@ -34,6 +34,7 @@ use tokio::task::JoinError;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, info_span, warn};
+use crate::ingest_feed;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -513,7 +514,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                             // Kinda inefficient to return the entity id and valid from twice, but it makes
                             // downstream code a little nicer
                             Some((err, entity.entity_id.clone(), entity.valid_from)),
-                            PreparedIngestItem::MarkAsSkipped(VersionIngest::ident_raw(&entity), entity.valid_from),
+                            PreparedIngestItem::MarkAsFatalError(VersionIngest::ident_raw(&entity), entity.valid_from),
                         ),
                     }
                 }
@@ -681,13 +682,6 @@ impl VersionedIngestKind {
             VersionedIngestKind::Player => "player",
         }
     }
-
-    fn as_feed_event_kind(self) -> &'static str {
-        match self {
-            VersionedIngestKind::Team => "team_feed",
-            VersionedIngestKind::Player => "player_feed",
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -706,7 +700,6 @@ impl EntityIngestKind {
 #[derive(Debug, Copy, Clone)]
 pub enum IngestKind {
     Versioned(VersionedIngestKind),
-    Feed(VersionedIngestKind),
     CombinedFeed,
     Entity(EntityIngestKind),
 }
@@ -715,7 +708,6 @@ impl Display for IngestKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             IngestKind::Versioned(k) => write!(f, "{}", k.as_kind()),
-            IngestKind::Feed(k) => write!(f, "{}", k.as_feed_event_kind()),
             IngestKind::CombinedFeed => write!(f, "feed"),
             IngestKind::Entity(k) => write!(f, "{}", k.as_kind()),
         }
@@ -787,14 +779,6 @@ impl IngestForKind {
                     .instrument(info_span!("fetch_task", kind = kind.as_kind()))
                     .await
             }
-            IngestKind::Feed(kind) => {
-                fetch::fetch_feed_event_version_kind(
-                    kind.as_feed_event_kind(),
-                    self.fetch_args.clone(),
-                )
-                .instrument(info_span!("fetch_task", kind = kind.as_feed_event_kind()))
-                .await
-            }
             IngestKind::CombinedFeed => {
                 fetch::fetch_feed_events(
                     self.fetch_args.clone(),
@@ -846,20 +830,15 @@ impl IngestForKind {
                     .instrument(info_span!("processing_task", kind = kind.as_kind()))
                     .await
             }
-            IngestKind::Feed(kind) => {
-                processing::process_feed_event_version_kind(
-                    kind.as_feed_event_kind(),
+            IngestKind::CombinedFeed => {
+                ingest_feed::process_feed(
                     self.processing_args.clone(),
                 )
-                .instrument(info_span!(
+                    .instrument(info_span!(
                     "processing_task",
-                    kind = kind.as_feed_event_kind()
+                    kind = "feed",
                 ))
-                .await
-            }
-            IngestKind::CombinedFeed => {
-                warn!("Combined feed event processing is not implemented yet");
-                Ok(())
+                    .await
             }
             IngestKind::Entity(kind) => {
                 processing::process_entity_kind(kind.as_kind(), self.processing_args.clone())
@@ -881,16 +860,8 @@ pub fn ingest_kinds(
             &config.team_ingest,
         ),
         (
-            IngestKind::Feed(VersionedIngestKind::Team),
-            &config.team_feed_ingest,
-        ),
-        (
             IngestKind::Versioned(VersionedIngestKind::Player),
             &config.player_ingest,
-        ),
-        (
-            IngestKind::Feed(VersionedIngestKind::Player),
-            &config.player_feed_ingest,
         ),
         (
             IngestKind::Entity(EntityIngestKind::Game),

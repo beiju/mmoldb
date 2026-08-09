@@ -40,9 +40,7 @@ pub struct IngestConfig {
     pub use_local_cheap_cashews: bool,
     pub fetch_known_missing_games: bool,
     pub team_ingest: IngestibleConfig,
-    pub team_feed_ingest: IngestibleConfig,
     pub player_ingest: IngestibleConfig,
-    pub player_feed_ingest: IngestibleConfig,
     pub game_ingest: IngestibleConfig,
     pub combined_feed_ingest: IngestibleConfig,
 }
@@ -55,9 +53,7 @@ impl Default for IngestConfig {
             use_local_cheap_cashews: false,
             fetch_known_missing_games: false,
             team_ingest: Default::default(),
-            team_feed_ingest: Default::default(),
             player_ingest: Default::default(),
-            player_feed_ingest: Default::default(),
             game_ingest: Default::default(),
             combined_feed_ingest: Default::default(),
         }

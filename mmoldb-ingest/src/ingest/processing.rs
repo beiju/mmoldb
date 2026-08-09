@@ -1,6 +1,4 @@
-use crate::ingest_player_feed::PlayerFeedIngestFromVersions;
 use crate::ingest_players::PlayerIngestFromVersions;
-use crate::ingest_team_feed::TeamFeedIngestFromVersions;
 use crate::ingest_teams::TeamIngestFromVersions;
 use crate::{IngestFatalError, Stage2Ingest};
 use mmoldb_db::ConnectionPool;
@@ -84,29 +82,6 @@ pub async fn process_version_kind(
         }
         _ => {
             panic!("`player` and `team` are the only supported version kinds")
-        }
-    }
-}
-
-// It may be possible to remove 'static
-pub async fn process_feed_event_version_kind(
-    kind: &'static str,
-    args: ProcessingArgs,
-) -> Result<(), IngestFatalError> {
-    // TODO Refactor this to not match on kind
-    match kind {
-        "player_feed" => {
-            // TODO Refactor this code to get rid of remnants of the old staged system
-            let stage = Arc::new(Stage2Ingest::new(kind, PlayerFeedIngestFromVersions));
-            stage.run(args).await
-        }
-        "team_feed" => {
-            // TODO Refactor this code to get rid of remnants of the old staged system
-            let stage = Arc::new(Stage2Ingest::new(kind, TeamFeedIngestFromVersions));
-            stage.run(args).await
-        }
-        _ => {
-            panic!("`player_feed` and `team_feed` are the only supported feed event version kinds")
         }
     }
 }
