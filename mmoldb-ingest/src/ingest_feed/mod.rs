@@ -148,15 +148,16 @@ fn chron_feed_event_as_new<'e>(
                 skipped: false, // Feed event items are never skipped, I think?
                 fatal_error: false, // This is the happy path
             };
-            let mut ingest_logs = VersionIngestLogs::new("feed", &feed_event.event_id, feed_event.timestamp);
 
             match feed_event.subject_type.as_str() {
                 "team" => {
+                    let mut ingest_logs = VersionIngestLogs::new("team_feed", &feed_event.event_id, feed_event.timestamp);
                     let new_game_played = ingest_team_feed::chron_team_feed_as_new(feed_event, &mut ingest_logs);
 
                     (processed, None, None, Vec::new(), new_game_played, ingest_logs.into_vec())
                 },
                 "player" => {
+                    let mut ingest_logs = VersionIngestLogs::new("player_feed", &feed_event.event_id, feed_event.timestamp);
                     let (
                         attribute_augment,
                         paradigm_shift,
@@ -166,6 +167,9 @@ fn chron_feed_event_as_new<'e>(
                     (processed, attribute_augment, paradigm_shift, recompositions, None, ingest_logs.into_vec())
                 },
                 other => {
+                    // It's not player feed, but if I put it as anything besides "player_feed" and
+                    // "team_feed" then I won't ever see the errors. So this is a hack.
+                    let mut ingest_logs = VersionIngestLogs::new("player_feed", &feed_event.event_id, feed_event.timestamp);
                     let processed = NewFeedEventProcessed {
                         fatal_error: true,
                         ..processed

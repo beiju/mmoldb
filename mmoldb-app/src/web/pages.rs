@@ -7,7 +7,7 @@ use crate::web::utility_contexts::{DayContext, FormattedDateContext, GameContext
 use chrono::{DateTime, Utc};
 use diesel::{Connection, PgConnection};
 use lazy_static::lazy_static;
-use log::warn;
+use log::{info, warn};
 use mmoldb_db::db;
 use mmoldb_db::db::{GamesStats, PlayersStats, TeamsStats};
 use mmoldb_db::models::DbEventIngestLog;
@@ -252,6 +252,8 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
         })
         .await?;
 
+    info!("Counts: {:?}", counts);
+
     #[derive(Serialize)]
     struct IngestibleWithErrors<'a> {
         name: &'static str,
@@ -322,7 +324,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             uri!(player_versions_progress_plot()),
         ),
         IngestibleWithErrors::new_with_progress_plot(
-            "player feed event versions",
+            "player feed events",
             counts.get("player_feed").cloned().unwrap_or((0, 0)),
             uri!(player_feed_events_progress_plot()),
         ),
@@ -332,7 +334,7 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             uri!(team_versions_progress_plot()),
         ),
         IngestibleWithErrors::new_with_progress_plot(
-            "team feed event versions",
+            "team feed events",
             counts.get("team_feed").cloned().unwrap_or((0, 0)),
             uri!(team_feed_events_progress_plot()),
         ),
