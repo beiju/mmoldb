@@ -8,8 +8,32 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
-Upcoming
---------
+2026-08-09
+----------
+- Overhauls feed event processing to reduce the burden on MMOLB's servers. 
+  The biggest change is that feed events are now identified by an ID, rather 
+  than a (team/player, index) pair. The specific side effects are:
+  - All inferred and reverted recompositions have been (hopefully temporarily) 
+    removed from `data.player_recompositons`. The latest inferred or reverted 
+    recomposition was over one year ago, so don't worry about this if you only 
+    use recent data (or if you don't use `data.player_recompositions`).
+  - `data.feed_event_versions` is replaced with `data.feed_events`, and
+    `data.feed_events_processed` is updated to now match `data.feed_events`.
+    These tables are all for MMOLDB internal use and unlikely to be useful to
+    MMOLDB users.
+  - All tables that used to have a `feed_event_index` column (those which were
+    derived from feed events) now have a `feed_event_id` column instead. This
+    column is mainly for bookkeeping and unlikely to be useful to MMOLDB users.
+- Now supports Season 15.
+  - `data.games` has a new column, `pollen_count`, which has the pollen count 
+    at the start of the game, if the game is in pollen weather. There is a new 
+    taxa table, `taxa.pollen_count`, to represent the pollen count levels.
+- Adds `player_name` to `data.player_attribute_augments` and 
+  `data.player_paradigm_shifts`. This can help resolve race conditions between
+  feed-event-derived and player-version-derived data.
+
+2026-07-24
+----------
 - Now supports assassinations on strikeouts and walks.
 - Fixes pitchers who get replaced and swept at the same inning start. MMOLDB 
   now faithfully reproduces MMOLB's bug.

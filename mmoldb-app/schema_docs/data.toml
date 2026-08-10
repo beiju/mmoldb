@@ -319,6 +319,18 @@ See `away_team_photo_contest_top_scorer` for an explanation of what `null`
 indicates.
 """
 
+[[table.column]]
+name = "pollen_count"
+type = "bigint"
+description = """
+The pollen count for this pollen game, as reported at the start of the game.
+References `taxa.pollen_count`.
+"""
+nullable_explanation = """
+`null` if this game does not have a pollen count reported at the start of the
+game. As of Season 15, all games in Pollen weather have a pollen count.
+"""
+
 [[table]]
 name = "events"
 description = """
@@ -1392,6 +1404,61 @@ description = """
 The actual data of the event. This is the data exactly as returned by the
 MMOLB API with no modification aside from splitting a feed into events, so
 structure is subject to change whenever the API changes.
+"""
+
+[[table]]
+name = "feed_events"
+description = """
+Raw feed events from the MMOLB API. This is intended for internal MMOLDB use,
+and may change without warning.
+"""
+
+[[table.column]]
+name = "event_id"
+type = "text"
+description = """
+The MMOLB ID of the feed event.
+"""
+
+[[table.column]]
+name = "subject_type"
+type = "text"
+description = """
+The type of entity that this feed event belongs to. Feed events' `subject_type`
+matches with versions' `kind`. The naming schemes do not match because of a
+clash between Chron's naming and MMOLDB's naming.
+
+`subject_type` and `subject_id` are typically used together.
+"""
+
+[[table.column]]
+name = "subject_id"
+type = "text"
+description = """
+The ID of the entity that this feed event belongs to. Feed events' `subject_id`
+matches with versions' `entity_id`. The naming schemes do not match because of a
+clash between Chron's naming and MMOLDB's naming.
+
+`subject_type` and `subject_id` are typically used together.
+"""
+
+[[table.column]]
+name = "timestamp"
+type = "timestamp without time zone"
+description = """
+The timestamp, according to the event metadata. This column is derived from the
+MMOLB API, and therefore should represent the actual time the event occurred.
+However, there is no verification, so if MMOLB lies about an event's timestamp
+this column will too.
+"""
+
+[[table.column]]
+name = "data"
+type = "jsonb"
+description = """
+The actual data of the event. This is the data exactly as returned by the
+MMOLB API with no modification, so structure is subject to change whenever the
+API changes.
 """
 
 [[table]]
@@ -3932,12 +3999,10 @@ associate players with their augments.
 """
 
 [[table.column]]
-name = "feed_event_index"
-type = "integer"
+name = "feed_event_id"
+type = "text"
 description = """
-The index of this augment in the player's feed. A
-`(mmolb_player_id, feed_event_index)` pair uniquely and stably
-identifies an applied augment.
+The id of the feed event for this augment.
 """
 
 [[table.column]]
@@ -3992,6 +4057,13 @@ nullable_explanation = """
 """
 
 [[table.column]]
+name = "player_name"
+type = "text"
+description = """
+The name of the player who recieved this augment.
+"""
+
+[[table.column]]
 name = "attribute"
 type = "bigint"
 description = """
@@ -4035,12 +4107,10 @@ associate players with their paradigm shifts.
 """
 
 [[table.column]]
-name = "feed_event_index"
-type = "integer"
+name = "feed_event_id"
+type = "text"
 description = """
-The index of this paradigm shift in the player's feed. A
-`(mmolb_player_id, feed_event_index)` pair uniquely and stably
-identifies an applied paradigm shift on a particular player.
+The id of the feed event for this paradigm shift.
 """
 
 [[table.column]]
@@ -4095,6 +4165,13 @@ nullable_explanation = """
 """
 
 [[table.column]]
+name = "player_name"
+type = "text"
+description = """
+The name of the player whose priority was changed.
+"""
+
+[[table.column]]
 name = "attribute"
 type = "bigint"
 description = """
@@ -4112,12 +4189,18 @@ recompositions which aren't present in the feed. Inferred recompositions have
 the `feed_event_index` of the first feed event to happen *after* them, but also
 have an `inferred_event_index`.
 
+2026-08-09: Inferred and reverted recompositions have been temporarily removed.
+The following bugs still existed, but the handling is no longer as described.
+
 The 3 bugs have been:
 1. Some recompositions were reverted entirely, and their events were removed
-   from  the player feed. These have been handled by suppressing the
+   from the player feed. These have been handled by suppressing the
    recompositions entirely, so they don't appear in this table. After more
    investigation the handling may or may not change to insert two inferred
    recompositions in quick succession, with the latter reverting the former.
+
+   2026-08-09 update: These recompositions are no longer visible to MMOLDB, so
+   the problem fixes itself.
 2. Some recompositions occurred without a feed event. These have been handled
    by adding an inferred recomposition. The time for these inferred
    recompositions is set to the first time we observed the recomposed player,
@@ -4165,19 +4248,35 @@ other inferred recompositions with the same `feed_event_index`.
 """
 nullable_explanation = """
 `null` if this is not an inferred recompsition.
+
+2026-08-09: Inferred recompositions have been temporarily removed. For now, this
+column is always `null`.
 """
 
 [[table.column]]
-name = "feed_event_index"
-type = "integer"
+name = "feed_event_id"
+type = "text"
 description = """
-The index of this recomposition in the player's feed, for non-inferred
-recompositions. For inferred recompsitions this is the index of the next event
-in the player's feed. See the table description for more details.
+The id of the feed event for this recomposition.
 
-A `(mmolb_player_id, inferred_event_index, feed_event_index)` triple uniquely and
-stably identifies an applied recomposition on a particular player.
+2026-08-09: Inferred recompositions have been temporarily removed, so this ID
+always exists. It may become nullable if and when inferred recompositions are
+reinstated.
 """
+
+# The following is what was replaced by feed_event_id, retained here for
+# reference if I ever reinstate inferred recompositions
+#[[table.column]]
+#name = "feed_event_index"
+#type = "integer"
+#description = """
+#The index of this recomposition in the player's feed, for non-inferred
+#recompositions. For inferred recompsitions this is the index of the next event
+#in the player's feed. See the table description for more details.
+#
+#A `(mmolb_player_id, inferred_event_index, feed_event_index)` triple uniquely and
+#stably identifies an applied recomposition on a particular player.
+#"""
 
 [[table.column]]
 name = "time"
@@ -4257,6 +4356,9 @@ that this recomposition reverts. See the table description for more details.
 """
 nullable_explanation = """
 `null` if this recomposition does not revert another recomposition.
+
+2026-08-09: Inferred recompositions have been temporarily removed, and that
+affects reverted recompositions too. For now, this column is always `null`.
 """
 
 [[table]]
@@ -5280,12 +5382,10 @@ associate teams with their played games.
 """
 
 [[table.column]]
-name = "feed_event_index"
-type = "integer"
+name = "feed_event_id"
+type = "text"
 description = """
-The index of this team game played in the team's feed. A
-`(mmolb_team_id, feed_event_index)` pair uniquely and stably identifies a
-team game played.
+The id of the feed event for this team playing in this game.
 """
 
 [[table.column]]
