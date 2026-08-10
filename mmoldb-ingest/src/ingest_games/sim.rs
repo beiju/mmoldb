@@ -4108,66 +4108,104 @@ impl<'g> Game<'g> {
                                 }
                             }
 
-                            // I'm just not going to worry about cases when the source and target have
-                            // the exact same name. Hopefully that doesn't come back to bite me later.
-                            if *contained_player_name == self.defending_team().active_pitcher.name {
-                                ingest_logs.info(format!(
-                                    "Contained player name {} matches the active pitcher name. \
-                                    Assuming the active pitcher was replaced by {}",
-                                    contained_player_name,
-                                    replacement_player_name,
-                                ));
+                            if self.game_id == "6929ab2158ef3a953b52adbd" && game_event_index == 439 {
+                                ingest_logs.info(
+                                    "This is the infamous (to me) Biffle Orozco Contain Event. You \
+                                    can see more details at https://discord.com/channels/1136709081319604324/1455990437629137007, \
+                                    but the gist is that Biffle Orozco was on the batter's bench \
+                                    but the Position in their player data was a pitching position. \
+                                    So Biffle was selected to replace a contained batter, but \
+                                    ended up replacing the pitcher instead. And somehow, this \
+                                    resulted in the batter being advanced to the next batter in \
+                                    line, Jared Butterfield.
 
-                                // No need to update the slot because contain assigns the outgoing
-                                // player's slot to the incoming player
-                                self.defending_team_mut().active_pitcher.name = replacement_player_name;
-                            }
+                                    To handle this, MMOLDB is going to: (1) set the current \
+                                    batting team's pitcher to Biffle Orozco, (2) set the batting \
+                                    team's defender in the pitching spot to Biffle Orozco, (3) set \
+                                    the active batter to Jared Butterfield. We do not increase \
+                                    batter_count, since this is not a new PA."
+                                );
 
-                            // Note that a fielder can get replaced even when the pitcher gets replaced
-                            // because a fielder can be pitching and fielding at the same time
-                            for (_, prev_fielder_name) in &mut self.defending_team_mut().fielder_locations {
-                                if *prev_fielder_name == *contained_player_name {
+                                self.batting_team_mut().active_pitcher.name = "Biffle Orozco";
+                                self.batting_team_mut().fielder_locations.insert(TaxaFielderLocation::Pitcher, "Biffle Orozco");
+                                // We don't track lineup order, instead relying on the Now Batting
+                                // event to determine which player comes up to bat, so we can just
+                                // set the current batter's name and be done with it.
+                                // This is the awkwardly long way to set the current batter's name.
+                                match &mut context_after {
+                                    ContextAfterWitherOutcome::ExpectPitch { batter_name, .. } => {
+                                        *batter_name = "Jared Butterfield";
+                                    },
+                                    other => {
+                                        ingest_logs.error(format!(
+                                            "In the hard-coded Biffle Orozco Contain Event, we \
+                                            must be in ContextAfterWitherOutcome::ExpectPitch, but \
+                                            instead we were in state {other:?}."
+                                        ));
+                                    }
+                                };
+                            } else {
+                                // I'm just not going to worry about cases when the source and target have
+                                // the exact same name. Hopefully that doesn't come back to bite me later.
+                                if *contained_player_name == self.defending_team().active_pitcher.name {
                                     ingest_logs.info(format!(
-                                        "Contained player name {} matches defending team fielder. \
-                                        Assuming this fielder was replaced by {}",
+                                        "Contained player name {} matches the active pitcher name. \
+                                        Assuming the active pitcher was replaced by {}",
                                         contained_player_name,
                                         replacement_player_name,
                                     ));
 
-                                    *prev_fielder_name = replacement_player_name;
+                                    // No need to update the slot because contain assigns the outgoing
+                                    // player's slot to the incoming player
+                                    self.defending_team_mut().active_pitcher.name = replacement_player_name;
                                 }
-                            }
 
-                            for (_, prev_fielder_name) in &mut self.batting_team_mut().fielder_locations {
-                                if *prev_fielder_name == *contained_player_name {
-                                    ingest_logs.info(format!(
-                                        "Contained player name {} matches batting team fielder. \
-                                        Assuming this fielder was replaced by {}",
-                                        contained_player_name,
-                                        replacement_player_name,
-                                    ));
-
-                                    *prev_fielder_name = replacement_player_name;
-                                }
-                            }
-
-                            match &mut context_after {
-                                ContextAfterWitherOutcome::ExpectNowBatting => {}
-                                ContextAfterWitherOutcome::ExpectInningEnd => {}
-                                ContextAfterWitherOutcome::ExpectGameEnd => {}
-                                ContextAfterWitherOutcome::ExpectPitch { batter_name, .. } => {
-                                    if *batter_name == *contained_player_name {
+                                // Note that a fielder can get replaced even when the pitcher gets replaced
+                                // because a fielder can be pitching and fielding at the same time
+                                for (_, prev_fielder_name) in &mut self.defending_team_mut().fielder_locations {
+                                    if *prev_fielder_name == *contained_player_name {
                                         ingest_logs.info(format!(
-                                            "Contained player name {} matches the active batter name. \
-                                            Assuming the active batter was replaced by {}",
+                                            "Contained player name {} matches defending team fielder. \
+                                            Assuming this fielder was replaced by {}",
                                             contained_player_name,
                                             replacement_player_name,
                                         ));
 
-                                        *batter_name = replacement_player_name;
+                                        *prev_fielder_name = replacement_player_name;
                                     }
-                                },
-                            };
+                                }
+
+                                for (_, prev_fielder_name) in &mut self.batting_team_mut().fielder_locations {
+                                    if *prev_fielder_name == *contained_player_name {
+                                        ingest_logs.info(format!(
+                                            "Contained player name {} matches batting team fielder. \
+                                            Assuming this fielder was replaced by {}",
+                                            contained_player_name,
+                                            replacement_player_name,
+                                        ));
+
+                                        *prev_fielder_name = replacement_player_name;
+                                    }
+                                }
+
+                                match &mut context_after {
+                                    ContextAfterWitherOutcome::ExpectNowBatting => {}
+                                    ContextAfterWitherOutcome::ExpectInningEnd => {}
+                                    ContextAfterWitherOutcome::ExpectGameEnd => {}
+                                    ContextAfterWitherOutcome::ExpectPitch { batter_name, .. } => {
+                                        if *batter_name == *contained_player_name {
+                                            ingest_logs.info(format!(
+                                                "Contained player name {} matches the active batter name. \
+                                                Assuming the active batter was replaced by {}",
+                                                contained_player_name,
+                                                replacement_player_name,
+                                            ));
+
+                                            *batter_name = replacement_player_name;
+                                        }
+                                    },
+                                };
+                            }
                             (true, Some(*replacement_player_name))
                         }
                         ContainResult::FailedContain { target_player_name } => {
