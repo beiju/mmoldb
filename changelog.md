@@ -8,6 +8,13 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
+2026-08-10
+----------
+- Adds custom handling for [one bugged game][biffle-orozco-game] in Season 8. 
+  With that, we are finally back to zero errors or warnings.
+
+[biffle-orozco-game]: https://mmoldb.beiju.me/game/6929ab2158ef3a953b52adbd#event-439
+
 2026-08-09
 ----------
 - Overhauls feed event processing to reduce the burden on MMOLB's servers. 
