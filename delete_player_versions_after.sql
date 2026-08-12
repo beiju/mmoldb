@@ -1,0 +1,25 @@
+begin;
+    delete from data.player_equipment_effect_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_equipment_effect_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.player_equipment_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_equipment_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.player_modification_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_modification_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.player_pitch_category_bonus_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_pitch_category_bonus_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.player_pitch_type_bonus_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_pitch_type_bonus_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.player_pitch_type_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_pitch_type_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.player_report_attribute_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_report_attribute_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.player_report_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_report_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.player_versions where valid_from >= '2026-07-14 13:07:13.966479';
+    update data.player_versions set valid_until=null where valid_until >= '2026-07-14 13:07:13.966479';
+    delete from data.versions_processed where kind='player' and valid_from >= '2026-07-14 13:07:13.966479';
+    delete from info.version_ingest_log where kind='player' and valid_from >= '2026-07-14 13:07:13.966479';
+
+    refresh materialized view info.entities_count;
+    refresh materialized view info.entities_with_issues_count;
+end;
