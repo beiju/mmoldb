@@ -38,13 +38,58 @@ pub mod meta {
             interval_precision -> Nullable<Integer>,
         }
     }
+    // Adjust module paths as needed for your crate layout
+    diesel::table! {
+        information_schema.table_constraints (constraint_catalog, constraint_schema, constraint_name) {
+            constraint_catalog -> Text,
+            constraint_schema -> Text,
+            constraint_name -> Text,
+            table_catalog -> Text,
+            table_schema -> Text,
+            table_name -> Text,
+            constraint_type -> Text,
+        }
+    }
 
-    // diesel::joinable!(ingest_timings -> ingests (ingest_id));
-    //
-    // diesel::allow_tables_to_appear_in_same_query!(
-    //     event_ingest_log,
-    //     ingest_timings,
-    //     ingests,
-    //     raw_events,
-    // );
+    diesel::table! {
+        information_schema.key_column_usage (constraint_catalog, constraint_schema, constraint_name, ordinal_position) {
+            constraint_catalog -> Text,
+            constraint_schema -> Text,
+            constraint_name -> Text,
+            table_catalog -> Text,
+            table_schema -> Text,
+            table_name -> Text,
+            column_name -> Text,
+            ordinal_position -> Integer,
+        }
+    }
+
+    diesel::table! {
+        information_schema.referential_constraints (constraint_catalog, constraint_schema, constraint_name) {
+            constraint_catalog -> Text,
+            constraint_schema -> Text,
+            constraint_name -> Text,
+            unique_constraint_catalog -> Text,
+            unique_constraint_schema -> Text,
+            unique_constraint_name -> Text,
+        }
+    }
+
+    diesel::table! {
+        information_schema.constraint_column_usage (constraint_catalog, constraint_schema, constraint_name) {
+            constraint_catalog -> Text,
+            constraint_schema -> Text,
+            constraint_name -> Text,
+            table_catalog -> Text,
+            table_schema -> Text,
+            table_name -> Text,
+            column_name -> Text,
+        }
+    }
+    diesel::allow_tables_to_appear_in_same_query!(
+        table_constraints,
+        key_column_usage,
+        referential_constraints,
+        constraint_column_usage,
+    );
 }

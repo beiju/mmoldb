@@ -4,5 +4,5 @@ pub mod data_schema;
 pub mod taxa_schema;
 #[rustfmt::skip] // This is a generated file
 pub mod info_schema;
-#[rustfmt::skip] // This is a generated file
+#[rustfmt::skip] // This is a hand-written style written to mimic a generated file
 pub mod meta_schema;

@@ -2188,9 +2188,19 @@ pub enum DbMetaQueryError {
 }
 
 #[derive(Debug, Serialize)]
+pub enum ColumnType {
+    ValueType(String),
+    // Represents a foreign key constraint on this table
+    ReferenceType {
+        references_table: String,
+        foreign_key_column: String,
+    },
+}
+
+#[derive(Debug, Serialize)]
 pub struct DbColumn {
     pub name: String,
-    pub r#type: String,
+    pub r#type: ColumnType,
     pub is_nullable: bool,
 }
 
@@ -2208,6 +2218,12 @@ pub fn tables_for_schema(
     use crate::meta_schema::meta::columns::dsl as columns_dsl;
     use crate::meta_schema::meta::tables::dsl as tables_dsl;
 
+    use crate::meta_schema::meta::constraint_column_usage::dsl as ccu_dsl;
+    use crate::meta_schema::meta::key_column_usage::dsl as kcu_dsl;
+    use crate::meta_schema::meta::referential_constraints::dsl as rc_dsl;
+    use crate::meta_schema::meta::table_constraints::dsl as tc_dsl;
+
+    // 1. Fetch tables
     let raw_tables = tables_dsl::tables
         .filter(
             tables_dsl::table_catalog
@@ -2222,6 +2238,7 @@ pub fn tables_for_schema(
         .select(RawDbTable::as_select())
         .get_results(conn)?;
 
+    // 2. Fetch columns
     let raw_columns = columns_dsl::columns
         .filter(
             columns_dsl::table_catalog
@@ -2237,6 +2254,43 @@ pub fn tables_for_schema(
         .select(RawDbColumn::as_select())
         .get_results(conn)?;
 
+    // 3. Query foreign key mappings
+    let fk_results: Vec<(String, String, String)> = tc_dsl::table_constraints
+        .inner_join(
+            kcu_dsl::key_column_usage.on(tc_dsl::constraint_name
+                .eq(kcu_dsl::constraint_name)
+                .and(tc_dsl::constraint_schema.eq(kcu_dsl::constraint_schema))),
+        )
+        .inner_join(
+            rc_dsl::referential_constraints.on(tc_dsl::constraint_name
+                .eq(rc_dsl::constraint_name)
+                .and(tc_dsl::constraint_schema.eq(rc_dsl::constraint_schema))),
+        )
+        .inner_join(
+            ccu_dsl::constraint_column_usage.on(rc_dsl::unique_constraint_name
+                .eq(ccu_dsl::constraint_name)
+                .and(rc_dsl::unique_constraint_schema.eq(ccu_dsl::constraint_schema))),
+        )
+        .filter(
+            tc_dsl::constraint_type
+                .eq("FOREIGN KEY")
+                .and(kcu_dsl::table_catalog.eq(catalog_name))
+                .and(kcu_dsl::table_schema.eq(schema_name)),
+        )
+        .select((
+            kcu_dsl::table_name,
+            kcu_dsl::column_name,
+            ccu_dsl::table_name,
+        ))
+        .load(conn)?;
+
+    // Map: (table_name, column_name) -> references_table
+    let fk_map: HashMap<(String, String), String> = fk_results
+        .into_iter()
+        .map(|(tbl, col, ref_tbl)| ((tbl, col), ref_tbl))
+        .collect();
+
+    // 4. Group columns by table
     let raw_columns_grouped = raw_columns.into_iter().chunk_by(|col| {
         (
             col.table_catalog.clone(),
@@ -2245,31 +2299,43 @@ pub fn tables_for_schema(
         )
     });
 
+    // 5. Construct final DbTable list
     iter::zip(raw_tables, raw_columns_grouped.into_iter())
         .map(|(table, (table_key, columns))| {
-            // Gotta unwrap the option to convert to tuple of references
             let (table_key_catalog, table_key_schema, table_key_name) = table_key;
             assert_eq!(
                 (&table_key_catalog, &table_key_schema, &table_key_name),
                 (&table.table_catalog, &table.table_schema, &table.table_name),
             );
 
+            let current_table_name = table
+                .table_name
+                .ok_or(DbMetaQueryError::TableMissingField("table_name"))?;
+
             Ok(DbTable {
-                name: table
-                    .table_name
-                    .ok_or(DbMetaQueryError::TableMissingField("table_name"))?,
+                name: current_table_name.clone(),
                 columns: columns
                     .map(|column| {
+                        let col_name = column
+                            .column_name
+                            .ok_or(DbMetaQueryError::ColumnMissingField("column_name"))?;
+                        let data_type = column
+                            .data_type
+                            .ok_or(DbMetaQueryError::ColumnMissingField("data_type"))?;
+
+                        // Check if this column is a foreign key referencing another table
+                        let column_type = match fk_map.get(&(current_table_name.clone(), col_name.clone())) {
+                            Some(ref_table) => ColumnType::ReferenceType {
+                                references_table: ref_table.clone(),
+                                foreign_key_column: col_name.clone(),
+                            },
+                            None => ColumnType::ValueType(data_type),
+                        };
+
                         Ok(DbColumn {
-                            name: column
-                                .column_name
-                                .ok_or(DbMetaQueryError::ColumnMissingField("column_name"))?,
-                            r#type: column
-                                .data_type
-                                .ok_or(DbMetaQueryError::ColumnMissingField("data_type"))?,
+                            name: col_name,
+                            r#type: column_type,
                             is_nullable: match column.column_is_nullable.as_deref() {
-                                // Note that I renamed it to column_is_nullable for diesel to avoid a
-                                // name conflict. The sql name for it is just is_nullable.
                                 None => {
                                     return Err(DbMetaQueryError::ColumnMissingField(
                                         "is_nullable",
