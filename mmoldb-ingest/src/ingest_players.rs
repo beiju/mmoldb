@@ -1411,6 +1411,144 @@ fn chron_player_as_new<'a>(
         Vec::new()
     };
 
+    // "level" is straight from the player data, if it exists, and
+    // reflects what level that player has earned, regardless whether
+    // the team owner has applied those levels yet
+    let level = entity.data.level.as_ref().ok().map(|level| *level as i32);
+    // "planned level" is the highest level that the user has selected a
+    // level-up value for. If scheduled_level_ups is present it's one less
+    // than the lowest level there, otherwise it's `level`
+    let planned_level = entity.data.scheduled_level_ups.as_ref().ok()
+        .and_then(|scheduled_level_ups| {
+            if !scheduled_level_ups.is_sorted_by_key(|scheduled_level_up| scheduled_level_up.level) {
+                ingest_logs.warn(format!(
+                    "ScheduledLevelUps for player {} at {} is not sorted by level",
+                    entity.entity_id,
+                    entity.valid_from,
+                ));
+            }
+
+            scheduled_level_ups.first()
+                .map(|scheduled_level_up| scheduled_level_up.level as i32 - 1)
+        })
+        .or(level);
+
+    // "play level" is the level that has actually been applied. note
+    // that there is a delay between when a level is selected and when
+    // it gets applied, which is why this is not always the same as
+    // planned_level. If pending_level_ups is present it's one less than
+    // the lowest level there, otherwise it's `planned_level`
+    let play_level = entity.data.pending_level_ups.as_ref().ok()
+        .and_then(|pending_level_ups| {
+            if !pending_level_ups.is_sorted_by_key(|pending_level_up| pending_level_up.level) {
+                ingest_logs.warn(format!(
+                    "PendingLevelUps for player {} at {} is not sorted by level",
+                    entity.entity_id,
+                    entity.valid_from,
+                ));
+            }
+
+            pending_level_ups.first()
+                .map(|pending_level_up| pending_level_up.level as i32 - 1)
+        })
+        .or(planned_level);
+
+    // Sanity check: Every level from play_level (exclusive) to planned_level (inclusive) should
+    // have a corresponding entry in pending_level_ups, and vice versa
+    match (play_level, planned_level) {
+        (None, None) => {},
+        (Some(play_level), None) => {
+            ingest_logs.warn(format!(
+                "Player {} at {} had a play_level ({play_level}) but no pending_level",
+                entity.entity_id,
+                entity.valid_from,
+            ));
+        }
+        (None, Some(planned_level)) => {
+            ingest_logs.warn(format!(
+                "Player {} at {} had a planned_level ({planned_level}) but no play_level",
+                entity.entity_id,
+                entity.valid_from,
+            ));
+        }
+        (Some(play_level), Some(planned_level)) => {
+            if let Ok(pending_level_ups) = &entity.data.pending_level_ups {
+                let predicted_levels_pending = (play_level..planned_level)
+                    // turn it from (exclusive, inclusive) to (inclusive, exclusive)
+                    .map(|level| level + 1)
+                    .collect_vec();
+                let actual_levels_pending = pending_level_ups.iter()
+                    .map(|pending_level_up| pending_level_up.level as i32)
+                    .collect_vec();
+                if predicted_levels_pending != actual_levels_pending {
+                    ingest_logs.warn(format!(
+                        "Player {} at {} did not have a pending level up for every level from \
+                        play_level (exclusive) to planned_level (inclusive). Expected pending \
+                        levels {predicted_levels_pending:?}, but observed pending levels \
+                        {actual_levels_pending:?}.",
+                        entity.entity_id,
+                        entity.valid_from,
+                    ));
+                }
+            } else {
+                ingest_logs.warn(format!(
+                    "Player {} at {} had a play_level with no pending_level_ups. \
+                    This is a MMOLDB logic error.",
+                    entity.entity_id,
+                    entity.valid_from,
+                ));
+            }
+        }
+    }
+
+    // Sanity check: Every level from planned_level (exclusive) to level (inclusive) should
+    // have a corresponding entry in scheduled_level_ups, and vice versa
+    match (planned_level, level) {
+        (None, None) => {},
+        (Some(planned_level), None) => {
+            ingest_logs.warn(format!(
+                "Player {} at {} had a planned_level ({planned_level}) but no level",
+                entity.entity_id,
+                entity.valid_from,
+            ));
+        }
+        (None, Some(level)) => {
+            ingest_logs.warn(format!(
+                "Player {} at {} had a level ({level}) but no planned_level",
+                entity.entity_id,
+                entity.valid_from,
+            ));
+        }
+        (Some(planned_level), Some(level)) => {
+            if let Ok(scheduled_level_ups) = &entity.data.scheduled_level_ups {
+                let predicted_levels_scheduled = (planned_level..level)
+                    // turn it from (exclusive, inclusive) to (inclusive, exclusive)
+                    .map(|level| level + 1)
+                    .collect_vec();
+                let actual_levels_scheduled = scheduled_level_ups.iter()
+                    .map(|scheduled_level_up| scheduled_level_up.level as i32)
+                    .collect_vec();
+                if predicted_levels_scheduled != actual_levels_scheduled {
+                    ingest_logs.warn(format!(
+                        "Player {} at {} did not have a scheduled level up for every level from \
+                        planned_level (exclusive) to level (inclusive). Expected scheduled \
+                        levels {predicted_levels_scheduled:?}, but observed scheduled levels \
+                        {actual_levels_scheduled:?}.",
+                        entity.entity_id,
+                        entity.valid_from,
+                    ));
+                }
+            } else {
+                ingest_logs.warn(format!(
+                    "Player {} at {} had a planned_level with no scheduled_level_ups. \
+                    This is a MMOLDB logic error.",
+                    entity.entity_id,
+                    entity.valid_from,
+                ));
+            }
+        }
+    }
+
     let player = NewPlayerVersion {
         mmolb_player_id: &entity.entity_id,
         valid_from: entity.valid_from.naive_utc(),
@@ -1458,12 +1596,17 @@ fn chron_player_as_new<'a>(
         priority,
         xp: entity.data.xp.as_ref().ok().map(|xp| *xp as i32),
         name_suffix: entity.data.suffix.as_ref().ok().and_then(|x| x.as_deref()),
-        level: entity.data.level.as_ref().ok().map(|level| *level as i32),
+        level,
+        planned_level,
+        play_level,
         included_pitch_category_bonuses: pitch_category_bonuses
             .iter()
             .map(|bonus| bonus.pitch_category)
             .sorted()
             .collect(),
+        friends: entity.data.friends.as_ref().ok().map_or(Vec::new(), |friends| {
+            friends.iter().map(String::as_str).collect()
+        }),
     };
 
     (

@@ -557,6 +557,9 @@ pub mod data {
             included_pitch_category_bonuses -> Array<Nullable<Int8>>,
             lesser_durability -> Nullable<Int4>,
             greater_durability -> Nullable<Int4>,
+            friends -> Array<Nullable<Text>>,
+            play_level -> Nullable<Int4>,
+            planned_level -> Nullable<Int4>,
         }
     }
 
