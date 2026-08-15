@@ -43,10 +43,31 @@ pub enum KindStyle {
     },
 }
 
+#[derive(Debug)]
+pub struct TableWithProcessed {
+    pub table: &'static str,
+    pub processed: Option<&'static str>,
+}
+
+#[derive(Debug)]
+pub struct Tables {
+    pub prepopulated_tables: Vec<&'static str>,
+    pub origin_tables: Vec<TableWithProcessed>,
+    pub derived_tables: HashMap<&'static str, KindStyle>,
+}
+
 lazy_static! {
-    static ref KIND_TABLES: HashMap<&'static str, KindStyle> = {
-        let mut m = HashMap::new();
-        m.insert("game", KindStyle::Game {
+    static ref TABLES: Tables = {
+        let prepopulated_tables = vec!["modification_effects"];
+
+        let origin_tables = vec![
+            TableWithProcessed { table: "entities", processed: None },
+            TableWithProcessed { table: "versions", processed: Some("versions_processed") },
+            TableWithProcessed { table: "feed_events", processed: Some("feed_events_processed") },
+        ];
+
+        let mut derived_tables = HashMap::new();
+        derived_tables.insert("game", KindStyle::Game {
             root_table: "games",
             child_tables: vec![
                 TableWithParent { table: "events",                     parent_table: "games",  parent_column: "game_id"  },
@@ -76,7 +97,7 @@ lazy_static! {
                 "events_extended"
             ],
         });
-        m.insert("team", KindStyle::Version {
+        derived_tables.insert("team", KindStyle::Version {
             version_derived_tables: vec![
                 "team_versions",
                 "team_player_versions",
@@ -88,7 +109,7 @@ lazy_static! {
                 "team_games_played",
             ],
         });
-        m.insert("player", KindStyle::Version {
+        derived_tables.insert("player", KindStyle::Version {
             version_derived_tables: vec![
                 "player_versions",
                 "player_modification_versions",
@@ -107,7 +128,8 @@ lazy_static! {
                 "player_paradigm_shifts",
             ],
         });
-        m
+
+        Tables { prepopulated_tables, origin_tables, derived_tables }
     };
 }
 
@@ -164,32 +186,35 @@ pub enum CheckTablesError {
     }
 }
 
-pub fn kind_tables() -> &'static HashMap<&'static str, KindStyle> {
-    &KIND_TABLES
+pub fn tables() -> &'static Tables {
+    &TABLES
 }
 
 pub fn check_tables() -> Result<(), CheckTablesError> {
-    // 4 is arbitrary
-    let pool = mmoldb_db::get_pool(4)?;
+    // Only need one connection
+    let pool = mmoldb_db::get_pool(1)?;
     let mut conn = pool.get()?;
 
     let mut unaccountedfor_tables =
         db::tables_for_schema(&mut conn, "mmoldb", "data")?;
 
-    // Root tables (non-derived data) and _processed tables
-    record_table(&mut unaccountedfor_tables, "entities")?;
-    record_table(&mut unaccountedfor_tables, "versions")?;
-    record_table(&mut unaccountedfor_tables, "versions_processed")?;
-    record_table(&mut unaccountedfor_tables, "feed_events")?;
-    record_table(&mut unaccountedfor_tables, "feed_events_processed")?;
-    // This is going to be deleted soon
+    // This is obsolete and is going to be deleted soon
     record_table(&mut unaccountedfor_tables, "feed_event_versions")?;
 
-    // Generated from included data
-    record_table(&mut unaccountedfor_tables, "modification_effects")?;
+    let tables = tables();
 
-    for (kind, tables) in kind_tables() {
-        println!("Checking {}", kind);
+    for table in &tables.prepopulated_tables {
+        record_table(&mut unaccountedfor_tables, table)?;
+    }
+
+    for table in &tables.origin_tables {
+        record_table(&mut unaccountedfor_tables, table.table)?;
+        if let Some(processed) = table.processed {
+            record_table(&mut unaccountedfor_tables, processed)?;
+        }
+    }
+
+    for (_kind, tables) in &tables.derived_tables {
         match tables {
             KindStyle::Game { root_table, child_tables, auxiliary_tables, materialized_views } => {
                 check_child_tables(&mut unaccountedfor_tables, child_tables)?;

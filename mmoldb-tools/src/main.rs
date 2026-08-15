@@ -1,7 +1,7 @@
 pub mod tables;
 
 use clap::{Parser, Subcommand};
-use crate::tables::{kind_tables, CheckTablesError, KindStyle};
+use crate::tables::{CheckTablesError, KindStyle};
 
 #[derive(Subcommand)]
 #[command(version, about, long_about = None)]
@@ -37,27 +37,46 @@ fn main() -> Result<(), CheckTablesError> {
 }
 
 fn gen_delete_derived() {
+    let mut is_first = true;
+    let mut emit_table = move |table_name| {
+        if is_first {
+            is_first = false;
+            println!("\tdata.{}", table_name);
+        } else {
+            println!("\t, data.{}", table_name);
+        }
+    };
+
     println!("begin;");
     println!("truncate table");
 
     // Emit the truncate
-    for (kind, table) in kind_tables() {
+    let tables = tables::tables();
+
+    println!("\t-- *_processed tables");
+    for table in &tables.origin_tables {
+        if let Some(processed) = table.processed {
+            emit_table(processed);
+        }
+    }
+
+    for (kind, table) in &tables.derived_tables {
         match table {
             KindStyle::Game { root_table, child_tables, auxiliary_tables, materialized_views: _ } => {
                 println!("\t-- base table for kind={kind}");
-                println!("\tdata.{root_table}");
+                emit_table(root_table);
 
                 if !child_tables.is_empty() {
                     println!("\t-- child tables for kind={kind}");
                     for child_table in child_tables {
-                        println!("\tdata.{}", child_table.table);
+                        emit_table(child_table.table);
                     }
                 }
 
                 if !auxiliary_tables.is_empty() {
                     println!("\t-- auxiliary tables for kind={kind}");
                     for auxiliary_table in auxiliary_tables {
-                        println!("\tdata.{auxiliary_table}");
+                        emit_table(auxiliary_table);
                     }
                 }
             }
@@ -65,35 +84,35 @@ fn gen_delete_derived() {
                 if !version_derived_tables.is_empty() {
                     println!("\t-- version-derived tables for kind={kind}");
                     for version_derived_table in version_derived_tables {
-                        println!("\tdata.{version_derived_table}");
+                        emit_table(version_derived_table);
                     }
                 }
 
                 if !auxiliary_tables.is_empty() {
                     println!("\t-- auxiliary tables for kind={kind}");
                     for auxiliary_table in auxiliary_tables {
-                        println!("\tdata.{auxiliary_table}");
+                        emit_table(auxiliary_table);
                     }
                 }
 
                 if !feed_derived_tables.is_empty() {
                     println!("\t-- feed-derived tables for kind={kind}");
                     for feed_derived_table in feed_derived_tables {
-                        println!("\tdata.{feed_derived_table}");
+                        emit_table(feed_derived_table);
                     }
                 }
             }
         }
     }
-    println!(";");
+    println!("\t;");
 
     // Refresh any matviews
-    for (kind, table) in kind_tables() {
+    for (kind, table) in &tables.derived_tables {
         match table {
             KindStyle::Game { root_table: _, child_tables: _, auxiliary_tables: _, materialized_views } => {
                 println!("-- refresh materialized views for kind={kind}");
                 for materialized_view in materialized_views {
-                    println!("refresh materialized view data.{materialized_view}");
+                    println!("refresh materialized view data.{materialized_view};");
                 }
 
             }

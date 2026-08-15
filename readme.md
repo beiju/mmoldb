@@ -99,7 +99,7 @@ manual process:
 1. `git pull` to fetch the changes
 2. Stop both `mmoldb-app` and `mmoldb-ingest`.
 3. Optional: To delete all derived data (i.e. to have the database rebuild
-   itself from the cache), run the `./delete_derived.sql` on the `mmoldb` 
+   itself from the cache), run the `sql-queries/delete_derived.sql` on the `mmoldb` 
    database using your preferred SQL client.
    This may fail if there are pending migrations (if you've pulled a new
    version but not yet run it). If this happens, run the app using the
