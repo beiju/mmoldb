@@ -8,6 +8,14 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
+Upcoming
+--------
+- Added `planned_level` and `play_level` to `data.player_versions`, 
+  representing different definitions of player level to the existing `level`. 
+  See docs for details.
+- Added `friends` to `data.player_versions`, recording player friends. See docs
+  for details. 
+
 2026-08-10
 ----------
 - Adds custom handling for [one bugged game][biffle-orozco-game] in Season 8. 

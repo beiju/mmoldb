@@ -3380,11 +3380,63 @@ added to the player object.
 name = "level"
 type = "integer"
 description = """
-The player's current level.
+The level this player has earned through play. This is the level displayed on
+the player's MMOLB player page.
+
+This is not necessarily the level that the player plays at (see `play_level`)
+or the number of levels the team owner has selected (see `planned_level`).
 """
 nullable_explanation = """
 `null` for player versions before Season 10, which is when this value was
 added to the player object.
+"""
+
+[[table.column]]
+name = "play_level"
+type = "integer"
+description = """
+The level this player plays at, i.e., the number of level-ups that have been
+actually applied to this player's attributes, mods, etc. (minus one, because
+level one players have recieved zero level-ups).
+
+This is not necessarily the level that the player has earned (see `level`)
+or the number of levels the team owner has selected (see `planned_level`).
+"""
+nullable_explanation = """
+`null` for player versions before Season 10, which is when this value was
+added to the player object.
+"""
+
+[[table.column]]
+name = "planned_level"
+type = "integer"
+description = """
+The highest level for which this player's team owner has selected the level-up
+option.
+
+If this value is greater than `play_level`, it means that the team owner has
+selected level-ups for this player which have not yet been applied. If this
+value is less than `level`, it means that level-up options are available for
+which the team owner has not made a selection.
+
+This is not necessarily the level that the player has earned (see `level`)
+or the level that the player plays at (see `play_level`).
+"""
+nullable_explanation = """
+`null` for player versions before Season 10, which is when this value was
+added to the player object.
+"""
+
+[[table.column]]
+name = "friends"
+type = "ARRAY" # TODO Add support for specific array types
+description = """
+A list of this player's friends. Each item is the `mmolb_player_id` of another
+player.
+
+Initially, when players become friends, this relationship is symmetrical
+(meaning each player's id gets added to the other player's `friends`), but
+friendships can become unidirectional over time.
 """
 
 [[table.column]]
