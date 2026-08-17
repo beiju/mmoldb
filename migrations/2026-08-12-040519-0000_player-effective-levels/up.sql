@@ -47,12 +47,11 @@ begin
       and pv.xp is not distinct from NEW.xp
       and pv.name_suffix is not distinct from NEW.name_suffix
       and pv.level is not distinct from NEW.level
+      and pv.play_level is not distinct from NEW.play_level
+      and pv.planned_level is not distinct from NEW.planned_level
       and pv.num_pitch_types is not distinct from NEW.num_pitch_types
       and pv.included_pitch_type_bonuses is not distinct from NEW.included_pitch_type_bonuses
       and pv.included_pitch_category_bonuses is not distinct from NEW.included_pitch_category_bonuses
-      and pv.num_friends is not distinct from NEW.num_friends
-      and pv.play_level is not distinct from NEW.play_level
-      and pv.planned_level is not distinct from NEW.planned_level
       and pv.friends is not distinct from NEW.friends;
 
     -- if there was an exact match, suppress this insert
