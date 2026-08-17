@@ -78,6 +78,7 @@ The MMOLB game ID. This is the preferred way to identify a game.
 [[table.column]]
 name = "weather"
 type = "bigint"
+references = "data.weather"
 description = """
 The active weather during this game. This references `data.weather`.
 Weather ids are *not* stable. You should not store these ids between
@@ -322,9 +323,9 @@ indicates.
 [[table.column]]
 name = "pollen_count"
 type = "bigint"
+references = "taxa.pollen_count"
 description = """
 The pollen count for this pollen game, as reported at the start of the game.
-References `taxa.pollen_count`.
 """
 nullable_explanation = """
 `null` if this game does not have a pollen count reported at the start of the
@@ -362,9 +363,9 @@ To identify a particular event use the combination of its
 [[table.column]]
 name = "game_id"
 type = "bigint"
+references = "data.games"
 description = """
-The id of the game this event belongs to. References the `data.games`
-table.
+The id of the game this event belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
@@ -422,8 +423,9 @@ is batting.
 [[table.column]]
 name = "event_type"
 type = "bigint"
+references = "taxa.event_type"
 description = """
-The event's type. References `taxa.event_type`.
+The event's type.
 
 `taxa.event_type` ids *are* stable, but you are encouraged to join
 `taxa.event_type` and use its `name` column rather than directly
@@ -433,9 +435,10 @@ using event type ids in your queries or results.
 [[table.column]]
 name = "hit_base"
 type = "bigint"
+references = "taxa.base"
 description = """
 If this event is a hit, the base the batter reached. Home plate (0th
-base) indicates a home run. References `taxa.base`.
+base) indicates a home run.
 
 `taxa.base` has meaningful id numbers, so it's fine to use them
 directly in your queries and results (so long as you remember that
@@ -449,9 +452,9 @@ nullable_explanation = """
 [[table.column]]
 name = "fair_ball_type"
 type = "bigint"
+references = "taxa.fair_ball_type"
 description = """
-If this event is a fair ball, the batted ball type. References
-`taxa.fair_ball_type`.
+If this event is a fair ball, the batted ball type.
 
 `taxa.fair_ball_type` ids *are* stable, but you are encouraged to join
 `taxa.fair_ball_type` and use its `name` column rather than directly
@@ -464,9 +467,10 @@ nullable_explanation = """
 [[table.column]]
 name = "fair_ball_direction"
 type = "bigint"
+references = "taxa.fielder_location"
 description = """
 If this event is a fair ball, the fielder position that ball was
-heading towards. References `taxa.fielder_location`.
+heading towards.
 
 `taxa.fielder_location` ids *are* stable, but you are encouraged to
 join `taxa.fielder_location` and use its `name` column rather than
@@ -494,9 +498,10 @@ nullable_explanation = """
 [[table.column]]
 name = "fielding_error_type"
 type = "bigint"
+references = "taxa.fielding_error_type"
 description = """
 If this event is a fielding error, the type of error (throwing or
-catching). References `taxa.fielding_error_type`.
+catching).
 
 `taxa.fielding_error_type` ids *are* stable, but you are encouraged to
 join `taxa.fielding_error_type` and use its `name` column rather than
@@ -509,9 +514,9 @@ nullable_explanation = """
 [[table.column]]
 name = "pitch_type"
 type = "bigint"
+references = "taxa.pitch_type"
 description = """
-If this event is a pitch, the type of pitch. References
-`taxa.pitch_type`.
+If this event is a pitch, the type of pitch.
 
 `taxa.pitch_type` ids *are* stable, but you are encouraged to join
 `taxa.pitch_type` and use its `name` column rather than directly using
@@ -943,9 +948,9 @@ access `mmolb_game_id`.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this baserunner belongs to. References the
-`data.events` table.
+The id of the event this baserunner belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use the combination
@@ -965,8 +970,9 @@ The baserunner's ID is not yet available, but we're working on it.
 [[table.column]]
 name = "base_before"
 type = "bigint"
+references = "taxa.base"
 description = """
-The base the runner occupied before this event. References `taxa.base`.
+The base the runner occupied before this event.
 """
 nullable_explanation = """
 `null` indicates this is the batter-runner. The batter is not
@@ -976,9 +982,10 @@ considered to be at any base while they are batting.
 [[table.column]]
 name = "base_after"
 type = "bigint"
+references = "taxa.base"
 description = """
 The base the runner occupied after this event, or the base they were
-put out at. References `taxa.base`.
+put out at.
 
 Runners who score always have a row in this table with
 `base_after = 0`.
@@ -997,9 +1004,10 @@ the base they were put out at.
 [[table.column]]
 name = "base_description_format"
 type = "bigint"
+references = "taxa.base_description_format"
 description = """
 The flavor used to describe which base the player reached or was put
-out at. References `taxa.base_description_format`.
+out at.
 
 MMOLB describes the same base in different ways for variety. This
 column stores which way was used for a particular event, mostly for use
@@ -1103,9 +1111,9 @@ access `mmolb_game_id`.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this fielder belongs to. References the
-`data.events` table.
+The id of the event this fielder belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use the combination
@@ -1125,10 +1133,10 @@ The fielder's ID is not yet available, but we're working on it.
 [[table.column]]
 name = "fielder_slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
 A best-effort attempt at recording the fielder's slot. Due to various
-inconvenient behaviors of MMOLB this is not always accurate. References
-`taxa.slot`.
+inconvenient behaviors of MMOLB this is not always accurate.
 
 At various times in MMOLB's short history, and for various event types,
 the fielders have been identified differently. There are two main
@@ -1493,9 +1501,9 @@ and `is_listed_first`. You have to join the `data.events` table to access
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this aurora photo belongs to. References the `data.events`
-table.
+The id of the event this aurora photo belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use the combination
@@ -1524,8 +1532,9 @@ The team emoji of the player who took this picture.
 [[table.column]]
 name = "player_slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
-The roster slot of the player who took this picture. References `taxa.slot`.
+The roster slot of the player who took this picture.
 """
 
 [[table.column]]
@@ -1555,9 +1564,9 @@ there join the `data.games` tables to access `mmolb_game_id`.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this ejection happend on. References the `data.events`
-table.
+The id of the event this ejection happend on.
 
 These IDs are *not* stable. You should not store these ids between queries, nor
 hard-code them into queries. Instead use the combination of `mmolb_game_id` and
@@ -1589,8 +1598,9 @@ The name of the player who was ejected.
 [[table.column]]
 name = "ejected_player_slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
-The roster slot of the player who was ejected. References `taxa.slot`.
+The roster slot of the player who was ejected.
 """
 
 [[table.column]]
@@ -1617,9 +1627,10 @@ The name of the player is taking the place of the ejected player.
 [[table.column]]
 name = "replacement_player_slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
 The roster slot of the player who is taking the place of the ejected player,
-if one is given. References `taxa.slot`.
+if one is given.
 """
 nullable_explanation = """
 `null` if the replacement is a bench player.
@@ -1650,9 +1661,9 @@ failed ejection use the combination of its `mmolb_game_id` and
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this failed ejection happend on. References the
-`data.events` table.
+The id of the event this failed ejection happend on.
 
 These IDs are *not* stable. You should not store these ids between queries, nor
 hard-code them into queries. Instead use the combination of `mmolb_game_id` and
@@ -1697,9 +1708,9 @@ door prize ids between queries, nor hard-code door prize ids into queries.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this door prize happend on. References the `data.events`
-table.
+The id of the event this door prize happend on.
 
 Event IDs are *not* stable. You should not store event ids between queries, nor
 hard-code them into queries. Instead use the combination of `mmolb_game_id` and
@@ -1755,9 +1766,9 @@ queries.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this door prize item was awarded on. References the
-`data.events` table.
+The id of the event this door prize item was awarded on.
 
 Event IDs are *not* stable. You should not store event ids between queries, nor
 hard-code them into queries. Instead use the combination of `mmolb_game_id` and
@@ -1966,9 +1977,9 @@ To identify a particular pitcher change use the combination of its
 [[table.column]]
 name = "game_id"
 type = "bigint"
+references = "data.games"
 description = """
-The id of the game this pitcher change belongs to. References the `data.games`
-table.
+The id of the game this pitcher change belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
@@ -2011,9 +2022,10 @@ The inning number, as in `data.events`.
 [[table.column]]
 name = "source"
 type = "bigint"
+references = "taxa.pitcher_change_source"
 description = """
 The source of this pitcher change ("inning change", "mound visit" or "pitcher
-change"). References `taxa.pitcher_change_source`.
+change").
 """
 
 [[table.column]]
@@ -2043,6 +2055,7 @@ visit that does not result in a pitcher change.
 [[table.column]]
 name = "pitcher_slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
 The slot of the previously active pitcher (the same pitcher identified by
 `pitcher_name`).
@@ -2052,7 +2065,7 @@ The slot of the previously active pitcher (the same pitcher identified by
 name = "new_pitcher_name"
 type = "text"
 description = """
-Name of the incoming pitcher, if there is one. References `taxa.slot`.
+Name of the incoming pitcher, if there is one.
 """
 nullable_explanation = """
 `null` for mound visits that do not result in a pitcher change.
@@ -2065,8 +2078,9 @@ pitcher change did occur.
 [[table.column]]
 name = "new_pitcher_slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
-Slot of the incoming pitcher, if there is one. References `taxa.slot`.
+Slot of the incoming pitcher, if there is one.
 """
 nullable_explanation = """
 `null` for mound visits that do not result in a pitcher change, and for certain
@@ -2101,9 +2115,9 @@ To identify a particular party use the combination of its
 [[table.column]]
 name = "game_id"
 type = "bigint"
+references = "data.games"
 description = """
-The id of the game this party belongs to. References the `data.games`
-table.
+The id of the game this party belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
@@ -2150,8 +2164,9 @@ Name of the player who partied.
 [[table.column]]
 name = "attribute"
 type = "bigint"
+references = "taxa.attribute"
 description = """
-Attribute that was boosted as a result of this party. References `taxa.attribute`.
+Attribute that was boosted as a result of this party.
 """
 
 [[table.column]]
@@ -2196,9 +2211,9 @@ joining `data.games` on the `game_id` column) and either
 [[table.column]]
 name = "game_id"
 type = "bigint"
+references = "data.games"
 description = """
-The id of the game this wither belongs to. References the `data.games`
-table.
+The id of the game this wither belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
@@ -2239,9 +2254,9 @@ The team emoji of the player who was targeted by the wither attempt.
 [[table.column]]
 name = "player_slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
 The roster slot of the player who was targeted by the wither attempt.
-References `taxa.slot`.
 """
 
 [[table.column]]
@@ -2319,9 +2334,9 @@ queries.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this efflorescence occurred on. References the
-`data.events` table.
+The id of the event this efflorescence occurred on.
 
 Event IDs are *not* stable. You should not store event ids between queries, nor
 hard-code them into queries. Instead use the combination of `mmolb_game_id` and
@@ -2375,9 +2390,9 @@ ids into queries.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event this efflorescence growth occurred on. References the
-`data.events` table.
+The id of the event this efflorescence growth occurred on.
 
 Event IDs are *not* stable. You should not store event ids between queries, nor
 hard-code them into queries. Instead use the combination of `mmolb_game_id` and
@@ -2417,8 +2432,9 @@ This stores the value as displayed in the game log, and therefore uses the
 [[table.column]]
 name = "attribute"
 type = "bigint"
+references = "taxa.attribute"
 description = """
-The attribute that was changed. References `taxa.attribute`.
+The attribute that was changed.
 """
 
 [[table]]
@@ -2445,9 +2461,9 @@ access by joining `data.games` on the `game_id` column) and either
 [[table.column]]
 name = "game_id"
 type = "bigint"
+references = "data.games"
 description = """
-The id of the game this consumption contest belongs to. References the
-`data.games` table.
+The id of the game this consumption contest belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
@@ -2705,9 +2721,9 @@ access by joining `data.games` on the `game_id` column) and its
 [[table.column]]
 name = "game_id"
 type = "bigint"
+references = "data.games"
 description = """
-The id of the game this consumption contest event belongs to. References the
-`data.games` table.
+The id of the game this consumption contest event belongs to.
 
 These IDs are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Instead use `mmolb_game_id`,
@@ -2801,8 +2817,9 @@ ids between queries, nor hard-code them into queries.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event on which this cheer happened. References `data.events`.
+The id of the event on which this cheer happened.
 
 Note: Cheers on fair balls are from the event referenced by
 fair_ball_event_index. Cheers on other event types are from the event
@@ -2812,8 +2829,9 @@ referenced by game_event_index.
 [[table.column]]
 name = "cheer_id"
 type = "bigint"
+references = "data.cheers"
 description = """
-The id of the cheer that happened on this event. References `data.cheers`.
+The id of the cheer that happened on this event.
 """
 
 [[table]]
@@ -2859,16 +2877,18 @@ ids between queries, nor hard-code them into queries.
 [[table.column]]
 name = "event_id"
 type = "bigint"
+references = "data.events"
 description = """
-The id of the event on which this balk happened. References `data.events`. The
-referenced event should always have `event_type` `Balk`.
+The id of the event on which this balk happened. The referenced event should
+always have `event_type` `Balk`.
 """
 
 [[table.column]]
 name = "balk_reason_id"
 type = "bigint"
+references = "data.balk_reasons"
 description = """
-The id of the reason for this balk. References `data.balk_reasons`.
+The id of the reason for this balk.
 """
 
 [[table]]
@@ -2984,16 +3004,18 @@ nullable_explanation = """
 [[table.column]]
 name = "attribute"
 type = "bigint"
+references = "taxa.attribute"
 description = """
-The attribute that this effect affects. References `taxa.attribute`.
+The attribute that this effect affects.
 """
 
 [[table.column]]
 name = "effect_type"
 type = "bigint"
+references = "taxa.attribute_effect_type"
 description = """
 The type of this effect (Flat or Multiplier for now, although other values may
-be added later). References `taxa.attribute_effect_type`.
+be added later).
 """
 
 [[table.column]]
@@ -3176,8 +3198,9 @@ not necessarily mean the player's full name does not end in a roman numeral.
 [[table.column]]
 name = "batting_handedness"
 type = "bigint"
+references = "taxa.handedness"
 description = """
-Hand this player uses to bat. References `taxa.handedness`.
+Hand this player uses to bat.
 """
 nullable_explanation = """
 `null` if this player's batting handedness was not recognized. This represents
@@ -3187,8 +3210,9 @@ an ingest error.
 [[table.column]]
 name = "pitching_handedness"
 type = "bigint"
+references = "taxa.handedness"
 description = """
-Hand this player uses to pitch. References `taxa.handedness`.
+Hand this player uses to pitch.
 """
 nullable_explanation = """
 `null` if this player's pitching handedness was not recognized. This represents
@@ -3213,9 +3237,10 @@ The season during which the player was born.
 [[table.column]]
 name = "birthday_type"
 type = "bigint"
+references = "taxa.day_type"
 description = """
-The type of the day during which the player was born. References
-`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+The type of the day during which the player was born. See the documentation on
+`taxa.day_type` for details.
 """
 nullable_explanation = """
 `null` if this player's birthday type was not recognized. This represents
@@ -3285,8 +3310,9 @@ available).
 [[table.column]]
 name = "slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
-The player's roster slot. References `taxa.slot`.
+The player's roster slot.
 
 This can be used along with the player's name to more accurately connect 
 players to game events.
@@ -3567,9 +3593,9 @@ associate players with their modifications.
 [[table.column]]
 name = "modification_type"
 type = "bigint"
+references = "taxa.modification_type"
 description = """
-The type of this modification: Greater Boon, Lesser Boon, or neither.
-References `taxa.modification_type`. A
+The type of this modification: Greater Boon, Lesser Boon, or neither. A
 `(mmolb_player_id, modification_type, modification_index)` triple uniquely and
 stably identifies a modification on a player.
 """
@@ -3621,8 +3647,9 @@ Currently being used to debug MMOLDB itself. This field may be deleted soon.
 [[table.column]]
 name = "modification_id"
 type = "bigint"
+references = "data.modifications"
 description = """
-Which modification this is. References the `data.modifications` table.
+Which modification this is.
 
 Modification ids are *not* stable. You should not store these ids between
 queries, nor hard-code them into queries. Always join to `data.modifications`
@@ -3826,9 +3853,10 @@ nullable_explanation = """
 [[table.column]]
 name = "prefix_position_type"
 type = "bigint"
+references = "taxa.slot_type"
 description = """
 Which position this item is meant for, as indicated by its name. For example,
-"Pitcher's Pendant" vs "Slugger's Charm". References `taxa.slot_type`.
+"Pitcher's Pendant" vs "Slugger's Charm".
 """
 nullable_explanation = """
 `null` for items in the pre-s10 format, which did not have a prefix_position_type.
@@ -3954,15 +3982,17 @@ Currently being used to debug MMOLDB itself. This field may be deleted soon.
 [[table.column]]
 name = "attribute"
 type = "bigint"
+references = "taxa.attribute"
 description = """
-The attribute this effect modifies. References `taxa.attribute`.
+The attribute this effect modifies.
 """
 
 [[table.column]]
 name = "effect_type"
 type = "bigint"
+references = "taxa.attribute_effect_type"
 description = """
-The type of effect. References `taxa.attribute_effect_type`.
+The type of effect.
 
 As of the end of season 4, the only effect type that's ever appeared is Flat.
 """
@@ -4015,10 +4045,10 @@ As of s12, all Zone-specific effects are also Phase-specific and vice versa.
 [[table.column]]
 name = "phase"
 type = "bigint"
+references = "taxa.attribute_effect_phase"
 description = """
 If this effect is Phase-specific, the Phase in which it applies. In this
-context, "Phase" means whether the player is pitching or batting. References
-`taxa.attribute_effect_phase`.
+context, "Phase" means whether the player is pitching or batting.
 """
 nullable_explanation = """
 `null` if this effect is not Phase-specific.
@@ -4077,9 +4107,10 @@ The season during which the augment was applied.
 [[table.column]]
 name = "day_type"
 type = "bigint"
+references = "taxa.day_type"
 description = """
-The type of the day during which the augment was applied. References
-`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+The type of the day during which the augment was applied. See the documentation
+on `taxa.day_type` for details.
 """
 nullable_explanation = """
 `null` if this augment's day was not recognized. This represents an ingest
@@ -4118,8 +4149,9 @@ The name of the player who recieved this augment.
 [[table.column]]
 name = "attribute"
 type = "bigint"
+references = "taxa.attribute"
 description = """
-The attribute this augment modifies. References `taxa.attribute`.
+The attribute this augment modifies.
 """
 
 [[table.column]]
@@ -4185,9 +4217,10 @@ The season during which the paradigm shift was applied.
 [[table.column]]
 name = "day_type"
 type = "bigint"
+references = "taxa.day_type"
 description = """
-The type of the day during which the paradigm shift was applied. References
-`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+The type of the day during which the paradigm shift was applied. See the
+documentation on `taxa.day_type` for details.
 """
 nullable_explanation = """
 `null` if this paradigm shift's day was not recognized. This represents an
@@ -4226,8 +4259,9 @@ The name of the player whose priority was changed.
 [[table.column]]
 name = "attribute"
 type = "bigint"
+references = "taxa.attribute"
 description = """
-The attribute this paradigm shift sorts the lineup by. References `taxa.attribute`.
+The attribute this paradigm shift sorts the lineup by.
 """
 
 [[table]]
@@ -4352,9 +4386,10 @@ The season during which the recomposition was applied.
 [[table.column]]
 name = "day_type"
 type = "bigint"
+references = "taxa.day_type"
 description = """
-The type of the day during which the recomposition was applied. References
-`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+The type of the day during which the recomposition was applied. See the
+documentation on `taxa.day_type` for details.
 """
 nullable_explanation = """
 `null` if this recomposition's day was not recognized. This represents an
@@ -4462,9 +4497,9 @@ associate players with their reports.
 [[table.column]]
 name = "category"
 type = "bigint"
+references = "taxa.attribute_category"
 description = """
-The category this report is for ("Batting", "Baserunning", etc.). References
-`taxa.attribute_category`.
+The category this report is for ("Batting", "Baserunning", etc.).
 """
 
 [[table.column]]
@@ -4511,9 +4546,10 @@ recorded.
 [[table.column]]
 name = "day_type"
 type = "bigint"
+references = "taxa.day_type"
 description = """
-The type of the day during which the report was created. References
-`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+The type of the day during which the report was created. See the
+documentation on `taxa.day_type` for details.
 
 This value only changes when a new report is generated (including the reports
 from Recomposing the player). Do not assume that the value of an attribute
@@ -4628,16 +4664,17 @@ accordingly) to associate players with their attributes.
 [[table.column]]
 name = "category"
 type = "bigint"
+references = "taxa.attribute_category"
 description = """
-The category this report is for ("Batting", "Baserunning", etc.). References
-`taxa.attribute_category`.
+The category this report is for ("Batting", "Baserunning", etc.).
 """
 
 [[table.column]]
 name = "attribute"
 type = "bigint"
+references = "taxa.attribute"
 description = """
-Which attribute this is. References `taxa.attribute`.
+Which attribute this is.
 """
 
 [[table.column]]
@@ -4863,9 +4900,10 @@ Currently being used to debug MMOLDB itself. This field may be deleted soon.
 [[table.column]]
 name = "pitch_type"
 type = "bigint"
+references = "taxa.pitch_type"
 description = """
-Which pitch type this is. References `taxa.pitch_type`. To get the pitch type's
-category, references the `category` column of `taxa.pitch_type`.
+Which pitch type this is. To get the pitch category, reference the `category`
+column of `taxa.pitch_type`.
 """
 nullable_explanation = """
 `null` if this pitch type was not recognized. This represents an ingest error.
@@ -4936,6 +4974,7 @@ associate players with their pitch type bonuses.
 [[table.column]]
 name = "pitch_type"
 type = "bigint"
+references = "taxa.pitch_type"
 description = """
 The pitch type that this bonus applies to. A `(mmolb_player_id, pitch_type)`
 pair uniquely and stably identifies a single player pitch type bonus.
@@ -5022,6 +5061,7 @@ accordingly) to associate players with their pitch category bonuses.
 [[table.column]]
 name = "pitch_category"
 type = "bigint"
+references = "taxa.pitch_category"
 description = """
 The pitch category that this bonus applies to. A
 `(mmolb_player_id, pitch_category)` pair uniquely and stably identifies a
@@ -5371,6 +5411,7 @@ The player's number, as in `data.player_versions`.
 [[table.column]]
 name = "slot"
 type = "bigint"
+references = "taxa.slot"
 description = """
 The player's slot, as in `data.player_versions`.
 

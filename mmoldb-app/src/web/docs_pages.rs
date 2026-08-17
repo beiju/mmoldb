@@ -34,6 +34,7 @@ pub async fn docs_page() -> Result<Template, AppError> {
     struct Column {
         name: String,
         r#type: String,
+        references: Option<String>,
         description: String,
         nullable_explanation: Option<String>,
     }
@@ -92,6 +93,8 @@ pub async fn docs_page() -> Result<Template, AppError> {
                         .map(|column| Column {
                             name: column.name,
                             r#type: column.r#type,
+                            // TODO link to the table it references
+                            references: column.references,
                             description: markdown::to_html(&column.description),
                             nullable_explanation: column
                                 .nullable_explanation
@@ -155,7 +158,7 @@ pub struct ColumnDocs {
     pub name: String,
     pub r#type: String,
     #[serde(default)]
-    pub foreign_key_reference: Option<String>,
+    pub references: Option<String>,
     pub description: String,
     #[serde(default)]
     pub nullable_explanation: Option<String>,
@@ -309,11 +312,11 @@ mod tests {
                         "Type mismatch for column {} in {schema_name}.{}",
                         schema.name, table.name
                     );
-                    if let Some(foreign_key_reference) = docs.foreign_key_reference {
+                    if let Some(references) = docs.references {
                         assert!(
                             false,
                             "Column {} in {schema_name}.{} is documented as referencing \
-                            {foreign_key_reference}, but it doesn't reference anything",
+                            {references}, but it doesn't reference anything",
                             schema.name,
                             table.name,
                         )
@@ -325,11 +328,11 @@ mod tests {
                         "Type mismatch for column {} in {schema_name}.{}",
                         schema.name, table.name
                     );
-                    if let Some(foreign_key_reference) = docs.foreign_key_reference {
+                    if let Some(references) = docs.references {
                         assert_eq!(
-                            foreign_key_reference, format!("{references_schema}.{references_table}"),
+                            references, format!("{references_schema}.{references_table}"),
                             "Column {} in {schema_name}.{} is documented as referencing \
-                            {foreign_key_reference}, but it actually references \
+                            {references}, but it actually references \
                             {references_schema}.{references_table}",
                             schema.name,
                             table.name,
