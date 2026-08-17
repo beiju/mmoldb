@@ -9,6 +9,12 @@ The correct way to use any column that references a `taxa` is to join
 on said `taxa` table and use the taxa's `name` in your `where` and
 `group by` clauses. However, I recognize that I won't be able to stop
 people from using IDs instead, so those are guaranteed to be stable.
+
+If you only want to filter rows based on the value of a column that
+references a taxa, it may be more efficient to use the construct
+```
+where foreign_key_colum=ANY(select id from taxa_table where name='desired value')
+```
 """
 
 [[table]]
@@ -294,9 +300,9 @@ nullable_explanation = """
 [[table.column]]
 name = "location"
 type = "bigint"
+references = "taxa.fielder_location"
 description = """
 The fielder location where this slot typically plays, if applicable.
-This is a foreign key into `taxa.fielder_location`.
 
 WARNING: a player in a batting slot who is currently pitching may be
 recorded as occupying their batting slot or the Pitcher approximate
@@ -495,8 +501,9 @@ The standard baseball abbreviation for this pitch type.
 [[table.column]]
 name = "category"
 type = "bigint"
+references = "taxa.pitch_category"
 description = """
-This pitch type's category. References `taxa.pitch_category`.
+This pitch type's category.
 """
 
 [[table]]
@@ -690,8 +697,9 @@ This is also the human-friendly name for each attribute.
 [[table.column]]
 name = "category"
 type = "bigint"
+references = "taxa.attribute_category"
 description = """
-This attribute's category. References `taxa.attribute_category`.
+This attribute's category.
 """
 
 [[table]]

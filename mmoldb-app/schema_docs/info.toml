@@ -112,6 +112,7 @@ An arbitrary numeric ID. This table's primary key.
 [[table.column]]
 name = "game_id"
 type = "bigint"
+references = "data.games"
 description = """
 The game this event log belongs to. References `data.games`.
 
