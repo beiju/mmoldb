@@ -8,6 +8,13 @@ use crate::tables::{CheckTablesError, KindStyle};
 enum Commands {
     /// Output the SQL command to delete all derived data for all time
     DeleteDerived,
+
+    /// Output the SQL command to delete all derived data after the given time,
+    /// for the given kind or all kinds if not provided
+    DeleteDerivedAfter {
+        after: String,
+        for_kind: Option<String>,
+    },
 }
 
 #[derive(Parser)]
@@ -31,6 +38,9 @@ fn main() -> Result<(), CheckTablesError> {
         Commands::DeleteDerived => {
             gen_delete_derived();
         }
+        Commands::DeleteDerivedAfter { after, for_kind } => {
+            gen_delete_derived_after(after, for_kind.as_deref());
+        }
     }
 
     Ok(())
@@ -47,11 +57,11 @@ fn gen_delete_derived() {
         }
     };
 
-    println!("begin;");
-    println!("truncate table");
-
     // Emit the truncate
     let tables = tables::tables();
+
+    println!("begin;");
+    println!("truncate table");
 
     println!("\t-- *_processed tables");
     for table in &tables.origin_tables {
@@ -119,6 +129,57 @@ fn gen_delete_derived() {
             KindStyle::Version { version_derived_tables: _, auxiliary_tables: _, feed_derived_tables: _ } => {}
         }
     }
+
+    println!("end;");
+}
+
+fn gen_delete_derived_after(after: &str, for_kind: Option<&str>) {
+    let tables = tables::tables();
+
+    println!("begin;");
+
+    for (kind, table) in &tables.derived_tables {
+        if for_kind.is_some_and(|for_kind| for_kind != *kind) {
+            println!("\t-- skipping non-selected kind {kind}");
+            continue;
+        }
+
+        match table {
+            KindStyle::Game { root_table, .. } => {
+                // Game-style tables only need the root table to be deleted. Everything else
+                // has `on delete cascade`.
+                println!("\t-- deleting from game-style table data.{root_table}");
+                println!("\tdelete from data.{root_table} where valid_from >= '{after}';");
+            }
+            KindStyle::Version { version_derived_tables, auxiliary_tables, feed_derived_tables } => {
+                println!("\t-- deleting from version-style table data.{kind}");
+
+                if !version_derived_tables.is_empty() {
+                    println!("\t-- deleting version-derived tables for kind={kind}");
+                    for version_derived_table in version_derived_tables {
+                        println!("\tdelete from data.{version_derived_table} where valid_from >= '{after}';");
+                        println!("\tupdate data.{version_derived_table} set valid_until=null where valid_until >= '{after}';");
+                    }
+                }
+
+                // No need to delete from auxiliary tables (and no way to do it either)
+                let _ = auxiliary_tables;
+
+                // I decided not to lump in feed delete with version delete. Feed delete is not yet
+                // implemented
+                let _ = feed_derived_tables;
+
+                // TODO Add an optimization to collapse multiple of these if for_kind is None.
+                //   Note: Don't delete feed_ingest_log unless feed version delete is implemented
+                println!("\tdelete from data.versions_processed where kind = '{kind}' and valid_from >= '{after}';");
+                println!("\tdelete from info.version_ingest_log where kind = '{kind}' and valid_from >= '{after}';");
+            }
+        }
+    }
+
+    println!();
+    println!("\trefresh materialized view info.entities_count;");
+    println!("\trefresh materialized view info.entities_with_issues_count;");
 
     println!("end;");
 }

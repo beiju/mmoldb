@@ -154,6 +154,8 @@ pub async fn docs_debug_page(table_name: String, db: Db) -> Result<Template, App
 pub struct ColumnDocs {
     pub name: String,
     pub r#type: String,
+    #[serde(default)]
+    pub foreign_key_reference: Option<String>,
     pub description: String,
     #[serde(default)]
     pub nullable_explanation: Option<String>,
@@ -188,7 +190,7 @@ pub struct SchemaDocs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mmoldb_db::db::DbTable;
+    use mmoldb_db::db::{ColumnType, DbTable};
 
     // TODO Put this in some utils file somewhere
     pub fn associate<T, S>(
@@ -300,11 +302,49 @@ mod tests {
         }
 
         for (docs, schema) in schemas_with_docs {
-            assert_eq!(
-                schema.r#type, docs.r#type,
-                "Type mismatch for column {} in {schema_name}.{}",
-                schema.name, table.name
-            );
+            match schema.r#type {
+                ColumnType::ValueType(type_from_schema) => {
+                    assert_eq!(
+                        type_from_schema, docs.r#type,
+                        "Type mismatch for column {} in {schema_name}.{}",
+                        schema.name, table.name
+                    );
+                    if let Some(foreign_key_reference) = docs.foreign_key_reference {
+                        assert!(
+                            false,
+                            "Column {} in {schema_name}.{} is documented as referencing \
+                            {foreign_key_reference}, but it doesn't reference anything",
+                            schema.name,
+                            table.name,
+                        )
+                    }
+                }
+                ColumnType::ReferenceType { r#type: type_from_schema, references_schema, references_table } => {
+                    assert_eq!(
+                        type_from_schema, docs.r#type,
+                        "Type mismatch for column {} in {schema_name}.{}",
+                        schema.name, table.name
+                    );
+                    if let Some(foreign_key_reference) = docs.foreign_key_reference {
+                        assert_eq!(
+                            foreign_key_reference, format!("{references_schema}.{references_table}"),
+                            "Column {} in {schema_name}.{} is documented as referencing \
+                            {foreign_key_reference}, but it actually references \
+                            {references_schema}.{references_table}",
+                            schema.name,
+                            table.name,
+                        );
+                    } else {
+                        assert!(
+                            false,
+                            "Column {} in {schema_name}.{} is not documented as referencing \
+                            anything, but it does reference {references_schema}.{references_table}",
+                            schema.name,
+                            table.name,
+                        );
+                    }
+                }
+            }
             // TODO: Investigate the performance implications of verifying that
             //   all fields labeled `is_non_nullable_view_field` actually have
             //   no null entries by querying the db
@@ -313,7 +353,7 @@ mod tests {
                 docs.nullable_explanation.is_some(),
                 "Nullability mismatch for column {} in {schema_name}.{}",
                 schema.name,
-                table.name
+                table.name,
             );
         }
 

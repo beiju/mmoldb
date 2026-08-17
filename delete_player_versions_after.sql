@@ -17,6 +17,7 @@ begin;
     update data.player_report_versions set valid_until=null where valid_until >= '2026-03-11T17:00:16.253892Z';
     delete from data.player_versions where valid_from >= '2026-03-11T17:00:16.253892Z';
     update data.player_versions set valid_until=null where valid_until >= '2026-03-11T17:00:16.253892Z';
+
     delete from data.versions_processed where kind='player' and valid_from >= '2026-03-11T17:00:16.253892Z';
     delete from info.version_ingest_log where kind='player' and valid_from >= '2026-03-11T17:00:16.253892Z';
 

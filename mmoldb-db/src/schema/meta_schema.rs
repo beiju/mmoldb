@@ -38,7 +38,7 @@ pub mod meta {
             interval_precision -> Nullable<Integer>,
         }
     }
-    // Adjust module paths as needed for your crate layout
+
     diesel::table! {
         information_schema.table_constraints (constraint_catalog, constraint_schema, constraint_name) {
             constraint_catalog -> Text,

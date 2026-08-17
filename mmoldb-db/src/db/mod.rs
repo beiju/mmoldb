@@ -2189,11 +2189,13 @@ pub enum DbMetaQueryError {
 
 #[derive(Debug, Serialize)]
 pub enum ColumnType {
+    // Represents a normal, non-foreign-key column type
     ValueType(String),
-    // Represents a foreign key constraint on this table
+    // Represents a foreign key column type
     ReferenceType {
+        r#type: String, // Usually bigint
+        references_schema: String,
         references_table: String,
-        foreign_key_column: String,
     },
 }
 
@@ -2255,7 +2257,7 @@ pub fn tables_for_schema(
         .get_results(conn)?;
 
     // 3. Query foreign key mappings
-    let fk_results: Vec<(String, String, String)> = tc_dsl::table_constraints
+    let fk_results: Vec<(String, String, String, String)> = tc_dsl::table_constraints
         .inner_join(
             kcu_dsl::key_column_usage.on(tc_dsl::constraint_name
                 .eq(kcu_dsl::constraint_name)
@@ -2278,16 +2280,17 @@ pub fn tables_for_schema(
                 .and(kcu_dsl::table_schema.eq(schema_name)),
         )
         .select((
-            kcu_dsl::table_name,
-            kcu_dsl::column_name,
-            ccu_dsl::table_name,
+            kcu_dsl::table_name,  // name of the table containing the foreign key reference
+            kcu_dsl::column_name, // name of the foreign key column
+            ccu_dsl::table_schema, // schema of the table that's being referenced
+            ccu_dsl::table_name,  // name of the table that's being referenced
         ))
         .load(conn)?;
 
-    // Map: (table_name, column_name) -> references_table
-    let fk_map: HashMap<(String, String), String> = fk_results
+    // Map: (table_name, column_name) -> (references_schema, references_table)
+    let fk_map: HashMap<(String, String), (String, String)> = fk_results
         .into_iter()
-        .map(|(tbl, col, ref_tbl)| ((tbl, col), ref_tbl))
+        .map(|(tbl, col, ref_sch, ref_tbl)| ((tbl, col), (ref_sch, ref_tbl)))
         .collect();
 
     // 4. Group columns by table
@@ -2325,9 +2328,10 @@ pub fn tables_for_schema(
 
                         // Check if this column is a foreign key referencing another table
                         let column_type = match fk_map.get(&(current_table_name.clone(), col_name.clone())) {
-                            Some(ref_table) => ColumnType::ReferenceType {
+                            Some((ref_schema, ref_table)) => ColumnType::ReferenceType {
+                                r#type: data_type,
+                                references_schema: ref_schema.clone(),
                                 references_table: ref_table.clone(),
-                                foreign_key_column: col_name.clone(),
                             },
                             None => ColumnType::ValueType(data_type),
                         };

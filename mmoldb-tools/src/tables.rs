@@ -279,7 +279,7 @@ fn check_child_tables(unaccountedfor_tables: &mut Vec<DbTable>, descendant_table
                     reference_table: descendant.parent_table.to_string(),
                 })?
             }
-            ColumnType::ReferenceType { references_table, foreign_key_column } => {
+            ColumnType::ReferenceType { r#type: _, references_schema: _, references_table } => {
                 if descendant.parent_table != references_table {
                     // TODO I do not trust the values here
                     Err(CheckTablesError::ListedReferenceTableDoesNotMatch {
@@ -287,10 +287,10 @@ fn check_child_tables(unaccountedfor_tables: &mut Vec<DbTable>, descendant_table
                         reference_column: descendant.parent_column.to_string(),
                         referenced_table: descendant.parent_table.to_string(),
                         actual_table: references_table.to_string(),
-                        actual_column: foreign_key_column.to_string(),
+                        actual_column: column.name.to_string(),
                     })?;
                 }
-                if descendant.parent_column != foreign_key_column {
+                if descendant.parent_column != column.name {
                     todo!("Error for this")
                 }
             }
