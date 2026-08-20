@@ -790,7 +790,8 @@ pub fn chron_player_feed_as_new<'a>(
         | ParsedPlayerFeedEventText::PlayerTrained { .. }
         | ParsedPlayerFeedEventText::NewRetirement { .. }
         | ParsedPlayerFeedEventText::SweetRelief { .. }
-        | ParsedPlayerFeedEventText::DefensiveShift { .. } => {}
+        | ParsedPlayerFeedEventText::DefensiveShift { .. }
+        | ParsedPlayerFeedEventText::GoingHome { .. } => {}
     }
 
     // TODO Re-enable
