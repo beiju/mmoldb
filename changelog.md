@@ -15,6 +15,10 @@ Upcoming
   See docs for details.
 - Added `friends` to `data.player_versions`, recording player friends. See docs
   for details. 
+- Worked around a rare bug that could cause games to be missed. Games that were
+  previously missed due to this bug are now added.
+  - Note: This bug can also affect players versions and team versions too. The 
+    fix only affects games, so player and team versions may still be missing.   
 
 2026-08-10
 ----------
