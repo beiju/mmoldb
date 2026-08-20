@@ -162,6 +162,7 @@ impl Chron {
         )
     }
 
+    // Warning: This endpoint only calls cheapcashews, never freecashews
     pub async fn entities_by_id(
         &self,
         kind: &'static str,
@@ -171,7 +172,7 @@ impl Chron {
         let client = self.client.clone(); // This is internally reference counted
 
         let request_builder = client
-            .get("https://freecashe.ws/api/chron/v0/entities")
+            .get("https://cheapcashews.beiju.me/chron/v0/entities")
             .query(&[("kind", kind), ("id", &ids.join(",")), ("order", "asc")]);
 
         let request = request_builder

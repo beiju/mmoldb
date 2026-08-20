@@ -123,7 +123,8 @@ async fn main() -> miette::Result<()> {
     ));
 
     if config.fetch_known_missing_games {
-        warn!("Fetching known missing games is not currently implemented");
+        info!("Checking for missed games from known-game-ids.txt");
+        ingest_games::fetch_missed_games(pool.clone()).await.into_diagnostic()?;
     }
 
     // Launch ingest tasks

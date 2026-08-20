@@ -27,8 +27,6 @@ use tracing::{debug, error, info, warn};
 const CHRON_MAX_IDS_PER_CALL: usize = 50;
 const PROCESS_GAME_BATCH_SIZE: usize = 100;
 
-// TODO Use this again
-#[allow(unused)]
 pub async fn fetch_missed_games(pool: ConnectionPool) -> Result<(), IngestFatalError> {
     let known_game_ids_file = match fs::File::open("known-game-ids.txt").await {
         Ok(file) => file,
@@ -71,9 +69,9 @@ pub async fn fetch_missed_games(pool: ConnectionPool) -> Result<(), IngestFatalE
             ),
         );
 
-        info!("Saving {} games", chunk.len());
+        info!("Saving {} missing games", chunk.len());
         let inserted = db::insert_entities(&mut conn, entities.items)?;
-        info!("Saved {} games", inserted);
+        info!("Saved {} missing games", inserted);
     }
 
     Ok(())
