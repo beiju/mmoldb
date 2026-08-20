@@ -1420,16 +1420,11 @@ fn chron_player_as_new<'a>(
     // than the lowest level there, otherwise it's `level`
     let planned_level = entity.data.scheduled_level_ups.as_ref().ok()
         .and_then(|scheduled_level_ups| {
-            if !scheduled_level_ups.is_sorted_by_key(|scheduled_level_up| scheduled_level_up.level) {
-                ingest_logs.warn(format!(
-                    "ScheduledLevelUps for player {} at {} is not sorted by level",
-                    entity.entity_id,
-                    entity.valid_from,
-                ));
-            }
-
-            scheduled_level_ups.first()
+            // I verified that it's not enough to just use .first() or .last(). See
+            // https://cheapcashews.beiju.me/chron/v0/entities?kind=player&id=6843129f295b2368c0ac7c63&at=2026-01-20T17:35:06.373720Z
+            scheduled_level_ups.iter()
                 .map(|scheduled_level_up| scheduled_level_up.level as i32 - 1)
+                .max()
         })
         .or(level);
 
@@ -1440,16 +1435,11 @@ fn chron_player_as_new<'a>(
     // the lowest level there, otherwise it's `planned_level`
     let play_level = entity.data.pending_level_ups.as_ref().ok()
         .and_then(|pending_level_ups| {
-            if !pending_level_ups.is_sorted_by_key(|pending_level_up| pending_level_up.level) {
-                ingest_logs.warn(format!(
-                    "PendingLevelUps for player {} at {} is not sorted by level",
-                    entity.entity_id,
-                    entity.valid_from,
-                ));
-            }
-
-            pending_level_ups.first()
+            // I don't know that it's not enough to just use .first() for this one, but this feels
+            // like the safer option
+            pending_level_ups.iter()
                 .map(|pending_level_up| pending_level_up.level as i32 - 1)
+                .max()
         })
         .or(planned_level);
 
