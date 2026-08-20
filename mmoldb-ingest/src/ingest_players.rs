@@ -1424,7 +1424,7 @@ fn chron_player_as_new<'a>(
             // https://cheapcashews.beiju.me/chron/v0/entities?kind=player&id=6843129f295b2368c0ac7c63&at=2026-01-20T17:35:06.373720Z
             scheduled_level_ups.iter()
                 .map(|scheduled_level_up| scheduled_level_up.level as i32 - 1)
-                .max()
+                .min()
         })
         .or(level);
 
@@ -1439,7 +1439,7 @@ fn chron_player_as_new<'a>(
             // like the safer option
             pending_level_ups.iter()
                 .map(|pending_level_up| pending_level_up.level as i32 - 1)
-                .max()
+                .min()
         })
         .or(planned_level);
 
