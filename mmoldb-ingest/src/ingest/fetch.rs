@@ -8,6 +8,8 @@ use std::num::NonZero;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
+const FETCH_TIME_SAFETY_FACTOR: i64 = 5 * 60;
+
 #[derive(Debug, Clone)]
 pub struct ChronFetchArgs {
     pub shutdown_requested: CancellationToken,
@@ -29,9 +31,17 @@ pub async fn fetch_entity_kind(
 
     let start_date = db::get_latest_entity_valid_from(&mut conn, kind)?
         .as_ref()
-        .map(NaiveDateTime::and_utc);
+        .map(NaiveDateTime::and_utc)
+        // There's a race condition in chron (kind of, it's only a race condition if you assume
+        // chron guarantees that observations are always inserted in order of valid_until, which is
+        // not really a guarantee chron provided, but we assumed it anyway and it's been good
+        // enough until it wasn't) that we can work around by asking for versions from long enough
+        // ago that
+        .map(|date| {
+            date - chrono::Duration::new(FETCH_TIME_SAFETY_FACTOR, 0).unwrap()
+        });
 
-    info!("{} fetch will start from date {:?}", kind, start_date);
+    info!("{} fetch will start from date {:?} ({FETCH_TIME_SAFETY_FACTOR} seconds before the cursor to work around a race condition in our usage of chron)", kind, start_date);
 
     let stream = chron
         .entities(kind, start_date, 3, args.use_local_cheap_cashews)
