@@ -1454,7 +1454,7 @@ fn chron_player_as_new<'a>(
         .or(planned_level);
 
     // Sanity check: Every level from play_level (exclusive) to planned_level (inclusive) should
-    // have a corresponding entry in pending_level_ups, and vice versa
+    // have a corresponding entry in scheduled_level_ups, and vice versa
     match (play_level, planned_level) {
         (None, None) => {},
         (Some(play_level), None) => {
@@ -1472,27 +1472,27 @@ fn chron_player_as_new<'a>(
             ));
         }
         (Some(play_level), Some(planned_level)) => {
-            if let Ok(pending_level_ups) = &entity.data.pending_level_ups {
-                let predicted_levels_pending = (play_level..planned_level)
-                    // turn it from (exclusive, inclusive) to (inclusive, exclusive)
+            if let Ok(scheduled_level_ups) = &entity.data.scheduled_level_ups {
+                let predicted_levels_scheduled = (play_level..planned_level)
+                    // turn it from (inclusive, exclusive) to (exclusive, inclusive)
                     .map(|level| level + 1)
                     .collect_vec();
-                let actual_levels_pending = pending_level_ups.iter()
-                    .map(|pending_level_up| pending_level_up.level as i32)
+                let actual_levels_scheduled = scheduled_level_ups.iter()
+                    .map(|scheduled_level_up| scheduled_level_up.level as i32)
                     .collect_vec();
-                if predicted_levels_pending != actual_levels_pending {
+                if predicted_levels_scheduled != actual_levels_scheduled {
                     ingest_logs.warn(format!(
-                        "Player {} at {} did not have a pending level up for every level from \
-                        play_level (exclusive) to planned_level (inclusive). Expected pending \
-                        levels {predicted_levels_pending:?}, but observed pending levels \
-                        {actual_levels_pending:?}.",
+                        "Player {} at {} did not have a scheduled level up for every level from \
+                        play_level ({play_level}; exclusive) to planned_level ({planned_level}; \
+                        inclusive). Expected scheduled levels {predicted_levels_scheduled:?}, but \
+                        observed scheduled levels {actual_levels_scheduled:?}.",
                         entity.entity_id,
                         entity.valid_from,
                     ));
                 }
             } else {
                 ingest_logs.warn(format!(
-                    "Player {} at {} had a play_level with no pending_level_ups. \
+                    "Player {} at {} had a play_level with no scheduled_level_ups. \
                     This is a MMOLDB logic error.",
                     entity.entity_id,
                     entity.valid_from,
@@ -1502,7 +1502,7 @@ fn chron_player_as_new<'a>(
     }
 
     // Sanity check: Every level from planned_level (exclusive) to level (inclusive) should
-    // have a corresponding entry in scheduled_level_ups, and vice versa
+    // have a corresponding entry in pending_level_ups, and vice versa
     match (planned_level, level) {
         (None, None) => {},
         (Some(planned_level), None) => {
@@ -1520,27 +1520,27 @@ fn chron_player_as_new<'a>(
             ));
         }
         (Some(planned_level), Some(level)) => {
-            if let Ok(scheduled_level_ups) = &entity.data.scheduled_level_ups {
-                let predicted_levels_scheduled = (planned_level..level)
-                    // turn it from (exclusive, inclusive) to (inclusive, exclusive)
+            if let Ok(pending_level_ups) = &entity.data.pending_level_ups {
+                let predicted_levels_pending = (planned_level..level)
+                    // turn it from (inclusive, exclusive) to (exclusive, inclusive)
                     .map(|level| level + 1)
                     .collect_vec();
-                let actual_levels_scheduled = scheduled_level_ups.iter()
-                    .map(|scheduled_level_up| scheduled_level_up.level as i32)
+                let actual_levels_pending = pending_level_ups.iter()
+                    .map(|pending_level_up| pending_level_up.level as i32)
                     .collect_vec();
-                if predicted_levels_scheduled != actual_levels_scheduled {
+                if predicted_levels_pending != actual_levels_pending {
                     ingest_logs.warn(format!(
-                        "Player {} at {} did not have a scheduled level up for every level from \
-                        planned_level (exclusive) to level (inclusive). Expected scheduled \
-                        levels {predicted_levels_scheduled:?}, but observed scheduled levels \
-                        {actual_levels_scheduled:?}.",
+                        "Player {} at {} did not have a pending level up for every level from \
+                        planned_level ({planned_level}; exclusive) to level ({level}; inclusive). \
+                        Expected pending levels {predicted_levels_pending:?}, but observed pending \
+                        levels {actual_levels_pending:?}.",
                         entity.entity_id,
                         entity.valid_from,
                     ));
                 }
             } else {
                 ingest_logs.warn(format!(
-                    "Player {} at {} had a planned_level with no scheduled_level_ups. \
+                    "Player {} at {} had a planned_level with no pending_level_ups. \
                     This is a MMOLDB logic error.",
                     entity.entity_id,
                     entity.valid_from,
