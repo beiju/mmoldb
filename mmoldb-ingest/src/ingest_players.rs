@@ -1414,16 +1414,17 @@ fn chron_player_as_new<'a>(
     // "level" is straight from the player data, if it exists, and
     // reflects what level that player has earned, regardless whether
     // the team owner has applied those levels yet
+    
     let level = entity.data.level.as_ref().ok().map(|level| *level as i32);
     // "planned level" is the highest level that the user has selected a
-    // level-up value for. If scheduled_level_ups is present it's one less
+    // level-up value for. If pending_level_ups is present it's one less
     // than the lowest level there, otherwise it's `level`
-    let planned_level = entity.data.scheduled_level_ups.as_ref().ok()
-        .and_then(|scheduled_level_ups| {
+    let planned_level = entity.data.pending_level_ups.as_ref().ok()
+        .and_then(|pending_level_ups| {
             // I verified that it's not enough to just use .first() or .last(). See
             // https://cheapcashews.beiju.me/chron/v0/entities?kind=player&id=6843129f295b2368c0ac7c63&at=2026-01-20T17:35:06.373720Z
-            scheduled_level_ups.iter()
-                .map(|scheduled_level_up| scheduled_level_up.level as i32 - 1)
+            pending_level_ups.iter()
+                .map(|pending_level_up| pending_level_up.level as i32 - 1)
                 .min()
         })
         .or(level);
@@ -1431,14 +1432,14 @@ fn chron_player_as_new<'a>(
     // "play level" is the level that has actually been applied. note
     // that there is a delay between when a level is selected and when
     // it gets applied, which is why this is not always the same as
-    // planned_level. If pending_level_ups is present it's one less than
+    // planned_level. If scheduled_level_ups is present it's one less than
     // the lowest level there, otherwise it's `planned_level`
-    let play_level = entity.data.pending_level_ups.as_ref().ok()
-        .and_then(|pending_level_ups| {
+    let play_level = entity.data.scheduled_level_ups.as_ref().ok()
+        .and_then(|scheduled_level_ups| {
             // I don't know that it's not enough to just use .first() for this one, but this feels
             // like the safer option
-            pending_level_ups.iter()
-                .map(|pending_level_up| pending_level_up.level as i32 - 1)
+            scheduled_level_ups.iter()
+                .map(|scheduled_level_up| scheduled_level_up.level as i32 - 1)
                 .min()
         })
         .or(planned_level);
