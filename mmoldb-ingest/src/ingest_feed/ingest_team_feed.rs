@@ -123,7 +123,8 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::ManagerReplaced { .. }
         | ParsedTeamFeedEventText::NewRetirement { .. }
         | ParsedTeamFeedEventText::SweetRelief { .. }
-        | ParsedTeamFeedEventText::DefensiveShift { .. } => None,
+        | ParsedTeamFeedEventText::DefensiveShift { .. }
+        | ParsedTeamFeedEventText::GoingHome { .. } => None,
     };
 
     game_outcome
