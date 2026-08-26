@@ -158,6 +158,14 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.season_status (id) {
+            id -> Int8,
+            name -> Text,
+            display_name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.slot (id) {
             id -> Int8,
             name -> Text,
@@ -200,6 +208,7 @@ pub mod taxa {
         pitch_type,
         pitcher_change_source,
         pollen_count,
+        season_status,
         slot,
         slot_type,
     );

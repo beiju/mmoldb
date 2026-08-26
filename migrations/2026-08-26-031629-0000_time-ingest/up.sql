@@ -1,4 +1,10 @@
--- Your SQL goes here
+create table taxa.season_status (
+    id bigserial primary key not null,
+    name text not null,
+    display_name text not null,
+    unique (name)
+);
+
 create table data.time_versions (
     -- bookkeeping
     id bigserial primary key not null,
@@ -10,7 +16,8 @@ create table data.time_versions (
     season integer not null,
     day_type bigint references taxa.day_type, -- null = unknown day type (this is an ingest error)
     day integer,
-    superstar_day integer
+    superstar_day integer,
+    season_status bigint references taxa.season_status -- null = unknown season status (this is an ingest error_
 );
 
 create function data.on_insert_time_version() returns trigger

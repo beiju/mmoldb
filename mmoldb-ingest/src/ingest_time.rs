@@ -5,6 +5,7 @@ use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use itertools::Itertools;
+use mmolb_parsing::MaybeRecognizedResult;
 use mmoldb_db::models::{NewTimeVersion, NewVersionIngestLog, NewVersionProcessed};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncPgConnection, PgConnection, QueryResult, async_db, db};
@@ -94,6 +95,12 @@ fn chron_time_as_new<'a>(
 
     let (day_type, day, superstar_day) = day_to_db(Some(&time.season_day), taxa);
 
+    if let Some(err) = time.season_day.as_ref().err() {
+        ingest_logs.error(format!("Unrecognized season_day: {}", err));
+    } else if day_type.is_none() {
+        ingest_logs.error("day_type is None for an unknown reason");
+    }
+
     let new_time = NewTimeVersion {
         valid_from: valid_from.naive_utc(),
         valid_until: None,
@@ -101,6 +108,23 @@ fn chron_time_as_new<'a>(
         day_type,
         day,
         superstar_day,
+        season_status: match &time.season_status {
+            Ok(season_status) => match (*season_status).try_into() {
+                Ok(season_status) => Some(taxa.season_status_id(season_status)),
+                Err(invalid_season_status) => {
+                    ingest_logs.error(format!(
+                        "Season status {} should not appear in `time` kind",
+                        invalid_season_status,
+                    ));
+                    None
+                }
+            },
+            Err(err) => {
+                ingest_logs.error(format!("Invalid season status {err}"));
+                None
+
+            }
+        },
     };
 
     (new_processed, Some(new_time), ingest_logs.into_vec())

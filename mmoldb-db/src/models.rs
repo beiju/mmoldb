@@ -1418,6 +1418,7 @@ pub struct NewTimeVersion {
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
+    pub season_status: Option<i64>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -1431,4 +1432,5 @@ pub struct DbTimeVersion {
     pub day_type: Option<i64>,
     pub day: Option<i32>,
     pub superstar_day: Option<i32>,
+    pub season_status: Option<i64>,
 }
