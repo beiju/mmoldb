@@ -612,6 +612,19 @@ pub mod data {
     }
 
     diesel::table! {
+        data.time_versions (id) {
+            id -> Int8,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            season -> Int4,
+            day_type -> Nullable<Int8>,
+            day -> Nullable<Int4>,
+            superstar_day -> Nullable<Int4>,
+        }
+    }
+
+    diesel::table! {
         data.versions (kind, entity_id, valid_from) {
             kind -> Text,
             entity_id -> Text,
@@ -719,6 +732,7 @@ pub mod data {
         team_games_played,
         team_player_versions,
         team_versions,
+        time_versions,
         versions,
         versions_processed,
         weather,

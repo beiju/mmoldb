@@ -39,6 +39,7 @@ pub struct IngestConfig {
     pub set_postgres_statement_timeout: Option<i64>,
     pub use_local_cheap_cashews: bool,
     pub fetch_known_missing_games: bool,
+    pub time_ingest: IngestibleConfig,
     pub team_ingest: IngestibleConfig,
     pub player_ingest: IngestibleConfig,
     pub game_ingest: IngestibleConfig,
@@ -52,6 +53,7 @@ impl Default for IngestConfig {
             set_postgres_statement_timeout: Some(0), // 0 means no timeout
             use_local_cheap_cashews: false,
             fetch_known_missing_games: false,
+            time_ingest: Default::default(),
             team_ingest: Default::default(),
             player_ingest: Default::default(),
             game_ingest: Default::default(),

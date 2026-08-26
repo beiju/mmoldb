@@ -28,7 +28,7 @@ use thiserror::Error;
 use tracing::{debug, info, trace, warn};
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
 use crate::taxa::{Taxa, TaxaPollenCount};
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -3544,6 +3544,70 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
         "insert_versions_processed_duration: {insert_versions_processed_duration:.2}, \
         insert_team_version_duration: {insert_team_version_duration:.2}, \
         insert_team_player_versions_duration: {insert_team_player_versions_duration:.2}, \
+        insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
+    );
+
+    Ok((total, inserted))
+}
+
+fn insert_time_versions(
+    conn: &mut PgConnection,
+    new_time_versions: Vec<&Option<NewTimeVersion>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::time_versions::dsl as tv_dsl;
+
+    let new_time_versions = new_time_versions.into_iter().flatten().collect_vec();
+
+    // Insert new records
+    diesel::copy_from(tv_dsl::time_versions)
+        .from_insertable(new_time_versions)
+        .execute(conn)
+}
+
+pub(crate) type NewTimeVersionExt<'a> = (
+    NewVersionProcessed<'a>,
+    Option<NewTimeVersion>,
+    Vec<NewVersionIngestLog<'a>>,
+);
+
+pub fn insert_time_versions_all<'container, 'game: 'container>(
+    conn: &mut PgConnection,
+    new_time_versions: impl IntoIterator<Item = &'container NewTimeVersionExt<'game>>,
+) -> QueryResult<(usize, usize)> {
+    use crate::data_schema::data::versions_processed::dsl as vp_dsl;
+
+    // Convert reference to tuple to tuple of references
+    let new_time_versions = new_time_versions.into_iter().map(|(a, b, c)| (a, b, c));
+
+    let (new_processed, new_time_versions, new_ingest_logs): (
+        Vec<&NewVersionProcessed>,
+        Vec<&Option<NewTimeVersion>>,
+        Vec<&Vec<NewVersionIngestLog>>,
+    ) = itertools::multiunzip(new_time_versions);
+
+    let mut total = 0;
+    let mut inserted = 0;
+
+    // Insert new records
+    let insert_versions_processed_start = Utc::now();
+    total += new_processed.len();
+    inserted += diesel::copy_from(vp_dsl::versions_processed)
+        .from_insertable(new_processed)
+        .execute(conn)?;
+    let insert_versions_processed_duration = (Utc::now() - insert_versions_processed_start).as_seconds_f64();
+
+    let insert_time_version_start = Utc::now();
+    total += new_time_versions.len();
+    inserted += insert_time_versions(conn, new_time_versions)?;
+    let insert_time_version_duration = (Utc::now() - insert_time_version_start).as_seconds_f64();
+
+    let insert_ingest_logs_start = Utc::now();
+    insert_nested_ingest_logs(conn, new_ingest_logs)?;
+    let insert_ingest_logs_duration = (Utc::now() - insert_ingest_logs_start).as_seconds_f64();
+
+    info!(
+        "insert_versions_processed_duration: {insert_versions_processed_duration:.2}, \
+        insert_time_version_duration: {insert_time_version_duration:.2}, \
         insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
     );
 

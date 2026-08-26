@@ -1,5 +1,5 @@
 use crate::ingest::VersionIngestLogs;
-use crate::ingest_players::day_to_db;
+use crate::util::day_to_db;
 use chron::ChronFeedEvent;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use hashbrown::HashMap;

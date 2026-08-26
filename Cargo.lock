@@ -2277,7 +2277,7 @@ dependencies = [
 [[package]]
 name = "mmolb_parsing"
 version = "0.62.0"
-source = "git+https://github.com/beiju/mmolb_parsing.git?branch=s13#6dbb03f9af06c2528820e96517a456fd3f2e36ac"
+source = "git+https://github.com/beiju/mmolb_parsing.git?branch=s13#07def749ee73fe08ace0909bdaefa8b5a721569c"
 dependencies = [
  "chrono",
  "indexmap 2.13.0",
@@ -2370,6 +2370,7 @@ dependencies = [
  "miette",
  "mmolb_parsing",
  "mmoldb-db",
+ "nonzero_lit",
  "num",
  "rayon",
  "serde",
@@ -2432,6 +2433,12 @@ checksum = "2de2bc5b451bfedaef92c90b8939a8fff5770bdcc1fafd6239d086aab8fa6b29"
 dependencies = [
  "nom",
 ]
+
+[[package]]
+name = "nonzero_lit"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30a9e0365849b8ce3d067218268d6c523c1c14f539f7e9157d635d8adfb308fa"
 
 [[package]]
 name = "normpath"

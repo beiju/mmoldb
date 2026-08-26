@@ -90,7 +90,7 @@ pub async fn ingest_stage_2(
     let num_workers = NonZero::new(1).unwrap();
     debug!("Ingesting with {} workers", num_workers);
 
-    let partitioner = Partitioner::new(num_workers);
+    let partitioner = Partitioner::with_partitions(num_workers);
 
     let url = mmoldb_db::postgres_url_from_environment();
     let mut async_conn = AsyncPgConnection::establish(&url).await?;

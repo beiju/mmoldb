@@ -3,6 +3,7 @@ mod ingest;
 mod ingest_games;
 mod ingest_players;
 mod ingest_teams;
+mod ingest_time;
 mod partitioner;
 mod modifier_effects_value;
 mod ingest_feed;

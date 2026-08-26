@@ -1407,3 +1407,28 @@ pub struct DbModificationEffects {
     pub effect_type: i64,
     pub value: f64,
 }
+
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
+#[diesel(table_name = crate::data_schema::data::time_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewTimeVersion {
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::time_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbTimeVersion {
+    pub id: i64,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub season: i32,
+    pub day_type: Option<i64>,
+    pub day: Option<i32>,
+    pub superstar_day: Option<i32>,
+}

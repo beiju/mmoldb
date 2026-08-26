@@ -1,6 +1,9 @@
 use futures::FutureExt;
 mod fetch;
 mod processing;
+mod common;
+
+pub use common::*;
 
 use crate::config::{IngestConfig, IngestibleConfig};
 use crate::partitioner::Partitioner;
@@ -46,6 +49,15 @@ pub enum IngestFatalError {
 
     #[error("entity id was not ASCII: {0}")]
     NonAsciiEntityId(#[source] ascii::AsAsciiStrError),
+
+    #[error(
+        "entity id was only {actual_len} characters long, expected at least {expected_minimum_len} \
+        characters"
+    )]
+    TooShortEntityId {
+        actual_len: usize,
+        expected_minimum_len: usize,
+    },
 
     #[error("trailing digits of entity id were not parseable as hex: {0}")]
     NonHexEntityId(#[source] std::num::ParseIntError),
@@ -266,9 +278,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         format!("{} Stage 2", self.kind)
     }
 
-    async fn run(self: Arc<Self>, args: ProcessingArgs) -> Result<(), IngestFatalError> {
-        let partitioner = Partitioner::new(args.parallelism);
-
+    async fn run(self: Arc<Self>, args: ProcessingArgs, partitioner: Partitioner) -> Result<(), IngestFatalError> {
         // Task names have to outlive their tasks, so we build then in advance
         let task_names_and_nums = (0..args.parallelism.get())
             .map(|worker_idx| {
@@ -669,51 +679,6 @@ pub fn batch_by_entity<KeyT: Clone + Eq + Hash, DataT>(
     })
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum VersionedIngestKind {
-    Team,
-    Player,
-}
-
-impl VersionedIngestKind {
-    fn as_kind(self) -> &'static str {
-        match self {
-            VersionedIngestKind::Team => "team",
-            VersionedIngestKind::Player => "player",
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum EntityIngestKind {
-    Game,
-}
-
-impl EntityIngestKind {
-    fn as_kind(self) -> &'static str {
-        match self {
-            EntityIngestKind::Game => "game",
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum IngestKind {
-    Versioned(VersionedIngestKind),
-    CombinedFeed,
-    Entity(EntityIngestKind),
-}
-
-impl Display for IngestKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IngestKind::Versioned(k) => write!(f, "{}", k.as_kind()),
-            IngestKind::CombinedFeed => write!(f, "feed"),
-            IngestKind::Entity(k) => write!(f, "{}", k.as_kind()),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct IngestForKind {
     kind: IngestKind,
@@ -826,7 +791,7 @@ impl IngestForKind {
     async fn processing_all_available(&self) -> Result<(), IngestFatalError> {
         match self.kind {
             IngestKind::Versioned(kind) => {
-                processing::process_version_kind(kind.as_kind(), self.processing_args.clone())
+                processing::process_version_kind(kind, self.processing_args.clone())
                     .instrument(info_span!("processing_task", kind = kind.as_kind()))
                     .await
             }
@@ -841,7 +806,7 @@ impl IngestForKind {
                     .await
             }
             IngestKind::Entity(kind) => {
-                processing::process_entity_kind(kind.as_kind(), self.processing_args.clone())
+                processing::process_entity_kind(kind, self.processing_args.clone())
                     .instrument(info_span!("processing_task", kind = kind.as_kind()))
                     .await
             }
@@ -855,6 +820,10 @@ pub fn ingest_kinds(
     config: &'static IngestConfig,
 ) -> Vec<Arc<IngestForKind>> {
     let kinds_configs = [
+        (
+            IngestKind::Versioned(VersionedIngestKind::Time),
+            &config.time_ingest,
+        ),
         (
             IngestKind::Versioned(VersionedIngestKind::Team),
             &config.team_ingest,
