@@ -12,7 +12,8 @@ Upcoming
 --------
 - Added `planned_level` and `play_level` to `data.player_versions`, 
   representing different definitions of player level to the existing `level`. 
-  See docs for details.
+  This value is only available for player versions after 2026-04-04 
+  06:01:17.614712Z. See docs for details.
 - Added `friends` to `data.player_versions`, recording player friends. See docs
   for details. 
 - Worked around a rare bug that could cause games to be missed. Games that were

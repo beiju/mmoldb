@@ -3430,8 +3430,9 @@ This is not necessarily the level that the player has earned (see `level`)
 or the number of levels the team owner has selected (see `planned_level`).
 """
 nullable_explanation = """
-`null` for player versions before Season 10, which is when this value was
-added to the player object.
+`null` for player versions before aproximately 2026-04-04. Player versions
+from before then were either pre-leveling or were subject to a bug that would
+make this field unreliable, so we don't provide a value.
 """
 
 [[table.column]]
@@ -3450,8 +3451,9 @@ This is not necessarily the level that the player has earned (see `level`)
 or the level that the player plays at (see `play_level`).
 """
 nullable_explanation = """
-`null` for player versions before Season 10, which is when this value was
-added to the player object.
+`null` for player versions before aproximately 2026-04-04. Player versions
+from before then were either pre-leveling or were subject to a bug that would
+make this field unreliable, so we don't provide a value.
 """
 
 [[table.column]]
