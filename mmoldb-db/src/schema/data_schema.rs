@@ -622,6 +622,7 @@ pub mod data {
             day -> Nullable<Int4>,
             superstar_day -> Nullable<Int4>,
             season_status -> Nullable<Int8>,
+            pollen_count -> Nullable<Int8>,
         }
     }
 

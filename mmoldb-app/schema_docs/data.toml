@@ -5621,6 +5621,18 @@ nullable_explanation = """
 an ingest error.
 """
 
+[[table.column]]
+name = "pollen_count"
+type = "bigint"
+references = "taxa.pollen_count"
+description = """
+The pollen count for this gameday, if any.
+"""
+nullable_explanation = """
+`null` if this gameday is from before pollen was introduced, or if the pollen
+count is not recognized.
+"""
+
 [[table]]
 name = "player_versions_extended"
 description = """

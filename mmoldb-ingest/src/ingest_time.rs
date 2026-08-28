@@ -125,6 +125,9 @@ fn chron_time_as_new<'a>(
 
             }
         },
+        pollen_count: time.pollen_level.as_ref().ok().map(|pollen_level| {
+            taxa.pollen_count_id((*pollen_level).into())
+        })
     };
 
     (new_processed, Some(new_time), ingest_logs.into_vec())
