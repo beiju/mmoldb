@@ -5530,7 +5530,7 @@ type = "bigint"
 description = """
 An arbitrary numeric ID. These IDs are *not* stable. You should not store these
 ids between queries, nor hard-code them into queries. To identify a gameday use
-the combination of its TODO
+the combination of its `season`, `day_type`, `day`, and `superstar_day`.
 """
 
 [[table.column]]
