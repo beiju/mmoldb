@@ -26,6 +26,7 @@ pub fn routes() -> Vec<rocket::Route> {
         pages::player_feed_events_progress_plot,
         pages::team_versions_progress_plot,
         pages::team_feed_events_progress_plot,
+        pages::time_versions_progress_plot,
         player_pages::player,
     ]
 }

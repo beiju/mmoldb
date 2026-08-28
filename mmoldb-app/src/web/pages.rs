@@ -338,6 +338,11 @@ pub async fn status_page(db: Db) -> Result<Template, AppError> {
             counts.get("team_feed").cloned().unwrap_or((0, 0)),
             uri!(team_feed_events_progress_plot()),
         ),
+        IngestibleWithErrors::new_with_progress_plot(
+            "time versions",
+            counts.get("time").cloned().unwrap_or((0, 0)),
+            uri!(time_versions_progress_plot()),
+        ),
     ];
 
     Ok(Template::render(
@@ -587,6 +592,16 @@ pub async fn team_versions_progress_plot(db: Db) -> (ContentType, String) {
 pub async fn team_feed_events_progress_plot(db: Db) -> (ContentType, String) {
     let content = match db.run(|mut conn| db::feed_events_progress("team", &mut conn)).await {
         Ok(progress) => crate::web::plots::plot("Team feed event", progress).unwrap_or_else(svg_err),
+        Err(err) => svg_err(err),
+    };
+
+    (ContentType::SVG, content)
+}
+
+#[get("/time_versions/progress_plot.svg")]
+pub async fn time_versions_progress_plot(db: Db) -> (ContentType, String) {
+    let content = match db.run(|mut conn| db::versions_progress("time", &mut conn)).await {
+        Ok(progress) => crate::web::plots::plot("Time version", progress).unwrap_or_else(svg_err),
         Err(err) => svg_err(err),
     };
 
