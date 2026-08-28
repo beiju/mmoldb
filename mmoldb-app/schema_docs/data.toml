@@ -5504,6 +5504,124 @@ Note there will be multiple rows with the same mmolb_game_id.
 """
 
 [[table]]
+name = "time_versions"
+description = """
+A best-effort mapping of gamedays to real time.
+
+It is especially important for users of this table to understand the meaning of
+`valid_from` and `valid_until`, which is explained on the
+`data.player_versions` table description. In particular, note that a version's
+`valid_until` date is the first date when Chron (the MMOLB archiver) observes
+that this version is no longer the current version. For `time_versions`, that
+means that the game day ended at some (unknown) point __before__ `valid_until`.
+
+Also, this table only tracks the state of MMOLB's `time` endpoint. There are
+other sources of information from which you can divine gameday start and end
+times (e.g. games and feed events), but this table does not account for that.
+(Contributions are welcome!) A consequence of this is that if Chron has any
+downtime, or can't connect to MMOLB for an extended time, any gamedays that
+occurred during that time will be missing and the previous gameday will appear
+to extend throughout the time that should belong to the missing gamedays.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a gameday use
+the combination of its TODO
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the team player was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the team player was observed, i.e. the
+earliest time we know this version is no longer valid. The latest time we know
+this version *is* valid is not exposed because nobody's requested it yet. If
+you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "integer"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "season"
+type = "integer"
+description = """
+The season number.
+"""
+
+[[table.column]]
+name = "day_type"
+type = "bigint"
+references = "taxa.day_type"
+description = """
+The type of the gameday. Corresponds to the `display_name` column of
+`taxa.day_type`. See the documentation on `taxa.day_type` for details.
+"""
+nullable_explanation = """
+`null` if this gameday's type was not recognized. This represents
+an ingest error.
+"""
+
+[[table.column]]
+name = "day"
+type = "integer"
+description = """
+The regular or postseason day number.
+"""
+nullable_explanation = """
+`null` for superstar games --- they have a `superstar_day` instead --- and any
+non-numbered day types.
+"""
+
+[[table.column]]
+name = "superstar_day"
+type = "integer"
+description = """
+The superstar day during which this game was played.
+"""
+nullable_explanation = """
+`null` for non-superstar games --- they have a `day` instead --- and any
+non-numbered day types.
+"""
+
+[[table.column]]
+name = "season_status"
+type = "bigint"
+references = "taxa.season_status"
+description = """
+The season status. This is what part of the season we're in: Regular Season,
+Superstar Break, Postseason, etc.
+"""
+nullable_explanation = """
+`null` if this gameday's season status was not recognized. This represents
+an ingest error.
+"""
+
+[[table]]
 name = "player_versions_extended"
 description = """
 An expansive view that attempts to connect all the various attributes and
@@ -5736,7 +5854,6 @@ day types have a day number.
 nullable_explanation = """
 `null` if this player wasn't born on a numbered day type.
 """
-
 
 [[table.column]]
 name = "birthday_type"

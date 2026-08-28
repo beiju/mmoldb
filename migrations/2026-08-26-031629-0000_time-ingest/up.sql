@@ -34,8 +34,10 @@ begin
       -- note: "is not distinct from" is like "=" except for how it treats nulls.
       -- in postgres, NULL = NULL is false but NULL is not distinct from NULL is true
       and tv.season is not distinct from NEW.season
-      and tv.day is not distinct from NEW.day
-      and tv.superstar_day is not distinct from NEW.superstar_day;
+      and tv.season is not distinct from NEW.season
+      and tv.day_type is not distinct from NEW.day_type
+      and tv.superstar_day is not distinct from NEW.superstar_day
+      and tv.season_status is not distinct from NEW.season_status;
 
     -- if there was an exact match, suppress this insert
     if FOUND then

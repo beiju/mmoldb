@@ -19,7 +19,9 @@ Upcoming
 - Worked around a rare bug that could cause games to be missed. Games that were
   previously missed due to this bug are now added.
   - Note: This bug can also affect players versions and team versions too. The 
-    fix only affects games, so player and team versions may still be missing.   
+    fix only affects games, so player and team versions may still be missing.
+- Added `data.time_versions` with a best-effort gameday to real time mapping. 
+  See documentation for details.
 
 2026-08-10
 ----------

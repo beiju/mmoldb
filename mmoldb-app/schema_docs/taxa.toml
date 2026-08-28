@@ -851,3 +851,33 @@ description = """
 The human-friendly name for this pollen count. For pollen count specifically,
 this is the all-caps representation shown on the website.
 """
+
+[[table]]
+name = "season_status"
+description = """
+The season status: Regular Season, Superstar Break, Postseason, etc.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a postseason status. When this appears as a foreign key you
+are encouraged to join this `taxa` and use its `name` column, rather than
+directly using season status ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this season status. Guaranteed to contain
+alphanumeric characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this season status. These values may have spaces.
+"""
