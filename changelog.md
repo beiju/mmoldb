@@ -8,8 +8,8 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
-Upcoming
---------
+2026-08-28
+----------
 - Added `planned_level` and `play_level` to `data.player_versions`, 
   representing different definitions of player level to the existing `level`. 
   This value is only available for player versions after 2026-04-04 
