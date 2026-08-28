@@ -68,7 +68,7 @@ pub fn day_to_db(
             None,
             None,
         ),
-        Some(Ok(Day::SuperstarDay(day))) => (
+        Some(Ok(Day::SuperstarDay(day, _))) => (
             Some(taxa.day_type_id(TaxaDayType::SuperstarDay)),
             None,
             Some(*day as i32),

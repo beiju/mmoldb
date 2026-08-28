@@ -1469,7 +1469,7 @@ fn insert_games_internal<'e>(
 
             let (day, superstar_day) = match &raw_game.day {
                 Ok(Day::Day(day)) => (Some(*day), None),
-                Ok(Day::SuperstarDay(day)) => (None, Some(*day)),
+                Ok(Day::SuperstarDay(day, _)) => (None, Some(*day)),
                 Ok(other) => {
                     // TODO Convert this to a gamewide ingest log warning
                     warn!("A game happened on an unexpected type of day: {other}.");

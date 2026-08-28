@@ -1717,7 +1717,7 @@ impl<'g> Game<'g> {
         // The other special types of day shouldn't have any games.
         match self.day {
             Day::Day(day) => day <= day_threshold,
-            Day::SuperstarDay(_) | Day::PostseasonRound(_) => false,
+            Day::SuperstarDay(_, _) | Day::PostseasonRound(_) => false,
             _ => true,
         }
     }
