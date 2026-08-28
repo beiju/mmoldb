@@ -3914,6 +3914,31 @@ impl<'g> Game<'g> {
                     self.check_fielder(&fair_ball, fielders, event.discriminant(), ingest_logs);
 
                     match result {
+                        FieldingAttempt::NoOut => {
+                            self.update_runners(
+                                game_event_index,
+                                false,
+                                RunnerUpdate {
+                                    scores,
+                                    advances,
+                                    runner_added: Some((batter, TaxaBase::First)),
+                                    runner_added_forces_advances: true,
+                                    ..Default::default()
+                                },
+                                ingest_logs,
+                            );
+
+                            self.finish_pa(batter_name);
+                            self.handle_ejection(ejection, ingest_logs);
+
+                            detail_builder
+                                .fair_ball(fair_ball, self.defending_team())
+                                .ejection(ejection.clone())
+                                .runner_changes(advances.clone(), scores.clone())
+                                .add_runner(batter, TaxaBase::First)
+                                .fielders_no_double_trouble(fielders.clone(), ingest_logs)?
+                                .build_some(self, batter_name, ingest_logs, TaxaEventType::FieldersChoice)
+                        }
                         FieldingAttempt::Out { out } => {
                             self.update_runners(
                                 game_event_index,

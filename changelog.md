@@ -22,6 +22,11 @@ Upcoming
     fix only affects games, so player and team versions may still be missing.
 - Added `data.time_versions` with a best-effort gameday to real time mapping. 
   See documentation for details.
+- Support fielders choices that are neither an error nor an out. These events 
+  are still `event_type` `FieldersChoice`, which means that a `FieldersChoice` 
+  is not always an out. Examine `outs_before` and `outs_after` to determine 
+  whether a fielders choice caused an out, or check if there is a baserunner in 
+  `data.event_base_runners` with `is_out = true`.
 
 2026-08-10
 ----------

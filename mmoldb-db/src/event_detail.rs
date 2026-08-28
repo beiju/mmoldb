@@ -776,6 +776,15 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                         advances: self.advances(false),
                         ejection: self.ejection.as_ref().map(Ejection::as_ref),
                     }
+                } else if self.outs_after == self.outs_before {
+                    ParsedEventMessage::ReachOnFieldersChoice {
+                        batter: self.batter_name.as_ref(),
+                        fielders: self.fielders(),
+                        result: FieldingAttempt::NoOut,
+                        scores: self.scores(),
+                        advances: self.advances(false),
+                        ejection: self.ejection.as_ref().map(Ejection::as_ref),
+                    }
                 } else {
                     let fielder = exactly_one_fielder()?;
 
