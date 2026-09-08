@@ -120,7 +120,7 @@ fn chron_time_as_new<'a>(
                 }
             },
             Err(err) => {
-                ingest_logs.error(format!("Invalid season status {err}"));
+                ingest_logs.error(format!("Unrecognized season status {err}"));
                 None
 
             }

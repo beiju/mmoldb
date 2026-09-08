@@ -1601,6 +1601,8 @@ taxa! {
         SuperstarBreak = 10,
         #[display_name: &'a str = "Event"]
         Event = 11,
+        #[display_name: &'a str = "Super 16 Tournament"]
+        Super16Tournament = 12,
     }
 }
 
@@ -1620,6 +1622,7 @@ impl TryFrom<mmolb_parsing::enums::SeasonStatus> for TaxaSeasonStatus {
             mmolb_parsing::enums::SeasonStatus::PostseasonPreview => TaxaSeasonStatus::PostseasonPreview,
             mmolb_parsing::enums::SeasonStatus::Offseason => TaxaSeasonStatus::Offseason,
             mmolb_parsing::enums::SeasonStatus::Event => TaxaSeasonStatus::Event,
+            mmolb_parsing::enums::SeasonStatus::Super16Tournament => TaxaSeasonStatus::Super16Tournament,
             other => Err(other)?,
         })
     }
