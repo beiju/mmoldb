@@ -12,7 +12,6 @@ use mmoldb_db::{async_db, db, AsyncConnection, AsyncPgConnection};
 use tracing::info;
 use mmoldb_db::taxa::Taxa;
 
-mod ingest_feed_shared;
 mod ingest_team_feed;
 mod ingest_player_feed;
 
@@ -149,22 +148,40 @@ fn chron_feed_event_as_new<'e>(
                 fatal_error: false, // This is the happy path
             };
 
+            // Note: `fatal_error: true` is a guarantee that no rows derived
+            // from this feed event have been inserted (and therefore we can
+            // delete this row, and any errors it generated, and re-run it
+            // with a new mmoldb version that has fixed the error)
             match feed_event.subject_type.as_str() {
                 "team" => {
                     let mut ingest_logs = VersionIngestLogs::new("team_feed", &feed_event.event_id, feed_event.timestamp);
-                    let new_game_played = ingest_team_feed::chron_team_feed_as_new(feed_event, &mut ingest_logs);
-
-                    (processed, None, None, Vec::new(), new_game_played, ingest_logs.into_vec())
+                    match ingest_team_feed::chron_team_feed_as_new(feed_event, &mut ingest_logs) {
+                        Ok(new_game_played) => {
+                            (processed, None, None, Vec::new(), new_game_played, ingest_logs.into_vec())
+                        }
+                        Err(()) => {
+                            let processed_error = NewFeedEventProcessed {
+                                fatal_error: true,
+                                ..processed
+                            };
+                            (processed_error, None, None, Vec::new(), None, ingest_logs.into_vec())
+                        }
+                    }
                 },
                 "player" => {
                     let mut ingest_logs = VersionIngestLogs::new("player_feed", &feed_event.event_id, feed_event.timestamp);
-                    let (
-                        attribute_augment,
-                        paradigm_shift,
-                        recompositions,
-                    ) = ingest_player_feed::chron_player_feed_as_new(taxa, feed_event, &mut ingest_logs);
-
-                    (processed, attribute_augment, paradigm_shift, recompositions, None, ingest_logs.into_vec())
+                    match ingest_player_feed::chron_player_feed_as_new(taxa, feed_event, &mut ingest_logs) {
+                        Ok((attribute_augment, paradigm_shift, recompositions)) => {
+                            (processed, attribute_augment, paradigm_shift, recompositions, None, ingest_logs.into_vec())
+                        }
+                        Err(()) => {
+                            let processed_error = NewFeedEventProcessed {
+                                fatal_error: true,
+                                ..processed
+                            };
+                            (processed_error, None, None, Vec::new(), None, ingest_logs.into_vec())
+                        }
+                    }
                 },
                 other => {
                     // It's not player feed, but if I put it as anything besides "player_feed" and

@@ -8,12 +8,12 @@ use mmoldb_db::models::NewTeamGamePlayed;
 pub fn chron_team_feed_as_new<'a>(
     feed_event: &'a ChronFeedEvent<mmolb_parsing::feed_event::FeedEvent>,
     ingest_logs: &mut VersionIngestLogs<'a>,
-) -> Option<NewTeamGamePlayed<'a>> {
+) -> Result<Option<NewTeamGamePlayed<'a>>, ()> {
 
     // There is a bug in mmolb_parsing that causes a panic when an
     // augment's text is empty
     if feed_event.data.text.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     let parsed_event = mmolb_parsing::team_feed::parse_team_feed_event(&feed_event.data);
@@ -24,12 +24,12 @@ pub fn chron_team_feed_as_new<'a>(
         false
     };
 
-    let game_outcome = match parsed_event {
+    match parsed_event {
         ParsedTeamFeedEventText::ParseError { error, text } => {
             // I'm making this a warning because we don't care about most event types
             // (and we can handle having a game for which we don't know the end time)
             ingest_logs.warn(format!("Error parsing \"{text}\": {error}"));
-            None
+            Err(())
         }
         // Get game
         ParsedTeamFeedEventText::GameResult { .. }
@@ -50,12 +50,12 @@ pub fn chron_team_feed_as_new<'a>(
                 .exactly_one();
 
             match game_link {
-                Ok(game_link) => Some(NewTeamGamePlayed {
+                Ok(game_link) => Ok(Some(NewTeamGamePlayed {
                     mmolb_team_id: &feed_event.subject_id,
                     feed_event_id: &feed_event.event_id,
                     time: feed_event.timestamp.naive_utc(),
                     mmolb_game_id: &game_link.id,
-                }),
+                })),
                 Err(err) => {
                     let msg = format!(
                         "Game outcome in {} feed event {} had {} game links (expected 1)",
@@ -68,7 +68,7 @@ pub fn chron_team_feed_as_new<'a>(
                     } else {
                         ingest_logs.info(msg);
                     }
-                    None
+                    Err(())
                 }
             }
         }
@@ -124,8 +124,6 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::NewRetirement { .. }
         | ParsedTeamFeedEventText::SweetRelief { .. }
         | ParsedTeamFeedEventText::DefensiveShift { .. }
-        | ParsedTeamFeedEventText::GoingHome { .. } => None,
-    };
-
-    game_outcome
+        | ParsedTeamFeedEventText::GoingHome { .. } => Ok(None),
+    }
 }
