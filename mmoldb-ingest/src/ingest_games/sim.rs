@@ -59,6 +59,9 @@ lazy_static! {
                 (("6a42a4a2b3e16e990bb0f804", 115), ("Jesse Ono", "Grace de Almeida")),
                 (("6a433143b3e16e990bb30ab6", 42), ("Al Santana", "Grace de Almeida")),
                 (("6a43da02b3e16e990bb58bef", 27), ("Patsy Smoltz", "Myrtle Saputra")),
+                // This is the one that happened in s16, the first time an
+                // assassination was attempted on a HBP
+                (("6a93aad25ba4c460e735cc59", 180), ("Purrsephone Wolfbox", "Grace de Almeida")),
             ]
         )
     };
