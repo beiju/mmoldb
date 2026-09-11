@@ -2861,12 +2861,6 @@ impl<'g> Game<'g> {
                     }
                 }
             }
-        } else {
-            // Temporary, for debug
-            ingest_logs.debug(format!(
-                "No silent assassination for {} {}",
-                self.game_id, game_event_index
-            ));
         }
         assassinations
     }
@@ -3445,6 +3439,9 @@ impl<'g> Game<'g> {
                     },
                     [ParsedEventMessageDiscriminants::HitByPitch]
                     ParsedEventMessage::HitByPitch { batter, advances, scores, cheer, aurora_photos, ejection, door_prizes, wither, efflorescence } => {
+                        let assassinations = Vec::new(); // TODO parse HBP assassinations
+                        let assassinations = self.handle_assassinations(game_event_index, &assassinations, ingest_logs);
+
                         self.check_batter(batter_name, batter, ingest_logs);
 
                         self.update_runners(
@@ -3479,6 +3476,7 @@ impl<'g> Game<'g> {
                             .add_runner(batter, TaxaBase::First)
                             .wither(wither.clone())
                             .efflorescence(efflorescence.clone())
+                            .assassinations(assassinations.clone())
                             .build_some(self, batter, ingest_logs, TaxaEventType::HitByPitch)
                     },
                     [ParsedEventMessageDiscriminants::MoundVisit]
