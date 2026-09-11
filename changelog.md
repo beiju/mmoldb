@@ -8,12 +8,14 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
-2026-09-09
+2026-09-10
 ----------
-- Support Super 16 games and their new season_status
+- Supports Super 16 games and their new season_status
   - Technically, this update isn't what fixed Super 16 game ingest, but it 
     comes contemporaneously with the freecashews update that did
-- Fix parsing of "and Joe" and similar names in Party events (thanks woofyjack)
+- Fixes parsing of "and Joe" and similar names in Party events (thanks 
+  woofyjack!)
+- Adds one last (hopefully) silent assassination to the hard-coded list
 
 2026-08-28
 ----------
