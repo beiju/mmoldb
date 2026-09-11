@@ -2861,6 +2861,12 @@ impl<'g> Game<'g> {
                     }
                 }
             }
+        } else {
+            // Temporary, for debug
+            ingest_logs.debug(format!(
+                "No silent assassination for {} {}",
+                self.game_id, game_event_index
+            ));
         }
         assassinations
     }
