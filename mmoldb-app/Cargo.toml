@@ -14,20 +14,20 @@ rocket_sync_db_pools = { version = "0.1.0", features = ["diesel_postgres_pool"] 
 rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
 rocket_cors = "0.6.0"
 diesel = { version = "~2", features = ["chrono", "postgres", "64-column-tables", "serde_json", "numeric"] }
-chrono = { version = "0.4.41", features = ["serde"] }
-thiserror = "2.0.12"
-log = "0.4.27"
-serde = { version = "1.0.219", features = ["derive"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+thiserror = "2.0.21"
+log = "0.4.34"
+serde = { version = "1.0.229", features = ["derive"] }
 chrono-humanize = "0.2.3"
 itertools = "0.14.0"
 num-format = "0.4.4"
 miette = { version = "7.6.0", features = ["fancy"] }
-tokio = "1.46.1"
-toml = "0.9.0"
+tokio = "1.53.2"
+toml = "0.9.12"
 include_dir = "0.7.4"
 markdown = "1.0.0"
 openport = { version = "0.1.1", features = ["rand"] }
-hashbrown = { version = "0.16.0", features = ["serde"] }
-lazy_static = "1.5.0"
+hashbrown = { version = "0.16.1", features = ["serde"] }
+lazy_static = "1.5.1"
 strum = "0.27.2"
-plotters = "0.3.3"
+plotters = "0.3.7"

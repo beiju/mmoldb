@@ -8,4 +8,4 @@ chrono = ["dep:chrono"]
 
 [dependencies]
 one-au-derive = { path = "../one-au-derive" }
-chrono = { version = "0.4.44", optional = true }
+chrono = { version = "0.4.45", optional = true }

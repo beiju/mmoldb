@@ -12,19 +12,19 @@ chron = { path = "../chron" }
 diesel = { version = "~2", features = ["chrono", "postgres", "64-column-tables", "serde_json", "numeric", "r2d2"] }
 diesel_migrations = "~2"
 diesel-async = { version = "0.7.4", features = ["postgres"] }
-percent-encoding = "2.3.1"
-serde = { version = "1.0.219", features = ["derive"] }
+percent-encoding = "2.3.2"
+serde = { version = "1.0.229", features = ["derive"] }
 figment = { version = "0.10.19", features = ["env"] }
-chrono = "0.4.41"
+chrono = "0.4.45"
 itertools = "0.14.0"
-serde_json = "1.0.140"
+serde_json = "1.0.151"
 mmolb_parsing = { workspace = true }
 miette = "7.6.0"
-hashbrown = "0.16.0"
-thiserror = "2.0.12"
+hashbrown = "0.16.1"
+thiserror = "2.0.21"
 paste = "1.0.15"
 enum-map = "2.7.3"
-strum = "0.27.1"
-futures = "0.3.31"
+strum = "0.27.2"
+futures = "0.3.34"
 tracing = "0.1.44"
 one-au = { path = "../one-au", features = ["chrono"] }

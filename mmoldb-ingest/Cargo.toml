@@ -11,28 +11,28 @@ path = "src/main.rs"
 chron = { path = "../chron" }
 mmoldb-db = { path = "../mmoldb-db" }
 mmolb_parsing = { workspace = true }
-futures = "0.3.31"
+futures = "0.3.34"
 miette = { version = "7.6.0", features = ["fancy"] }
-tokio = { version = "1.46.1", features = ["full", "tracing"] }
-serde_json = "1.0.140"
-tokio-util = "0.7.15"
-thiserror = "2.0.12"
-chrono = { version = "0.4.41", features = ["serde"] }
+tokio = { version = "1.53.2", features = ["full", "tracing"] }
+serde_json = "1.0.151"
+tokio-util = "0.7.19"
+thiserror = "2.0.21"
+chrono = { version = "0.4.45", features = ["serde"] }
 chrono-humanize = "0.2.3"
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_default = "0.2.0"
 itertools = "0.14.0"
-strum = "0.27.1"
-hashbrown = "0.16.0"
-rayon = "1.10.0"
+strum = "0.27.2"
+hashbrown = "0.16.1"
+rayon = "1.12.0"
 figment = { version = "0.10.19", features = ["env", "toml"] }
 num = "0.4.3"
 ascii = "1.1.0"
-tokio-stream = { version = "0.1.17", features = ["io-util"] }
+tokio-stream = { version = "0.1.19", features = ["io-util"] }
 serde_path_to_error = "0.1.20"
 float_eq = "1.0.1"
 cap = "0.1.2"
-lazy_static = "1.5.0"
+lazy_static = "1.5.1"
 humansize = "2.1.3"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
