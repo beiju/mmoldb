@@ -11,16 +11,16 @@ path = "src/lib.rs"
 chron = { path = "../chron" }
 diesel = { version = "~2", features = ["chrono", "postgres", "64-column-tables", "serde_json", "numeric", "r2d2"] }
 diesel_migrations = "~2"
-diesel-async = { version = "0.7.4", features = ["postgres"] }
+diesel-async = { version = "0.9.2", features = ["postgres"] }
 percent-encoding = "2.3.2"
 serde = { version = "1.0.229", features = ["derive"] }
 figment = { version = "0.10.19", features = ["env"] }
 chrono = "0.4.45"
-itertools = "0.14.0"
+itertools = "0.15.0"
 serde_json = "1.0.151"
 mmolb_parsing = { workspace = true }
 miette = "7.6.0"
-hashbrown = "0.16.1"
+hashbrown = "0.17.1"
 thiserror = "2.0.21"
 paste = "1.0.15"
 enum-map = "2.7.3"

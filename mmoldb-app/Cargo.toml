@@ -19,15 +19,15 @@ thiserror = "2.0.21"
 log = "0.4.34"
 serde = { version = "1.0.229", features = ["derive"] }
 chrono-humanize = "0.2.3"
-itertools = "0.14.0"
+itertools = "0.15.0"
 num-format = "0.4.4"
 miette = { version = "7.6.0", features = ["fancy"] }
 tokio = "1.53.2"
-toml = "0.9.12"
+toml = "1.1.6"
 include_dir = "0.7.4"
 markdown = "1.0.0"
-openport = { version = "0.1.1", features = ["rand"] }
-hashbrown = { version = "0.16.1", features = ["serde"] }
+openport = { version = "0.4.0", features = ["rand"] }
+hashbrown = { version = "0.17.1", features = ["serde"] }
 lazy_static = "1.5.1"
 strum = "0.27.2"
 plotters = "0.3.7"

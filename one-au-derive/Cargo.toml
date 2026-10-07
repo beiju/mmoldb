@@ -8,5 +8,5 @@ proc-macro = true
 
 [dependencies]
 quote = "1.0.47"
-syn = "2.0.119"
+syn = "3.0.6"
 proc-macro-error = "1.0.4"
