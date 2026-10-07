@@ -26,13 +26,6 @@ impl Partitioner {
         Self(PartitionerType::SinglePartition)
     }
 
-    pub fn num_partitions(&self) -> NonZero<usize> {
-        match self.0 {
-            PartitionerType::Numbered { num_partitions, .. } => num_partitions,
-            PartitionerType::SinglePartition => nonzero_lit::usize!(1),
-        }
-    }
-
     pub fn partition_for(&self, id: &str) -> Result<usize, IngestFatalError> {
         match self.0 {
             PartitionerType::Numbered { num_partitions, trailing_hexits_for_modulus } => {

@@ -24,7 +24,7 @@ pub use processing::ProcessingArgs;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use serde::de::IntoDeserializer;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter;
 use std::num::NonZero;

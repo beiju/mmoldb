@@ -5,7 +5,6 @@ use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use itertools::Itertools;
-use mmolb_parsing::MaybeRecognizedResult;
 use mmoldb_db::models::{NewTimeVersion, NewVersionIngestLog, NewVersionProcessed};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncPgConnection, PgConnection, QueryResult, async_db, db};

@@ -2,7 +2,7 @@ use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use mmolb_parsing::enums::{Attribute, AttributeCategory, Day, EquipmentSlot, Handedness, ImplicitEquipmentEffectSource, Position, Slot, Uncategorized};
+use mmolb_parsing::enums::{Attribute, AttributeCategory, EquipmentSlot, Handedness, ImplicitEquipmentEffectSource, Position, Slot, Uncategorized};
 use mmolb_parsing::player::{ComplexTalkStars, EquipmentEffect, PlayerEquipment, TalkCategory, TalkStars};
 use mmolb_parsing::{
     AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater,
@@ -20,7 +20,7 @@ use crate::{IngestibleFromVersions, PreparedIngestItem, VersionIngestLogs, util}
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
 use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog, NewVersionProcessed};
-use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaDayType, TaxaModificationType, TaxaSlot};
+use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaModificationType, TaxaSlot};
 use mmoldb_db::{AsyncPgConnection, PgConnection, QueryResult, async_db, db};
 
 const PENDING_AND_SCHEDULED_LEVELS_BECOME_RELIABLE: DateTime<Utc> = datetime_from_parts(2026, 04, 04, 6, 1, 17, 614712);
