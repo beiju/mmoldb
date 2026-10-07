@@ -9,7 +9,7 @@ use diesel::QueryResult;
 use diesel::prelude::*;
 use diesel::{PgConnection, RunQueryDsl};
 use enum_map::EnumMap;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use taxa_macro::*;
 use tracing::{error, warn};
@@ -1467,7 +1467,9 @@ impl From<mmolb_parsing::enums::EquipmentEffectType> for TaxaEffectType {
             mmolb_parsing::enums::EquipmentEffectType::FlatBonus => TaxaEffectType::Flat,
             mmolb_parsing::enums::EquipmentEffectType::Multiplier => TaxaEffectType::Multiplier,
             // Other fields in the db should let the user tell when it's ZoneConditionalMultiplier
-            mmolb_parsing::enums::EquipmentEffectType::ZoneConditionalMultiplier => TaxaEffectType::Multiplier,
+            mmolb_parsing::enums::EquipmentEffectType::ZoneConditionalMultiplier => {
+                TaxaEffectType::Multiplier
+            }
         }
     }
 }
@@ -1614,15 +1616,25 @@ impl TryFrom<mmolb_parsing::enums::SeasonStatus> for TaxaSeasonStatus {
             mmolb_parsing::enums::SeasonStatus::RegularSeason => TaxaSeasonStatus::RegularSeason,
             mmolb_parsing::enums::SeasonStatus::SuperstarBreak => TaxaSeasonStatus::SuperstarBreak,
             mmolb_parsing::enums::SeasonStatus::Holiday => TaxaSeasonStatus::Holiday,
-            mmolb_parsing::enums::SeasonStatus::PostseasonRound(1) => TaxaSeasonStatus::PostseasonRound1,
-            mmolb_parsing::enums::SeasonStatus::PostseasonRound(2) => TaxaSeasonStatus::PostseasonRound2,
-            mmolb_parsing::enums::SeasonStatus::PostseasonRound(3) => TaxaSeasonStatus::PostseasonRound3,
+            mmolb_parsing::enums::SeasonStatus::PostseasonRound(1) => {
+                TaxaSeasonStatus::PostseasonRound1
+            }
+            mmolb_parsing::enums::SeasonStatus::PostseasonRound(2) => {
+                TaxaSeasonStatus::PostseasonRound2
+            }
+            mmolb_parsing::enums::SeasonStatus::PostseasonRound(3) => {
+                TaxaSeasonStatus::PostseasonRound3
+            }
             mmolb_parsing::enums::SeasonStatus::Election => TaxaSeasonStatus::Election,
             mmolb_parsing::enums::SeasonStatus::Preseason => TaxaSeasonStatus::Preseason,
-            mmolb_parsing::enums::SeasonStatus::PostseasonPreview => TaxaSeasonStatus::PostseasonPreview,
+            mmolb_parsing::enums::SeasonStatus::PostseasonPreview => {
+                TaxaSeasonStatus::PostseasonPreview
+            }
             mmolb_parsing::enums::SeasonStatus::Offseason => TaxaSeasonStatus::Offseason,
             mmolb_parsing::enums::SeasonStatus::Event => TaxaSeasonStatus::Event,
-            mmolb_parsing::enums::SeasonStatus::Super16Tournament => TaxaSeasonStatus::Super16Tournament,
+            mmolb_parsing::enums::SeasonStatus::Super16Tournament => {
+                TaxaSeasonStatus::Super16Tournament
+            }
             other => Err(other)?,
         })
     }
@@ -1748,7 +1760,7 @@ impl Taxa {
     pub fn effect_type_id(&self, ty: TaxaEffectType) -> i64 {
         self.effect_type_mapping[ty]
     }
-    
+
     pub fn effect_phase_id(&self, ty: TaxaEffectPhase) -> i64 {
         self.effect_phase_mapping[ty]
     }

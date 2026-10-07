@@ -453,11 +453,14 @@ pub fn chron_player_feed_as_new<'a>(
     taxa: &Taxa,
     feed_event: &'a ChronFeedEvent<mmolb_parsing::feed_event::FeedEvent>,
     ingest_logs: &mut VersionIngestLogs<'a>,
-) -> Result<(
-    Option<NewPlayerAttributeAugment<'a>>,
-    Option<NewPlayerParadigmShift<'a>>,
-    Vec<NewPlayerRecomposition<'a>>,
-), ()> {
+) -> Result<
+    (
+        Option<NewPlayerAttributeAugment<'a>>,
+        Option<NewPlayerParadigmShift<'a>>,
+        Vec<NewPlayerRecomposition<'a>>,
+    ),
+    (),
+> {
     let mut attribute_augment = None;
     let mut paradigm_shift = None;
     // A single event can have an implied and a real recomposition
@@ -828,9 +831,5 @@ pub fn chron_player_feed_as_new<'a>(
     //     }
     // };
 
-    Ok((
-        attribute_augment,
-        paradigm_shift,
-        recompositions,
-    ))
+    Ok((attribute_augment, paradigm_shift, recompositions))
 }

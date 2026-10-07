@@ -9,7 +9,11 @@ use mmolb_parsing::ParsedEventMessage;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, Distance, FairBallDestination, FieldingErrorType, FoulType, StrikeType,
 };
-use mmolb_parsing::parsed_event::{Assassination, BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood, FieldingAttempt, Item, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos, WitherStruggle};
+use mmolb_parsing::parsed_event::{
+    Assassination, BaseSteal, Cheer, DoorPrize, Efflorescence, Ejection, EmojiFood,
+    FieldingAttempt, Item, KnownBug, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos,
+    WitherStruggle,
+};
 use std::fmt::Formatter;
 use thiserror::Error;
 
@@ -222,7 +226,11 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
                 self.balls_before + if props.is_ball { 1 } else { 0 },
                 self.strikes_before
                     + if props.is_strike { 1 } else { 0 }
-                    + if self.is_surprise_strike.is_some_and(|s| s) { 1 } else { 0 },
+                    + if self.is_surprise_strike.is_some_and(|s| s) {
+                        1
+                    } else {
+                        0
+                    },
             )
         }
     }
@@ -236,12 +244,11 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
     }
 
     fn double_trouble(&self) -> Result<Option<PlacedPlayer<&str>>, ToParsedError<'_>> {
-        self.fielders.iter()
+        self.fielders
+            .iter()
             .filter(|f| f.was_double_trouble.unwrap_or(false))
             .at_most_one()
-            .map_err(|err| ToParsedError::MultipleDoubleTrouble {
-                count: err.count(),
-            })
+            .map_err(|err| ToParsedError::MultipleDoubleTrouble { count: err.count() })
             .map(|opt| opt.map(placed_player_as_ref))
     }
 
@@ -341,17 +348,19 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
     }
 
     fn assassinations_on(&self, fair_ball: bool) -> Vec<Assassination<&str>> {
-        self.baserunners.iter()
+        self.baserunners
+            .iter()
             .filter_map(|runner| {
-                if runner.assassinated_on_fair_ball != Some(fair_ball) { return None; }
+                if runner.assassinated_on_fair_ball != Some(fair_ball) {
+                    return None;
+                }
 
-                runner.assassinated_by
+                runner
+                    .assassinated_by
                     .as_ref()
-                    .map(|assassin_name| {
-                        Assassination {
-                            assassin_name: assassin_name.as_ref(),
-                            victim_name: runner.name.as_ref(),
-                        }
+                    .map(|assassin_name| Assassination {
+                        assassin_name: assassin_name.as_ref(),
+                        victim_name: runner.name.as_ref(),
                     })
             })
             .collect()
@@ -822,7 +831,9 @@ impl<StrT: AsRef<str> + Clone> EventDetail<StrT> {
             }
             TaxaEventType::Balk => ParsedEventMessage::Balk {
                 pitcher: self.pitcher_name.as_ref(),
-                balk_reason: self.balk_reason.as_ref()
+                balk_reason: self
+                    .balk_reason
+                    .as_ref()
                     .ok_or_else(|| ToParsedError::MissingBalkReason {
                         event_type: self.detail_type,
                     })?

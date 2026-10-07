@@ -1,11 +1,12 @@
 use futures::FutureExt;
+mod common;
 mod fetch;
 mod processing;
-mod common;
 
 pub use common::*;
 
 use crate::config::{IngestConfig, IngestibleConfig};
+use crate::ingest_feed;
 use crate::partitioner::Partitioner;
 use chron::{ChronEntity, ChronStreamError};
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -37,7 +38,6 @@ use tokio::task::JoinError;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, info_span, warn};
-use crate::ingest_feed;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum IngestFatalError {
@@ -278,7 +278,11 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         format!("{} Stage 2", self.kind)
     }
 
-    async fn run(self: Arc<Self>, args: ProcessingArgs, partitioner: Partitioner) -> Result<(), IngestFatalError> {
+    async fn run(
+        self: Arc<Self>,
+        args: ProcessingArgs,
+        partitioner: Partitioner,
+    ) -> Result<(), IngestFatalError> {
         // Task names have to outlive their tasks, so we build then in advance
         let task_names_and_nums = (0..args.parallelism.get())
             .map(|worker_idx| {
@@ -312,23 +316,21 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
         // Probably not all of this needs to be in the loop but I'm tired, boss
         loop {
-            let versions_stream = VersionIngest::stream_unprocessed_versions(
-                &mut async_conn,
-                self.kind,
-            )
-            .await?
-                .take_until(args.shutdown_requested.cancelled().then(|()| {
-                    // Some detail of the Rust compiler makes it forget that this is 'static
-                    // during some important checking phase. The only way I've found to make
-                    // that not cause issues is to make it an owned value.
-                    let kind = self.kind.to_string();
-                    async move {
-                        info!(
-                            "Closing {} processing stream because shutdown was requested",
-                            kind
-                        );
-                    }
-                }));
+            let versions_stream =
+                VersionIngest::stream_unprocessed_versions(&mut async_conn, self.kind)
+                    .await?
+                    .take_until(args.shutdown_requested.cancelled().then(|()| {
+                        // Some detail of the Rust compiler makes it forget that this is 'static
+                        // during some important checking phase. The only way I've found to make
+                        // that not cause issues is to make it an owned value.
+                        let kind = self.kind.to_string();
+                        async move {
+                            info!(
+                                "Closing {} processing stream because shutdown was requested",
+                                kind
+                            );
+                        }
+                    }));
             pin_mut!(versions_stream);
 
             while let Some(version_result) = versions_stream.next().await {
@@ -452,7 +454,10 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                     Entry::Occupied(mut occupied) => {
                         if occupied.get() == &trimmed_version {
                             // This is a duplicate -- no need to return it
-                            FilteredIngestItem::MarkAsSkipped(VersionIngest::ident_raw(&version), version.valid_from)
+                            FilteredIngestItem::MarkAsSkipped(
+                                VersionIngest::ident_raw(&version),
+                                version.valid_from,
+                            )
                         } else {
                             occupied.insert(trimmed_version);
                             FilteredIngestItem::DoIngest(version)
@@ -466,7 +471,14 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         let mut wait_for_chunk_start = Utc::now();
         while let Some(raw_versions) = chunk_stream.next().await {
             let wait_for_chunk_duration = Utc::now() - wait_for_chunk_start;
-            info!("{} ingest worker {} waited {:.2} seconds for a chunk of {} {}s", self.kind, worker_idx, wait_for_chunk_duration.as_seconds_f64(), raw_versions.len(), self.kind);
+            info!(
+                "{} ingest worker {} waited {:.2} seconds for a chunk of {} {}s",
+                self.kind,
+                worker_idx,
+                wait_for_chunk_duration.as_seconds_f64(),
+                raw_versions.len(),
+                self.kind
+            );
             self.ingest_page(
                 &taxa,
                 raw_versions,
@@ -500,9 +512,13 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
         );
         let save_start = Utc::now();
 
-        let (deserialize_errors, items): (Vec<_>, Vec<_>) = raw_versions.into_par_iter()
+        let (deserialize_errors, items): (Vec<_>, Vec<_>) = raw_versions
+            .into_par_iter()
             .map(|item| match item {
-                FilteredIngestItem::MarkAsSkipped(entity_id, valid_from ) => (None, PreparedIngestItem::MarkAsSkipped(entity_id, valid_from)),
+                FilteredIngestItem::MarkAsSkipped(entity_id, valid_from) => (
+                    None,
+                    PreparedIngestItem::MarkAsSkipped(entity_id, valid_from),
+                ),
                 FilteredIngestItem::DoIngest(entity) => {
                     if entity.kind != self.kind {
                         warn!("{} ingest task got a {} entity!", self.kind, entity.kind);
@@ -519,12 +535,15 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                                 data,
                             });
                             (None, item)
-                        },
+                        }
                         Err(err) => (
                             // Kinda inefficient to return the entity id and valid from twice, but it makes
                             // downstream code a little nicer
                             Some((err, entity.entity_id.clone(), entity.valid_from)),
-                            PreparedIngestItem::MarkAsFatalError(VersionIngest::ident_raw(&entity), entity.valid_from),
+                            PreparedIngestItem::MarkAsFatalError(
+                                VersionIngest::ident_raw(&entity),
+                                entity.valid_from,
+                            ),
                         ),
                     }
                 }
@@ -533,14 +552,17 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
 
         let new_ingest_logs = deserialize_errors
             .iter()
-            .filter_map(|e| e.as_ref().map(|(err, entity_id, valid_from)| NewVersionIngestLog {
-                kind: self.kind,
-                entity_id,
-                valid_from: valid_from.naive_utc(),
-                log_index: 0, // Deserialize error is always the 0th log item for that version
-                log_level: 0, // Critical error
-                log_text: format!("Error deserializing: {:?}", err), // Not sure whether this should be debug
-            }))
+            .filter_map(|e| {
+                e.as_ref()
+                    .map(|(err, entity_id, valid_from)| NewVersionIngestLog {
+                        kind: self.kind,
+                        entity_id,
+                        valid_from: valid_from.naive_utc(),
+                        log_index: 0, // Deserialize error is always the 0th log item for that version
+                        log_level: 0, // Critical error
+                        log_text: format!("Error deserializing: {:?}", err), // Not sure whether this should be debug
+                    })
+            })
             .collect();
 
         let inserted = db::insert_ingest_logs(conn, new_ingest_logs)?;
@@ -551,7 +573,8 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
             .map(|version| version.valid_from())
             .unwrap_or(Utc::now());
         let earliest_time_ago = earliest_time.signed_duration_since(Utc::now());
-        let earliest_human_time_ago = chrono_humanize::HumanTime::from(earliest_time_ago).to_string();
+        let earliest_human_time_ago =
+            chrono_humanize::HumanTime::from(earliest_time_ago).to_string();
         let latest_time = items
             .last()
             .map(|version| version.valid_from())
@@ -573,9 +596,7 @@ impl<VersionIngest: IngestibleFromVersions + Send + Sync + 'static> Stage2Ingest
                 match version {
                     PreparedIngestItem::MarkAsSkipped(ident, _) => (ident.clone(), index),
                     PreparedIngestItem::MarkAsFatalError(ident, _) => (ident.clone(), index),
-                    PreparedIngestItem::DoIngest(version) => {
-                        (VersionIngest::ident(version), index)
-                    }
+                    PreparedIngestItem::DoIngest(version) => (VersionIngest::ident(version), index),
                 }
             })
             .collect_vec();
@@ -745,12 +766,10 @@ impl IngestForKind {
                     .await
             }
             IngestKind::CombinedFeed => {
-                fetch::fetch_feed_events(
-                    self.fetch_args.clone(),
-                )
-                .instrument(info_span!("fetch_task", kind = "combined_feed"))
-                .await
-            },
+                fetch::fetch_feed_events(self.fetch_args.clone())
+                    .instrument(info_span!("fetch_task", kind = "combined_feed"))
+                    .await
+            }
             IngestKind::Entity(kind) => {
                 fetch::fetch_entity_kind(kind.as_kind(), self.fetch_args.clone())
                     .instrument(info_span!("fetch_task", kind = kind.as_kind()))
@@ -796,13 +815,8 @@ impl IngestForKind {
                     .await
             }
             IngestKind::CombinedFeed => {
-                ingest_feed::process_feed(
-                    self.processing_args.clone(),
-                )
-                    .instrument(info_span!(
-                    "processing_task",
-                    kind = "feed",
-                ))
+                ingest_feed::process_feed(self.processing_args.clone())
+                    .instrument(info_span!("processing_task", kind = "feed",))
                     .await
             }
             IngestKind::Entity(kind) => {
@@ -836,10 +850,7 @@ pub fn ingest_kinds(
             IngestKind::Entity(EntityIngestKind::Game),
             &config.game_ingest,
         ),
-        (
-            IngestKind::CombinedFeed,
-            &config.combined_feed_ingest,
-        ),
+        (IngestKind::CombinedFeed, &config.combined_feed_ingest),
     ];
 
     kinds_configs

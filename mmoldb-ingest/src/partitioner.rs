@@ -28,16 +28,19 @@ impl Partitioner {
 
     pub fn partition_for(&self, id: &str) -> Result<usize, IngestFatalError> {
         match self.0 {
-            PartitionerType::Numbered { num_partitions, trailing_hexits_for_modulus } => {
+            PartitionerType::Numbered {
+                num_partitions,
+                trailing_hexits_for_modulus,
+            } => {
                 let ascii_id = ascii::AsciiStr::from_ascii(id.as_bytes())
                     .map_err(IngestFatalError::NonAsciiEntityId)?;
-                let start_idx = ascii_id.len().checked_sub(trailing_hexits_for_modulus)
-                    .ok_or_else(|| {
-                        IngestFatalError::TooShortEntityId {
-                            actual_len: ascii_id.len(),
-                            expected_minimum_len: trailing_hexits_for_modulus,
-                        }
-                    } )?;
+                let start_idx = ascii_id
+                    .len()
+                    .checked_sub(trailing_hexits_for_modulus)
+                    .ok_or_else(|| IngestFatalError::TooShortEntityId {
+                        actual_len: ascii_id.len(),
+                        expected_minimum_len: trailing_hexits_for_modulus,
+                    })?;
                 let hex_for_modulus = if start_idx > 0 {
                     usize::from_str_radix(ascii_id[start_idx..].as_str(), 16)
                         .map_err(IngestFatalError::NonHexEntityId)?
@@ -47,9 +50,7 @@ impl Partitioner {
                 };
                 Ok(hex_for_modulus % num_partitions.get())
             }
-            PartitionerType::SinglePartition => {
-                Ok(0)
-            }
+            PartitionerType::SinglePartition => Ok(0),
         }
     }
 }

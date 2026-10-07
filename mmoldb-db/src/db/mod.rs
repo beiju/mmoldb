@@ -1,9 +1,9 @@
+pub(crate) mod balk_reasons;
+pub(crate) mod cheers;
 mod entities;
 mod to_db_format;
 mod versions;
 mod weather;
-pub(crate) mod cheers;
-pub(crate) mod balk_reasons;
 
 use std::collections::HashSet;
 // Reexports
@@ -28,7 +28,20 @@ use thiserror::Error;
 use tracing::{debug, info, trace, warn};
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
+use crate::models::{
+    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth,
+    DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification,
+    DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion,
+    DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion,
+    DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog,
+    NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects,
+    NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion,
+    NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion,
+    NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition,
+    NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed,
+    NewTeamPlayerVersion, NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed,
+    RawDbColumn, RawDbTable,
+};
 use crate::taxa::{Taxa, TaxaPollenCount};
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -405,9 +418,9 @@ pub fn group_cheer_table_results<'a>(
                 .iter()
                 .map(|game_event| {
                     let mut children = Vec::new();
-                    while let Some((_, message)) = cheer_iter.next_if(|(event_id, _)| {
-                        *event_id == game_event.id
-                    }) {
+                    while let Some((_, message)) =
+                        cheer_iter.next_if(|(event_id, _)| *event_id == game_event.id)
+                    {
                         children.push(message);
                     }
                     children
@@ -434,9 +447,9 @@ pub fn group_balk_reason_table_results<'a>(
                 .iter()
                 .map(|game_event| {
                     let mut children = Vec::new();
-                    while let Some((_, message)) = balk_reason_iter.next_if(|(event_id, _)| {
-                        *event_id == game_event.id
-                    }) {
+                    while let Some((_, message)) =
+                        balk_reason_iter.next_if(|(event_id, _)| *event_id == game_event.id)
+                    {
                         children.push(message);
                     }
                     children
@@ -459,21 +472,21 @@ pub fn events_for_games(
     EventsForGameTimings,
 )> {
     use crate::data_schema::data::aurora_photos::dsl as aurora_photo_dsl;
+    use crate::data_schema::data::balk_reasons::dsl as balk_reasons_dsl;
+    use crate::data_schema::data::cheers::dsl as cheers_dsl;
     use crate::data_schema::data::door_prize_items::dsl as door_prize_item_dsl;
     use crate::data_schema::data::door_prizes::dsl as door_prize_dsl;
     use crate::data_schema::data::efflorescence::dsl as efflorescence_dsl;
     use crate::data_schema::data::efflorescence_growth::dsl as efflorescence_growth_dsl;
     use crate::data_schema::data::ejections::dsl as ejection_dsl;
+    use crate::data_schema::data::event_balk_reasons::dsl as event_balk_reasons_dsl;
     use crate::data_schema::data::event_baserunners::dsl as runner_dsl;
+    use crate::data_schema::data::event_cheers::dsl as event_cheers_dsl;
     use crate::data_schema::data::event_fielders::dsl as fielder_dsl;
     use crate::data_schema::data::events::dsl as events_dsl;
     use crate::data_schema::data::failed_ejections::dsl as failed_ejection_dsl;
     use crate::data_schema::data::games::dsl as games_dsl;
     use crate::data_schema::data::wither::dsl as wither_dsl;
-    use crate::data_schema::data::event_cheers::dsl as event_cheers_dsl;
-    use crate::data_schema::data::cheers::dsl as cheers_dsl;
-    use crate::data_schema::data::event_balk_reasons::dsl as event_balk_reasons_dsl;
-    use crate::data_schema::data::balk_reasons::dsl as balk_reasons_dsl;
 
     let get_game_ids_start = Utc::now();
     let game_ids = games_dsl::games
@@ -670,10 +683,16 @@ pub fn events_for_games(
 
     let get_balk_reason_start = Utc::now();
     let db_balk_reason = event_balk_reasons_dsl::event_balk_reasons
-        .left_join(balk_reasons_dsl::balk_reasons.on(event_balk_reasons_dsl::balk_reason_id.eq(balk_reasons_dsl::id)))
+        .left_join(
+            balk_reasons_dsl::balk_reasons
+                .on(event_balk_reasons_dsl::balk_reason_id.eq(balk_reasons_dsl::id)),
+        )
         .filter(event_balk_reasons_dsl::event_id.eq_any(&all_event_ids))
         .order_by(event_balk_reasons_dsl::event_id)
-        .select((event_balk_reasons_dsl::event_id, balk_reasons_dsl::balk_reason.nullable()))
+        .select((
+            event_balk_reasons_dsl::event_id,
+            balk_reasons_dsl::balk_reason.nullable(),
+        ))
         .load::<(i64, Option<String>)>(conn)?;
     let _get_balk_reason_duration = (Utc::now() - get_balk_reason_start).as_seconds_f64();
 
@@ -916,10 +935,13 @@ pub fn insert_games(
     taxa: &Taxa,
     games: &[GameForDb],
 ) -> QueryResult<InsertGamesTimings> {
-    let all_cheer_messages = games.iter()
+    let all_cheer_messages = games
+        .iter()
         .flat_map(|game| match game {
             GameForDb::Completed { game, .. } => {
-                let cheers = game.events.iter()
+                let cheers = game
+                    .events
+                    .iter()
                     .flat_map(|event| &event.cheer)
                     .map(|cheer| cheer.to_string());
                 Either::Left(cheers)
@@ -930,10 +952,13 @@ pub fn insert_games(
 
     let cheer_table = cheers::create_cheers_table(conn, &all_cheer_messages)?;
 
-    let all_balk_reason_messages = games.iter()
+    let all_balk_reason_messages = games
+        .iter()
         .flat_map(|game| match game {
             GameForDb::Completed { game, .. } => {
-                let balk_reasons = game.events.iter()
+                let balk_reasons = game
+                    .events
+                    .iter()
                     .flat_map(|event| &event.balk_reason)
                     .map(|balk_reason| balk_reason.to_string());
                 Either::Left(balk_reasons)
@@ -942,9 +967,12 @@ pub fn insert_games(
         })
         .collect();
 
-    let balk_reason_table = balk_reasons::create_balk_reasons_table(conn, &all_balk_reason_messages)?;
+    let balk_reason_table =
+        balk_reasons::create_balk_reasons_table(conn, &all_balk_reason_messages)?;
 
-    conn.transaction(|conn| insert_games_internal(conn, taxa, games, cheer_table, balk_reason_table))
+    conn.transaction(|conn| {
+        insert_games_internal(conn, taxa, games, cheer_table, balk_reason_table)
+    })
 }
 
 fn insert_aurora_photos<'e>(
@@ -1317,23 +1345,24 @@ fn insert_cheers<'e>(
     cheer_table: &cheers::CheerTable,
 ) -> QueryResult<()> {
     let new_cheers: Vec<_> = iter::zip(event_ids_by_game, completed_games)
-        .flat_map(|((game_id_from_event_ids, event_ids), (game_id_from_games, game))| {
-            assert_eq!(game_id_from_event_ids, game_id_from_games);
-            iter::zip(event_ids, &game.events)
-                .flat_map(|(event_id, event)| {
-                    event.cheer.as_ref().map(|cheer| {
-                        to_db_format::cheer_to_rows(*event_id, cheer, &cheer_table)
-                    })
+        .flat_map(
+            |((game_id_from_event_ids, event_ids), (game_id_from_games, game))| {
+                assert_eq!(game_id_from_event_ids, game_id_from_games);
+                iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
+                    event
+                        .cheer
+                        .as_ref()
+                        .map(|cheer| to_db_format::cheer_to_rows(*event_id, cheer, &cheer_table))
                 })
-        })
+            },
+        )
         .collect();
 
     let n_cheers_to_insert = new_cheers.len();
-    let n_cheers_inserted = diesel::copy_from(
-        crate::schema::data_schema::data::event_cheers::dsl::event_cheers,
-    )
-    .from_insertable(&new_cheers)
-    .execute(conn)?;
+    let n_cheers_inserted =
+        diesel::copy_from(crate::schema::data_schema::data::event_cheers::dsl::event_cheers)
+            .from_insertable(&new_cheers)
+            .execute(conn)?;
 
     log_only_assert!(
         n_cheers_to_insert == n_cheers_inserted,
@@ -1352,15 +1381,20 @@ fn insert_balk_reasons<'e>(
     balk_reason_table: &balk_reasons::BalkReasonTable,
 ) -> QueryResult<()> {
     let new_balk_reasons: Vec<_> = iter::zip(event_ids_by_game, completed_games)
-        .flat_map(|((game_id_from_event_ids, event_ids), (game_id_from_games, game))| {
-            assert_eq!(game_id_from_event_ids, game_id_from_games);
-            iter::zip(event_ids, &game.events)
-                .flat_map(|(event_id, event)| {
+        .flat_map(
+            |((game_id_from_event_ids, event_ids), (game_id_from_games, game))| {
+                assert_eq!(game_id_from_event_ids, game_id_from_games);
+                iter::zip(event_ids, &game.events).flat_map(|(event_id, event)| {
                     event.balk_reason.as_ref().map(|balk_reason| {
-                        to_db_format::balk_reason_to_rows(*event_id, balk_reason, &balk_reason_table)
+                        to_db_format::balk_reason_to_rows(
+                            *event_id,
+                            balk_reason,
+                            &balk_reason_table,
+                        )
                     })
                 })
-        })
+            },
+        )
         .collect();
 
     let n_balk_reasons_to_insert = new_balk_reasons.len();
@@ -1513,7 +1547,9 @@ fn insert_games_internal<'e>(
                     away_team_photo_contest_top_scorer: completed_game
                         .away_team_photo_contest_top_scorer,
                     away_team_photo_contest_score: completed_game.away_team_photo_contest_score,
-                    pollen_count: completed_game.pollen_count.map(|pollen_count| taxa.pollen_count_id(pollen_count)),
+                    pollen_count: completed_game
+                        .pollen_count
+                        .map(|pollen_count| taxa.pollen_count_id(pollen_count)),
                 },
                 _ => NewGame {
                     mmolb_game_id: game_id,
@@ -1770,13 +1806,16 @@ fn insert_games_internal<'e>(
 
     let insert_cheers_start = Utc::now();
     insert_cheers(conn, &event_ids_by_game, &completed_games, &cheer_table)?;
-    let _insert_cheers_duration =
-        (Utc::now() - insert_cheers_start).as_seconds_f64();
+    let _insert_cheers_duration = (Utc::now() - insert_cheers_start).as_seconds_f64();
 
     let insert_balk_reasons_start = Utc::now();
-    insert_balk_reasons(conn, &event_ids_by_game, &completed_games, &balk_reason_table)?;
-    let _insert_balk_reasons_duration =
-        (Utc::now() - insert_balk_reasons_start).as_seconds_f64();
+    insert_balk_reasons(
+        conn,
+        &event_ids_by_game,
+        &completed_games,
+        &balk_reason_table,
+    )?;
+    let _insert_balk_reasons_duration = (Utc::now() - insert_balk_reasons_start).as_seconds_f64();
 
     Ok(InsertGamesTimings {
         delete_old_games_duration,
@@ -1960,12 +1999,12 @@ pub struct DbProgressEntry {
     pub count: i64,
 }
 
-pub fn games_progress(
-    conn: &mut PgConnection,
-) -> QueryResult<Progress> {
+pub fn games_progress(conn: &mut PgConnection) -> QueryResult<Progress> {
     // use crate::schema::data_schema::data::entities::dsl as entities_dsl;
 
-    let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z").unwrap().to_utc();
+    let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z")
+        .unwrap()
+        .to_utc();
     let history_end = Utc::now();
     let num_buckets = 800;
     let time_step = (history_end - history_start) / num_buckets;
@@ -1978,19 +2017,20 @@ pub fn games_progress(
     //     .get_results::<(i32, i64)>(conn)?;
 
     let mut buckets = vec![(0, 0); num_buckets as usize];
-    let q = sql_query("
+    let q = sql_query(
+        "
         select
             timespan_bucket(valid_from, $1, $2) as bucket_index,
             count(*) as count
         from data.entities
         group by bucket_index
         order by bucket_index
-    ")
-        .bind::<Timestamp, _>(history_start.naive_utc())
-        .bind::<Interval, _>(time_step);
+    ",
+    )
+    .bind::<Timestamp, _>(history_start.naive_utc())
+    .bind::<Interval, _>(time_step);
     println!("{}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
-    let progress_entries = q
-        .get_results::<DbProgressEntry>(conn)?;
+    let progress_entries = q.get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
         // Race conditions can get us buckets that are past the max. We discard them
@@ -1998,19 +2038,20 @@ pub fn games_progress(
             entry.0 = progress_entry.count;
         }
     }
-    let q = sql_query("
+    let q = sql_query(
+        "
         select
             timespan_bucket(from_version, $1, $2) as bucket_index,
             count(*) as count
         from data.games
         group by bucket_index
         order by bucket_index
-    ")
-        .bind::<Timestamp, _>(history_start.naive_utc())
-        .bind::<Interval, _>(time_step);
+    ",
+    )
+    .bind::<Timestamp, _>(history_start.naive_utc())
+    .bind::<Interval, _>(time_step);
     println!("{}", diesel::debug_query::<diesel::pg::Pg, _>(&q));
-    let progress_entries = q
-        .get_results::<DbProgressEntry>(conn)?;
+    let progress_entries = q.get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
         // Race conditions can get us buckets that are past the max. We discard them
@@ -2025,26 +2066,28 @@ pub fn games_progress(
         buckets: buckets
             .into_iter()
             .enumerate()
-            .map(|(bucket_index, (raw_total, processed_total))| ProgressBucket {
-                bucket_start: history_start + time_step * bucket_index as i32,
-                raw_total,
-                processed_total,
-            })
+            .map(
+                |(bucket_index, (raw_total, processed_total))| ProgressBucket {
+                    bucket_start: history_start + time_step * bucket_index as i32,
+                    raw_total,
+                    processed_total,
+                },
+            )
             .collect(),
     })
 }
 
-pub fn versions_progress(
-    kind: &str,
-    conn: &mut PgConnection,
-) -> QueryResult<Progress> {
-    let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z").unwrap().to_utc();
+pub fn versions_progress(kind: &str, conn: &mut PgConnection) -> QueryResult<Progress> {
+    let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z")
+        .unwrap()
+        .to_utc();
     let history_end = Utc::now();
     let num_buckets = 800;
     let time_step = (history_end - history_start) / num_buckets;
 
     let mut buckets = vec![(0, 0); num_buckets as usize];
-    let progress_entries = sql_query("
+    let progress_entries = sql_query(
+        "
         select
             timespan_bucket(valid_from, $1, $2) as bucket_index,
             count(*) as count
@@ -2052,11 +2095,12 @@ pub fn versions_progress(
         where kind=$3
         group by bucket_index
         order by bucket_index
-    ")
-        .bind::<Timestamp, _>(history_start.naive_utc())
-        .bind::<Interval, _>(time_step)
-        .bind::<Text, _>(kind)
-        .get_results::<DbProgressEntry>(conn)?;
+    ",
+    )
+    .bind::<Timestamp, _>(history_start.naive_utc())
+    .bind::<Interval, _>(time_step)
+    .bind::<Text, _>(kind)
+    .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
         // Race conditions can get us buckets that are past the max. We discard them
@@ -2064,7 +2108,8 @@ pub fn versions_progress(
             entry.0 = progress_entry.count;
         }
     }
-    let progress_entries = sql_query("
+    let progress_entries = sql_query(
+        "
         select
             timespan_bucket(valid_from, $1, $2) as bucket_index,
             count(*) as count
@@ -2072,11 +2117,12 @@ pub fn versions_progress(
         where kind=$3
         group by bucket_index
         order by bucket_index
-    ")
-        .bind::<Timestamp, _>(history_start.naive_utc())
-        .bind::<Interval, _>(time_step)
-        .bind::<Text, _>(kind)
-        .get_results::<DbProgressEntry>(conn)?;
+    ",
+    )
+    .bind::<Timestamp, _>(history_start.naive_utc())
+    .bind::<Interval, _>(time_step)
+    .bind::<Text, _>(kind)
+    .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
         // Race conditions can get us buckets that are past the max. We discard them
@@ -2091,26 +2137,28 @@ pub fn versions_progress(
         buckets: buckets
             .into_iter()
             .enumerate()
-            .map(|(bucket_index, (raw_total, processed_total))| ProgressBucket {
-                bucket_start: history_start + time_step * bucket_index as i32,
-                raw_total,
-                processed_total,
-            })
+            .map(
+                |(bucket_index, (raw_total, processed_total))| ProgressBucket {
+                    bucket_start: history_start + time_step * bucket_index as i32,
+                    raw_total,
+                    processed_total,
+                },
+            )
             .collect(),
     })
 }
 
-pub fn feed_events_progress(
-    subject_type: &str,
-    conn: &mut PgConnection,
-) -> QueryResult<Progress> {
-    let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z").unwrap().to_utc();
+pub fn feed_events_progress(subject_type: &str, conn: &mut PgConnection) -> QueryResult<Progress> {
+    let history_start = DateTime::parse_from_rfc3339("2025-04-22T20:14:09.908000Z")
+        .unwrap()
+        .to_utc();
     let history_end = Utc::now();
     let num_buckets = 800;
     let time_step = (history_end - history_start) / num_buckets;
 
     let mut buckets = vec![(0, 0); num_buckets as usize];
-    let progress_entries = sql_query("
+    let progress_entries = sql_query(
+        "
         select
             timespan_bucket(timestamp, $1, $2) as bucket_index,
             count(*) as count
@@ -2118,11 +2166,12 @@ pub fn feed_events_progress(
         where subject_type=$3
         group by bucket_index
         order by bucket_index
-    ")
-        .bind::<Timestamp, _>(history_start.naive_utc())
-        .bind::<Interval, _>(time_step)
-        .bind::<Text, _>(subject_type)
-        .get_results::<DbProgressEntry>(conn)?;
+    ",
+    )
+    .bind::<Timestamp, _>(history_start.naive_utc())
+    .bind::<Interval, _>(time_step)
+    .bind::<Text, _>(subject_type)
+    .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
         // Race conditions can get us buckets that are past the max. We discard them
@@ -2130,7 +2179,8 @@ pub fn feed_events_progress(
             entry.0 = progress_entry.count;
         }
     }
-    let progress_entries = sql_query("
+    let progress_entries = sql_query(
+        "
         select
             timespan_bucket(timestamp, $1, $2) as bucket_index,
             count(*) as count
@@ -2138,11 +2188,12 @@ pub fn feed_events_progress(
         where subject_type=$3
         group by bucket_index
         order by bucket_index
-    ")
-        .bind::<Timestamp, _>(history_start.naive_utc())
-        .bind::<Interval, _>(time_step)
-        .bind::<Text, _>(subject_type)
-        .get_results::<DbProgressEntry>(conn)?;
+    ",
+    )
+    .bind::<Timestamp, _>(history_start.naive_utc())
+    .bind::<Interval, _>(time_step)
+    .bind::<Text, _>(subject_type)
+    .get_results::<DbProgressEntry>(conn)?;
 
     for progress_entry in progress_entries {
         // Race conditions can get us buckets that are past the max. We discard them
@@ -2157,11 +2208,13 @@ pub fn feed_events_progress(
         buckets: buckets
             .into_iter()
             .enumerate()
-            .map(|(bucket_index, (raw_total, processed_total))| ProgressBucket {
-                bucket_start: history_start + time_step * bucket_index as i32,
-                raw_total,
-                processed_total,
-            })
+            .map(
+                |(bucket_index, (raw_total, processed_total))| ProgressBucket {
+                    bucket_start: history_start + time_step * bucket_index as i32,
+                    raw_total,
+                    processed_total,
+                },
+            )
             .collect(),
     })
 }
@@ -2280,10 +2333,10 @@ pub fn tables_for_schema(
                 .and(kcu_dsl::table_schema.eq(schema_name)),
         )
         .select((
-            kcu_dsl::table_name,  // name of the table containing the foreign key reference
-            kcu_dsl::column_name, // name of the foreign key column
+            kcu_dsl::table_name,   // name of the table containing the foreign key reference
+            kcu_dsl::column_name,  // name of the foreign key column
             ccu_dsl::table_schema, // schema of the table that's being referenced
-            ccu_dsl::table_name,  // name of the table that's being referenced
+            ccu_dsl::table_name,   // name of the table that's being referenced
         ))
         .load(conn)?;
 
@@ -2327,14 +2380,15 @@ pub fn tables_for_schema(
                             .ok_or(DbMetaQueryError::ColumnMissingField("data_type"))?;
 
                         // Check if this column is a foreign key referencing another table
-                        let column_type = match fk_map.get(&(current_table_name.clone(), col_name.clone())) {
-                            Some((ref_schema, ref_table)) => ColumnType::ReferenceType {
-                                r#type: data_type,
-                                references_schema: ref_schema.clone(),
-                                references_table: ref_table.clone(),
-                            },
-                            None => ColumnType::ValueType(data_type),
-                        };
+                        let column_type =
+                            match fk_map.get(&(current_table_name.clone(), col_name.clone())) {
+                                Some((ref_schema, ref_table)) => ColumnType::ReferenceType {
+                                    r#type: data_type,
+                                    references_schema: ref_schema.clone(),
+                                    references_table: ref_table.clone(),
+                                },
+                                None => ColumnType::ValueType(data_type),
+                            };
 
                         Ok(DbColumn {
                             name: col_name,
@@ -2550,7 +2604,8 @@ fn insert_player_report_versions(
         .from_insertable(new_player_report_versions)
         .execute(conn)?;
 
-    let (total_prav, inserted_prav) = insert_player_report_attribute_versions(conn, new_player_report_attribute_versions)?;
+    let (total_prav, inserted_prav) =
+        insert_player_report_attribute_versions(conn, new_player_report_attribute_versions)?;
     total_prv += total_prav;
     inserted_prv += inserted_prav;
 
@@ -2608,7 +2663,8 @@ fn insert_player_equipment_versions(
     let insert_versions_duration = (Utc::now() - insert_versions_start).as_seconds_f64();
 
     let insert_effect_versions_start = Utc::now();
-    let (total_peev, inserted_peev) = insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
+    let (total_peev, inserted_peev) =
+        insert_player_equipment_effects(conn, new_player_equipment_effect_versions)?;
     total_pev += total_peev;
     inserted_pev += inserted_peev;
     let insert_effect_versions_duration =
@@ -2906,10 +2962,7 @@ fn insert_player_versions(
 ) -> QueryResult<(usize, usize)> {
     use crate::data_schema::data::player_versions::dsl as pv_dsl;
 
-    let new_player_versions = new_player_versions
-        .into_iter()
-        .flatten()
-        .collect_vec();
+    let new_player_versions = new_player_versions.into_iter().flatten().collect_vec();
 
     // Insert new records
     let total_pv = new_player_versions.len();
@@ -2980,29 +3033,29 @@ pub fn insert_player_versions_all<'container, 'game: 'container>(
     ) = itertools::multiunzip(new_player_versions);
     let preprocess_duration = (Utc::now() - preprocess_start).as_seconds_f64();
 
-    assert!(
-        new_player_versions
-            .iter()
-            .all(|version| version.as_ref().map_or(true, |v| v.occupied_equipment_slots.is_sorted()))
-    );
+    assert!(new_player_versions.iter().all(|version| {
+        version
+            .as_ref()
+            .map_or(true, |v| v.occupied_equipment_slots.is_sorted())
+    }));
 
-    assert!(
-        new_player_versions
-            .iter()
-            .all(|version| version.as_ref().map_or(true, |v| v.included_report_categories.is_sorted()))
-    );
+    assert!(new_player_versions.iter().all(|version| {
+        version
+            .as_ref()
+            .map_or(true, |v| v.included_report_categories.is_sorted())
+    }));
 
-    assert!(
-        new_player_versions
-            .iter()
-            .all(|version| version.as_ref().map_or(true, |v| v.included_pitch_type_bonuses.is_sorted()))
-    );
+    assert!(new_player_versions.iter().all(|version| {
+        version
+            .as_ref()
+            .map_or(true, |v| v.included_pitch_type_bonuses.is_sorted())
+    }));
 
-    assert!(
-        new_player_versions
-            .iter()
-            .all(|version| version.as_ref().map_or(true, |v| v.included_pitch_category_bonuses.is_sorted()))
-    );
+    assert!(new_player_versions.iter().all(|version| {
+        version
+            .as_ref()
+            .map_or(true, |v| v.included_pitch_category_bonuses.is_sorted())
+    }));
 
     let mut total_versions = 0;
     let mut inserted_versions = 0;
@@ -3024,14 +3077,16 @@ pub fn insert_player_versions_all<'container, 'game: 'container>(
         (Utc::now() - insert_player_version_start).as_seconds_f64();
 
     let insert_player_modifications_start = Utc::now();
-    let (total_pmv, inserted_pmv) = insert_player_modification_versions(conn, new_player_modification_versions)?;
+    let (total_pmv, inserted_pmv) =
+        insert_player_modification_versions(conn, new_player_modification_versions)?;
     total_versions += total_pmv;
     inserted_versions += inserted_pmv;
     let insert_player_modifications_duration =
         (Utc::now() - insert_player_modifications_start).as_seconds_f64();
 
     let insert_player_reports_start = Utc::now();
-    let (total_prv, inserted_prv) = insert_player_report_versions(conn, new_player_report_versions)?;
+    let (total_prv, inserted_prv) =
+        insert_player_report_versions(conn, new_player_report_versions)?;
     total_versions += total_prv;
     inserted_versions += inserted_prv;
     let insert_player_reports_duration =
@@ -3045,21 +3100,24 @@ pub fn insert_player_versions_all<'container, 'game: 'container>(
         (Utc::now() - insert_player_equipment_start).as_seconds_f64();
 
     let insert_player_pitch_types_start = Utc::now();
-    let (total_pptv, inserted_pptv) = insert_player_pitch_type_versions(conn, new_player_pitch_types)?;
+    let (total_pptv, inserted_pptv) =
+        insert_player_pitch_type_versions(conn, new_player_pitch_types)?;
     total_versions += total_pptv;
     inserted_versions += inserted_pptv;
     let insert_player_pitch_types_duration =
         (Utc::now() - insert_player_pitch_types_start).as_seconds_f64();
 
     let insert_player_pitch_type_bonuses_start = Utc::now();
-    let (total_pptbv, inserted_pptbv) = insert_player_pitch_type_bonus_versions(conn, new_player_pitch_type_bonuses)?;
+    let (total_pptbv, inserted_pptbv) =
+        insert_player_pitch_type_bonus_versions(conn, new_player_pitch_type_bonuses)?;
     total_versions += total_pptbv;
     inserted_versions += inserted_pptbv;
     let insert_player_pitch_type_bonuses_duration =
         (Utc::now() - insert_player_pitch_type_bonuses_start).as_seconds_f64();
 
     let insert_player_pitch_category_bonuses_start = Utc::now();
-    let (total_ppcbv, inserted_ppcbv) = insert_player_pitch_category_bonus_versions(conn, new_player_pitch_category_bonuses)?;
+    let (total_ppcbv, inserted_ppcbv) =
+        insert_player_pitch_category_bonus_versions(conn, new_player_pitch_category_bonuses)?;
     total_versions += total_ppcbv;
     inserted_versions += inserted_ppcbv;
     let insert_player_pitch_category_bonuses_duration =
@@ -3205,9 +3263,7 @@ pub fn get_player_recompositions(
 
     pr_dsl::player_recompositions
         .filter(pr_dsl::mmolb_player_id.eq(player_id))
-        .order((
-            pr_dsl::time.asc(),
-        ))
+        .order((pr_dsl::time.asc(),))
         .select(DbPlayerRecomposition::as_select())
         .get_results(conn)
 }
@@ -3504,7 +3560,9 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
     use crate::data_schema::data::versions_processed::dsl as vp_dsl;
 
     // Convert reference to tuple to tuple of references
-    let new_team_versions = new_team_versions.into_iter().map(|(a, b, c, d)| (a, b, c, d));
+    let new_team_versions = new_team_versions
+        .into_iter()
+        .map(|(a, b, c, d)| (a, b, c, d));
 
     let (new_processed, new_team_versions, new_team_player_versions, new_ingest_logs): (
         Vec<&NewVersionProcessed>,
@@ -3522,7 +3580,8 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
     inserted += diesel::copy_from(vp_dsl::versions_processed)
         .from_insertable(new_processed)
         .execute(conn)?;
-    let insert_versions_processed_duration = (Utc::now() - insert_versions_processed_start).as_seconds_f64();
+    let insert_versions_processed_duration =
+        (Utc::now() - insert_versions_processed_start).as_seconds_f64();
 
     let insert_team_version_start = Utc::now();
     total += new_team_versions.len();
@@ -3594,7 +3653,8 @@ pub fn insert_time_versions_all<'container, 'game: 'container>(
     inserted += diesel::copy_from(vp_dsl::versions_processed)
         .from_insertable(new_processed)
         .execute(conn)?;
-    let insert_versions_processed_duration = (Utc::now() - insert_versions_processed_start).as_seconds_f64();
+    let insert_versions_processed_duration =
+        (Utc::now() - insert_versions_processed_start).as_seconds_f64();
 
     let insert_time_version_start = Utc::now();
     total += new_time_versions.len();
@@ -4107,12 +4167,14 @@ pub fn highest_reported_attribute(
     ").bind::<Text, _>(attr_name).get_result(conn).optional()
 }
 
-pub fn replace_modifier_effects(conn: &mut PgConnection, effects: Vec<NewModificationEffects>) -> QueryResult<()> {
+pub fn replace_modifier_effects(
+    conn: &mut PgConnection,
+    effects: Vec<NewModificationEffects>,
+) -> QueryResult<()> {
     use crate::data_schema::data::modification_effects::dsl as me_dsl;
 
     // Delete previous contents
-    diesel::delete(me_dsl::modification_effects)
-        .execute(conn)?;
+    diesel::delete(me_dsl::modification_effects).execute(conn)?;
 
     // Insert new contents
     diesel::copy_from(me_dsl::modification_effects)

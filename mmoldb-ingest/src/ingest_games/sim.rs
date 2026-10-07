@@ -1,17 +1,18 @@
 use itertools::{EitherOrBoth, Itertools, PeekingNext};
+use lazy_static::lazy_static;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{
     Base, BaseNameVariant, BatterStat, Day, FairBallDestination, FairBallType, FoulType,
     GameOverMessage, HomeAway, MoundVisitType, NowBattingStats, Place, SeasonStatus, StrikeType,
-    TopBottom
+    TopBottom,
 };
 use mmolb_parsing::game::{EventBatterVersions, EventPitcherVersions, MaybePlayer};
 use mmolb_parsing::parsed_event::{
-    Assassination, BaseSteal, BasicPitcherSwap, Cheer, ContainResult, DoorPrize, Efflorescence,
-    Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam, FallingStarOutcome,
-    FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants, PartyDurabilityLoss, PlacedPlayer,
-    RunnerAdvance, RunnerOut, SnappedPhotos, StartOfInningPitcher, WeatherConsumptionEvents,
-    WitherResult, WitherStruggle, AugmentedWeather,
+    Assassination, AugmentedWeather, BaseSteal, BasicPitcherSwap, Cheer, ContainResult, DoorPrize,
+    Efflorescence, Ejection, EjectionReplacement, EmojiFood, EmojiPlayer, EmojiTeam,
+    FallingStarOutcome, FieldingAttempt, KnownBug, ParsedEventMessageDiscriminants,
+    PartyDurabilityLoss, PlacedPlayer, RunnerAdvance, RunnerOut, SnappedPhotos,
+    StartOfInningPitcher, WeatherConsumptionEvents, WitherResult, WitherStruggle,
 };
 use mmolb_parsing::{MaybeRecognizedResult, ParsedEventMessage};
 use mmoldb_db::taxa::{AsInsertable, TaxaPitcherChangeSource, TaxaPollenCount};
@@ -27,7 +28,6 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::fmt::Write;
-use lazy_static::lazy_static;
 use strum::IntoDiscriminant;
 use thiserror::Error;
 use tracing::warn;
@@ -1085,7 +1085,8 @@ impl<'g> EventDetailBuilder<'g> {
                 } else {
                     // If the runner didn't score, advance, or get out they just stayed on base
                     // TODO Use bases occupied fields to disambiguate multiple potential assassination victims with the same name
-                    let assassinated_by = assassinations.peeking_next(|ass| ass.victim_name == prev_runner.runner_name)
+                    let assassinated_by = assassinations
+                        .peeking_next(|ass| ass.victim_name == prev_runner.runner_name)
                         .map(|ass| ass.assassin_name);
                     EventDetailRunner {
                         name: prev_runner.runner_name,
@@ -1223,7 +1224,10 @@ impl<'g> EventDetailBuilder<'g> {
         }
         let extra_assassinations = assassinations.collect::<Vec<_>>();
         if !extra_assassinations.is_empty() {
-            ingest_logs.error(format!("Assassination(s) not found: {:?}", extra_assassinations));
+            ingest_logs.error(format!(
+                "Assassination(s) not found: {:?}",
+                extra_assassinations
+            ));
         }
 
         let pitcher = match &self.raw_event.pitcher {
@@ -1418,7 +1422,14 @@ impl<'g> Game<'g> {
         let mut ingest_logs = Vec::new();
 
         let mut game_event_index = 0;
-        let (away_team_name, away_team_emoji, home_team_name, home_team_emoji, stadium_name, weather) = extract_next_game_event!(
+        let (
+            away_team_name,
+            away_team_emoji,
+            home_team_name,
+            home_team_emoji,
+            stadium_name,
+            weather,
+        ) = extract_next_game_event!(
             events,
             [ParsedEventMessageDiscriminants::LiveNow]
             ParsedEventMessage::LiveNow {
@@ -1479,7 +1490,6 @@ impl<'g> Game<'g> {
                         weather.name(),
                         game_data.weather.name,
                     ));
-
                 }
             } else {
                 if game_data.season < 15 {
@@ -1563,9 +1573,7 @@ impl<'g> Game<'g> {
                 format_lineup(&away_lineup)
             ));
             if let Some(away_manager_name) = away_manager_name {
-                logs.debug(format!(
-                    "Set away manager name to: {away_manager_name}"
-                ));
+                logs.debug(format!("Set away manager name to: {away_manager_name}"));
             }
             logs.into_vec()
         });
@@ -1591,9 +1599,7 @@ impl<'g> Game<'g> {
                 format_lineup(&home_lineup)
             ));
             if let Some(home_manager_name) = home_manager_name {
-                logs.debug(format!(
-                    "Set home manager name to: {home_manager_name}"
-                ));
+                logs.debug(format!("Set home manager name to: {home_manager_name}"));
             }
             logs.into_vec()
         });
@@ -1725,8 +1731,12 @@ impl<'g> Game<'g> {
         }
     }
 
-    pub fn away_team(&self) -> &TeamInGame<'g> { &self.away }
-    pub fn home_team(&self) -> &TeamInGame<'g> { &self.home }
+    pub fn away_team(&self) -> &TeamInGame<'g> {
+        &self.away
+    }
+    pub fn home_team(&self) -> &TeamInGame<'g> {
+        &self.home
+    }
 
     fn batting_team(&self) -> &TeamInGame<'g> {
         match self.state.inning_half {
@@ -1801,7 +1811,11 @@ impl<'g> Game<'g> {
         entry.or_default()
     }
 
-    fn check_defending_team_manager_name(&self, manager_name: Option<&str>, ingest_logs: &mut IngestLogs) {
+    fn check_defending_team_manager_name(
+        &self,
+        manager_name: Option<&str>,
+        ingest_logs: &mut IngestLogs,
+    ) {
         // If manager_name is None, there's nothing to check
         let Some(incoming_manager_name) = manager_name else {
             return;
@@ -2354,7 +2368,9 @@ impl<'g> Game<'g> {
 
                 if let Some(occupied_base) = last_occupied_base {
                     if occupied_base >= o.base.into() {
-                        if updates.runners_out_may_include_batter.is_some() && runner.base == o.base.into() {
+                        if updates.runners_out_may_include_batter.is_some()
+                            && runner.base == o.base.into()
+                        {
                             ingest_logs.debug(format!(
                                 "This is an event where the batter-runner may be listed as \
                                 one of the outs. In this case, the Sizzle Udea problem means \
@@ -2770,7 +2786,8 @@ impl<'g> Game<'g> {
         mut double_trouble: Option<&PlacedPlayer<&str>>,
         ingest_logs: &mut IngestLogs,
     ) -> Vec<(PlacedPlayer<&'g str>, bool)> {
-        let fielders_with_double_trouble = fielders.into_iter()
+        let fielders_with_double_trouble = fielders
+            .into_iter()
             .map(|f| {
                 // This will take the first matching player, even if multiple players match
                 if let Some(_) = double_trouble.take_if(|dt| *dt == f) {
@@ -2796,16 +2813,19 @@ impl<'g> Game<'g> {
         assassinations: &Vec<Assassination<&'g str>>,
         ingest_logs: &mut IngestLogs,
     ) -> Vec<Assassination<&'g str>> {
-
         for assassination in assassinations {
-            let candidates = self.state.runners_on.iter()
+            let candidates = self
+                .state
+                .runners_on
+                .iter()
                 .enumerate()
                 .filter(|(_, runner)| runner.runner_name == assassination.victim_name)
                 .exactly_one();
             match candidates {
                 Ok((i, runner)) => {
                     ingest_logs.info(format!(
-                        "{} was assassinated by {}", runner.runner_name, assassination.assassin_name
+                        "{} was assassinated by {}",
+                        runner.runner_name, assassination.assassin_name
                     ));
                     self.state.runners_on.remove(i);
                 }
@@ -2831,8 +2851,13 @@ impl<'g> Game<'g> {
         }
 
         let mut assassinations = assassinations.clone();
-        if let Some((victim_name, assassin_name)) = SILENT_ASSASSINATIONS.get(&(self.game_id, game_event_index)) {
-            let candidates = self.state.runners_on.iter()
+        if let Some((victim_name, assassin_name)) =
+            SILENT_ASSASSINATIONS.get(&(self.game_id, game_event_index))
+        {
+            let candidates = self
+                .state
+                .runners_on
+                .iter()
                 .enumerate()
                 .filter(|(_, runner)| &runner.runner_name == victim_name)
                 .exactly_one();
@@ -2840,7 +2865,10 @@ impl<'g> Game<'g> {
                 Ok((i, runner)) => {
                     ingest_logs.info(format!("{} was silently assassinated", runner.runner_name));
                     self.state.runners_on.remove(i);
-                    assassinations.push(Assassination { assassin_name, victim_name });
+                    assassinations.push(Assassination {
+                        assassin_name,
+                        victim_name,
+                    });
                 }
                 Err(err) => {
                     let candidates = err.collect_vec();

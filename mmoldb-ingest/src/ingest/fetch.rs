@@ -37,11 +37,12 @@ pub async fn fetch_entity_kind(
         // not really a guarantee chron provided, but we assumed it anyway and it's been good
         // enough until it wasn't) that we can work around by asking for versions from long enough
         // ago that
-        .map(|date| {
-            date - chrono::Duration::new(FETCH_TIME_SAFETY_FACTOR, 0).unwrap()
-        });
+        .map(|date| date - chrono::Duration::new(FETCH_TIME_SAFETY_FACTOR, 0).unwrap());
 
-    info!("{} fetch will start from date {:?} ({FETCH_TIME_SAFETY_FACTOR} seconds before the cursor to work around a race condition in our usage of chron)", kind, start_date);
+    info!(
+        "{} fetch will start from date {:?} ({FETCH_TIME_SAFETY_FACTOR} seconds before the cursor to work around a race condition in our usage of chron)",
+        kind, start_date
+    );
 
     let stream = chron
         .entities(kind, start_date, 3, args.use_local_cheap_cashews)
@@ -168,9 +169,7 @@ pub async fn fetch_version_kind(
 }
 
 // It may be possible to remove 'static
-pub async fn fetch_feed_events(
-    args: ChronFetchArgs,
-) -> Result<(), IngestFatalError> {
+pub async fn fetch_feed_events(args: ChronFetchArgs) -> Result<(), IngestFatalError> {
     let mut conn = args.pool.get()?;
     let chron = Chron::new(args.chron_fetch_batch_size);
 
@@ -178,7 +177,10 @@ pub async fn fetch_feed_events(
     let start_cursor_utc = start_cursor.as_ref().map(|(dt, id)| (dt.and_utc(), id));
 
     let start_date = start_cursor_utc.as_ref().map(|(dt, _)| *dt);
-    info!("Combined feed event fetch will start from date {:?}", start_date,);
+    info!(
+        "Combined feed event fetch will start from date {:?}",
+        start_date,
+    );
 
     let stream = chron
         .feed_events(start_date, 3, args.use_local_cheap_cashews)
@@ -215,7 +217,15 @@ pub async fn fetch_feed_events(
         .map(|result| {
             result
                 .map_err(IngestFatalError::ChronStreamError)
-                .map(|event| (event.event_id, event.subject_type, event.subject_id, event.timestamp.naive_utc(), event.data))
+                .map(|event| {
+                    (
+                        event.event_id,
+                        event.subject_type,
+                        event.subject_id,
+                        event.timestamp.naive_utc(),
+                        event.data,
+                    )
+                })
         })
         .try_chunks(args.insert_raw_entity_batch_size.into());
     pin_mut!(stream);
@@ -232,7 +242,10 @@ pub async fn fetch_feed_events(
 
         assert!(chunk.is_sorted_by_key(|(event_id, _, _, timestamp, _)| (timestamp, event_id)));
 
-        info!("Combined feed stage 1 ingest saving {} feed event(s)", chunk.len());
+        info!(
+            "Combined feed stage 1 ingest saving {} feed event(s)",
+            chunk.len()
+        );
         let inserted = match db::insert_feed_events(&mut conn, &chunk) {
             Ok(x) => Ok(x),
             Err(err) => {

@@ -317,12 +317,15 @@ mod tests {
                             false,
                             "Column {} in {schema_name}.{} is documented as referencing \
                             {references}, but it doesn't reference anything",
-                            schema.name,
-                            table.name,
+                            schema.name, table.name,
                         )
                     }
                 }
-                ColumnType::ReferenceType { r#type: type_from_schema, references_schema, references_table } => {
+                ColumnType::ReferenceType {
+                    r#type: type_from_schema,
+                    references_schema,
+                    references_table,
+                } => {
                     assert_eq!(
                         type_from_schema, docs.r#type,
                         "Type mismatch for column {} in {schema_name}.{}",
@@ -330,7 +333,8 @@ mod tests {
                     );
                     if let Some(references) = docs.references {
                         assert_eq!(
-                            references, format!("{references_schema}.{references_table}"),
+                            references,
+                            format!("{references_schema}.{references_table}"),
                             "Column {} in {schema_name}.{} is documented as referencing \
                             {references}, but it actually references \
                             {references_schema}.{references_table}",
@@ -342,8 +346,7 @@ mod tests {
                             false,
                             "Column {} in {schema_name}.{} is not documented as referencing \
                             anything, but it does reference {references_schema}.{references_table}",
-                            schema.name,
-                            table.name,
+                            schema.name, table.name,
                         );
                     }
                 }

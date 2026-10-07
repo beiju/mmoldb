@@ -1,16 +1,19 @@
+use crate::PreparedIngestItem;
 use crate::ingest::{IngestibleFromVersions, VersionIngestLogs};
 use chron::ChronEntity;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use itertools::Itertools;
 use mmolb_parsing::{
-    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, team::TeamPlayerCollection, enums::FullSlot,
+    AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, enums::FullSlot,
+    team::TeamPlayerCollection,
 };
-use mmoldb_db::models::{NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed};
+use mmoldb_db::models::{
+    NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed,
+};
 use mmoldb_db::taxa::Taxa;
 use mmoldb_db::{AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult, async_db, db};
 use std::str::FromStr;
-use crate::PreparedIngestItem;
 
 pub struct TeamIngestFromVersions;
 
@@ -154,7 +157,9 @@ impl IngestibleFromVersions for TeamIngestFromVersions {
                     };
                     (vp, None, Vec::new(), Vec::new())
                 }
-                PreparedIngestItem::DoIngest(team) => chron_team_as_new(taxa, &team.entity_id, team.valid_from, &team.data),
+                PreparedIngestItem::DoIngest(team) => {
+                    chron_team_as_new(taxa, &team.entity_id, team.valid_from, &team.data)
+                }
             })
             .collect_vec();
 
@@ -233,7 +238,7 @@ fn chron_team_as_new<'a>(
             ));
 
             Some(name.clone())
-        },
+        }
         Err(AddedLater) => match &team.ballpark_use_city {
             Ok(use_city) => {
                 let mut ballpark_name_components: Vec<&str> = Vec::new();
@@ -289,12 +294,12 @@ fn chron_team_as_new<'a>(
                     `ballpark_word_1`, `ballpark_word_2`, and `ballpark_suffix`",
                 ));
                 Some(assembled_name)
-            },
+            }
             Err(AddedLater) => {
                 ingest_logs.info("No ballpark name");
                 None
-            },
-        }
+            }
+        },
     };
 
     let new_team = NewTeamVersion {
@@ -323,7 +328,12 @@ fn chron_team_as_new<'a>(
         ingest_logs.error("Got a duplicate team player");
     }
 
-    (new_processed, Some(new_team), new_team_players, ingest_logs.into_vec())
+    (
+        new_processed,
+        Some(new_team),
+        new_team_players,
+        ingest_logs.into_vec(),
+    )
 }
 
 pub fn chron_team_player_as_new<'a>(
@@ -350,14 +360,13 @@ pub fn chron_team_player_as_new<'a>(
         },
         number: pl.number as i32,
         slot: match slot {
-            Ok(Ok(FullSlot::Roster(slot))) => Some(taxa.slot_id(BestEffortSlot::from_slot(*slot).into())),
+            Ok(Ok(FullSlot::Roster(slot))) => {
+                Some(taxa.slot_id(BestEffortSlot::from_slot(*slot).into()))
+            }
             Ok(Ok(FullSlot::Bench(slot))) => {
-                ingest_logs.error(format!(
-                    "Player on the roster had a bench slot ({})",
-                    slot,
-                ));
+                ingest_logs.error(format!("Player on the roster had a bench slot ({slot})"));
                 None
-            },
+            }
             Ok(Err(NotRecognized(other))) => {
                 ingest_logs.error(format!(
                     "Failed to parse {} {}'s slot ({other:?}",

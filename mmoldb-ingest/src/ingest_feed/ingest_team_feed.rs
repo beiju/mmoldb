@@ -9,7 +9,6 @@ pub fn chron_team_feed_as_new<'a>(
     feed_event: &'a ChronFeedEvent<mmolb_parsing::feed_event::FeedEvent>,
     ingest_logs: &mut VersionIngestLogs<'a>,
 ) -> Result<Option<NewTeamGamePlayed<'a>>, ()> {
-
     // There is a bug in mmolb_parsing that causes a panic when an
     // augment's text is empty
     if feed_event.data.text.is_empty() {

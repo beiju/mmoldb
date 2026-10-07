@@ -153,13 +153,7 @@ impl Chron {
             "https://cheapcashews.beiju.me/chron/v0/feed_events"
         };
 
-        self.items(
-            cheap_cashews_url,
-            None,
-            max_retries,
-            start_at,
-            None,
-        )
+        self.items(cheap_cashews_url, None, max_retries, start_at, None)
     }
 
     // Warning: This endpoint only calls cheapcashews, never freecashews
@@ -191,8 +185,7 @@ impl Chron {
             .await
             .map_err(ChronStreamError::RequestBodyError)?;
 
-        let items = serde_json::from_str(&result)
-            .map_err(ChronStreamError::DeserializeError)?;
+        let items = serde_json::from_str(&result).map_err(ChronStreamError::DeserializeError)?;
 
         Ok(items)
     }
@@ -447,10 +440,9 @@ async fn get_next_page<ItemT: for<'de> Deserialize<'de>>(
 
     let page_size_string = page_size.to_string();
 
-    let mut request_builder = client.get(url).query(&[
-        ("order", "asc"),
-        ("count", &page_size_string),
-    ]);
+    let mut request_builder = client
+        .get(url)
+        .query(&[("order", "asc"), ("count", &page_size_string)]);
 
     if let Some(kind) = kind {
         request_builder = request_builder.query(&[("kind", kind)]);
@@ -485,8 +477,7 @@ async fn get_next_page<ItemT: for<'de> Deserialize<'de>>(
         .await
         .map_err(ChronStreamError::RequestBodyError)?;
 
-    let items = serde_json::from_str(&result)
-        .map_err(ChronStreamError::DeserializeError)?;
+    let items = serde_json::from_str(&result).map_err(ChronStreamError::DeserializeError)?;
 
     Ok(items)
 }

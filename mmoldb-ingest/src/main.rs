@@ -1,12 +1,12 @@
 mod config;
 mod ingest;
+mod ingest_feed;
 mod ingest_games;
 mod ingest_players;
 mod ingest_teams;
 mod ingest_time;
-mod partitioner;
 mod modifier_effects_value;
-mod ingest_feed;
+mod partitioner;
 mod util;
 
 use chrono_humanize::{Accuracy, HumanTime, Tense};
@@ -99,7 +99,8 @@ async fn main() -> miette::Result<()> {
         set_statement_timeout(&mut conn, config.set_postgres_statement_timeout)
             .into_diagnostic()?;
         let taxa = Taxa::new(&mut conn).into_diagnostic()?;
-        modifier_effects_value::update_modifier_effects_values(&mut conn, &taxa).into_diagnostic()?;
+        modifier_effects_value::update_modifier_effects_values(&mut conn, &taxa)
+            .into_diagnostic()?;
     }
     mmoldb_db::run_migrations().into_diagnostic()?;
 
@@ -125,7 +126,9 @@ async fn main() -> miette::Result<()> {
 
     if config.fetch_known_missing_games {
         info!("Checking for missed games from known-game-ids.txt");
-        ingest_games::fetch_missed_games(pool.clone()).await.into_diagnostic()?;
+        ingest_games::fetch_missed_games(pool.clone())
+            .await
+            .into_diagnostic()?;
     }
 
     // Launch ingest tasks
@@ -229,7 +232,11 @@ async fn wait_until_shutdown(
     for (task_i, task) in tasks.into_iter().enumerate() {
         match task.await {
             Ok(Ok(())) => {
-                info!("Successfully shut down task {} of {}", task_i + 1, num_tasks);
+                info!(
+                    "Successfully shut down task {} of {}",
+                    task_i + 1,
+                    num_tasks
+                );
             }
             Ok(Err(internal_error)) => {
                 error!("Ingest fatal error: {}", internal_error);

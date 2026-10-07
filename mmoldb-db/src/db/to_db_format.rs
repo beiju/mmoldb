@@ -1,5 +1,12 @@
 use crate::event_detail::{EventDetail, EventDetailFielder, EventDetailRunner};
-use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto, NewBaserunner, NewEventCheer, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize, NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent, NewFailedEjection, NewFielder, NewParty, NewPitcherChange, NewWither, NewEventBalkReason};
+use crate::models::{
+    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth,
+    DbEjection, DbEvent, DbFailedEjection, DbFielder, DbRunner, DbWither, NewAuroraPhoto,
+    NewBaserunner, NewConsumptionContest, NewConsumptionContestEvent, NewDoorPrize,
+    NewDoorPrizeItem, NewEfflorescence, NewEfflorescenceGrowth, NewEjection, NewEvent,
+    NewEventBalkReason, NewEventCheer, NewFailedEjection, NewFielder, NewParty, NewPitcherChange,
+    NewWither,
+};
 use crate::taxa::Taxa;
 use crate::{
     ConsumptionContestEventForDb, ConsumptionContestForDb, PartyEvent, PitcherChange, WitherOutcome,
@@ -7,7 +14,11 @@ use crate::{
 use itertools::Itertools;
 use miette::Diagnostic;
 use mmolb_parsing::enums::{ItemName, ItemPrefix, ItemSuffix};
-use mmolb_parsing::parsed_event::{Cheer, DoorPrize, Efflorescence, EfflorescenceOutcome, Ejection, EjectionReason, EjectionReplacement, EmojiTeam, GrowAttributeChange, Item, ItemAffixes, ItemEquip, ItemPrize, PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle};
+use mmolb_parsing::parsed_event::{
+    Cheer, DoorPrize, Efflorescence, EfflorescenceOutcome, Ejection, EjectionReason,
+    EjectionReplacement, EmojiTeam, GrowAttributeChange, Item, ItemAffixes, ItemEquip, ItemPrize,
+    PlacedPlayer, Prize, SnappedPhotos, ViolationType, WitherStruggle,
+};
 use std::str::FromStr;
 use strum::ParseError;
 use thiserror::Error;
@@ -498,7 +509,8 @@ pub fn cheer_to_rows(
 ) -> NewEventCheer {
     NewEventCheer {
         event_id,
-        cheer_id: *cheers_table.get(&cheer.to_string())
+        cheer_id: *cheers_table
+            .get(&cheer.to_string())
             .expect("Cheers table must be pre-populated with all cheers in this batch"),
     }
 }
@@ -510,7 +522,8 @@ pub fn balk_reason_to_rows(
 ) -> NewEventBalkReason {
     NewEventBalkReason {
         event_id,
-        balk_reason_id: *balk_reasons_table.get(balk_reason)
+        balk_reason_id: *balk_reasons_table
+            .get(balk_reason)
             .expect("Balk reasons table must be pre-populated with all balk reasons in this batch"),
     }
 }
@@ -1049,7 +1062,7 @@ pub fn row_to_event<'e>(
             if let Some(message) = cheer {
                 Some(Cheer::new(&message))
             } else {
-                return Err(RowToEventError::NonexistentCheerMessage)
+                return Err(RowToEventError::NonexistentCheerMessage);
             }
         }
         other => {
@@ -1064,7 +1077,7 @@ pub fn row_to_event<'e>(
             if let Some(message) = balk_reason {
                 Some(message)
             } else {
-                return Err(RowToEventError::NonexistentBalkReasonMessage)
+                return Err(RowToEventError::NonexistentBalkReasonMessage);
             }
         }
         other => {

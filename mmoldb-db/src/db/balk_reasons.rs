@@ -15,11 +15,12 @@ pub(crate) fn create_balk_reasons_table(
     balk_reasons: &HashSet<String>,
 ) -> QueryResult<BalkReasonTable> {
     if balk_reasons.is_empty() {
-        return Ok(BalkReasonTable::new())
+        return Ok(BalkReasonTable::new());
     }
 
     let balk_reason_table = loop {
-        let result = conn.transaction(|conn| create_balk_reasons_table_inner(conn, balk_reasons))?;
+        let result =
+            conn.transaction(|conn| create_balk_reasons_table_inner(conn, balk_reasons))?;
         match result {
             OrRetry::Result(balk_reason_table) => break balk_reason_table,
             OrRetry::Retry => {
@@ -50,11 +51,14 @@ fn create_balk_reasons_table_inner(
         .map_ok(|balk_reason| (balk_reason.balk_reason, balk_reason.id))
         .collect::<QueryResult<HashMap<String, i64>>>()?;
 
-    let new_balk_reasons = balk_reasons.iter()
-        .filter_map(|balk_reason| if balk_reason_table.contains_key(balk_reason) {
-            None
-        } else {
-            Some(NewBalkReason { balk_reason })
+    let new_balk_reasons = balk_reasons
+        .iter()
+        .filter_map(|balk_reason| {
+            if balk_reason_table.contains_key(balk_reason) {
+                None
+            } else {
+                Some(NewBalkReason { balk_reason })
+            }
         })
         // Sort them to avoid deadlocks when multiple tasks try to insert
         // the same balk_reasons in a different order
@@ -81,7 +85,11 @@ fn create_balk_reasons_table_inner(
         }));
     }
 
-    assert!(balk_reasons.iter().all(|m| balk_reason_table.contains_key(m)));
+    assert!(
+        balk_reasons
+            .iter()
+            .all(|m| balk_reason_table.contains_key(m))
+    );
 
     Ok(OrRetry::Result(balk_reason_table))
 }

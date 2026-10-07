@@ -1,5 +1,7 @@
 use crate::ingest_players::PlayerIngestFromVersions;
 use crate::ingest_teams::TeamIngestFromVersions;
+use crate::ingest_time::TimeIngestFromVersions;
+use crate::partitioner::Partitioner;
 use crate::{EntityIngestKind, IngestFatalError, Stage2Ingest, VersionedIngestKind};
 use mmoldb_db::ConnectionPool;
 use mmoldb_db::db::{refresh_game_matviews, refresh_player_matviews};
@@ -7,8 +9,6 @@ use std::num::NonZero;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
-use crate::ingest_time::TimeIngestFromVersions;
-use crate::partitioner::Partitioner;
 
 #[derive(Debug, Clone)]
 pub struct ProcessingArgs {
@@ -40,9 +40,9 @@ pub async fn process_entity_kind(
                 }
                 Err(err) => {
                     warn!(
-                "Couldn't get database connection to update game matviews: {}",
-                err
-            );
+                        "Couldn't get database connection to update game matviews: {}",
+                        err
+                    );
                 }
             }
         }

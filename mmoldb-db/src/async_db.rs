@@ -19,14 +19,11 @@ pub async fn stream_unprocessed_versions(
             vp_dsl::versions_processed
                 .filter(vp_dsl::kind.eq(v_dsl::kind))
                 .filter(vp_dsl::entity_id.eq(v_dsl::entity_id))
-                .filter(vp_dsl::valid_from.eq(v_dsl::valid_from))
+                .filter(vp_dsl::valid_from.eq(v_dsl::valid_from)),
         )))
         // Callers of this function rely on the results being sorted by
         // (valid_from, entity_id) with the highest id last
-        .order_by((
-            v_dsl::valid_from.asc(),
-            v_dsl::entity_id.asc(),
-        ))
+        .order_by((v_dsl::valid_from.asc(), v_dsl::entity_id.asc()))
         .select(DbVersion::as_select())
         .load_stream::<DbVersion>(conn)
         .await?

@@ -15,7 +15,7 @@ pub(crate) fn create_cheers_table(
     cheers: &HashSet<String>,
 ) -> QueryResult<CheerTable> {
     if cheers.is_empty() {
-        return Ok(CheerTable::new())
+        return Ok(CheerTable::new());
     }
 
     let cheer_table = loop {
@@ -50,11 +50,14 @@ fn create_cheers_table_inner(
         .map_ok(|cheer| (cheer.cheer, cheer.id))
         .collect::<QueryResult<HashMap<String, i64>>>()?;
 
-    let new_cheers = cheers.iter()
-        .filter_map(|cheer| if cheer_table.contains_key(cheer) {
-            None
-        } else {
-            Some(NewCheer { cheer })
+    let new_cheers = cheers
+        .iter()
+        .filter_map(|cheer| {
+            if cheer_table.contains_key(cheer) {
+                None
+            } else {
+                Some(NewCheer { cheer })
+            }
         })
         // Sort them to avoid deadlocks when multiple tasks try to insert
         // the same cheers in a different order

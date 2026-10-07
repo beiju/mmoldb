@@ -4,14 +4,14 @@
 
 use crate::QueryError;
 use crate::data_schema::data::feed_event_versions::dsl as feed_event_versions_dsl;
-use crate::data_schema::data::versions::dsl as versions_dsl;
 use crate::data_schema::data::feed_events::dsl as feed_events_dsl;
+use crate::data_schema::data::versions::dsl as versions_dsl;
+use crate::models::{NewFeedEvent, NewFeedEventVersion, NewVersion};
 use chron::ChronEntity;
 use chrono::NaiveDateTime;
 use diesel::{PgConnection, prelude::*};
 use itertools::Itertools;
 use tracing::{error, info};
-use crate::models::{NewFeedEvent, NewFeedEventVersion, NewVersion};
 
 pub fn get_latest_raw_version_cursor(
     conn: &mut PgConnection,
@@ -54,10 +54,7 @@ pub fn get_latest_combined_feed_event_version_cursor(
     conn: &mut PgConnection,
 ) -> QueryResult<Option<(NaiveDateTime, String)>> {
     feed_events_dsl::feed_events
-        .select((
-            feed_events_dsl::timestamp,
-            feed_events_dsl::event_id,
-        ))
+        .select((feed_events_dsl::timestamp, feed_events_dsl::event_id))
         .order_by((
             feed_events_dsl::timestamp.desc(),
             feed_events_dsl::event_id.desc(),
@@ -154,13 +151,15 @@ pub fn insert_feed_events(
 ) -> QueryResult<usize> {
     let new_versions = versions
         .iter()
-        .map(|(event_id, subject_type, subject_id, timestamp, data)| NewFeedEvent {
-            event_id,
-            subject_type,
-            subject_id,
-            timestamp: *timestamp,
-            data,
-        })
+        .map(
+            |(event_id, subject_type, subject_id, timestamp, data)| NewFeedEvent {
+                event_id,
+                subject_type,
+                subject_id,
+                timestamp: *timestamp,
+                data,
+            },
+        )
         .collect_vec();
 
     diesel::copy_from(feed_events_dsl::feed_events)

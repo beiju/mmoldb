@@ -13,7 +13,7 @@ pub trait OneAu {
 impl<T: OneAu + Default> OneAu for Option<T> {
     type Field = T::Field;
 
-    fn fields() -> impl Iterator<Item=Self::Field> {
+    fn fields() -> impl Iterator<Item = Self::Field> {
         <T as OneAu>::fields()
     }
 
@@ -25,7 +25,7 @@ impl<T: OneAu + Default> OneAu for Option<T> {
 impl<T: OneAu + Default + Clone> OneAu for Vec<T> {
     type Field = T::Field;
 
-    fn fields() -> impl Iterator<Item=Self::Field> {
+    fn fields() -> impl Iterator<Item = Self::Field> {
         <T as OneAu>::fields()
     }
 
@@ -48,7 +48,9 @@ macro_rules! one_au_arithmetic {
     ($type_name:ident, $value:expr) => {
         impl OneAu for $type_name {
             type Field = ();
-            fn fields() -> impl Iterator<Item = Self::Field> { std::iter::once(()) }
+            fn fields() -> impl Iterator<Item = Self::Field> {
+                std::iter::once(())
+            }
             fn au(self, field: Self::Field) -> Self {
                 let () = field;
                 self + $value
@@ -75,7 +77,9 @@ one_au_arithmetic!(f64, 1.0);
 
 impl OneAu for bool {
     type Field = ();
-    fn fields() -> impl Iterator<Item = Self::Field> { std::iter::once(()) }
+    fn fields() -> impl Iterator<Item = Self::Field> {
+        std::iter::once(())
+    }
     fn au(self, field: Self::Field) -> Self {
         let () = field;
         !self
@@ -84,7 +88,9 @@ impl OneAu for bool {
 
 impl OneAu for String {
     type Field = ();
-    fn fields() -> impl Iterator<Item = Self::Field> { std::iter::once(()) }
+    fn fields() -> impl Iterator<Item = Self::Field> {
+        std::iter::once(())
+    }
     fn au(self, field: Self::Field) -> Self {
         let () = field;
         format!("{self}1")
@@ -93,7 +99,9 @@ impl OneAu for String {
 
 impl<'a> OneAu for &'a str {
     type Field = ();
-    fn fields() -> impl Iterator<Item = Self::Field> { std::iter::once(()) }
+    fn fields() -> impl Iterator<Item = Self::Field> {
+        std::iter::once(())
+    }
     fn au(self, field: Self::Field) -> Self {
         let () = field;
         if self == STRING_ONE {
@@ -107,7 +115,9 @@ impl<'a> OneAu for &'a str {
 #[cfg(feature = "chrono")]
 impl OneAu for chrono::NaiveDateTime {
     type Field = ();
-    fn fields() -> impl Iterator<Item = Self::Field> { std::iter::once(()) }
+    fn fields() -> impl Iterator<Item = Self::Field> {
+        std::iter::once(())
+    }
     fn au(self, field: Self::Field) -> Self {
         let () = field;
         self + chrono::Duration::seconds(1)

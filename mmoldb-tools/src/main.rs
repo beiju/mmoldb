@@ -1,7 +1,7 @@
 pub mod tables;
 
-use clap::{Parser, Subcommand};
 use crate::tables::{CheckTablesError, KindStyle};
+use clap::{Parser, Subcommand};
 
 #[derive(Subcommand)]
 #[command(version, about, long_about = None)]
@@ -28,11 +28,10 @@ struct Cli {
 fn main() -> Result<(), CheckTablesError> {
     let cli = Cli::parse();
 
-    tables::check_tables()
-        .map_err(|err| {
-            eprintln!("Check tables failed: {}", err);
-            err
-        })?;
+    tables::check_tables().map_err(|err| {
+        eprintln!("Check tables failed: {}", err);
+        err
+    })?;
 
     match &cli.command {
         Commands::DeleteDerived => {
@@ -72,7 +71,12 @@ fn gen_delete_derived() {
 
     for (kind, table) in &tables.derived_tables {
         match table {
-            KindStyle::Game { root_table, child_tables, auxiliary_tables, materialized_views: _ } => {
+            KindStyle::Game {
+                root_table,
+                child_tables,
+                auxiliary_tables,
+                materialized_views: _,
+            } => {
                 println!("\t-- base table for kind={kind}");
                 emit_table(root_table);
 
@@ -90,7 +94,11 @@ fn gen_delete_derived() {
                     }
                 }
             }
-            KindStyle::Version { version_derived_tables, auxiliary_tables, feed_derived_tables } => {
+            KindStyle::Version {
+                version_derived_tables,
+                auxiliary_tables,
+                feed_derived_tables,
+            } => {
                 if !version_derived_tables.is_empty() {
                     println!("\t-- version-derived tables for kind={kind}");
                     for version_derived_table in version_derived_tables {
@@ -119,14 +127,22 @@ fn gen_delete_derived() {
     // Refresh any matviews
     for (kind, table) in &tables.derived_tables {
         match table {
-            KindStyle::Game { root_table: _, child_tables: _, auxiliary_tables: _, materialized_views } => {
+            KindStyle::Game {
+                root_table: _,
+                child_tables: _,
+                auxiliary_tables: _,
+                materialized_views,
+            } => {
                 println!("-- refresh materialized views for kind={kind}");
                 for materialized_view in materialized_views {
                     println!("refresh materialized view data.{materialized_view};");
                 }
-
             }
-            KindStyle::Version { version_derived_tables: _, auxiliary_tables: _, feed_derived_tables: _ } => {}
+            KindStyle::Version {
+                version_derived_tables: _,
+                auxiliary_tables: _,
+                feed_derived_tables: _,
+            } => {}
         }
     }
 
@@ -151,14 +167,22 @@ fn gen_delete_derived_after(after: &str, for_kind: Option<&str>) {
                 println!("\t-- deleting from game-style table data.{root_table}");
                 println!("\tdelete from data.{root_table} where valid_from >= '{after}';");
             }
-            KindStyle::Version { version_derived_tables, auxiliary_tables, feed_derived_tables } => {
+            KindStyle::Version {
+                version_derived_tables,
+                auxiliary_tables,
+                feed_derived_tables,
+            } => {
                 println!("\t-- deleting from version-style table data.{kind}");
 
                 if !version_derived_tables.is_empty() {
                     println!("\t-- deleting version-derived tables for kind={kind}");
                     for version_derived_table in version_derived_tables {
-                        println!("\tdelete from data.{version_derived_table} where valid_from >= '{after}';");
-                        println!("\tupdate data.{version_derived_table} set valid_until=null where valid_until >= '{after}';");
+                        println!(
+                            "\tdelete from data.{version_derived_table} where valid_from >= '{after}';"
+                        );
+                        println!(
+                            "\tupdate data.{version_derived_table} set valid_until=null where valid_until >= '{after}';"
+                        );
                     }
                 }
 
@@ -171,8 +195,12 @@ fn gen_delete_derived_after(after: &str, for_kind: Option<&str>) {
 
                 // TODO Add an optimization to collapse multiple of these if for_kind is None.
                 //   Note: Don't delete feed_ingest_log unless feed version delete is implemented
-                println!("\tdelete from data.versions_processed where kind = '{kind}' and valid_from >= '{after}';");
-                println!("\tdelete from info.version_ingest_log where kind = '{kind}' and valid_from >= '{after}';");
+                println!(
+                    "\tdelete from data.versions_processed where kind = '{kind}' and valid_from >= '{after}';"
+                );
+                println!(
+                    "\tdelete from info.version_ingest_log where kind = '{kind}' and valid_from >= '{after}';"
+                );
             }
         }
     }

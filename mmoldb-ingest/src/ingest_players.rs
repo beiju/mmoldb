@@ -1,16 +1,21 @@
+use chrono::{DateTime, Utc};
 use float_eq::float_ne;
 use futures::Stream;
 use hashbrown::HashMap;
 use itertools::{Either, Itertools};
-use mmolb_parsing::enums::{Attribute, AttributeCategory, EquipmentSlot, Handedness, ImplicitEquipmentEffectSource, Position, Slot, Uncategorized};
-use mmolb_parsing::player::{ComplexTalkStars, EquipmentEffect, PlayerEquipment, TalkCategory, TalkStars};
+use mmolb_parsing::enums::{
+    Attribute, AttributeCategory, EquipmentSlot, Handedness, ImplicitEquipmentEffectSource,
+    Position, Slot, Uncategorized,
+};
+use mmolb_parsing::player::{
+    ComplexTalkStars, EquipmentEffect, PlayerEquipment, TalkCategory, TalkStars,
+};
 use mmolb_parsing::{
     AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, RemovedLater,
     RemovedLaterResult,
 };
 use std::fmt::Display;
 use std::iter;
-use chrono::{DateTime, Utc};
 use strum::IntoEnumIterator;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -19,11 +24,17 @@ use crate::util::datetime_from_parts;
 use crate::{IngestibleFromVersions, PreparedIngestItem, VersionIngestLogs, util};
 use chron::ChronEntity;
 use mmoldb_db::db::NameEmojiTooltip;
-use mmoldb_db::models::{NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog, NewVersionProcessed};
+use mmoldb_db::models::{
+    NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion,
+    NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion,
+    NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewVersionIngestLog,
+    NewVersionProcessed,
+};
 use mmoldb_db::taxa::{Taxa, TaxaAttributeCategory, TaxaModificationType, TaxaSlot};
 use mmoldb_db::{AsyncPgConnection, PgConnection, QueryResult, async_db, db};
 
-const PENDING_AND_SCHEDULED_LEVELS_BECOME_RELIABLE: DateTime<Utc> = datetime_from_parts(2026, 04, 04, 6, 1, 17, 614712);
+const PENDING_AND_SCHEDULED_LEVELS_BECOME_RELIABLE: DateTime<Utc> =
+    datetime_from_parts(2026, 04, 04, 6, 1, 17, 614712);
 
 pub struct PlayerIngestFromVersions;
 
@@ -80,7 +91,7 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
                             }
                             (m.name.as_str(), m.emoji.as_str(), m.description.as_str())
                         })
-                })
+                }),
             })
             .unique()
             .collect_vec();
@@ -91,7 +102,7 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
             .map(|item| match item {
                 PreparedIngestItem::MarkAsSkipped(entity_id, valid_from) => {
                     let processed = NewVersionProcessed {
-                        kind: "player",  // TODO avoid repeating literal
+                        kind: "player", // TODO avoid repeating literal
                         entity_id,
                         valid_from: valid_from.naive_utc(),
                         skipped: true,
@@ -111,7 +122,7 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
                 }
                 PreparedIngestItem::MarkAsFatalError(entity_id, valid_from) => {
                     let processed = NewVersionProcessed {
-                        kind: "player",  // TODO avoid repeating literal
+                        kind: "player", // TODO avoid repeating literal
                         entity_id,
                         valid_from: valid_from.naive_utc(),
                         skipped: false,
@@ -129,7 +140,9 @@ impl IngestibleFromVersions for PlayerIngestFromVersions {
                         Vec::new(),
                     )
                 }
-                PreparedIngestItem::DoIngest(entity) => chron_player_as_new(taxa, entity, &modifications),
+                PreparedIngestItem::DoIngest(entity) => {
+                    chron_player_as_new(taxa, entity, &modifications)
+                }
             })
             .collect_vec();
 
@@ -268,9 +281,7 @@ fn chron_equipment_effect_as_new<'g>(
     let effect = match effect {
         Ok(effect) => effect,
         Err(NotRecognized(value)) => {
-            ingest_logs.error(format!(
-                "Skipping unrecognized equipment effect {value:?}",
-            ));
+            ingest_logs.error(format!("Skipping unrecognized equipment effect {value:?}",));
             return None;
         }
     };
@@ -661,13 +672,15 @@ fn chron_player_as_new<'a>(
                     match stars {
                         TalkStars::Complex(ComplexTalkStars { attribute, .. }) => {
                             match attribute {
-                                Ok(attribute) => if attribute != attr {
-                                    ingest_logs.warn(format!(
-                                        "Attribute property of a talk page attribute ({}) did not \
-                                        match the object key for this attribute's object ({}).",
-                                        attribute,
-                                        <Attribute as Into<&'static str>>::into(*attr),
-                                    ));
+                                Ok(attribute) => {
+                                    if attribute != attr {
+                                        ingest_logs.warn(format!(
+                                            "Attribute property of a talk page attribute ({}) did not \
+                                            match the object key for this attribute's object ({}).",
+                                            attribute,
+                                            <Attribute as Into<&'static str>>::into(*attr),
+                                        ));
+                                    }
                                 }
                                 Err(AddedLater) => {
                                     // This is fine, for a while ComplexTalkStars didn't have an attribute
@@ -1036,27 +1049,29 @@ fn chron_player_as_new<'a>(
 
                         if let Some(implicit) = &equipment.implicit {
                             if implicit.source != Ok(ImplicitEquipmentEffectSource::CorruptingOrb) {
-                                ingest_logs.warn(format!("Implicit equipment effect had unknown source {:?}", implicit.source));
+                                ingest_logs.warn(format!(
+                                    "Implicit equipment effect had unknown source {:?}",
+                                    implicit.source
+                                ));
                             }
                             if !implicit.extra_fields.is_empty() {
-                                ingest_logs.warn(format!("Implicit equipment effect had extra fields {:?}", implicit.extra_fields));
+                                ingest_logs.warn(format!(
+                                    "Implicit equipment effect had extra fields {:?}",
+                                    implicit.extra_fields
+                                ));
                             }
 
-                            effects.extend(
-                                implicit.effects
-                                    .iter()
-                                    .filter_map(|effect| {
-                                        chron_equipment_effect_as_new(
-                                            taxa,
-                                            &mut ingest_logs,
-                                            entity,
-                                            &mut effect_index,
-                                            &effect,
-                                            equipment_slot.clone(),
-                                            true,
-                                        )
-                                    })
-                            );
+                            effects.extend(implicit.effects.iter().filter_map(|effect| {
+                                chron_equipment_effect_as_new(
+                                    taxa,
+                                    &mut ingest_logs,
+                                    entity,
+                                    &mut effect_index,
+                                    &effect,
+                                    equipment_slot.clone(),
+                                    true,
+                                )
+                            }));
                         }
 
                         let new_equipment = NewPlayerEquipmentVersion {
@@ -1088,7 +1103,10 @@ fn chron_player_as_new<'a>(
                             // there are any effects MMOLDB skips because it lacks support for them.
                             num_effects: effects.len() as i32,
                             durability: equipment.durability.ok().map(|d| d as i32),
-                            prefix_position_type: equipment.prefix_position_type.ok().map(|pt| taxa.slot_type_id(pt.into())),
+                            prefix_position_type: equipment
+                                .prefix_position_type
+                                .ok()
+                                .map(|pt| taxa.slot_type_id(pt.into())),
                             specialized: equipment.specialized.ok(),
                             corrupted: equipment.corrupted.is_ok_and(|c| c),
                         };
@@ -1159,7 +1177,7 @@ fn chron_player_as_new<'a>(
                         base_attributes.pitch_types.len(),
                         pitch_types.len()
                     ));
-                } else  {
+                } else {
                     ingest_logs.warn(format!(
                         "PitchTypes in BaseAttributes has length {}, but PitchTypes on the root \
                         object has length {} (expected equal length)",
@@ -1346,61 +1364,70 @@ fn chron_player_as_new<'a>(
     // "level" is straight from the player data, if it exists, and
     // reflects what level that player has earned, regardless whether
     // the team owner has applied those levels yet
-    
+
     let level = entity.data.level.as_ref().ok().map(|level| *level as i32);
 
-    let (play_level, planned_level) = if entity.valid_from <= PENDING_AND_SCHEDULED_LEVELS_BECOME_RELIABLE {
-        // Before this date, pending_level_ups and scheduled_level_ups weren't
-        // correctly cleared on recompose, so we can't trust the data.
-        (None, None)
-    } else {
-        // "planned level" is the highest level that the user has selected a
-        // level-up value for. If pending_level_ups is present it's one less
-        // than the lowest level there, otherwise it's `level`
-        let planned_level = entity.data.pending_level_ups.as_ref().ok()
-            .and_then(|pending_level_ups| {
-                // I verified that it's not enough to just use .first() or .last(). See
-                // https://cheapcashews.beiju.me/chron/v0/entities?kind=player&id=6843129f295b2368c0ac7c63&at=2026-01-20T17:35:06.373720Z
-                pending_level_ups.iter()
-                    .map(|pending_level_up| pending_level_up.level as i32 - 1)
-                    .min()
-            })
-            .or(level);
+    let (play_level, planned_level) =
+        if entity.valid_from <= PENDING_AND_SCHEDULED_LEVELS_BECOME_RELIABLE {
+            // Before this date, pending_level_ups and scheduled_level_ups weren't
+            // correctly cleared on recompose, so we can't trust the data.
+            (None, None)
+        } else {
+            // "planned level" is the highest level that the user has selected a
+            // level-up value for. If pending_level_ups is present it's one less
+            // than the lowest level there, otherwise it's `level`
+            let planned_level = entity
+                .data
+                .pending_level_ups
+                .as_ref()
+                .ok()
+                .and_then(|pending_level_ups| {
+                    // I verified that it's not enough to just use .first() or .last(). See
+                    // https://cheapcashews.beiju.me/chron/v0/entities?kind=player&id=6843129f295b2368c0ac7c63&at=2026-01-20T17:35:06.373720Z
+                    pending_level_ups
+                        .iter()
+                        .map(|pending_level_up| pending_level_up.level as i32 - 1)
+                        .min()
+                })
+                .or(level);
 
-        // "play level" is the level that has actually been applied. note
-        // that there is a delay between when a level is selected and when
-        // it gets applied, which is why this is not always the same as
-        // planned_level. If scheduled_level_ups is present it's one less than
-        // the lowest level there, otherwise it's `planned_level`
-        let play_level = entity.data.scheduled_level_ups.as_ref().ok()
-            .and_then(|scheduled_level_ups| {
-                // I don't know that it's not enough to just use .first() for this one, but this feels
-                // like the safer option
-                scheduled_level_ups.iter()
-                    .map(|scheduled_level_up| scheduled_level_up.level as i32 - 1)
-                    .min()
-            })
-            .or(planned_level);
+            // "play level" is the level that has actually been applied. note
+            // that there is a delay between when a level is selected and when
+            // it gets applied, which is why this is not always the same as
+            // planned_level. If scheduled_level_ups is present it's one less than
+            // the lowest level there, otherwise it's `planned_level`
+            let play_level = entity
+                .data
+                .scheduled_level_ups
+                .as_ref()
+                .ok()
+                .and_then(|scheduled_level_ups| {
+                    // I don't know that it's not enough to just use .first() for this one, but this feels
+                    // like the safer option
+                    scheduled_level_ups
+                        .iter()
+                        .map(|scheduled_level_up| scheduled_level_up.level as i32 - 1)
+                        .min()
+                })
+                .or(planned_level);
 
-        (play_level, planned_level)
-    };
+            (play_level, planned_level)
+        };
 
     // Sanity check: Every level from play_level (exclusive) to planned_level (inclusive) should
     // have a corresponding entry in scheduled_level_ups, and vice versa
     match (play_level, planned_level) {
-        (None, None) => {},
+        (None, None) => {}
         (Some(play_level), None) => {
             ingest_logs.warn(format!(
                 "Player {} at {} had a play_level ({play_level}) but no pending_level",
-                entity.entity_id,
-                entity.valid_from,
+                entity.entity_id, entity.valid_from,
             ));
         }
         (None, Some(planned_level)) => {
             ingest_logs.warn(format!(
                 "Player {} at {} had a planned_level ({planned_level}) but no play_level",
-                entity.entity_id,
-                entity.valid_from,
+                entity.entity_id, entity.valid_from,
             ));
         }
         (Some(play_level), Some(planned_level)) => {
@@ -1409,7 +1436,8 @@ fn chron_player_as_new<'a>(
                     // turn it from (inclusive, exclusive) to (exclusive, inclusive)
                     .map(|level| level + 1)
                     .collect_vec();
-                let actual_levels_scheduled = scheduled_level_ups.iter()
+                let actual_levels_scheduled = scheduled_level_ups
+                    .iter()
                     .map(|scheduled_level_up| scheduled_level_up.level as i32)
                     .collect_vec();
                 if predicted_levels_scheduled != actual_levels_scheduled {
@@ -1418,16 +1446,14 @@ fn chron_player_as_new<'a>(
                         play_level ({play_level}; exclusive) to planned_level ({planned_level}; \
                         inclusive). Expected scheduled levels {predicted_levels_scheduled:?}, but \
                         observed scheduled levels {actual_levels_scheduled:?}.",
-                        entity.entity_id,
-                        entity.valid_from,
+                        entity.entity_id, entity.valid_from,
                     ));
                 }
             } else {
                 ingest_logs.warn(format!(
                     "Player {} at {} had a play_level with no scheduled_level_ups. \
                     This is a MMOLDB logic error.",
-                    entity.entity_id,
-                    entity.valid_from,
+                    entity.entity_id, entity.valid_from,
                 ));
             }
         }
@@ -1436,19 +1462,17 @@ fn chron_player_as_new<'a>(
     // Sanity check: Every level from planned_level (exclusive) to level (inclusive) should
     // have a corresponding entry in pending_level_ups, and vice versa
     match (planned_level, level) {
-        (None, None) => {},
+        (None, None) => {}
         (Some(planned_level), None) => {
             ingest_logs.warn(format!(
                 "Player {} at {} had a planned_level ({planned_level}) but no level",
-                entity.entity_id,
-                entity.valid_from,
+                entity.entity_id, entity.valid_from,
             ));
         }
         (None, Some(level)) => {
             ingest_logs.warn(format!(
                 "Player {} at {} had a level ({level}) but no planned_level",
-                entity.entity_id,
-                entity.valid_from,
+                entity.entity_id, entity.valid_from,
             ));
         }
         (Some(planned_level), Some(level)) => {
@@ -1457,7 +1481,8 @@ fn chron_player_as_new<'a>(
                     // turn it from (inclusive, exclusive) to (exclusive, inclusive)
                     .map(|level| level + 1)
                     .collect_vec();
-                let actual_levels_pending = pending_level_ups.iter()
+                let actual_levels_pending = pending_level_ups
+                    .iter()
                     .map(|pending_level_up| pending_level_up.level as i32)
                     .collect_vec();
                 if predicted_levels_pending != actual_levels_pending {
@@ -1466,16 +1491,14 @@ fn chron_player_as_new<'a>(
                         planned_level ({planned_level}; exclusive) to level ({level}; inclusive). \
                         Expected pending levels {predicted_levels_pending:?}, but observed pending \
                         levels {actual_levels_pending:?}.",
-                        entity.entity_id,
-                        entity.valid_from,
+                        entity.entity_id, entity.valid_from,
                     ));
                 }
             } else {
                 ingest_logs.warn(format!(
                     "Player {} at {} had a planned_level with no pending_level_ups. \
                     This is a MMOLDB logic error.",
-                    entity.entity_id,
-                    entity.valid_from,
+                    entity.entity_id, entity.valid_from,
                 ));
             }
         }
@@ -1536,9 +1559,14 @@ fn chron_player_as_new<'a>(
             .map(|bonus| bonus.pitch_category)
             .sorted()
             .collect(),
-        friends: entity.data.friends.as_ref().ok().map_or(Vec::new(), |friends| {
-            friends.iter().map(String::as_str).collect()
-        }),
+        friends: entity
+            .data
+            .friends
+            .as_ref()
+            .ok()
+            .map_or(Vec::new(), |friends| {
+                friends.iter().map(String::as_str).collect()
+            }),
     };
 
     (

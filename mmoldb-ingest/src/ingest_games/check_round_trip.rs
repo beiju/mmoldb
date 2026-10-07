@@ -38,18 +38,36 @@ fn downgrade_to_match(
     //   identical. Refactor that logic out into a function somehow.
     match ours {
         ParsedEventMessage::Ball { assassinations, .. } => {
-            if let ParsedEventMessage::Ball { assassinations: original_assassinations, .. } = original {
-                if original_assassinations.is_empty() { assassinations.clear() }
+            if let ParsedEventMessage::Ball {
+                assassinations: original_assassinations,
+                ..
+            } = original
+            {
+                if original_assassinations.is_empty() {
+                    assassinations.clear()
+                }
             }
         }
         ParsedEventMessage::Walk { assassinations, .. } => {
-            if let ParsedEventMessage::Walk { assassinations: original_assassinations, .. } = original {
-                if original_assassinations.is_empty() { assassinations.clear() }
+            if let ParsedEventMessage::Walk {
+                assassinations: original_assassinations,
+                ..
+            } = original
+            {
+                if original_assassinations.is_empty() {
+                    assassinations.clear()
+                }
             }
         }
         ParsedEventMessage::FairBall { assassinations, .. } => {
-            if let ParsedEventMessage::FairBall { assassinations: original_assassinations, .. } = original {
-                if original_assassinations.is_empty() { assassinations.clear() }
+            if let ParsedEventMessage::FairBall {
+                assassinations: original_assassinations,
+                ..
+            } = original
+            {
+                if original_assassinations.is_empty() {
+                    assassinations.clear()
+                }
             }
         }
         ParsedEventMessage::BatterToBase { fielder, .. } => {

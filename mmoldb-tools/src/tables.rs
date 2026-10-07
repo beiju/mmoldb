@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use thiserror::Error;
 use lazy_static::lazy_static;
 use mmoldb_db::db;
 use mmoldb_db::db::{ColumnType, DbTable};
+use std::collections::HashMap;
+use thiserror::Error;
 
 #[derive(Debug)]
 pub struct TableWithParent {
@@ -61,75 +61,152 @@ lazy_static! {
         let prepopulated_tables = vec!["modification_effects"];
 
         let origin_tables = vec![
-            TableWithProcessed { table: "entities", processed: None },
-            TableWithProcessed { table: "versions", processed: Some("versions_processed") },
-            TableWithProcessed { table: "feed_events", processed: Some("feed_events_processed") },
+            TableWithProcessed {
+                table: "entities",
+                processed: None,
+            },
+            TableWithProcessed {
+                table: "versions",
+                processed: Some("versions_processed"),
+            },
+            TableWithProcessed {
+                table: "feed_events",
+                processed: Some("feed_events_processed"),
+            },
         ];
 
         let mut derived_tables = HashMap::new();
-        derived_tables.insert("game", KindStyle::Game {
-            root_table: "games",
-            child_tables: vec![
-                TableWithParent { table: "events",                     parent_table: "games",  parent_column: "game_id"  },
-                TableWithParent { table: "event_baserunners",          parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "event_fielders",             parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "event_balk_reasons",         parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "aurora_photos",              parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "consumption_contest_events", parent_table: "games",  parent_column: "game_id"  },
-                TableWithParent { table: "consumption_contests",       parent_table: "games",  parent_column: "game_id"  },
-                TableWithParent { table: "door_prizes",                parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "door_prize_items",           parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "efflorescence",              parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "efflorescence_growth",       parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "ejections",                  parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "failed_ejections",           parent_table: "events", parent_column: "event_id" },
-                TableWithParent { table: "wither",                     parent_table: "games",  parent_column: "game_id"  },
-                TableWithParent { table: "parties",                    parent_table: "games",  parent_column: "game_id"  },
-                TableWithParent { table: "pitcher_changes",            parent_table: "games",  parent_column: "game_id"  },
-                TableWithParent { table: "event_cheers",               parent_table: "events", parent_column: "event_id" },
-            ],
-            auxiliary_tables: vec![
-                "weather",
-                "cheers",
-                "balk_reasons",
-            ],
-            materialized_views: vec![
-                "events_extended"
-            ],
-        });
-        derived_tables.insert("team", KindStyle::Version {
-            version_derived_tables: vec![
-                "team_versions",
-                "team_player_versions",
-            ],
-            auxiliary_tables: vec![
-                "modifications",
-            ],
-            feed_derived_tables: vec![
-                "team_games_played",
-            ],
-        });
-        derived_tables.insert("player", KindStyle::Version {
-            version_derived_tables: vec![
-                "player_versions",
-                "player_modification_versions",
-                "player_equipment_versions",
-                "player_equipment_effect_versions",
-                "player_report_versions",
-                "player_report_attribute_versions",
-                "player_pitch_type_versions",
-                "player_pitch_type_bonus_versions",
-                "player_pitch_category_bonus_versions",
-            ],
-            auxiliary_tables: Vec::new(),
-            feed_derived_tables: vec![
-                "player_recompositions",
-                "player_attribute_augments",
-                "player_paradigm_shifts",
-            ],
-        });
+        derived_tables.insert(
+            "game",
+            KindStyle::Game {
+                root_table: "games",
+                child_tables: vec![
+                    TableWithParent {
+                        table: "events",
+                        parent_table: "games",
+                        parent_column: "game_id",
+                    },
+                    TableWithParent {
+                        table: "event_baserunners",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "event_fielders",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "event_balk_reasons",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "aurora_photos",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "consumption_contest_events",
+                        parent_table: "games",
+                        parent_column: "game_id",
+                    },
+                    TableWithParent {
+                        table: "consumption_contests",
+                        parent_table: "games",
+                        parent_column: "game_id",
+                    },
+                    TableWithParent {
+                        table: "door_prizes",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "door_prize_items",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "efflorescence",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "efflorescence_growth",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "ejections",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "failed_ejections",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                    TableWithParent {
+                        table: "wither",
+                        parent_table: "games",
+                        parent_column: "game_id",
+                    },
+                    TableWithParent {
+                        table: "parties",
+                        parent_table: "games",
+                        parent_column: "game_id",
+                    },
+                    TableWithParent {
+                        table: "pitcher_changes",
+                        parent_table: "games",
+                        parent_column: "game_id",
+                    },
+                    TableWithParent {
+                        table: "event_cheers",
+                        parent_table: "events",
+                        parent_column: "event_id",
+                    },
+                ],
+                auxiliary_tables: vec!["weather", "cheers", "balk_reasons"],
+                materialized_views: vec!["events_extended"],
+            },
+        );
+        derived_tables.insert(
+            "team",
+            KindStyle::Version {
+                version_derived_tables: vec!["team_versions", "team_player_versions"],
+                auxiliary_tables: vec!["modifications"],
+                feed_derived_tables: vec!["team_games_played"],
+            },
+        );
+        derived_tables.insert(
+            "player",
+            KindStyle::Version {
+                version_derived_tables: vec![
+                    "player_versions",
+                    "player_modification_versions",
+                    "player_equipment_versions",
+                    "player_equipment_effect_versions",
+                    "player_report_versions",
+                    "player_report_attribute_versions",
+                    "player_pitch_type_versions",
+                    "player_pitch_type_bonus_versions",
+                    "player_pitch_category_bonus_versions",
+                ],
+                auxiliary_tables: Vec::new(),
+                feed_derived_tables: vec![
+                    "player_recompositions",
+                    "player_attribute_augments",
+                    "player_paradigm_shifts",
+                ],
+            },
+        );
 
-        Tables { prepopulated_tables, origin_tables, derived_tables }
+        Tables {
+            prepopulated_tables,
+            origin_tables,
+            derived_tables,
+        }
     };
 }
 
@@ -148,24 +225,18 @@ pub enum CheckTablesError {
     ListedTableDoesNotExist(String),
 
     #[error("Supposed parent column {column} of table {table} in KIND_TABLES did not exist")]
-    ListedParentColumnDoesNotExist {
-        column: String,
-        table: String,
-    },
+    ListedParentColumnDoesNotExist { column: String, table: String },
 
     #[error("Supposed parent column {column} of table {table} in KIND_TABLES was not bigint type")]
-    ListedParentColumnIsNotBigint {
-        column: String,
-        table: String,
-    },
+    ListedParentColumnIsNotBigint { column: String, table: String },
 
     #[error("Table {parent}, in KIND_TABLES as the parent of {of}, does not exist")]
-    ParentTableDoesNotExist {
-        parent: String,
-        of: String,
-    },
+    ParentTableDoesNotExist { parent: String, of: String },
 
-    #[error("Table {table} column {reference_column} is supposed to reference {reference_table}, but was a value instead")]
+    #[error(
+        "Table {table} column {reference_column} is supposed to reference {reference_table}, but \
+        was a value instead"
+    )]
     ListedReferenceIsValue {
         table: String,
         reference_column: String,
@@ -183,7 +254,7 @@ pub enum CheckTablesError {
         referenced_table: String,
         actual_table: String,
         actual_column: String,
-    }
+    },
 }
 
 pub fn tables() -> &'static Tables {
@@ -195,8 +266,7 @@ pub fn check_tables() -> Result<(), CheckTablesError> {
     let pool = mmoldb_db::get_pool(1)?;
     let mut conn = pool.get()?;
 
-    let mut unaccountedfor_tables =
-        db::tables_for_schema(&mut conn, "mmoldb", "data")?;
+    let mut unaccountedfor_tables = db::tables_for_schema(&mut conn, "mmoldb", "data")?;
 
     // This is obsolete and is going to be deleted soon
     record_table(&mut unaccountedfor_tables, "feed_event_versions")?;
@@ -216,13 +286,22 @@ pub fn check_tables() -> Result<(), CheckTablesError> {
 
     for (_kind, tables) in &tables.derived_tables {
         match tables {
-            KindStyle::Game { root_table, child_tables, auxiliary_tables, materialized_views } => {
+            KindStyle::Game {
+                root_table,
+                child_tables,
+                auxiliary_tables,
+                materialized_views,
+            } => {
                 check_child_tables(&mut unaccountedfor_tables, child_tables)?;
                 record_tables(&mut unaccountedfor_tables, auxiliary_tables)?;
                 record_tables(&mut unaccountedfor_tables, materialized_views)?;
                 record_table(&mut unaccountedfor_tables, root_table)?;
-            },
-            KindStyle::Version { version_derived_tables, auxiliary_tables, feed_derived_tables } => {
+            }
+            KindStyle::Version {
+                version_derived_tables,
+                auxiliary_tables,
+                feed_derived_tables,
+            } => {
                 record_tables(&mut unaccountedfor_tables, version_derived_tables)?;
                 record_tables(&mut unaccountedfor_tables, auxiliary_tables)?;
                 record_tables(&mut unaccountedfor_tables, feed_derived_tables)?;
@@ -239,31 +318,50 @@ pub fn check_tables() -> Result<(), CheckTablesError> {
     }
 }
 
-fn record_tables(unaccountedfor_tables: &mut Vec<DbTable>, tables: &[&'static str]) -> Result<(), CheckTablesError> {
+fn record_tables(
+    unaccountedfor_tables: &mut Vec<DbTable>,
+    tables: &[&'static str],
+) -> Result<(), CheckTablesError> {
     for table_name in tables {
         record_table(unaccountedfor_tables, table_name)?;
     }
     Ok(())
 }
 
-fn record_table(unaccountedfor_tables: &mut Vec<DbTable>, table_name: &str) -> Result<(), CheckTablesError> {
-    if let Some(idx) = unaccountedfor_tables.iter().position(|t| t.name == *table_name) {
+fn record_table(
+    unaccountedfor_tables: &mut Vec<DbTable>,
+    table_name: &str,
+) -> Result<(), CheckTablesError> {
+    if let Some(idx) = unaccountedfor_tables
+        .iter()
+        .position(|t| t.name == *table_name)
+    {
         unaccountedfor_tables.swap_remove(idx);
     } else {
-        return Err(CheckTablesError::ListedTableDoesNotExist(table_name.to_string()));
+        return Err(CheckTablesError::ListedTableDoesNotExist(
+            table_name.to_string(),
+        ));
     }
     Ok(())
 }
 
-fn check_child_tables(unaccountedfor_tables: &mut Vec<DbTable>, descendant_tables: &[TableWithParent]) -> Result<(), CheckTablesError> {
+fn check_child_tables(
+    unaccountedfor_tables: &mut Vec<DbTable>,
+    descendant_tables: &[TableWithParent],
+) -> Result<(), CheckTablesError> {
     for descendant in descendant_tables {
         // Find the descendant table, erroring if it doesn't exist
-        let table_idx = unaccountedfor_tables.iter()
+        let table_idx = unaccountedfor_tables
+            .iter()
             .position(|table| table.name == descendant.table)
-            .ok_or_else(|| CheckTablesError::ListedTableDoesNotExist(descendant.table.to_string()))?;
+            .ok_or_else(|| {
+                CheckTablesError::ListedTableDoesNotExist(descendant.table.to_string())
+            })?;
 
         // Find the column that points to the parent, erroring if it doesn't exist
-        let column = unaccountedfor_tables[table_idx].columns.iter()
+        let column = unaccountedfor_tables[table_idx]
+            .columns
+            .iter()
             .find(|column| column.name == descendant.parent_column)
             .ok_or_else(|| CheckTablesError::ListedParentColumnDoesNotExist {
                 column: descendant.parent_column.to_string(),
@@ -272,14 +370,16 @@ fn check_child_tables(unaccountedfor_tables: &mut Vec<DbTable>, descendant_table
 
         // Make sure the column supposedly points to the parent really does so
         match &column.r#type {
-            ColumnType::ValueType(_) => {
-                Err(CheckTablesError::ListedReferenceIsValue {
-                    table: descendant.table.to_string(),
-                    reference_column: descendant.parent_column.to_string(),
-                    reference_table: descendant.parent_table.to_string(),
-                })?
-            }
-            ColumnType::ReferenceType { r#type: _, references_schema: _, references_table } => {
+            ColumnType::ValueType(_) => Err(CheckTablesError::ListedReferenceIsValue {
+                table: descendant.table.to_string(),
+                reference_column: descendant.parent_column.to_string(),
+                reference_table: descendant.parent_table.to_string(),
+            })?,
+            ColumnType::ReferenceType {
+                r#type: _,
+                references_schema: _,
+                references_table,
+            } => {
                 if descendant.parent_table != references_table {
                     // TODO I do not trust the values here
                     Err(CheckTablesError::ListedReferenceTableDoesNotMatch {
@@ -297,7 +397,8 @@ fn check_child_tables(unaccountedfor_tables: &mut Vec<DbTable>, descendant_table
         }
 
         // Ensure the parent table exists
-        unaccountedfor_tables.iter()
+        unaccountedfor_tables
+            .iter()
             .find(|table| table.name == descendant.parent_table)
             .ok_or_else(|| CheckTablesError::ParentTableDoesNotExist {
                 parent: descendant.parent_table.to_string(),

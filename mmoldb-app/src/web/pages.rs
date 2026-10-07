@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use super::docs_pages::*;
 use crate::Db;
 use crate::records_cache::{Record, RecordsCache};
@@ -12,11 +11,12 @@ use mmoldb_db::db;
 use mmoldb_db::db::{GamesStats, PlayersStats, TeamsStats};
 use mmoldb_db::models::DbEventIngestLog;
 use num_format::{Locale, ToFormattedString};
+use rocket::http::ContentType;
 use rocket::http::uri::Origin;
 use rocket::{State, get, uri};
-use rocket::http::ContentType;
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
+use std::fmt::Debug;
 
 const PAGE_OF_GAMES_SIZE: usize = 100;
 
@@ -547,7 +547,6 @@ fn svg_err(err: impl Debug) -> String {
     )
 }
 
-
 #[get("/games/progress_plot.svg")]
 pub async fn games_progress_plot(db: Db) -> (ContentType, String) {
     let content = match db.run(|mut conn| db::games_progress(&mut conn)).await {
@@ -560,7 +559,10 @@ pub async fn games_progress_plot(db: Db) -> (ContentType, String) {
 
 #[get("/player_versions/progress_plot.svg")]
 pub async fn player_versions_progress_plot(db: Db) -> (ContentType, String) {
-    let content = match db.run(|mut conn| db::versions_progress("player", &mut conn)).await {
+    let content = match db
+        .run(|mut conn| db::versions_progress("player", &mut conn))
+        .await
+    {
         Ok(progress) => crate::web::plots::plot("Player version", progress).unwrap_or_else(svg_err),
         Err(err) => svg_err(err),
     };
@@ -570,8 +572,13 @@ pub async fn player_versions_progress_plot(db: Db) -> (ContentType, String) {
 
 #[get("/player_feed_events/progress_plot.svg")]
 pub async fn player_feed_events_progress_plot(db: Db) -> (ContentType, String) {
-    let content = match db.run(|mut conn| db::feed_events_progress("player", &mut conn)).await {
-        Ok(progress) => crate::web::plots::plot("Player feed event", progress).unwrap_or_else(svg_err),
+    let content = match db
+        .run(|mut conn| db::feed_events_progress("player", &mut conn))
+        .await
+    {
+        Ok(progress) => {
+            crate::web::plots::plot("Player feed event", progress).unwrap_or_else(svg_err)
+        }
         Err(err) => svg_err(err),
     };
 
@@ -580,7 +587,10 @@ pub async fn player_feed_events_progress_plot(db: Db) -> (ContentType, String) {
 
 #[get("/team_versions/progress_plot.svg")]
 pub async fn team_versions_progress_plot(db: Db) -> (ContentType, String) {
-    let content = match db.run(|mut conn| db::versions_progress("team", &mut conn)).await {
+    let content = match db
+        .run(|mut conn| db::versions_progress("team", &mut conn))
+        .await
+    {
         Ok(progress) => crate::web::plots::plot("Team version", progress).unwrap_or_else(svg_err),
         Err(err) => svg_err(err),
     };
@@ -590,8 +600,13 @@ pub async fn team_versions_progress_plot(db: Db) -> (ContentType, String) {
 
 #[get("/team_feed_events/progress_plot.svg")]
 pub async fn team_feed_events_progress_plot(db: Db) -> (ContentType, String) {
-    let content = match db.run(|mut conn| db::feed_events_progress("team", &mut conn)).await {
-        Ok(progress) => crate::web::plots::plot("Team feed event", progress).unwrap_or_else(svg_err),
+    let content = match db
+        .run(|mut conn| db::feed_events_progress("team", &mut conn))
+        .await
+    {
+        Ok(progress) => {
+            crate::web::plots::plot("Team feed event", progress).unwrap_or_else(svg_err)
+        }
         Err(err) => svg_err(err),
     };
 
@@ -600,7 +615,10 @@ pub async fn team_feed_events_progress_plot(db: Db) -> (ContentType, String) {
 
 #[get("/time_versions/progress_plot.svg")]
 pub async fn time_versions_progress_plot(db: Db) -> (ContentType, String) {
-    let content = match db.run(|mut conn| db::versions_progress("time", &mut conn)).await {
+    let content = match db
+        .run(|mut conn| db::versions_progress("time", &mut conn))
+        .await
+    {
         Ok(progress) => crate::web::plots::plot("Time version", progress).unwrap_or_else(svg_err),
         Err(err) => svg_err(err),
     };

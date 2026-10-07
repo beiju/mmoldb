@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Ident};
 use syn::spanned::Spanned;
+use syn::{Data, DeriveInput, Ident, parse_macro_input};
 
 #[proc_macro_error]
 #[proc_macro_derive(OneAu)]
@@ -17,24 +17,35 @@ pub fn one_au(input: TokenStream) -> TokenStream {
     let input_vis = &input.vis;
     let input_ident = &input.ident;
     let input_generics = &input.generics;
-    let fields_ident = Ident::new(&format!("{}Fields", input_ident.to_string()), input_ident.span());
-    let fields_spec_with_type: Vec<_> = input_struct.fields.iter()
+    let fields_ident = Ident::new(
+        &format!("{}Fields", input_ident.to_string()),
+        input_ident.span(),
+    );
+    let fields_spec_with_type: Vec<_> = input_struct
+        .fields
+        .iter()
         .map(|field| {
             let Some(field_ident) = &field.ident else {
-                abort!(field.span(), "OneAu can only be used with named struct fields")
+                abort!(
+                    field.span(),
+                    "OneAu can only be used with named struct fields"
+                )
             };
-           (field_ident, &field.ty)
+            (field_ident, &field.ty)
         })
         .collect();
-    let fields_spec: Vec<_> = fields_spec_with_type.iter()
+    let fields_spec: Vec<_> = fields_spec_with_type
+        .iter()
         .map(|(field, _)| field)
         .collect();
-    let fields_list: Vec<_> = fields_spec.iter()
+    let fields_list: Vec<_> = fields_spec
+        .iter()
         .map(|field_spec| {
             quote! { #fields_ident::#field_spec }
         })
         .collect();
-    let field_au_matchers: Vec<_> = fields_spec_with_type.iter()
+    let field_au_matchers: Vec<_> = fields_spec_with_type
+        .iter()
         .map(|(field_spec, field_ty)| {
             // This should be embedded into a match statement
             quote! {

@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use serde::Serialize;
 use one_au::OneAu;
+use serde::Serialize;
 
 #[derive(Insertable)]
 #[diesel(table_name = crate::data_schema::data::versions)]
@@ -28,7 +28,10 @@ pub struct DbVersion {
 
 #[derive(Insertable)]
 #[diesel(table_name = crate::data_schema::data::feed_event_versions)]
-#[diesel(treat_none_as_default_value = false, primary_key(kind, entity_id, feed_event_index))]
+#[diesel(
+    treat_none_as_default_value = false,
+    primary_key(kind, entity_id, feed_event_index)
+)]
 pub struct NewFeedEventVersion<'a> {
     pub kind: &'a str,
     pub entity_id: &'a str,
@@ -39,7 +42,10 @@ pub struct NewFeedEventVersion<'a> {
 
 #[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::data_schema::data::feed_event_versions)]
-#[diesel(check_for_backend(diesel::pg::Pg), primary_key(kind, entity_id, feed_event_index))]
+#[diesel(
+    check_for_backend(diesel::pg::Pg),
+    primary_key(kind, entity_id, feed_event_index)
+)]
 pub struct DbFeedEventVersion {
     pub kind: String,
     pub entity_id: String,
@@ -1386,7 +1392,10 @@ pub struct DbEventBalkReasons {
 
 #[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
 #[diesel(table_name = crate::data_schema::data::modification_effects)]
-#[diesel(treat_none_as_default_value = false, primary_key(modification_name, valid_from, attribute, effect_type))]
+#[diesel(
+    treat_none_as_default_value = false,
+    primary_key(modification_name, valid_from, attribute, effect_type)
+)]
 pub struct NewModificationEffects<'a> {
     pub modification_name: &'a str,
     pub valid_from: NaiveDateTime,
@@ -1398,7 +1407,10 @@ pub struct NewModificationEffects<'a> {
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
 #[diesel(table_name = crate::data_schema::data::modification_effects)]
-#[diesel(check_for_backend(diesel::pg::Pg), primary_key(modification_name, valid_from, attribute, effect_type))]
+#[diesel(
+    check_for_backend(diesel::pg::Pg),
+    primary_key(modification_name, valid_from, attribute, effect_type)
+)]
 pub struct DbModificationEffects {
     pub modification_name: String,
     pub valid_from: NaiveDateTime,

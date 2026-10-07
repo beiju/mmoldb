@@ -56,7 +56,9 @@ impl IngestibleFromVersions for TimeIngestFromVersions {
                     };
                     (vp, None, Vec::new())
                 }
-                PreparedIngestItem::DoIngest(time) => chron_time_as_new(taxa, &time.entity_id, time.valid_from, &time.data),
+                PreparedIngestItem::DoIngest(time) => {
+                    chron_time_as_new(taxa, &time.entity_id, time.valid_from, &time.data)
+                }
             })
             .collect_vec();
 
@@ -121,12 +123,13 @@ fn chron_time_as_new<'a>(
             Err(err) => {
                 ingest_logs.error(format!("Unrecognized season status {err}"));
                 None
-
             }
         },
-        pollen_count: time.pollen_level.as_ref().ok().map(|pollen_level| {
-            taxa.pollen_count_id((*pollen_level).into())
-        })
+        pollen_count: time
+            .pollen_level
+            .as_ref()
+            .ok()
+            .map(|pollen_level| taxa.pollen_count_id((*pollen_level).into())),
     };
 
     (new_processed, Some(new_time), ingest_logs.into_vec())
