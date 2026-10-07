@@ -8,6 +8,11 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
+Upcoming
+--------
+- Upgrade and rebuild. This shouldn't change anything besides keeping the code
+  base up to date.
+
 2026-09-10
 ----------
 - Supports Super 16 games and their new season_status
