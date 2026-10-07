@@ -47,12 +47,12 @@ fn main() -> Result<(), CheckTablesError> {
 
 fn gen_delete_derived() {
     let mut is_first = true;
-    let mut emit_table = move |table_name| {
+    let mut emit_table = move |schema_name, table_name| {
         if is_first {
             is_first = false;
-            println!("\tdata.{}", table_name);
+            println!("\t{}.{}", schema_name, table_name);
         } else {
-            println!("\t, data.{}", table_name);
+            println!("\t, {}.{}", schema_name, table_name);
         }
     };
 
@@ -62,10 +62,14 @@ fn gen_delete_derived() {
     println!("begin;");
     println!("truncate table");
 
-    println!("\t-- *_processed tables");
+    println!("\t-- *_processed and *_ingest_log tables");
     for table in &tables.origin_tables {
         if let Some(processed) = table.processed {
-            emit_table(processed);
+            // TODO allow non-`data` schema
+            emit_table("data", processed);
+        }
+        if let Some(ingest_logs) = &table.ingest_logs {
+            emit_table(ingest_logs.schema, ingest_logs.table);
         }
     }
 
@@ -76,21 +80,24 @@ fn gen_delete_derived() {
                 child_tables,
                 auxiliary_tables,
                 materialized_views: _,
+                views: _,
             } => {
                 println!("\t-- base table for kind={kind}");
-                emit_table(root_table);
+                // TODO allow non-`data` schema
+                emit_table("data", root_table);
 
                 if !child_tables.is_empty() {
                     println!("\t-- child tables for kind={kind}");
                     for child_table in child_tables {
-                        emit_table(child_table.table);
+                        emit_table(child_table.schema, child_table.table);
                     }
                 }
 
                 if !auxiliary_tables.is_empty() {
                     println!("\t-- auxiliary tables for kind={kind}");
                     for auxiliary_table in auxiliary_tables {
-                        emit_table(auxiliary_table);
+                        // TODO allow non-`data` schema
+                        emit_table("data", auxiliary_table);
                     }
                 }
             }
@@ -98,25 +105,29 @@ fn gen_delete_derived() {
                 version_derived_tables,
                 auxiliary_tables,
                 feed_derived_tables,
+                materialized_views: _,
             } => {
                 if !version_derived_tables.is_empty() {
                     println!("\t-- version-derived tables for kind={kind}");
                     for version_derived_table in version_derived_tables {
-                        emit_table(version_derived_table);
+                        // TODO allow non-`data` schema
+                        emit_table("data", version_derived_table);
                     }
                 }
 
                 if !auxiliary_tables.is_empty() {
                     println!("\t-- auxiliary tables for kind={kind}");
                     for auxiliary_table in auxiliary_tables {
-                        emit_table(auxiliary_table);
+                        // TODO allow non-`data` schema
+                        emit_table("data", auxiliary_table);
                     }
                 }
 
                 if !feed_derived_tables.is_empty() {
                     println!("\t-- feed-derived tables for kind={kind}");
                     for feed_derived_table in feed_derived_tables {
-                        emit_table(feed_derived_table);
+                        // TODO allow non-`data` schema
+                        emit_table("data", feed_derived_table);
                     }
                 }
             }
@@ -132,17 +143,28 @@ fn gen_delete_derived() {
                 child_tables: _,
                 auxiliary_tables: _,
                 materialized_views,
+                views: _,
             } => {
-                println!("-- refresh materialized views for kind={kind}");
-                for materialized_view in materialized_views {
-                    println!("refresh materialized view data.{materialized_view};");
+                if !materialized_views.is_empty() {
+                    println!("-- refresh materialized views for game kind={kind}");
+                    for materialized_view in materialized_views {
+                        println!("refresh materialized view data.{materialized_view};");
+                    }
                 }
             }
             KindStyle::Version {
                 version_derived_tables: _,
                 auxiliary_tables: _,
                 feed_derived_tables: _,
-            } => {}
+                materialized_views,
+            } => {
+                if !materialized_views.is_empty() {
+                    println!("-- refresh materialized views for version kind={kind}");
+                    for materialized_view in materialized_views {
+                        println!("refresh materialized view data.{materialized_view};");
+                    }
+                }
+            }
         }
     }
 
@@ -171,6 +193,7 @@ fn gen_delete_derived_after(after: &str, for_kind: Option<&str>) {
                 version_derived_tables,
                 auxiliary_tables,
                 feed_derived_tables,
+                materialized_views: _,
             } => {
                 println!("\t-- deleting from version-style table data.{kind}");
 

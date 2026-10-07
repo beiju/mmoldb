@@ -2261,6 +2261,7 @@ pub struct DbColumn {
 
 #[derive(Debug, Serialize)]
 pub struct DbTable {
+    pub schema: String,
     pub name: String,
     pub columns: Vec<DbColumn>,
 }
@@ -2369,6 +2370,7 @@ pub fn tables_for_schema(
                 .ok_or(DbMetaQueryError::TableMissingField("table_name"))?;
 
             Ok(DbTable {
+                schema: schema_name.to_string(),
                 name: current_table_name.clone(),
                 columns: columns
                     .map(|column| {

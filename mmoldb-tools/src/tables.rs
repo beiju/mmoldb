@@ -5,7 +5,14 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Debug)]
+pub struct TableWithSchema {
+    pub schema: &'static str,
+    pub table: &'static str,
+}
+
+#[derive(Debug)]
 pub struct TableWithParent {
+    pub schema: &'static str,
     pub table: &'static str,
     pub parent_column: &'static str,
     pub parent_table: &'static str,
@@ -26,6 +33,8 @@ pub enum KindStyle {
         auxiliary_tables: Vec<&'static str>,
         // This one is self-explanatory
         materialized_views: Vec<&'static str>,
+        // We need to know what views exist so we don't error when we see them
+        views: Vec<TableWithSchema>,
     },
     // version-style means that nothing is connected by foreign key and you
     // have to enumerate every table AND un-close-out existing rows to delete
@@ -40,6 +49,9 @@ pub enum KindStyle {
 
         // Tables derived from feed events
         feed_derived_tables: Vec<&'static str>,
+
+        // This one is self-explanatory
+        materialized_views: Vec<&'static str>,
     },
 }
 
@@ -47,6 +59,8 @@ pub enum KindStyle {
 pub struct TableWithProcessed {
     pub table: &'static str,
     pub processed: Option<&'static str>,
+    pub ingest_logs: Option<TableWithSchema>,
+    pub materialized_views: Vec<TableWithSchema>,
 }
 
 #[derive(Debug)]
@@ -64,14 +78,33 @@ lazy_static! {
             TableWithProcessed {
                 table: "entities",
                 processed: None,
+                ingest_logs: None,
+                materialized_views: vec![
+                    TableWithSchema {
+                        schema: "info",
+                        table: "entities_count",
+                    },
+                    TableWithSchema {
+                        schema: "info",
+                        table: "entities_with_issues_count",
+                    },
+                ],
             },
             TableWithProcessed {
                 table: "versions",
                 processed: Some("versions_processed"),
+                ingest_logs: Some(TableWithSchema {
+                    schema: "info",
+                    table: "version_ingest_log",
+                }),
+                materialized_views: Vec::new(),
             },
             TableWithProcessed {
                 table: "feed_events",
                 processed: Some("feed_events_processed"),
+                // TODO events really should have a separate ingest logs table
+                ingest_logs: None,
+                materialized_views: Vec::new(),
             },
         ];
 
@@ -82,93 +115,123 @@ lazy_static! {
                 root_table: "games",
                 child_tables: vec![
                     TableWithParent {
+                        schema: "data",
                         table: "events",
                         parent_table: "games",
                         parent_column: "game_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "event_baserunners",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "event_fielders",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "event_balk_reasons",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "aurora_photos",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "consumption_contest_events",
                         parent_table: "games",
                         parent_column: "game_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "consumption_contests",
                         parent_table: "games",
                         parent_column: "game_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "door_prizes",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "door_prize_items",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "efflorescence",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "efflorescence_growth",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "ejections",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "failed_ejections",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "wither",
                         parent_table: "games",
                         parent_column: "game_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "parties",
                         parent_table: "games",
                         parent_column: "game_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "pitcher_changes",
                         parent_table: "games",
                         parent_column: "game_id",
                     },
                     TableWithParent {
+                        schema: "data",
                         table: "event_cheers",
                         parent_table: "events",
                         parent_column: "event_id",
                     },
+                    TableWithParent {
+                        schema: "info",
+                        table: "event_ingest_log",
+                        parent_table: "games",
+                        parent_column: "game_id",
+                    }
                 ],
                 auxiliary_tables: vec!["weather", "cheers", "balk_reasons"],
-                materialized_views: vec!["events_extended"],
+                materialized_views: Vec::new(),
+                views: vec![TableWithSchema {
+                    schema: "data",
+                    table: "events_extended",
+                }, TableWithSchema {
+                    schema: "info",
+                    table: "raw_events",
+                }],
             },
         );
         derived_tables.insert(
@@ -177,6 +240,7 @@ lazy_static! {
                 version_derived_tables: vec!["team_versions", "team_player_versions"],
                 auxiliary_tables: vec!["modifications"],
                 feed_derived_tables: vec!["team_games_played"],
+                materialized_views: Vec::new(),
             },
         );
         derived_tables.insert(
@@ -199,6 +263,18 @@ lazy_static! {
                     "player_attribute_augments",
                     "player_paradigm_shifts",
                 ],
+                materialized_views: vec!["player_versions_extended"],
+            },
+        );
+        derived_tables.insert(
+            "time",
+            KindStyle::Version {
+                version_derived_tables: vec![
+                    "time_versions",
+                ],
+                auxiliary_tables: Vec::new(),
+                feed_derived_tables: Vec::new(),
+                materialized_views: Vec::new(),
             },
         );
 
@@ -267,21 +343,30 @@ pub fn check_tables() -> Result<(), CheckTablesError> {
     let mut conn = pool.get()?;
 
     let mut unaccountedfor_tables = db::tables_for_schema(&mut conn, "mmoldb", "data")?;
+    let info_tables = db::tables_for_schema(&mut conn, "mmoldb", "info")?;
+    unaccountedfor_tables.extend(info_tables);
 
     // This is obsolete and is going to be deleted soon
-    record_table(&mut unaccountedfor_tables, "feed_event_versions")?;
+    record_table(&mut unaccountedfor_tables, "data", "feed_event_versions")?;
 
     let tables = tables();
 
     for table in &tables.prepopulated_tables {
-        record_table(&mut unaccountedfor_tables, table)?;
+        // TODO allow non-data schemas
+        record_table(&mut unaccountedfor_tables, "data", table)?;
     }
 
     for table in &tables.origin_tables {
-        record_table(&mut unaccountedfor_tables, table.table)?;
+        // TODO allow non-data schemas
+        record_table(&mut unaccountedfor_tables, "data", table.table)?;
         if let Some(processed) = table.processed {
-            record_table(&mut unaccountedfor_tables, processed)?;
+            // TODO allow non-data schemas
+            record_table(&mut unaccountedfor_tables, "data", processed)?;
         }
+        if let Some(ingest_logs) = &table.ingest_logs {
+            record_table(&mut unaccountedfor_tables, ingest_logs.schema, ingest_logs.table)?;
+        }
+        // record_tables_with_schema(&mut unaccountedfor_tables, &table.materialized_views)?
     }
 
     for (_kind, tables) in &tables.derived_tables {
@@ -291,16 +376,22 @@ pub fn check_tables() -> Result<(), CheckTablesError> {
                 child_tables,
                 auxiliary_tables,
                 materialized_views,
+                views,
             } => {
                 check_child_tables(&mut unaccountedfor_tables, child_tables)?;
                 record_tables(&mut unaccountedfor_tables, auxiliary_tables)?;
                 record_tables(&mut unaccountedfor_tables, materialized_views)?;
-                record_table(&mut unaccountedfor_tables, root_table)?;
+                // TODO allow non-data schemas for root table
+                record_table(&mut unaccountedfor_tables, "data", root_table)?;
+                record_tables_with_schema(&mut unaccountedfor_tables, views)?;
             }
             KindStyle::Version {
                 version_derived_tables,
                 auxiliary_tables,
                 feed_derived_tables,
+                // Materialized views are not included in unaccountedfor_tables, for some reason,
+                // even though regular views are
+                materialized_views: _,
             } => {
                 record_tables(&mut unaccountedfor_tables, version_derived_tables)?;
                 record_tables(&mut unaccountedfor_tables, auxiliary_tables)?;
@@ -323,18 +414,30 @@ fn record_tables(
     tables: &[&'static str],
 ) -> Result<(), CheckTablesError> {
     for table_name in tables {
-        record_table(unaccountedfor_tables, table_name)?;
+        // TODO allow non-data schemas
+        record_table(unaccountedfor_tables, "data", table_name)?;
+    }
+    Ok(())
+}
+
+fn record_tables_with_schema(
+    unaccountedfor_tables: &mut Vec<DbTable>,
+    tables: &[TableWithSchema],
+) -> Result<(), CheckTablesError> {
+    for table in tables {
+        record_table(unaccountedfor_tables, table.schema, table.table)?;
     }
     Ok(())
 }
 
 fn record_table(
     unaccountedfor_tables: &mut Vec<DbTable>,
+    schema_name: &str,
     table_name: &str,
 ) -> Result<(), CheckTablesError> {
     if let Some(idx) = unaccountedfor_tables
         .iter()
-        .position(|t| t.name == *table_name)
+        .position(|t| t.schema == *schema_name && t.name == *table_name)
     {
         unaccountedfor_tables.swap_remove(idx);
     } else {
@@ -353,7 +456,7 @@ fn check_child_tables(
         // Find the descendant table, erroring if it doesn't exist
         let table_idx = unaccountedfor_tables
             .iter()
-            .position(|table| table.name == descendant.table)
+            .position(|table| table.schema == descendant.schema && table.name == descendant.table)
             .ok_or_else(|| {
                 CheckTablesError::ListedTableDoesNotExist(descendant.table.to_string())
             })?;
@@ -407,7 +510,7 @@ fn check_child_tables(
     }
 
     for descendant in descendant_tables {
-        record_table(unaccountedfor_tables, descendant.table)?;
+        record_table(unaccountedfor_tables, descendant.schema, descendant.table)?;
     }
 
     Ok(())
