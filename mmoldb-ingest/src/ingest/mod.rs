@@ -34,6 +34,7 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::error::SendError;
+use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
@@ -705,6 +706,7 @@ pub struct IngestForKind {
     kind: IngestKind,
     fetch_args: ChronFetchArgs,
     processing_args: ProcessingArgs,
+    last_matview_refresh: Option<DateTime<Utc>>,
 }
 
 impl IngestForKind {
@@ -717,6 +719,7 @@ impl IngestForKind {
             kind,
             fetch_args,
             processing_args,
+            last_matview_refresh: None,
         }
     }
 
@@ -779,7 +782,7 @@ impl IngestForKind {
     }
 
     /// The indefinite processing task. Repeats until canceled.
-    pub async fn processing_task(&self) -> Result<(), IngestFatalError> {
+    pub async fn processing_task(&mut self) -> Result<(), IngestFatalError> {
         let mut interval = tokio::time::interval(Duration::from_secs(
             self.processing_args.processing_interval_seconds,
         ));
@@ -807,12 +810,13 @@ impl IngestForKind {
 
     /// One single instance of processing. Exits once the db says we're caught up,
     /// or when canceled.
-    async fn processing_all_available(&self) -> Result<(), IngestFatalError> {
+    async fn processing_all_available(&mut self) -> Result<(), IngestFatalError> {
         match self.kind {
             IngestKind::Versioned(kind) => {
-                processing::process_version_kind(kind, self.processing_args.clone())
+                self.last_matview_refresh = processing::process_version_kind(kind, self.processing_args.clone(), self.last_matview_refresh)
                     .instrument(info_span!("processing_task", kind = kind.as_kind()))
-                    .await
+                    .await?;
+                Ok(())
             }
             IngestKind::CombinedFeed => {
                 ingest_feed::process_feed(self.processing_args.clone())
@@ -832,7 +836,7 @@ pub fn ingest_kinds(
     shutdown_requested: &CancellationToken,
     pool: &ConnectionPool,
     config: &'static IngestConfig,
-) -> Vec<Arc<IngestForKind>> {
+) -> Vec<Arc<Mutex<IngestForKind>>> {
     let kinds_configs = [
         (
             IngestKind::Versioned(VersionedIngestKind::Time),
@@ -883,8 +887,9 @@ pub fn ingest_kinds(
                 parallelism,
                 process_batch_size: kind_config.process_batch_size,
                 debug_db_insert_delay: kind_config.debug_db_insert_delay,
+                refresh_matview_throttle_seconds: kind_config.refresh_matview_throttle_seconds,
             };
-            Arc::new(IngestForKind::new(kind, fetch_args, processing_args))
+            Arc::new(Mutex::new(IngestForKind::new(kind, fetch_args, processing_args)))
         })
         .collect()
 }

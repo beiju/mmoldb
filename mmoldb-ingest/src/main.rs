@@ -134,20 +134,28 @@ async fn main() -> miette::Result<()> {
     // Launch ingest tasks
     let ingest_kinds = ingest::ingest_kinds(&shutdown_requested, &pool, config);
     for ingest_kind in &ingest_kinds {
+        let ingest_kind_clone = ingest_kind.clone();
+        let ingest_kind = ingest_kind.lock().await;
         if ingest_kind.fetch_is_enabled() {
             info!("Launching fetch task for {}", ingest_kind.kind());
-            let ingest_kind = ingest_kind.clone();
-            let task = tokio::task::spawn(async move { ingest_kind.fetch_task().await });
+            let task = tokio::task::spawn(async move {
+                let ingest_kind_clone = ingest_kind_clone.lock().await;
+                ingest_kind_clone.fetch_task().await
+            });
             tasks.push(task);
         } else {
             info!("Fetch task for {} is disabled", ingest_kind.kind());
         }
     }
     for ingest_kind in &ingest_kinds {
+        let ingest_kind_clone = ingest_kind.clone();
+        let ingest_kind = ingest_kind.lock().await;
         if ingest_kind.processing_is_enabled() {
             info!("Launching processing task for {}", ingest_kind.kind());
-            let ingest_kind = ingest_kind.clone();
-            let task = tokio::task::spawn(async move { ingest_kind.processing_task().await });
+            let task = tokio::task::spawn(async move {
+                let mut ingest_kind_clone = ingest_kind_clone.lock().await;
+                ingest_kind_clone.processing_task().await
+            });
             tasks.push(task);
         } else {
             info!("Processing task for {} is disabled", ingest_kind.kind());

@@ -15,7 +15,7 @@ pub struct IngestibleConfig {
     pub process_batch_size: NonZero<usize>,
     pub ingest_parallelism: Option<NonZero<usize>>,
     pub debug_db_insert_delay: f64,
-}
+    pub refresh_matview_throttle_seconds: Option<f64>,}
 
 impl Default for IngestibleConfig {
     fn default() -> Self {
@@ -29,6 +29,9 @@ impl Default for IngestibleConfig {
             process_batch_size: 1000.try_into().unwrap(),
             ingest_parallelism: None,
             debug_db_insert_delay: 0.0,
+            // Currently this only affects player_versions_extended, which needs a
+            // long cooldown to let postgres maintenance tasks run
+            refresh_matview_throttle_seconds: Some(3. * 60. * 60.),
         }
     }
 }

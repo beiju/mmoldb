@@ -7,6 +7,7 @@ use mmoldb_db::ConnectionPool;
 use mmoldb_db::db::{refresh_game_matviews, refresh_player_matviews};
 use std::num::NonZero;
 use std::sync::Arc;
+use chrono::{DateTime, Utc};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -19,6 +20,7 @@ pub struct ProcessingArgs {
     pub parallelism: NonZero<usize>,
     pub process_batch_size: NonZero<usize>,
     pub debug_db_insert_delay: f64,
+    pub refresh_matview_throttle_seconds: Option<f64>,
 }
 
 // It may be possible to remove 'static
@@ -51,47 +53,63 @@ pub async fn process_entity_kind(
     Ok(())
 }
 
-// It may be possible to remove 'static
+// Returns the datetime the matview(s) were refreshed, if they were
 pub async fn process_version_kind(
     kind: VersionedIngestKind,
     args: ProcessingArgs,
-) -> Result<(), IngestFatalError> {
+    last_matview_refresh: Option<DateTime<Utc>>
+) -> Result<Option<DateTime<Utc>>, IngestFatalError> {
     // TODO Refactor this to not match on kind
     match kind {
         VersionedIngestKind::Time => {
             // TODO Refactor this code to get rid of remnants of the old staged system
             let stage = Arc::new(Stage2Ingest::new(kind.as_kind(), TimeIngestFromVersions));
             let partitioner = Partitioner::with_single_partition();
-            stage.run(args, partitioner).await
+            stage.run(args, partitioner).await.map(|()| None)
         }
         VersionedIngestKind::Player => {
+            // Copy out so I can access it after args is moved
+            let refresh_matview_throttle_seconds = args.refresh_matview_throttle_seconds;
+
             let pool_for_matviews = args.pool.clone();
             // TODO Refactor this code to get rid of remnants of the old staged system
             let stage = Arc::new(Stage2Ingest::new(kind.as_kind(), PlayerIngestFromVersions));
             let partitioner = Partitioner::with_partitions(args.parallelism);
             stage.run(args, partitioner).await?;
-            info!("Player process iteration finished. Refreshing player matviews.");
-            // TODO Don't hard-code this
-            match pool_for_matviews.get() {
-                Ok(mut conn) => {
-                    for err in refresh_player_matviews(&mut conn) {
-                        warn!("Error updating player matview: {}", err);
+
+            let now = Utc::now();
+            if refresh_matview_throttle_seconds.is_none_or(|throttle| {
+                last_matview_refresh.is_none_or(|last| {
+                    (now - last).as_seconds_f64() > throttle
+                })
+            }) {
+                info!("Player process iteration finished. Refreshing player matviews.");
+                // TODO Don't hard-code this
+                match pool_for_matviews.get() {
+                    Ok(mut conn) => {
+                        for err in refresh_player_matviews(&mut conn) {
+                            warn!("Error updating player matview: {}", err);
+                        }
+                    }
+                    Err(err) => {
+                        warn!(
+                            "Couldn't get database connection to update player matviews: {}",
+                            err
+                        );
                     }
                 }
-                Err(err) => {
-                    warn!(
-                        "Couldn't get database connection to update player matviews: {}",
-                        err
-                    );
-                }
+
+                Ok(Some(now))
+            } else {
+                info!("Player process iteration finished. Skipping player matview refresh (too soon).");
+                Ok(None)
             }
-            Ok(())
         }
         VersionedIngestKind::Team => {
             // TODO Refactor this code to get rid of remnants of the old staged system
             let stage = Arc::new(Stage2Ingest::new(kind.as_kind(), TeamIngestFromVersions));
             let partitioner = Partitioner::with_partitions(args.parallelism);
-            stage.run(args, partitioner).await
+            stage.run(args, partitioner).await.map(|()| None)
         }
     }
 }
