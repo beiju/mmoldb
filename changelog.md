@@ -8,10 +8,11 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
-Upcoming
---------
-- Upgrade and rebuild. This shouldn't change anything besides keeping the code
-  base up to date.
+2026-11-13
+----------
+- Reduce data.player_versions_extended's refresh rate. It now refreshes once
+  every 3 hours. All other tables continue to refresh at the standard 30 minute
+  interval. This should fix the periodic out-of-disk-space issues. 
 
 2026-09-10
 ----------
