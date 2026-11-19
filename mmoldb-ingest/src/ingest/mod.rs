@@ -706,7 +706,7 @@ pub struct IngestForKind {
     kind: IngestKind,
     fetch_args: ChronFetchArgs,
     processing_args: ProcessingArgs,
-    last_matview_refresh: Option<DateTime<Utc>>,
+    last_matview_refresh: Mutex<Option<DateTime<Utc>>>,
 }
 
 impl IngestForKind {
@@ -719,7 +719,7 @@ impl IngestForKind {
             kind,
             fetch_args,
             processing_args,
-            last_matview_refresh: None,
+            last_matview_refresh: Mutex::new(None),
         }
     }
 
@@ -782,7 +782,7 @@ impl IngestForKind {
     }
 
     /// The indefinite processing task. Repeats until canceled.
-    pub async fn processing_task(&mut self) -> Result<(), IngestFatalError> {
+    pub async fn processing_task(&self) -> Result<(), IngestFatalError> {
         let mut interval = tokio::time::interval(Duration::from_secs(
             self.processing_args.processing_interval_seconds,
         ));
@@ -810,12 +810,18 @@ impl IngestForKind {
 
     /// One single instance of processing. Exits once the db says we're caught up,
     /// or when canceled.
-    async fn processing_all_available(&mut self) -> Result<(), IngestFatalError> {
+    async fn processing_all_available(&self) -> Result<(), IngestFatalError> {
         match self.kind {
             IngestKind::Versioned(kind) => {
-                self.last_matview_refresh = processing::process_version_kind(kind, self.processing_args.clone(), self.last_matview_refresh)
+                let last_matview_refresh = {
+                    let lock = self.last_matview_refresh.lock().await;
+                    *lock
+                };
+                let last_matview_refresh = processing::process_version_kind(kind, self.processing_args.clone(), last_matview_refresh)
                     .instrument(info_span!("processing_task", kind = kind.as_kind()))
                     .await?;
+                let mut lock = self.last_matview_refresh.lock().await;
+                *lock = last_matview_refresh;
                 Ok(())
             }
             IngestKind::CombinedFeed => {
@@ -836,7 +842,7 @@ pub fn ingest_kinds(
     shutdown_requested: &CancellationToken,
     pool: &ConnectionPool,
     config: &'static IngestConfig,
-) -> Vec<Arc<Mutex<IngestForKind>>> {
+) -> Vec<Arc<IngestForKind>> {
     let kinds_configs = [
         (
             IngestKind::Versioned(VersionedIngestKind::Time),
@@ -889,7 +895,7 @@ pub fn ingest_kinds(
                 debug_db_insert_delay: kind_config.debug_db_insert_delay,
                 refresh_matview_throttle_seconds: kind_config.refresh_matview_throttle_seconds,
             };
-            Arc::new(Mutex::new(IngestForKind::new(kind, fetch_args, processing_args)))
+            Arc::new(IngestForKind::new(kind, fetch_args, processing_args))
         })
         .collect()
 }
