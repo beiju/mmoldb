@@ -370,7 +370,7 @@ pub struct NewModification<'a> {
     pub description: &'a str,
 }
 
-#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
 #[diesel(table_name = crate::data_schema::data::modifications)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbModification {

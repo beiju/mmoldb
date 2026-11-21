@@ -1,0 +1,86 @@
+{% import "macros" as macros %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MMOLDB &mdash; Lists</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
+</head>
+<body>
+    <h1 class="main-title card"><a href="{{ index_url }}">MMOLDB</a></h1>
+
+    {{ macros::nav(pages=pages, this_page="Lists") }}
+
+    <section class="card">
+        <h1>Balk Reasons</h1>
+
+        {% if balk_reasons %}
+        <ul>
+            {% for r in balk_reasons %}
+            <li>{{ r.balk_reason }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        No balk reasons yet.
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h1>Cheers</h1>
+
+        {% if cheers %}
+        <ul>
+            {% for c in cheers %}
+            <li>{{ c.cheer }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        No cheers yet.
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h1>Modifications</h1>
+
+        {% if modifications %}
+        <ul>
+            {% for m in modifications %}
+            <li>{{ m.name }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        No modifications yet.
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h1>Player first names</h1>
+
+        {% if first_names %}
+        <ul>
+            {% for n in first_names %}
+            <li>{{ n }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        No first names yet.
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h1>Player last names</h1>
+
+        {% if last_names %}
+        <ul>
+            {% for n in last_names %}
+            <li>{{ n }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        No last names yet.
+        {% endif %}
+    </section>
+</body>
+</html>
