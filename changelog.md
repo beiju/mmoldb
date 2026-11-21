@@ -8,6 +8,13 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
+Upcoming
+----------
+- Adds `data.ballpark_config_versions` holding team ballpark configurations. 
+  See docs for details. In particular, note that not all active teams in 
+  Season 17 have an entry in this table -- teams who have not modified their
+  ballpark do not have an entry.
+
 2026-11-20
 ----------
 - Adds the modification effects for the new Season 17 modifications (thanks 
