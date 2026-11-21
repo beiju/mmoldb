@@ -84,7 +84,7 @@ pub struct NewWeather<'a> {
     pub tooltip: &'a str,
 }
 
-#[derive(Debug, Identifiable, Queryable, Selectable, QueryableByName)]
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
 #[diesel(table_name = crate::data_schema::data::weather)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DbWeather {

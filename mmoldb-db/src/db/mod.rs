@@ -28,7 +28,7 @@ use thiserror::Error;
 use tracing::{debug, info, trace, warn};
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbBalkReason, DbCheer, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewBallparkConfigVersion, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
+use crate::models::{DbAuroraPhoto, DbBalkReason, DbCheer, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWeather, DbWither, NewBallparkConfigVersion, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
 use crate::taxa::{Taxa, TaxaPollenCount};
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -4199,7 +4199,17 @@ pub fn balk_reasons(conn: &mut PgConnection) -> QueryResult<Vec<DbBalkReason>> {
     use crate::data_schema::data::balk_reasons::dsl as br_dsl;
 
     br_dsl::balk_reasons
-        .order_by(br_dsl::balk_reason)
+        // Use id as a proxy for chronological order of introduction
+        .order_by(br_dsl::id)
+        .get_results(conn)
+}
+
+pub fn weather(conn: &mut PgConnection) -> QueryResult<Vec<DbWeather>> {
+    use crate::data_schema::data::weather::dsl as weather_dsl;
+
+    weather_dsl::weather
+        // Use id as a proxy for chronological order of introduction
+        .order_by(weather_dsl::id)
         .get_results(conn)
 }
 
@@ -4207,7 +4217,8 @@ pub fn cheers(conn: &mut PgConnection) -> QueryResult<Vec<DbCheer>> {
     use crate::data_schema::data::cheers::dsl as cheer_dsl;
 
     cheer_dsl::cheers
-        .order_by(cheer_dsl::cheer)
+        // Use id as a proxy for chronological order of introduction
+        .order_by(cheer_dsl::id)
         .get_results(conn)
 }
 
@@ -4215,7 +4226,8 @@ pub fn modifications(conn: &mut PgConnection) -> QueryResult<Vec<DbModification>
     use crate::data_schema::data::modifications::dsl as mod_dsl;
 
     mod_dsl::modifications
-        .order_by((mod_dsl::name, mod_dsl::emoji, mod_dsl::description))
+        // Use id as a proxy for chronological order of introduction
+        .order_by(mod_dsl::id)
         .get_results(conn)
 }
 

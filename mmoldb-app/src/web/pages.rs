@@ -537,8 +537,9 @@ pub async fn records_page(records: &State<RecordsCache>) -> Result<Template, App
 
 #[get("/lists")]
 pub async fn lists_page(db: Db) -> Result<Template, AppError> {
-    let (balk_reasons, cheers, modifications, player_first_names, player_last_names) = rocket::futures::join!(
+    let (balk_reasons, weather, cheers, modifications, player_first_names, player_last_names) = rocket::futures::join!(
         db.run(|mut conn| db::balk_reasons(&mut conn)),
+        db.run(|mut conn| db::weather(&mut conn)),
         db.run(|mut conn| db::cheers(&mut conn)),
         db.run(|mut conn| db::modifications(&mut conn)),
         db.run(|mut conn| db::player_first_names(&mut conn)),
@@ -552,6 +553,7 @@ pub async fn lists_page(db: Db) -> Result<Template, AppError> {
             pages: &*PAGES,
             // TODO: Make the template handle error segments, then remove the ?s
             balk_reasons: balk_reasons?,
+            weather: weather?,
             cheers: cheers?,
             modifications: modifications?,
             player_first_names: player_first_names?,

@@ -6,6 +6,7 @@
     <meta charset="UTF-8">
     <title>MMOLDB &mdash; Lists</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/lists.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💽</text></svg>">
 </head>
 <body>
@@ -17,13 +18,27 @@
         <h1>Balk Reasons</h1>
 
         {% if balk_reasons %}
-        <ul>
+        <table>
             {% for r in balk_reasons %}
-            <li>{{ r.balk_reason }}</li>
+            <tr><td>{{ r.balk_reason }}</td></tr>
             {% endfor %}
-        </ul>
+        </table>
         {% else %}
         No balk reasons yet.
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h1>Weather</h1>
+
+        {% if weather %}
+        <table>
+            {% for w in weather %}
+            <tr><td>{{ w.emoji }}</td><td>{{ w.name }}</td><td>{{ w.tooltip }}</td></tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        No weather yet.
         {% endif %}
     </section>
 
@@ -31,11 +46,11 @@
         <h1>Cheers</h1>
 
         {% if cheers %}
-        <ul>
+        <table>
             {% for c in cheers %}
-            <li>{{ c.cheer }}</li>
+            <tr><td>{{ c.cheer }}</td></tr>
             {% endfor %}
-        </ul>
+        </table>
         {% else %}
         No cheers yet.
         {% endif %}
@@ -45,11 +60,11 @@
         <h1>Modifications</h1>
 
         {% if modifications %}
-        <ul>
+        <table>
             {% for m in modifications %}
-            <li>{{ m.name }}</li>
+            <tr><td>{{ m.emoji }}</td><td class="nowrap">{{ m.name }}</td><td>{{ m.description }}</td></tr>
             {% endfor %}
-        </ul>
+        </table>
         {% else %}
         No modifications yet.
         {% endif %}
@@ -59,13 +74,13 @@
         <h1>Player first names</h1>
 
         {% if first_names %}
-        <ul>
+        <table>
             {% for n in first_names %}
-            <li>{{ n }}</li>
+            <tr><td>{{ n }}</td></tr>
             {% endfor %}
-        </ul>
+        </table>
         {% else %}
-        No first names yet.
+        No players yet.
         {% endif %}
     </section>
 
@@ -73,13 +88,13 @@
         <h1>Player last names</h1>
 
         {% if last_names %}
-        <ul>
+        <table>
             {% for n in last_names %}
-            <li>{{ n }}</li>
+            <tr><td>{{ n }}</td></tr>
             {% endfor %}
-        </ul>
+        </table>
         {% else %}
-        No last names yet.
+        No players yet.
         {% endif %}
     </section>
 </body>
