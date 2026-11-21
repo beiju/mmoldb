@@ -1403,6 +1403,7 @@ pub struct NewModificationEffects<'a> {
     pub attribute: i64,
     pub effect_type: i64,
     pub value: f64,
+    pub league: Option<i64>,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -1418,6 +1419,7 @@ pub struct DbModificationEffects {
     pub attribute: i64,
     pub effect_type: i64,
     pub value: f64,
+    pub league: Option<i64>,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]

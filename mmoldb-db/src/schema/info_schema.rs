@@ -24,5 +24,7 @@ pub mod info {
         }
     }
 
+    diesel::joinable!(event_ingest_log -> crate::data_schema::data::games (game_id));
+
     diesel::allow_tables_to_appear_in_same_query!(event_ingest_log, version_ingest_log,);
 }

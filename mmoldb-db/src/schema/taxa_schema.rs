@@ -105,6 +105,13 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.league_type (id) {
+            id -> Int8,
+            name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.leagues (id) {
             id -> Int8,
             name -> Text,
@@ -202,6 +209,7 @@ pub mod taxa {
         fielder_location,
         fielding_error_type,
         handedness,
+        league_type,
         leagues,
         modification_type,
         pitch_category,

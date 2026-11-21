@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use mmoldb_db::db;
 use mmoldb_db::models::NewModificationEffects;
-use mmoldb_db::taxa::{Taxa, TaxaAttribute, TaxaEffectType};
+use mmoldb_db::taxa::{Taxa, TaxaAttribute, TaxaEffectType, TaxaLeagueType};
 use mmoldb_db::{Connection, PgConnection, QueryResult};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -14,6 +14,7 @@ struct ModifierEffects {
     valid_until: Option<DateTime<Utc>>,
     effects: HashMap<TaxaAttribute, f64>,
     bonus_type: TaxaEffectType,
+    league: Option<TaxaLeagueType>,
 }
 
 type ModifiersEffects = HashMap<String, Vec<ModifierEffects>>;
@@ -36,6 +37,7 @@ pub fn update_modifier_effects_values(conn: &mut PgConnection, taxa: &Taxa) -> Q
                         attribute: taxa.attribute_id(*effect_attribute),
                         effect_type: taxa.effect_type_id(effects_config.bonus_type),
                         value: *effect_value,
+                        league: effects_config.league.map(|id| taxa.league_type_id(id)),
                     })
             })
         })

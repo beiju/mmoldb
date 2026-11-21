@@ -303,6 +303,7 @@ pub mod data {
             attribute -> Int8,
             effect_type -> Int8,
             value -> Float8,
+            league -> Nullable<Int8>,
         }
     }
 
@@ -672,26 +673,66 @@ pub mod data {
     }
 
     diesel::joinable!(aurora_photos -> events (event_id));
+    diesel::joinable!(aurora_photos -> crate::taxa_schema::taxa::slot (player_slot));
     diesel::joinable!(consumption_contest_events -> games (game_id));
     diesel::joinable!(consumption_contests -> games (game_id));
     diesel::joinable!(door_prize_items -> events (event_id));
     diesel::joinable!(door_prizes -> events (event_id));
     diesel::joinable!(efflorescence -> events (event_id));
+    diesel::joinable!(efflorescence_growth -> crate::taxa_schema::taxa::attribute (attribute));
     diesel::joinable!(efflorescence_growth -> events (event_id));
     diesel::joinable!(ejections -> events (event_id));
     diesel::joinable!(event_balk_reasons -> balk_reasons (balk_reason_id));
     diesel::joinable!(event_balk_reasons -> events (event_id));
+    diesel::joinable!(event_baserunners -> crate::taxa_schema::taxa::base_description_format (base_description_format));
     diesel::joinable!(event_baserunners -> events (event_id));
     diesel::joinable!(event_cheers -> cheers (cheer_id));
     diesel::joinable!(event_cheers -> events (event_id));
     diesel::joinable!(event_fielders -> events (event_id));
+    diesel::joinable!(event_fielders -> crate::taxa_schema::taxa::slot (fielder_slot));
+    diesel::joinable!(events -> crate::taxa_schema::taxa::base (hit_base));
+    diesel::joinable!(events -> crate::taxa_schema::taxa::event_type (event_type));
+    diesel::joinable!(events -> crate::taxa_schema::taxa::fair_ball_type (fair_ball_type));
+    diesel::joinable!(events -> crate::taxa_schema::taxa::fielder_location (fair_ball_direction));
+    diesel::joinable!(events -> crate::taxa_schema::taxa::fielding_error_type (fielding_error_type));
     diesel::joinable!(events -> games (game_id));
+    diesel::joinable!(events -> crate::taxa_schema::taxa::pitch_type (pitch_type));
     diesel::joinable!(failed_ejections -> events (event_id));
+    diesel::joinable!(games -> crate::taxa_schema::taxa::pollen_count (pollen_count));
     diesel::joinable!(games -> weather (weather));
+    diesel::joinable!(modification_effects -> crate::taxa_schema::taxa::attribute (attribute));
+    diesel::joinable!(modification_effects -> crate::taxa_schema::taxa::attribute_effect_type (effect_type));
+    diesel::joinable!(modification_effects -> crate::taxa_schema::taxa::league_type (league));
+    diesel::joinable!(parties -> crate::taxa_schema::taxa::attribute (attribute));
     diesel::joinable!(parties -> games (game_id));
     diesel::joinable!(pitcher_changes -> games (game_id));
+    diesel::joinable!(pitcher_changes -> crate::taxa_schema::taxa::pitcher_change_source (source));
+    diesel::joinable!(player_attribute_augments -> crate::taxa_schema::taxa::attribute (attribute));
+    diesel::joinable!(player_attribute_augments -> crate::taxa_schema::taxa::day_type (day_type));
+    diesel::joinable!(player_equipment_effect_versions -> crate::taxa_schema::taxa::attribute (attribute));
+    diesel::joinable!(player_equipment_effect_versions -> crate::taxa_schema::taxa::attribute_effect_phase (phase));
+    diesel::joinable!(player_equipment_effect_versions -> crate::taxa_schema::taxa::attribute_effect_type (effect_type));
+    diesel::joinable!(player_equipment_versions -> crate::taxa_schema::taxa::slot_type (prefix_position_type));
+    diesel::joinable!(player_modification_versions -> crate::taxa_schema::taxa::modification_type (modification_type));
     diesel::joinable!(player_modification_versions -> modifications (modification_id));
+    diesel::joinable!(player_paradigm_shifts -> crate::taxa_schema::taxa::attribute (attribute));
+    diesel::joinable!(player_paradigm_shifts -> crate::taxa_schema::taxa::day_type (day_type));
+    diesel::joinable!(player_pitch_category_bonus_versions -> crate::taxa_schema::taxa::pitch_category (pitch_category));
+    diesel::joinable!(player_pitch_type_bonus_versions -> crate::taxa_schema::taxa::pitch_type (pitch_type));
+    diesel::joinable!(player_pitch_type_versions -> crate::taxa_schema::taxa::pitch_type (pitch_type));
+    diesel::joinable!(player_recompositions -> crate::taxa_schema::taxa::day_type (day_type));
+    diesel::joinable!(player_report_attribute_versions -> crate::taxa_schema::taxa::attribute (attribute));
+    diesel::joinable!(player_report_attribute_versions -> crate::taxa_schema::taxa::attribute_category (category));
+    diesel::joinable!(player_report_versions -> crate::taxa_schema::taxa::attribute_category (category));
+    diesel::joinable!(player_report_versions -> crate::taxa_schema::taxa::day_type (day_type));
+    diesel::joinable!(player_versions -> crate::taxa_schema::taxa::day_type (birthday_type));
+    diesel::joinable!(player_versions -> crate::taxa_schema::taxa::slot (slot));
+    diesel::joinable!(team_player_versions -> crate::taxa_schema::taxa::slot (slot));
+    diesel::joinable!(time_versions -> crate::taxa_schema::taxa::day_type (day_type));
+    diesel::joinable!(time_versions -> crate::taxa_schema::taxa::pollen_count (pollen_count));
+    diesel::joinable!(time_versions -> crate::taxa_schema::taxa::season_status (season_status));
     diesel::joinable!(wither -> games (game_id));
+    diesel::joinable!(wither -> crate::taxa_schema::taxa::slot (player_slot));
 
     diesel::allow_tables_to_appear_in_same_query!(
         aurora_photos,
