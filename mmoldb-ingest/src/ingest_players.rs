@@ -1470,10 +1470,19 @@ fn chron_player_as_new<'a>(
             ));
         }
         (None, Some(level)) => {
-            ingest_logs.warn(format!(
-                "Player {} at {} had a level ({level}) but no planned_level",
-                entity.entity_id, entity.valid_from,
-            ));
+            if entity.valid_from <= PENDING_AND_SCHEDULED_LEVELS_BECOME_RELIABLE {
+                ingest_logs.info(format!(
+                    "Player {} at {} had a level ({level}) but no planned_level due to \
+                    being from before pending and scheduled levels became reliable",
+                    entity.entity_id, entity.valid_from,
+                ));
+            } else {
+                ingest_logs.warn(format!(
+                    "Player {} at {} had a level ({level}) but no planned_level",
+                    entity.entity_id, entity.valid_from,
+                ));
+            }
+            
         }
         (Some(planned_level), Some(level)) => {
             if let Ok(pending_level_ups) = &entity.data.pending_level_ups {
