@@ -2950,6 +2950,11 @@ all other tables in `data`, this does not come from a MMOLB API, as there is
 no API available for modification effects. It is instead updated by hand by
 volunteers and therefore may be incorrect.
 
+Most users of the data in this table will use it through the
+`data.modified_attribute_total` helper function. See the description of the
+`modified_total` column on the `player_report_attribute_versions` table for
+usage.
+
 This table has an entry for every effect of every modification. A single effect
 affects a single attribute. Many modifications effect multiple attributes, and
 therefore multiple entries in this table.
@@ -2959,13 +2964,20 @@ modification has both a Flat and a Multiplier bonus for the same attribute,
 those would each be a separate entry in this table. As of Season 12, this has
 not yet happened.
 
+Effects can be league-specific, meaning they are only applied when the player
+is playing in a specific league type (Greater or Lesser). The Lesser Old family
+of modifications is an example of this. Note that, although it hasn't happened
+yet, MMOLDB allows for having multiple effects which are only distinguished by
+their league.
+
 Modification effects sometimes change over time, so this table uses the
 `valid_from` and `valid_until` system to maintain mulitple versions of the
 effect.
 
-Typical use of this table first joins `data.player_modification_versions` to
-`data.modifications` using the modification id, then to
-`data.modification_effects` using the modification name.
+Typical use of this table (other than by using `data.modified_attribute_total`
+first joins `data.player_modification_versions` to `data.modifications` using
+the modification id, then to `data.modification_effects` using the modification
+name.
 """
 
 [[table.column]]
@@ -3025,6 +3037,17 @@ description = """
 The value of the effect. This value is stored in the 0.0-1.0 scale, which is
 what the API uses. To get to the scale used on the MMOLB player pages, multiply
 by 100 for Flat bonuses or 100% for Multiplier bonuses.
+"""
+
+[[table.column]]
+name = "league"
+type = "bigint"
+references = "taxa.league_type"
+description = """
+If this effect is league-specific, the league in which it applies.
+"""
+nullable_explanation = """
+`null` if this effect is not league-specific.
 """
 
 [[table]]
@@ -4783,13 +4806,19 @@ all known modifications and equipment, with the function:
 data.modified_attribute_total(
     player_id text,
     attribute_id bigint,
-    at_time timestamp without time zone
+    at_time timestamp without time zone,
+    in_league bigint default null
 )
 ```
 
-The arguments are the player's MMOLB ID, the attribute you're interested in
-represented as a `taxa.attribute` id, and the timestamp at which you want to
-compute the value. Passing `null` for the timestamp requests the current value.
+The arguments are:
+- player_id: The player's MMOLB id
+- attribute_id: The attribute you're interested in, as a `taxa.attribute` id
+- at_time: The timestamp at which you want to compute the value. `null` to
+  compute the current value
+- in_league: Which league to use for the purpose of league-specific
+  modification effects (as of Season 17, this is only the Leser Old family of
+  modifications). `null` to exclude all league-specific effects.
 
 This function works for any player version as long as `base_total` exists. It
 always computes the value from components, even when `modified_total` also

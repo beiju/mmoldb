@@ -8,9 +8,21 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
+2026-11-20
+----------
+- Adds the modification effects for the new Season 17 modifications (thanks 
+  Tuesday!)
+- Adds support for the concept of league-specific modification effects, and 
+  specifically for the Lesser Old family of modifications
+  - Adds `league` to `data.modification_effects`
+  - Adds another parameter to the `data.modified_attribute_total` helper to 
+    specify which league type you're asking about. If unspecified or `null`,
+    you get the old behavior (excluding all league-specific modifications).
+    Search the docs for `modified_attribute_total` for details.
+
 2026-11-13
 ----------
-- Reduce data.player_versions_extended's refresh rate. It now refreshes once
+- Reduces data.player_versions_extended's refresh rate. It now refreshes once
   every 3 hours. All other tables continue to refresh at the standard 30 minute
   interval. This should fix the periodic out-of-disk-space issues. 
 
