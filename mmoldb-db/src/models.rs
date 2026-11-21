@@ -855,6 +855,7 @@ pub struct NewTeamVersion<'a> {
     pub ballpark_name: Option<String>,
     pub manager_name: Option<&'a str>,
     pub num_players: i32,
+    pub has_configured_ballpark: bool,
 }
 
 #[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
@@ -876,6 +877,7 @@ pub struct DbTeamVersion {
     pub ballpark_name: Option<String>,
     pub manager_name: Option<String>,
     pub num_players: i32,
+    pub has_configured_ballpark: bool,
 }
 
 #[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
@@ -1449,4 +1451,39 @@ pub struct DbTimeVersion {
     pub superstar_day: Option<i32>,
     pub season_status: Option<i64>,
     pub pollen_count: Option<i64>,
+}
+
+#[derive(Clone, Debug, Insertable, PartialEq, Default, OneAu)]
+#[diesel(table_name = crate::data_schema::data::ballpark_config_versions)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct NewBallparkConfigVersion<'a> {
+    pub mmolb_team_id: &'a str,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub basepath_length: i32,
+    pub center_field_depth: i32,
+    pub foul_territory_line: i32,
+    pub left_field_depth: i32,
+    pub lighting: i32,
+    pub playing_surface: i64,
+    pub right_field_depth: i32,
+    pub wall_height: i32,
+}
+
+#[derive(Debug, Clone, Identifiable, Queryable, Selectable, QueryableByName, Serialize)]
+#[diesel(table_name = crate::data_schema::data::ballpark_config_versions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DbBallparkConfigVersion {
+    pub id: i64,
+    pub mmolb_team_id: String,
+    pub valid_from: NaiveDateTime,
+    pub valid_until: Option<NaiveDateTime>,
+    pub basepath_length: i32,
+    pub center_field_depth: i32,
+    pub foul_territory_line: i32,
+    pub left_field_depth: i32,
+    pub lighting: i32,
+    pub playing_surface: i64,
+    pub right_field_depth: i32,
+    pub wall_height: i32,
 }

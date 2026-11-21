@@ -28,20 +28,7 @@ use thiserror::Error;
 use tracing::{debug, info, trace, warn};
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{
-    DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth,
-    DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification,
-    DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion,
-    DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion,
-    DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewEventIngestLog,
-    NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects,
-    NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion,
-    NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion,
-    NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition,
-    NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed,
-    NewTeamPlayerVersion, NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed,
-    RawDbColumn, RawDbTable,
-};
+use crate::models::{DbAuroraPhoto, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWither, NewBallparkConfigVersion, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
 use crate::taxa::{Taxa, TaxaPollenCount};
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -3520,6 +3507,7 @@ pub fn player_all(
 pub(crate) type NewTeamVersionExt<'a> = (
     NewVersionProcessed<'a>,
     Option<NewTeamVersion<'a>>,
+    Option<NewBallparkConfigVersion<'a>>,
     Vec<NewTeamPlayerVersion<'a>>,
     Vec<NewVersionIngestLog<'a>>,
 );
@@ -3535,6 +3523,20 @@ fn insert_team_versions(
     // Insert new records
     diesel::copy_from(tv_dsl::team_versions)
         .from_insertable(new_team_versions)
+        .execute(conn)
+}
+
+fn insert_ballpark_config_versions(
+    conn: &mut PgConnection,
+    new_ballpark_config_versions: Vec<&Option<NewBallparkConfigVersion>>,
+) -> QueryResult<usize> {
+    use crate::data_schema::data::ballpark_config_versions::dsl as bpv_dsl;
+
+    let new_ballpark_config_versions = new_ballpark_config_versions.into_iter().flatten().collect_vec();
+
+    // Insert new records
+    diesel::copy_from(bpv_dsl::ballpark_config_versions)
+        .from_insertable(new_ballpark_config_versions)
         .execute(conn)
 }
 
@@ -3564,11 +3566,12 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
     // Convert reference to tuple to tuple of references
     let new_team_versions = new_team_versions
         .into_iter()
-        .map(|(a, b, c, d)| (a, b, c, d));
+        .map(|(a, b, c, d, e)| (a, b, c, d, e));
 
-    let (new_processed, new_team_versions, new_team_player_versions, new_ingest_logs): (
+    let (new_processed, new_team_versions, new_ballpark_config_versions, new_team_player_versions, new_ingest_logs): (
         Vec<&NewVersionProcessed>,
         Vec<&Option<NewTeamVersion>>,
+        Vec<&Option<NewBallparkConfigVersion>>,
         Vec<&Vec<NewTeamPlayerVersion>>,
         Vec<&Vec<NewVersionIngestLog>>,
     ) = itertools::multiunzip(new_team_versions);
@@ -3590,6 +3593,11 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
     inserted += insert_team_versions(conn, new_team_versions)?;
     let insert_team_version_duration = (Utc::now() - insert_team_version_start).as_seconds_f64();
 
+    let insert_ballpark_config_version_start = Utc::now();
+    total += new_ballpark_config_versions.len();
+    inserted += insert_ballpark_config_versions(conn, new_ballpark_config_versions)?;
+    let insert_ballpark_config_version_duration = (Utc::now() - insert_ballpark_config_version_start).as_seconds_f64();
+
     let insert_team_player_versions_start = Utc::now();
     let (tpv_total, tpv_inserted) = insert_team_player_versions(conn, new_team_player_versions)?;
     total += tpv_total;
@@ -3604,6 +3612,7 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
     info!(
         "insert_versions_processed_duration: {insert_versions_processed_duration:.2}, \
         insert_team_version_duration: {insert_team_version_duration:.2}, \
+        insert_ballpark_config_version_duration: {insert_ballpark_config_version_duration:.2}, \
         insert_team_player_versions_duration: {insert_team_player_versions_duration:.2}, \
         insert_ingest_logs_duration: {insert_ingest_logs_duration:.2}"
     );

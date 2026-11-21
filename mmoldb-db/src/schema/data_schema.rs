@@ -20,6 +20,24 @@ pub mod data {
     }
 
     diesel::table! {
+        data.ballpark_config_versions (id) {
+            id -> Int8,
+            mmolb_team_id -> Text,
+            valid_from -> Timestamp,
+            valid_until -> Nullable<Timestamp>,
+            duplicates -> Int4,
+            basepath_length -> Int4,
+            center_field_depth -> Int4,
+            foul_territory_line -> Int4,
+            left_field_depth -> Int4,
+            lighting -> Int4,
+            playing_surface -> Int8,
+            right_field_depth -> Int4,
+            wall_height -> Int4,
+        }
+    }
+
+    diesel::table! {
         data.cheers (id) {
             id -> Int8,
             cheer -> Text,
@@ -609,6 +627,7 @@ pub mod data {
             ballpark_name -> Nullable<Text>,
             num_players -> Int4,
             manager_name -> Nullable<Text>,
+            has_configured_ballpark -> Bool,
         }
     }
 
@@ -674,6 +693,7 @@ pub mod data {
 
     diesel::joinable!(aurora_photos -> events (event_id));
     diesel::joinable!(aurora_photos -> crate::taxa_schema::taxa::slot (player_slot));
+    diesel::joinable!(ballpark_config_versions -> crate::taxa_schema::taxa::playing_surface (playing_surface));
     diesel::joinable!(consumption_contest_events -> games (game_id));
     diesel::joinable!(consumption_contests -> games (game_id));
     diesel::joinable!(door_prize_items -> events (event_id));
@@ -737,6 +757,7 @@ pub mod data {
     diesel::allow_tables_to_appear_in_same_query!(
         aurora_photos,
         balk_reasons,
+        ballpark_config_versions,
         cheers,
         consumption_contest_events,
         consumption_contests,

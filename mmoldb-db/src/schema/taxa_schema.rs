@@ -157,6 +157,14 @@ pub mod taxa {
     }
 
     diesel::table! {
+        taxa.playing_surface (id) {
+            id -> Int8,
+            name -> Text,
+            display_name -> Text,
+        }
+    }
+
+    diesel::table! {
         taxa.pollen_count (id) {
             id -> Int8,
             name -> Text,
@@ -215,6 +223,7 @@ pub mod taxa {
         pitch_category,
         pitch_type,
         pitcher_change_source,
+        playing_surface,
         pollen_count,
         season_status,
         slot,
