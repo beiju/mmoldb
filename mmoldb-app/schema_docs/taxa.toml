@@ -882,7 +882,6 @@ description = """
 The human-friendly name for this season status. These values may have spaces.
 """
 
-
 [[table]]
 name = "league_type"
 description = """
@@ -906,4 +905,35 @@ The code-friendly name for this league type. Guaranteed to contain alphanumeric
 characters only and start with a letter.
 
 This is also the human-friendly name for each league type.
+"""
+
+
+[[table]]
+name = "playing_surface"
+description = """
+The playing surface for a ballpark.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary ID for a playing surface. When this appears as a foreign key you
+are encouraged to join this `taxa` and use its `name` column, rather than
+directly using playing surface ids in your queries or results.
+"""
+
+[[table.column]]
+name = "name"
+type = "text"
+description = """
+The code-friendly name for this playing surface. Guaranteed to contain alphanumeric
+characters only and start with a letter.
+"""
+
+[[table.column]]
+name = "display_name"
+type = "text"
+description = """
+The human-friendly name for this playing surface. These values may have spaces.
 """

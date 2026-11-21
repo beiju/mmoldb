@@ -5314,6 +5314,147 @@ This is used internally by MMOLDB itself, and is not likely to be useful to
 users. To see players on the team, use the `data.team_player_versions` table.
 """
 
+[[table.column]]
+name = "has_configured_ballpark"
+type = "boolean"
+description = """
+Whether this team has a configured ballpark.
+
+This is not the same has having _a_ ballpark. This means the team's ballpark's
+configuration is avaiable in the API. As of Season 17, this is the same as
+saying whether the team has modified their ballpark configuration.
+
+There should be a `data.ballpark_config_versions` entry for every span where
+this value is `true`, and there should not be one when this value is `false`.
+
+This is used internally by MMOLDB itself, and is not likely to be useful to
+users. To see the team's ballpark configuration, see the
+`data.ballpark_config_versions` table.
+"""
+
+[[table]]
+name = "ballpark_config_versions"
+description = """
+Historical and current ballpark configuration information.
+
+Records the ballpark configuration for a given team. See the
+`has_configured_ballpark` column on `data.team_versions` for details on when
+this exists.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+
+Note that versions of this table do not need to coincide with versions of
+`data.team_versions`. There can be a break in versions in this table without a
+corresponding break in versions in `data.team_versions` and vice versa.
+"""
+
+[[table.column]]
+name = "id"
+type = "bigint"
+description = """
+An arbitrary numeric ID. These IDs are *not* stable. You should not store these
+ids between queries, nor hard-code them into queries. To identify a ballpark,
+use the owning team's `mmolb_team_id`.
+"""
+
+[[table.column]]
+name = "mmolb_team_id"
+type = "text"
+description = """
+The MMOLB id for the team that owns this ballpark.
+"""
+
+[[table.column]]
+name = "valid_from"
+type = "timestamp without time zone"
+description = """
+The earliest time this version of the ballpark config was observed.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+
+[[table.column]]
+name = "valid_until"
+type = "timestamp without time zone"
+description = """
+The earliest time a different version of the ballpark config was observed, i.e.
+the earliest time we know this version is no longer valid. The latest time we
+know this version *is* valid is not exposed because nobody's requested it yet.
+If you have a use for it, contact us in the MMOLB discord or on Github.
+
+See the `data.player_versions` table description for how to use `valid_from`
+and `valid_until`.
+"""
+nullable_explanation = """
+`null` if this version is still valid.
+"""
+
+[[table.column]]
+name = "duplicates"
+type = "integer"
+description = """
+Currently being used to debug MMOLDB itself. This field may be deleted soon.
+"""
+
+[[table.column]]
+name = "basepath_length"
+type = "integer"
+description = """
+The basepath length in this ballpark, in feet.
+"""
+
+[[table.column]]
+name = "center_field_depth"
+type = "integer"
+description = """
+The depth of center field in this ballpark, in feet.
+"""
+
+[[table.column]]
+name = "foul_territory_line"
+type = "integer"
+description = """
+The length of the foul territory line in this ballpark, in feet.
+"""
+
+[[table.column]]
+name = "left_field_depth"
+type = "integer"
+description = """
+The depth of left field in this ballpark, in feet.
+"""
+
+[[table.column]]
+name = "lighting"
+type = "integer"
+description = """
+The lighting in this ballpark, in lux.
+"""
+
+[[table.column]]
+name = "playing_surface"
+type = "bigint"
+references = "taxa.playing_surface"
+description = """
+The playing surface in this ballpark.
+"""
+
+[[table.column]]
+name = "right_field_depth"
+type = "integer"
+description = """
+The depth of right field in this ballpark, in feet.
+"""
+
+[[table.column]]
+name = "wall_height"
+type = "integer"
+description = """
+The height of the walls in this ballpark, in feet.
+"""
+
 [[table]]
 name = "team_player_versions"
 description = """
