@@ -113,12 +113,14 @@ async fn main() -> miette::Result<()> {
     let tasks = FuturesUnordered::<JoinHandle<Result<(), IngestFatalError>>>::new();
 
     // Launch background, non-ingest tasks
-    info!("Launching background memory tracking task");
-    tasks.push(tokio::task::spawn(
-        memory_tracking_task(shutdown_requested.clone())
-            .map(Ok)
-            .instrument(info_span!("memory_tracking")),
-    ));
+    if config.print_memory_usage {
+        info!("Launching background memory tracking task");
+        tasks.push(tokio::task::spawn(
+            memory_tracking_task(shutdown_requested.clone())
+                .map(Ok)
+                .instrument(info_span!("memory_tracking")),
+        ));
+    }
     info!("Launching background item counting task");
     tasks.push(tokio::task::spawn(
         counting_task(shutdown_requested.clone(), pool.clone())
