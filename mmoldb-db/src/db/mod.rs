@@ -28,7 +28,21 @@ use thiserror::Error;
 use tracing::{debug, info, trace, warn};
 // First-party imports
 use crate::event_detail::{EventDetail, IngestLog};
-use crate::models::{DbAuroraPhoto, DbBalkReason, DbCheer, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence, DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder, DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion, DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition, DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWeather, DbWither, NewBallparkConfigVersion, NewEventIngestLog, NewFeedEventProcessed, NewGame, NewModification, NewModificationEffects, NewPlayerAttributeAugment, NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion, NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion, NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion, NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion, NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn, RawDbTable};
+use crate::models::{
+    DbAuroraPhoto, DbBalkReason, DbCheer, DbDoorPrize, DbDoorPrizeItem, DbEfflorescence,
+    DbEfflorescenceGrowth, DbEjection, DbEvent, DbEventIngestLog, DbFailedEjection, DbFielder,
+    DbGame, DbModification, DbPlayerAttributeAugment, DbPlayerEquipmentEffectVersion,
+    DbPlayerEquipmentVersion, DbPlayerModificationVersion, DbPlayerRecomposition,
+    DbPlayerReportAttributeVersion, DbPlayerReportVersion, DbPlayerVersion, DbRunner, DbWeather,
+    DbWither, NewBallparkConfigVersion, NewEventIngestLog, NewFeedEventProcessed, NewGame,
+    NewModification, NewModificationEffects, NewPlayerAttributeAugment,
+    NewPlayerEquipmentEffectVersion, NewPlayerEquipmentVersion, NewPlayerModificationVersion,
+    NewPlayerParadigmShift, NewPlayerPitchCategoryBonusVersion, NewPlayerPitchTypeBonusVersion,
+    NewPlayerPitchTypeVersion, NewPlayerRecomposition, NewPlayerReportAttributeVersion,
+    NewPlayerReportVersion, NewPlayerVersion, NewTeamGamePlayed, NewTeamPlayerVersion,
+    NewTeamVersion, NewTimeVersion, NewVersionIngestLog, NewVersionProcessed, RawDbColumn,
+    RawDbTable,
+};
 use crate::taxa::{Taxa, TaxaPollenCount};
 use crate::{ConsumptionContestForDb, PartyEvent, PitcherChange, QueryError, WitherOutcome};
 
@@ -3532,7 +3546,10 @@ fn insert_ballpark_config_versions(
 ) -> QueryResult<usize> {
     use crate::data_schema::data::ballpark_config_versions::dsl as bpv_dsl;
 
-    let new_ballpark_config_versions = new_ballpark_config_versions.into_iter().flatten().collect_vec();
+    let new_ballpark_config_versions = new_ballpark_config_versions
+        .into_iter()
+        .flatten()
+        .collect_vec();
 
     // Insert new records
     diesel::copy_from(bpv_dsl::ballpark_config_versions)
@@ -3568,7 +3585,13 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
         .into_iter()
         .map(|(a, b, c, d, e)| (a, b, c, d, e));
 
-    let (new_processed, new_team_versions, new_ballpark_config_versions, new_team_player_versions, new_ingest_logs): (
+    let (
+        new_processed,
+        new_team_versions,
+        new_ballpark_config_versions,
+        new_team_player_versions,
+        new_ingest_logs,
+    ): (
         Vec<&NewVersionProcessed>,
         Vec<&Option<NewTeamVersion>>,
         Vec<&Option<NewBallparkConfigVersion>>,
@@ -3596,7 +3619,8 @@ pub fn insert_team_versions_all<'container, 'game: 'container>(
     let insert_ballpark_config_version_start = Utc::now();
     total += new_ballpark_config_versions.len();
     inserted += insert_ballpark_config_versions(conn, new_ballpark_config_versions)?;
-    let insert_ballpark_config_version_duration = (Utc::now() - insert_ballpark_config_version_start).as_seconds_f64();
+    let insert_ballpark_config_version_duration =
+        (Utc::now() - insert_ballpark_config_version_start).as_seconds_f64();
 
     let insert_team_player_versions_start = Utc::now();
     let (tpv_total, tpv_inserted) = insert_team_player_versions(conn, new_team_player_versions)?;

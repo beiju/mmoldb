@@ -364,7 +364,11 @@ pub fn check_tables() -> Result<(), CheckTablesError> {
             record_table(&mut unaccountedfor_tables, "data", processed)?;
         }
         if let Some(ingest_logs) = &table.ingest_logs {
-            record_table(&mut unaccountedfor_tables, ingest_logs.schema, ingest_logs.table)?;
+            record_table(
+                &mut unaccountedfor_tables,
+                ingest_logs.schema,
+                ingest_logs.table,
+            )?;
         }
         // record_tables_with_schema(&mut unaccountedfor_tables, &table.materialized_views)?
     }

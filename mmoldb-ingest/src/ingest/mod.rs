@@ -32,9 +32,9 @@ use std::num::NonZero;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
+use tokio::sync::Mutex;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::error::SendError;
-use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tokio::time::MissedTickBehavior;
 use tokio_util::sync::CancellationToken;
@@ -817,9 +817,13 @@ impl IngestForKind {
                     let lock = self.last_matview_refresh.lock().await;
                     *lock
                 };
-                let last_matview_refresh = processing::process_version_kind(kind, self.processing_args.clone(), last_matview_refresh)
-                    .instrument(info_span!("processing_task", kind = kind.as_kind()))
-                    .await?;
+                let last_matview_refresh = processing::process_version_kind(
+                    kind,
+                    self.processing_args.clone(),
+                    last_matview_refresh,
+                )
+                .instrument(info_span!("processing_task", kind = kind.as_kind()))
+                .await?;
                 let mut lock = self.last_matview_refresh.lock().await;
                 *lock = last_matview_refresh;
                 Ok(())

@@ -15,7 +15,8 @@ pub struct IngestibleConfig {
     pub process_batch_size: NonZero<usize>,
     pub ingest_parallelism: Option<NonZero<usize>>,
     pub debug_db_insert_delay: f64,
-    pub refresh_matview_throttle_seconds: Option<f64>,}
+    pub refresh_matview_throttle_seconds: Option<f64>,
+}
 
 impl Default for IngestibleConfig {
     fn default() -> Self {

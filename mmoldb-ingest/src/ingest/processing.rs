@@ -3,11 +3,11 @@ use crate::ingest_teams::TeamIngestFromVersions;
 use crate::ingest_time::TimeIngestFromVersions;
 use crate::partitioner::Partitioner;
 use crate::{EntityIngestKind, IngestFatalError, Stage2Ingest, VersionedIngestKind};
+use chrono::{DateTime, Utc};
 use mmoldb_db::ConnectionPool;
 use mmoldb_db::db::{refresh_game_matviews, refresh_player_matviews};
 use std::num::NonZero;
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -57,7 +57,7 @@ pub async fn process_entity_kind(
 pub async fn process_version_kind(
     kind: VersionedIngestKind,
     args: ProcessingArgs,
-    last_matview_refresh: Option<DateTime<Utc>>
+    last_matview_refresh: Option<DateTime<Utc>>,
 ) -> Result<Option<DateTime<Utc>>, IngestFatalError> {
     // TODO Refactor this to not match on kind
     match kind {
@@ -79,9 +79,7 @@ pub async fn process_version_kind(
 
             let now = Utc::now();
             if refresh_matview_throttle_seconds.is_none_or(|throttle| {
-                last_matview_refresh.is_none_or(|last| {
-                    (now - last).as_seconds_f64() > throttle
-                })
+                last_matview_refresh.is_none_or(|last| (now - last).as_seconds_f64() > throttle)
             }) {
                 info!("Player process iteration finished. Refreshing player matviews.");
                 // TODO Don't hard-code this
@@ -101,7 +99,9 @@ pub async fn process_version_kind(
 
                 Ok(Some(now))
             } else {
-                info!("Player process iteration finished. Skipping player matview refresh (too soon).");
+                info!(
+                    "Player process iteration finished. Skipping player matview refresh (too soon)."
+                );
                 Ok(None)
             }
         }

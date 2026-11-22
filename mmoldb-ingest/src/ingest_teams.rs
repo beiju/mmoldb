@@ -8,11 +8,14 @@ use mmolb_parsing::{
     AddedLater, AddedLaterResult, MaybeRecognizedResult, NotRecognized, enums::FullSlot,
     team::TeamPlayerCollection,
 };
-use mmoldb_db::models::{NewBallparkConfigVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog, NewVersionProcessed};
+use mmoldb_db::models::{
+    NewBallparkConfigVersion, NewTeamPlayerVersion, NewTeamVersion, NewVersionIngestLog,
+    NewVersionProcessed,
+};
 use mmoldb_db::taxa::{Taxa, TaxaPlayingSurface};
 use mmoldb_db::{AsyncPgConnection, BestEffortSlot, PgConnection, QueryResult, async_db, db};
-use std::str::FromStr;
 use serde::Deserialize;
+use std::str::FromStr;
 
 pub struct TeamIngestFromVersions;
 
@@ -302,89 +305,86 @@ fn chron_team_as_new<'a>(
         },
     };
 
-    let ballpark_config = team.extra_fields.get("BallparkConfig")
-        .and_then(|config| {
-            // There is probably a way to get this to work with TaxaPlayingSurface directly,
-            // but I don't know how to do it
-            #[derive(Debug, Deserialize)]
-            enum PlayingSurface {
-                Grass,
-                #[serde(rename = "Tall Grass")]
-                TallGrass,
-                Turf,
-                Dirt,
-                Sand,
-                Clay,
-                Concrete,
-                Snow,
-                Ice,
-                Mud,
-                Rubber,
-                Metallic,
-                Flesh,
-                Mirror,
-                Dust,
-            }
+    let ballpark_config = team.extra_fields.get("BallparkConfig").and_then(|config| {
+        // There is probably a way to get this to work with TaxaPlayingSurface directly,
+        // but I don't know how to do it
+        #[derive(Debug, Deserialize)]
+        enum PlayingSurface {
+            Grass,
+            #[serde(rename = "Tall Grass")]
+            TallGrass,
+            Turf,
+            Dirt,
+            Sand,
+            Clay,
+            Concrete,
+            Snow,
+            Ice,
+            Mud,
+            Rubber,
+            Metallic,
+            Flesh,
+            Mirror,
+            Dust,
+        }
 
-            impl Into<TaxaPlayingSurface> for PlayingSurface {
-                fn into(self) -> TaxaPlayingSurface {
-                    match self {
-                        Self::Grass => TaxaPlayingSurface::Grass,
-                        Self::TallGrass => TaxaPlayingSurface::TallGrass,
-                        Self::Turf => TaxaPlayingSurface::Turf,
-                        Self::Dirt => TaxaPlayingSurface::Dirt,
-                        Self::Sand => TaxaPlayingSurface::Sand,
-                        Self::Clay => TaxaPlayingSurface::Clay,
-                        Self::Concrete => TaxaPlayingSurface::Concrete,
-                        Self::Snow => TaxaPlayingSurface::Snow,
-                        Self::Ice => TaxaPlayingSurface::Ice,
-                        Self::Mud => TaxaPlayingSurface::Mud,
-                        Self::Rubber => TaxaPlayingSurface::Rubber,
-                        Self::Metallic => TaxaPlayingSurface::Metallic,
-                        Self::Flesh => TaxaPlayingSurface::Flesh,
-                        Self::Mirror => TaxaPlayingSurface::Mirror,
-                        Self::Dust => TaxaPlayingSurface::Dust,
-                    }
+        impl Into<TaxaPlayingSurface> for PlayingSurface {
+            fn into(self) -> TaxaPlayingSurface {
+                match self {
+                    Self::Grass => TaxaPlayingSurface::Grass,
+                    Self::TallGrass => TaxaPlayingSurface::TallGrass,
+                    Self::Turf => TaxaPlayingSurface::Turf,
+                    Self::Dirt => TaxaPlayingSurface::Dirt,
+                    Self::Sand => TaxaPlayingSurface::Sand,
+                    Self::Clay => TaxaPlayingSurface::Clay,
+                    Self::Concrete => TaxaPlayingSurface::Concrete,
+                    Self::Snow => TaxaPlayingSurface::Snow,
+                    Self::Ice => TaxaPlayingSurface::Ice,
+                    Self::Mud => TaxaPlayingSurface::Mud,
+                    Self::Rubber => TaxaPlayingSurface::Rubber,
+                    Self::Metallic => TaxaPlayingSurface::Metallic,
+                    Self::Flesh => TaxaPlayingSurface::Flesh,
+                    Self::Mirror => TaxaPlayingSurface::Mirror,
+                    Self::Dust => TaxaPlayingSurface::Dust,
                 }
             }
+        }
 
-            #[derive(Debug, Deserialize)]
-            #[serde(rename_all = "PascalCase")]
-            struct BallparkConfig {
-                pub basepath_length: i32,
-                pub center_field_depth: i32,
-                pub foul_territory_line: i32,
-                pub left_field_depth: i32,
-                pub lighting: i32,
-                pub playing_surface: PlayingSurface,
-                pub right_field_depth: i32,
-                pub wall_height: i32,
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "PascalCase")]
+        struct BallparkConfig {
+            pub basepath_length: i32,
+            pub center_field_depth: i32,
+            pub foul_territory_line: i32,
+            pub left_field_depth: i32,
+            pub lighting: i32,
+            pub playing_surface: PlayingSurface,
+            pub right_field_depth: i32,
+            pub wall_height: i32,
+        }
+
+        let result: Result<BallparkConfig, _> = serde_path_to_error::deserialize(config);
+
+        match result {
+            Ok(config) => Some(NewBallparkConfigVersion {
+                mmolb_team_id: team_id,
+                valid_from: valid_from.naive_utc(),
+                valid_until: None,
+                basepath_length: config.basepath_length,
+                center_field_depth: config.center_field_depth,
+                foul_territory_line: config.foul_territory_line,
+                left_field_depth: config.left_field_depth,
+                lighting: config.lighting,
+                playing_surface: taxa.playing_surface_id(config.playing_surface.into()),
+                right_field_depth: config.right_field_depth,
+                wall_height: config.wall_height,
+            }),
+            Err(error) => {
+                ingest_logs.warn(format!("Invalid ballpark config: {error:?}"));
+                None
             }
-
-            let result: Result<BallparkConfig, _> = serde_path_to_error::deserialize(config);
-
-            match result {
-                Ok(config) => {
-                    Some(NewBallparkConfigVersion {
-                        mmolb_team_id: team_id,
-                        valid_from: valid_from.naive_utc(),
-                        valid_until: None,
-                        basepath_length: config.basepath_length,
-                        center_field_depth: config.center_field_depth,
-                        foul_territory_line: config.foul_territory_line,
-                        left_field_depth: config.left_field_depth,
-                        lighting: config.lighting,
-                        playing_surface: taxa.playing_surface_id(config.playing_surface.into()),
-                        right_field_depth: config.right_field_depth,
-                        wall_height: config.wall_height,
-                    })
-                }
-                Err(error) => {
-                    ingest_logs.warn(format!("Invalid ballpark config: {error:?}"));
-                    None
-                },
-            }
-        });
+        }
+    });
 
     let new_team = NewTeamVersion {
         mmolb_team_id: team_id,
@@ -401,7 +401,7 @@ fn chron_team_as_new<'a>(
         ballpark_name: ballpark_full_name,
         manager_name: team.manager.as_ref().ok().map(|s| s.as_str()),
         num_players: new_team_players.len() as i32,
-        has_configured_ballpark: ballpark_config.is_some()
+        has_configured_ballpark: ballpark_config.is_some(),
     };
 
     let num_unique = new_team_players

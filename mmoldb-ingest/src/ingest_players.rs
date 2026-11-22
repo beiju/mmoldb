@@ -1482,7 +1482,6 @@ fn chron_player_as_new<'a>(
                     entity.entity_id, entity.valid_from,
                 ));
             }
-            
         }
         (Some(planned_level), Some(level)) => {
             if let Ok(pending_level_ups) = &entity.data.pending_level_ups {
