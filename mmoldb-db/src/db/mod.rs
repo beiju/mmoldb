@@ -4260,6 +4260,7 @@ pub fn player_first_names(conn: &mut PgConnection) -> QueryResult<Vec<String>> {
 
     pv_dsl::player_versions
         .select(pv_dsl::first_name)
+        .distinct()
         .order_by(pv_dsl::first_name)
         .get_results(conn)
 }
@@ -4269,6 +4270,7 @@ pub fn player_last_names(conn: &mut PgConnection) -> QueryResult<Vec<String>> {
 
     pv_dsl::player_versions
         .select(pv_dsl::last_name)
+        .distinct()
         .order_by(pv_dsl::last_name)
         .get_results(conn)
 }

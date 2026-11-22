@@ -31,6 +31,8 @@
     <section class="card">
         <h1>Weather</h1>
 
+        <p>Note: A weather can appear multiple times if its description has ever changed.</p>
+
         {% if weather %}
         <table>
             {% for w in weather %}
@@ -59,6 +61,8 @@
     <section class="card">
         <h1>Modifications</h1>
 
+        <p>Note: A modification can appear multiple times if its description has ever changed.</p>
+
         {% if modifications %}
         <table>
             {% for m in modifications %}
@@ -73,9 +77,9 @@
     <section class="card">
         <h1>Player first names</h1>
 
-        {% if first_names %}
+        {% if player_first_names %}
         <table>
-            {% for n in first_names %}
+            {% for n in player_first_names %}
             <tr><td>{{ n }}</td></tr>
             {% endfor %}
         </table>
@@ -87,9 +91,9 @@
     <section class="card">
         <h1>Player last names</h1>
 
-        {% if last_names %}
+        {% if player_last_names %}
         <table>
-            {% for n in last_names %}
+            {% for n in player_last_names %}
             <tr><td>{{ n }}</td></tr>
             {% endfor %}
         </table>
