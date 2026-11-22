@@ -68,6 +68,11 @@ pub fn day_to_db(
             None,
             None,
         ),
+        Some(Ok(Day::HomeRunChallenge)) => (
+            Some(taxa.day_type_id(TaxaDayType::SuperstarDay)),
+            None,
+            None,
+        ),
         Some(Ok(Day::SuperstarDay(day, _))) => (
             Some(taxa.day_type_id(TaxaDayType::SuperstarDay)),
             None,

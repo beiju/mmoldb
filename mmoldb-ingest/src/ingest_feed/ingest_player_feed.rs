@@ -795,7 +795,9 @@ pub fn chron_player_feed_as_new<'a>(
         | ParsedPlayerFeedEventText::NewRetirement { .. }
         | ParsedPlayerFeedEventText::SweetRelief { .. }
         | ParsedPlayerFeedEventText::DefensiveShift { .. }
-        | ParsedPlayerFeedEventText::GoingHome { .. } => {}
+        | ParsedPlayerFeedEventText::GoingHome { .. }
+        | ParsedPlayerFeedEventText::PlayerReborn { .. }
+        | ParsedPlayerFeedEventText::PlayerWonHomeRunChallenge { .. } => {}
     }
 
     // TODO Re-enable
