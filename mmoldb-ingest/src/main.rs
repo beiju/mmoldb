@@ -9,7 +9,6 @@ mod modifier_effects_value;
 mod partitioner;
 mod util;
 
-use std::sync::Arc;
 use chrono_humanize::{Accuracy, HumanTime, Tense};
 use config::IngestConfig;
 use futures::{FutureExt, StreamExt};
@@ -25,7 +24,6 @@ use cap::Cap;
 use futures::stream::FuturesUnordered;
 pub use ingest::*;
 use std::alloc;
-use tokio::sync::Barrier;
 
 static MEMORY_TRACKING_PERIOD_MS: u64 = 10_000;
 static ITEM_COUNTING_WAIT_MS: u64 = 30_000;
