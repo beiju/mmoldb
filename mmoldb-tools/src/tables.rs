@@ -237,7 +237,7 @@ lazy_static! {
         derived_tables.insert(
             "team",
             KindStyle::Version {
-                version_derived_tables: vec!["team_versions", "team_player_versions"],
+                version_derived_tables: vec!["team_versions", "team_player_versions", "ballpark_config_versions"],
                 auxiliary_tables: vec!["modifications"],
                 feed_derived_tables: vec!["team_games_played"],
                 materialized_views: Vec::new(),
