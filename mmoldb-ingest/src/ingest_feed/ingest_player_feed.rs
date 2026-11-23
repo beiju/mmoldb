@@ -796,7 +796,8 @@ pub fn chron_player_feed_as_new<'a>(
         | ParsedPlayerFeedEventText::SweetRelief { .. }
         | ParsedPlayerFeedEventText::DefensiveShift { .. }
         | ParsedPlayerFeedEventText::GoingHome { .. }
-        | ParsedPlayerFeedEventText::PlayerReborn { .. }
+        | ParsedPlayerFeedEventText::PlayerRebornWithNewPurpose { .. }
+        | ParsedPlayerFeedEventText::PlayerRebornWithLesserDurability { .. }
         | ParsedPlayerFeedEventText::PlayerWonHomeRunChallenge { .. } => {}
     }
 

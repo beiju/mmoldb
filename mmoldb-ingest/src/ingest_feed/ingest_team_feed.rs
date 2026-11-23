@@ -124,6 +124,7 @@ pub fn chron_team_feed_as_new<'a>(
         | ParsedTeamFeedEventText::SweetRelief { .. }
         | ParsedTeamFeedEventText::DefensiveShift { .. }
         | ParsedTeamFeedEventText::GoingHome { .. }
-        | ParsedTeamFeedEventText::PlayerReborn { .. } => Ok(None),
+        | ParsedTeamFeedEventText::PlayerRebornWithNewPurpose { .. }
+        | ParsedTeamFeedEventText::PlayerRebornWithLesserDurability { .. } => Ok(None),
     }
 }
