@@ -8,12 +8,16 @@ updates would be much slower.
 
 Contributors: WoofyJack, Ifhbiff, Centritide, Tuesday.
 
-Upcoming
+2026-11-23
 ----------
 - Adds `data.ballpark_config_versions` holding team ballpark configurations. 
   See docs for details. In particular, note that not all active teams in 
   Season 17 have an entry in this table -- teams who have not modified their
   ballpark do not have an entry.
+- Retires the old Health page on the MMOLDB website, which never did anything
+  useful anyway.
+- Adds a new Lists page with a bunch of lists of things, from balk reasons to
+  weathers to player first and last names.
 
 2026-11-20
 ----------
